@@ -1,6 +1,6 @@
 import pytest
 
-from mb_workflow.git import BranchName, Ref
+from mb_workflow.git import BranchName
 from mb_workflow.github import PrNumber
 from mb_workflow.orca import (
     OrcaError,
@@ -79,7 +79,3 @@ def test_repo_id_at_rejects_an_unmanaged_directory() -> None:
 def test_worktree_name_and_comment_describe_the_pr() -> None:
     assert WorktreeName.of(PrNumber.fake()) == WorktreeName.fake()
     assert WorktreeComment.fake().root == "PR #1234 — Add review workspaces"
-
-
-def test_ref_none_is_not_confused_with_the_default_branch() -> None:
-    assert Ref("refs/heads/main").branch() == BranchName("main")

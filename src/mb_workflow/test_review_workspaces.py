@@ -1,7 +1,7 @@
 from mb_workflow.git import BranchName, Ref
 from mb_workflow.github import PrNumber, PrTitle, PullRequest, PullRequests
 from mb_workflow.orca import RepoId, Worktree, WorktreePath, Worktrees
-from mb_workflow.review_workspaces import uncovered
+from mb_workflow.review_workspaces import ExitCode, Failure, Outcome, uncovered
 
 
 def other_pr() -> PullRequest:
@@ -36,3 +36,11 @@ def test_a_workspace_for_another_pr_does_not_cover_this_one() -> None:
 
 def test_no_prs_yields_nothing_to_do() -> None:
     assert uncovered(PullRequests(()), Worktrees.fake()) == PullRequests(())
+
+
+def test_a_clean_run_exits_zero() -> None:
+    assert Outcome.fake().exit_code() == ExitCode(0)
+
+
+def test_any_failure_exits_non_zero() -> None:
+    assert Outcome(created=(), failed=(Failure.fake(),)).exit_code() == ExitCode(1)
