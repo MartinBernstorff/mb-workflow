@@ -1,11 +1,19 @@
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mb_workflow.git import BranchName, Ref
 from mb_workflow.github import PrNumber, PrTitle, PullRequest, PullRequests
-from mb_workflow.orca import RepoId, Worktree, WorktreeName, WorktreePath, Worktrees
-from mb_workflow.review_workspaces import Failure, Outcome, uncovered
-from mb_workflow.shell import ExitCode
+from mb_workflow.orca import (
+    RepoId,
+    WorkspaceStatus,
+    Worktree,
+    WorktreeName,
+    WorktreePath,
+    Worktrees,
+)
+from mb_workflow.review_workspaces import Failure, Outcome, Unchanged, stale, uncovered
+from mb_workflow.shell import ExistingDirectory, ExitCode
 
 if TYPE_CHECKING:
     import pytest
@@ -19,6 +27,20 @@ def other_pr() -> PullRequest:
 
 def bare_worktree() -> Worktree:
     return Worktree(repo_id=RepoId.fake(), path=WorktreePath.fake())
+
+
+def review_worktree() -> Worktree:
+    return bare_worktree().model_copy(
+        update={"linked_issue": PrNumber.fake(), "workspace_status": WorkspaceStatus.fake()}
+    )
+
+
+def elsewhere() -> ExistingDirectory:
+    return ExistingDirectory(Path.cwd())
+
+
+def stale_among(prs: PullRequests, worktrees: Worktrees) -> Worktrees:
+    return stale(prs, worktrees, RepoId.fake(), WorkspaceStatus.fake(), elsewhere())
 
 
 def test_keeps_prs_with_no_workspace() -> None:
@@ -45,12 +67,54 @@ def test_no_prs_yields_nothing_to_do() -> None:
     assert uncovered(PullRequests(()), Worktrees.fake()) == PullRequests(())
 
 
+def test_a_review_workspace_survives_while_its_pr_awaits_review() -> None:
+    assert stale_among(PullRequests.fake(), Worktrees((review_worktree(),))) == Worktrees(())
+
+
+def test_a_review_workspace_is_stale_once_its_pr_no_longer_awaits_review() -> None:
+    worktrees = Worktrees((review_worktree(),))
+    assert stale_among(PullRequests((other_pr(),)), worktrees) == worktrees
+
+
+def test_a_workspace_outside_the_review_status_is_never_stale() -> None:
+    worktrees = Worktrees((review_worktree().model_copy(update={"workspace_status": None}),))
+    assert stale_among(PullRequests(()), worktrees) == Worktrees(())
+
+
+def test_a_workspace_in_another_repo_is_never_stale() -> None:
+    worktrees = Worktrees((review_worktree().model_copy(update={"repo_id": RepoId("elsewhere")}),))
+    assert stale_among(PullRequests(()), worktrees) == Worktrees(())
+
+
+def test_a_review_workspace_matched_only_by_branch_survives() -> None:
+    worktrees = Worktrees(
+        (review_worktree().model_copy(update={"linked_issue": None, "branch": Ref.fake()}),)
+    )
+    assert stale_among(PullRequests.fake(), worktrees) == Worktrees(())
+
+
+def test_the_workspace_you_are_standing_in_is_never_stale() -> None:
+    here = ExistingDirectory(Path.cwd())
+    worktrees = Worktrees((review_worktree().model_copy(update={"path": WorktreePath(here.root)}),))
+    assert stale(
+        PullRequests(()), worktrees, RepoId.fake(), WorkspaceStatus.fake(), here
+    ) == Worktrees(())
+
+
+def test_a_run_that_touched_nothing_is_unchanged() -> None:
+    assert Outcome(created=(), removed=(), failed=()).unchanged() == Unchanged(True)
+
+
+def test_a_run_that_created_a_workspace_is_not_unchanged() -> None:
+    assert Outcome.fake().unchanged() == Unchanged(False)
+
+
 def test_a_clean_run_exits_zero() -> None:
     assert Outcome.fake().exit_code() == ExitCode(0)
 
 
 def test_any_failure_exits_non_zero() -> None:
-    assert Outcome(created=(), failed=(Failure.fake(),)).exit_code() == ExitCode(1)
+    assert Outcome(created=(), removed=(), failed=(Failure.fake(),)).exit_code() == ExitCode(1)
 
 
 def test_reports_each_created_workspace(caplog: pytest.LogCaptureFixture) -> None:
@@ -60,7 +124,14 @@ def test_reports_each_created_workspace(caplog: pytest.LogCaptureFixture) -> Non
     assert WorktreeName.fake().root in caplog.text
 
 
-def test_reports_nothing_when_none_were_created(caplog: pytest.LogCaptureFixture) -> None:
+def test_reports_each_removed_workspace(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.INFO):
-        Outcome(created=(), failed=()).report()
+        Outcome(created=(), removed=(WorktreePath.fake(),), failed=()).report()
+    assert "Removed 1 workspace:" in caplog.text
+    assert str(WorktreePath.fake().root) in caplog.text
+
+
+def test_reports_nothing_when_nothing_changed(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO):
+        Outcome(created=(), removed=(), failed=()).report()
     assert caplog.text == ""
