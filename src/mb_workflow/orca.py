@@ -42,7 +42,7 @@ class WorktreeComment(Value[str]):
 class WorkspaceStatus(Value[str]):
     @staticmethod
     def fake() -> WorkspaceStatus:
-        return WorkspaceStatus("Me reviewing others")
+        return WorkspaceStatus("status-8")
 
 
 class ErrorMessage(Value[str]):
@@ -58,6 +58,15 @@ class WorktreePath(Value[Path]):
 
     def existing(self) -> ExistingDirectory:
         return ExistingDirectory(self.root)
+
+    def selector(self) -> WorktreeSelector:
+        return WorktreeSelector(f"path:{self.root}")
+
+
+class WorktreeSelector(Value[str]):
+    @staticmethod
+    def fake() -> WorktreeSelector:
+        return WorktreeSelector(f"path:{WorktreePath.fake().root}")
 
 
 class EnvelopeError(Payload):
@@ -92,6 +101,7 @@ class Worktree(Payload):
     path: WorktreePath
     branch: Ref | None = None
     linked_issue: PrNumber | None = None
+    workspace_status: WorkspaceStatus | None = None
 
     @staticmethod
     def fake() -> Worktree:
@@ -100,6 +110,7 @@ class Worktree(Payload):
             path=WorktreePath.fake(),
             branch=Ref.fake(),
             linked_issue=PrNumber.fake(),
+            workspace_status=WorkspaceStatus.fake(),
         )
 
 
@@ -117,12 +128,12 @@ class Acknowledgement(Payload):
         return Acknowledgement()
 
 
-class CreatedWorktree(Payload):
+class SingleWorktree(Payload):
     worktree: Worktree
 
     @staticmethod
-    def fake() -> CreatedWorktree:
-        return CreatedWorktree(worktree=Worktree.fake())
+    def fake() -> SingleWorktree:
+        return SingleWorktree(worktree=Worktree.fake())
 
 
 class Worktrees(Value[tuple[Worktree, ...]]):
@@ -144,8 +155,12 @@ class Worktrees(Value[tuple[Worktree, ...]]):
 
 
 def created_path(output: CommandOutput) -> ExistingDirectory:
-    envelope = Envelope[CreatedWorktree].model_validate_json(output.root)
+    envelope = Envelope[SingleWorktree].model_validate_json(output.root)
     return envelope.unwrap().worktree.path.existing()
+
+
+def single_worktree(output: CommandOutput) -> Worktree:
+    return Envelope[SingleWorktree].model_validate_json(output.root).unwrap().worktree
 
 
 def acknowledged(output: CommandOutput) -> Acknowledgement:
@@ -159,6 +174,9 @@ class Orca:
 
     def where(self) -> ExistingDirectory:
         return self._shell.cwd()
+
+    def current(self) -> Worktree:
+        return single_worktree(self._shell.run(Command(("orca", "worktree", "current", "--json"))))
 
     def worktrees(self) -> Worktrees:
         return Worktrees.parse(self._shell.run(Command(("orca", "worktree", "list", "--json"))))
@@ -198,6 +216,23 @@ class Orca:
                         f"issue:{pr.root}",
                         "--workspace-status",
                         status.root,
+                        "--json",
+                    )
+                )
+            )
+        )
+
+    def remove_worktree(self, path: WorktreePath) -> None:
+        _ = acknowledged(
+            self._shell.run(
+                Command(
+                    (
+                        "orca",
+                        "worktree",
+                        "rm",
+                        "--worktree",
+                        path.selector().root,
+                        "--force",
                         "--json",
                     )
                 )

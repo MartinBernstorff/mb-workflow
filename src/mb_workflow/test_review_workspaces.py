@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING
 from mb_workflow.git import BranchName, Ref
 from mb_workflow.github import PrNumber, PrTitle, PullRequest, PullRequests
 from mb_workflow.orca import RepoId, Worktree, WorktreeName, WorktreePath, Worktrees
-from mb_workflow.review_workspaces import ExitCode, Failure, Outcome, uncovered
+from mb_workflow.review_workspaces import Failure, Outcome, uncovered
+from mb_workflow.shell import ExitCode
 
 if TYPE_CHECKING:
     import pytest

@@ -4,7 +4,7 @@ from subprocess import CalledProcessError
 from mb_workflow.github import GitHub, PrNumber, PullRequests
 from mb_workflow.models import Model, Value
 from mb_workflow.orca import Orca, OrcaError, WorkspaceStatus, WorktreeName, Worktrees
-from mb_workflow.shell import ExistingDirectory, Shell
+from mb_workflow.shell import ExistingDirectory, ExitCode, Shell
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +22,6 @@ class Failure(Model):
     @staticmethod
     def fake() -> Failure:
         return Failure(pr=PrNumber.fake(), reason=FailureReason.fake())
-
-
-class ExitCode(Value[int]):
-    @staticmethod
-    def fake() -> ExitCode:
-        return ExitCode(0)
 
 
 class CreatedWorkspace(Model):

@@ -33,6 +33,12 @@ class CommandOutput(Value[str]):
         return CommandOutput("[]")
 
 
+class ExitCode(Value[int]):
+    @staticmethod
+    def fake() -> ExitCode:
+        return ExitCode(0)
+
+
 class Shell:
     def __init__(self, cwd: ExistingDirectory) -> None:
         self._cwd = cwd
