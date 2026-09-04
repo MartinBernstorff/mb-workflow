@@ -1,0 +1,17 @@
+source_roots = ["src"]
+
+[[modules]]
+path = "mb_workflow"
+depends_on = ["mb_workflow.cli", "mb_workflow.greeting"]
+
+[[modules]]
+path = "mb_workflow.cli"
+depends_on = ["mb_workflow.greeting", "mb_workflow.logging"]
+
+[[modules]]
+path = "mb_workflow.greeting"
+depends_on = []
+
+[[modules]]
+path = "mb_workflow.logging"
+depends_on = []

@@ -1,0 +1,87 @@
+language: "python"
+stack: "backend"
+layer: "application"
+
+fileGroups:
+  sources:
+    - "src/**/*.py"
+
+tasks:
+  test:
+    script: "uv run pytest"
+    inputs:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "pytest.toml"
+      - "@group(sources)"
+    options:
+      outputStyle: "buffer-only-failure"
+
+  types:
+    script: "uv run pyrefly check"
+    inputs:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "pyrefly.toml"
+      - "@group(sources)"
+    options:
+      outputStyle: "buffer-only-failure"
+
+  modularity:
+    script: "uv run tach check"
+    inputs:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "tach.toml"
+      - "@group(sources)"
+    options:
+      outputStyle: "buffer-only-failure"
+
+  noprim:
+    script: "uv run noprim check src"
+    inputs:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "noprim.toml"
+      - "@group(sources)"
+    options:
+      outputStyle: "buffer-only-failure"
+
+  lint:
+    script: "uv run ruff check"
+    inputs:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "ruff.toml"
+      - "@group(sources)"
+    options:
+      outputStyle: "buffer-only-failure"
+
+  lint-fix:
+    script: "uv run ruff check --fix"
+    options:
+      cache: false
+      runInCI: false
+
+  format:
+    script: "uv run ruff format --check"
+    inputs:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "ruff.toml"
+      - "@group(sources)"
+    options:
+      outputStyle: "buffer-only-failure"
+
+  format-fix:
+    script: "uv run ruff format"
+    options:
+      cache: false
+      runInCI: false
+
+  actionlint:
+    script: "uv run actionlint"
+    inputs:
+      - ".github/workflows/*.yml"
+    options:
+      outputStyle: "buffer-only-failure"

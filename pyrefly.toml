@@ -1,0 +1,6 @@
+project-includes = ["src"]
+python-version = "3.14"
+preset = "all"
+
+[errors]
+implicit-bool = false

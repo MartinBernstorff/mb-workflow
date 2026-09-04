@@ -1,0 +1,6 @@
+unstable_python:
+  version: "3.14.3"
+  packageManager: "uv"
+
+unstable_uv:
+  version: "0.9.24"

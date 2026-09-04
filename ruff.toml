@@ -1,0 +1,59 @@
+target-version = "py314"
+src = ["src"]
+line-length = 100
+
+[lint]
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "N",
+    "UP",
+    "B",
+    "C4",
+    "SIM",
+    "PT",
+    "A",
+    "RET",
+    "RUF",
+    "TID",
+    "PIE",
+    "PL",
+    "ARG",
+    "PTH",
+    "ERA",
+    "TC",
+]
+ignore = [
+    "E501",
+    "W191",
+    "E111",
+    "E114",
+    "E117",
+    "COM812",
+    "ISC001",
+    "A005",
+    "RUF022",
+    "PLR0913",
+    "B008",
+]
+
+[lint.per-file-ignores]
+"**/test_*.py" = ["PLR2004", "ARG"]
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[lint.isort]
+known-first-party = ["mb_workflow"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
