@@ -15,7 +15,6 @@ depends_on = [
 [[modules]]
 path = "mb_workflow.cli"
 depends_on = [
-    "mb_workflow.github",
     "mb_workflow.greeting",
     "mb_workflow.logging",
     "mb_workflow.orca",

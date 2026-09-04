@@ -44,6 +44,7 @@ class PullRequests(Value[tuple[PullRequest, ...]]):
 class GitHub:
     def __init__(self, shell: Shell) -> None:
         self._shell = shell
+        _ = shell.run(Command(("gh", "--version")))
 
     def review_requested(self) -> PullRequests:
         return PullRequests.parse(

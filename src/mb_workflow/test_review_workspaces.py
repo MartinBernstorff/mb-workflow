@@ -1,7 +1,13 @@
+import logging
+from typing import TYPE_CHECKING
+
 from mb_workflow.git import BranchName, Ref
 from mb_workflow.github import PrNumber, PrTitle, PullRequest, PullRequests
-from mb_workflow.orca import RepoId, Worktree, WorktreePath, Worktrees
+from mb_workflow.orca import RepoId, Worktree, WorktreeName, WorktreePath, Worktrees
 from mb_workflow.review_workspaces import ExitCode, Failure, Outcome, uncovered
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def other_pr() -> PullRequest:
@@ -44,3 +50,16 @@ def test_a_clean_run_exits_zero() -> None:
 
 def test_any_failure_exits_non_zero() -> None:
     assert Outcome(created=(), failed=(Failure.fake(),)).exit_code() == ExitCode(1)
+
+
+def test_reports_each_created_workspace(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO):
+        Outcome.fake().report()
+    assert "Created 1 workspace:" in caplog.text
+    assert WorktreeName.fake().root in caplog.text
+
+
+def test_reports_nothing_when_none_were_created(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO):
+        Outcome(created=(), failed=()).report()
+    assert caplog.text == ""

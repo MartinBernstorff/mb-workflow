@@ -155,6 +155,7 @@ def acknowledged(output: CommandOutput) -> Acknowledgement:
 class Orca:
     def __init__(self, shell: Shell) -> None:
         self._shell = shell
+        _ = shell.run(Command(("orca", "--version")))
 
     def where(self) -> ExistingDirectory:
         return self._shell.cwd()

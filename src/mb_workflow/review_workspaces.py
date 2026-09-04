@@ -3,7 +3,8 @@ from subprocess import CalledProcessError
 
 from mb_workflow.github import GitHub, PrNumber, PullRequests
 from mb_workflow.models import Model, Value
-from mb_workflow.orca import Orca, OrcaError, WorkspaceStatus, Worktrees
+from mb_workflow.orca import Orca, OrcaError, WorkspaceStatus, WorktreeName, Worktrees
+from mb_workflow.shell import ExistingDirectory, Shell
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +30,30 @@ class ExitCode(Value[int]):
         return ExitCode(0)
 
 
+class CreatedWorkspace(Model):
+    name: WorktreeName
+    path: ExistingDirectory
+
+    @staticmethod
+    def fake() -> CreatedWorkspace:
+        return CreatedWorkspace(name=WorktreeName.fake(), path=ExistingDirectory.fake())
+
+
 class Outcome(Model):
-    created: tuple[PrNumber, ...]
+    created: tuple[CreatedWorkspace, ...]
     failed: tuple[Failure, ...]
 
     @staticmethod
     def fake() -> Outcome:
-        return Outcome(created=(PrNumber.fake(),), failed=())
+        return Outcome(created=(CreatedWorkspace.fake(),), failed=())
+
+    def report(self) -> None:
+        if len(self.created) == 0:
+            return
+        noun = "workspace" if len(self.created) == 1 else "workspaces"
+        logger.info("Created %s %s:", len(self.created), noun)
+        for workspace in self.created:
+            logger.info("  %s → %s", workspace.name.root, workspace.path.root)
 
     def exit_code(self) -> ExitCode:
         return ExitCode(1 if len(self.failed) > 0 else 0)
@@ -49,9 +67,9 @@ def uncovered(prs: PullRequests, worktrees: Worktrees) -> PullRequests:
     )
 
 
-def create_workspaces(github: GitHub, orca: Orca, status: WorkspaceStatus) -> ExitCode:
+def create_workspaces(shell: Shell, status: WorkspaceStatus) -> ExitCode:
     try:
-        return workspaces_for_review(github, orca, status).exit_code()
+        return workspaces_for_review(GitHub(shell), Orca(shell), status).exit_code()
     except FileNotFoundError as error:
         logger.error("%s is not installed or not on PATH.", error.filename)
         return ExitCode(1)
@@ -69,7 +87,7 @@ def workspaces_for_review(github: GitHub, orca: Orca, status: WorkspaceStatus) -
         logger.info("No PRs awaiting review without a workspace.")
         return Outcome(created=(), failed=())
 
-    created: list[PrNumber] = []
+    created: list[CreatedWorkspace] = []
     failed: list[Failure] = []
     for pr in pending.root:
         try:
@@ -80,7 +98,8 @@ def workspaces_for_review(github: GitHub, orca: Orca, status: WorkspaceStatus) -
             logger.error("PR #%s failed: %s", pr.number.root, error)
             failed.append(Failure(pr=pr.number, reason=FailureReason(str(error))))
         else:
-            logger.info("PR #%s → %s", pr.number.root, path.root)
-            created.append(pr.number)
+            created.append(CreatedWorkspace(name=WorktreeName.of(pr.number), path=path))
 
-    return Outcome(created=tuple(created), failed=tuple(failed))
+    outcome = Outcome(created=tuple(created), failed=tuple(failed))
+    outcome.report()
+    return outcome
