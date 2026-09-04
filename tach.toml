@@ -6,7 +6,6 @@ depends_on = [
     "mb_workflow.cli",
     "mb_workflow.git",
     "mb_workflow.github",
-    "mb_workflow.greeting",
     "mb_workflow.orca",
     "mb_workflow.review_workspaces",
     "mb_workflow.shell",
@@ -15,7 +14,6 @@ depends_on = [
 [[modules]]
 path = "mb_workflow.cli"
 depends_on = [
-    "mb_workflow.greeting",
     "mb_workflow.logging",
     "mb_workflow.orca",
     "mb_workflow.review_workspaces",
@@ -54,10 +52,6 @@ depends_on = ["mb_workflow.models"]
 
 [[modules]]
 path = "mb_workflow.models"
-depends_on = []
-
-[[modules]]
-path = "mb_workflow.greeting"
 depends_on = []
 
 [[modules]]
