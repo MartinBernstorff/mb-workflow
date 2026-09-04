@@ -85,3 +85,9 @@ tasks:
       - ".github/workflows/*.yml"
     options:
       outputStyle: "buffer-only-failure"
+
+  install:
+    script: "uv tool install --force ."
+    options:
+      cache: false
+      runInCI: false
