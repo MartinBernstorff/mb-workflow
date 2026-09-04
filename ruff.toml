@@ -57,3 +57,12 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
 docstring-code-format = true
+
+[lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+    "pydantic.BaseModel",
+    "pydantic.RootModel",
+    "mb_workflow.models.Model",
+    "mb_workflow.models.Payload",
+    "mb_workflow.models.Value",
+]

@@ -5,7 +5,7 @@ Workflow automation CLI.
 ```sh
 uv sync
 uv run lefthook install
-uv run mb-workflow greet
+uv run mb-workflow review-workspaces
 ```
 
 All checks run through moon: `moon ci`.
