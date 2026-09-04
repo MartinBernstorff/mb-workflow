@@ -55,6 +55,12 @@ class CreatedWorkspace(Model):
         return CreatedWorkspace(name=WorktreeName.fake(), path=ExistingDirectory.fake())
 
 
+class Unchanged(Value[bool]):
+    @staticmethod
+    def fake() -> Unchanged:
+        return Unchanged(False)
+
+
 class Outcome(Model):
     created: tuple[CreatedWorkspace, ...]
     removed: tuple[WorktreePath, ...]
@@ -75,6 +81,11 @@ class Outcome(Model):
             logger.info("Created %s %s:", len(self.created), noun)
             for workspace in self.created:
                 logger.info("  %s → %s", workspace.name.root, workspace.path.root)
+
+    def unchanged(self) -> Unchanged:
+        return Unchanged(
+            len(self.created) == 0 and len(self.removed) == 0 and len(self.failed) == 0
+        )
 
     def exit_code(self) -> ExitCode:
         return ExitCode(1 if len(self.failed) > 0 else 0)
@@ -160,7 +171,7 @@ def workspaces_for_review(github: GitHub, orca: Orca, status: WorkspaceStatus) -
             created.append(CreatedWorkspace(name=WorktreeName.of(pr.number), path=path))
 
     outcome = Outcome(created=tuple(created), removed=tuple(removed), failed=tuple(failed))
-    if len(outcome.created) == 0 and len(outcome.removed) == 0 and len(outcome.failed) == 0:
+    if outcome.unchanged().root:
         logger.info("Review workspaces already match the PRs awaiting review.")
     outcome.report()
     return outcome

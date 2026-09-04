@@ -12,7 +12,7 @@ from mb_workflow.orca import (
     WorktreePath,
     Worktrees,
 )
-from mb_workflow.review_workspaces import Failure, Outcome, stale, uncovered
+from mb_workflow.review_workspaces import Failure, Outcome, Unchanged, stale, uncovered
 from mb_workflow.shell import ExistingDirectory, ExitCode
 
 if TYPE_CHECKING:
@@ -99,6 +99,14 @@ def test_the_workspace_you_are_standing_in_is_never_stale() -> None:
     assert stale(
         PullRequests(()), worktrees, RepoId.fake(), WorkspaceStatus.fake(), here
     ) == Worktrees(())
+
+
+def test_a_run_that_touched_nothing_is_unchanged() -> None:
+    assert Outcome(created=(), removed=(), failed=()).unchanged() == Unchanged(True)
+
+
+def test_a_run_that_created_a_workspace_is_not_unchanged() -> None:
+    assert Outcome.fake().unchanged() == Unchanged(False)
 
 
 def test_a_clean_run_exits_zero() -> None:
