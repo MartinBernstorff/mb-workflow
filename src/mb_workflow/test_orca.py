@@ -5,11 +5,13 @@ from mb_workflow.github import PrNumber
 from mb_workflow.orca import (
     OrcaError,
     RepoId,
+    TerminalHandle,
     WorktreeComment,
     WorktreeName,
     WorktreePath,
     Worktrees,
     acknowledged,
+    created,
     created_path,
 )
 from mb_workflow.shell import CommandOutput, ExistingDirectory
@@ -79,3 +81,24 @@ def test_repo_id_at_rejects_an_unmanaged_directory() -> None:
 def test_worktree_name_and_comment_describe_the_pr() -> None:
     assert WorktreeName.of(PrNumber.fake()) == WorktreeName.fake()
     assert WorktreeComment.fake().root == "PR #1234 — Add review workspaces"
+
+
+def test_prefers_the_agent_terminal_handle() -> None:
+    output = CommandOutput(
+        '{"ok":true,"result":{"worktree":{"repoId":"r","path":"/tmp/x"},'
+        '"agentTerminalHandle":"agent-1","startupTerminal":{"handle":"startup-1"}}}'
+    )
+    assert created(output).terminal() == TerminalHandle("agent-1")
+
+
+def test_falls_back_to_the_startup_terminal_handle() -> None:
+    output = CommandOutput(
+        '{"ok":true,"result":{"worktree":{"repoId":"r","path":"/tmp/x"},'
+        '"startupTerminal":{"handle":"startup-1"}}}'
+    )
+    assert created(output).terminal() == TerminalHandle("startup-1")
+
+
+def test_a_worktree_created_without_an_agent_has_no_terminal() -> None:
+    output = CommandOutput('{"ok":true,"result":{"worktree":{"repoId":"r","path":"/tmp/x"}}}')
+    assert created(output).terminal() is None

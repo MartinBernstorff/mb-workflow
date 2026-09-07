@@ -1,10 +1,14 @@
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from mb_workflow.git import Ref
 from mb_workflow.github import PrNumber, PullRequest
 from mb_workflow.models import Payload, Value
 from mb_workflow.shell import Command, CommandOutput, ExistingDirectory, Shell
+
+if TYPE_CHECKING:
+    from mb_workflow.linear import IssueIdentifier
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +65,40 @@ class WorktreePath(Value[Path]):
 
     def selector(self) -> WorktreeSelector:
         return WorktreeSelector(f"path:{self.root}")
+
+
+class ProjectSelector(Value[str]):
+    @staticmethod
+    def fake() -> ProjectSelector:
+        return ProjectSelector("github:flowbasedk/flowbase")
+
+
+class AgentName(Value[str]):
+    @staticmethod
+    def fake() -> AgentName:
+        return AgentName.claude()
+
+    @staticmethod
+    def claude() -> AgentName:
+        return AgentName("claude")
+
+
+class TerminalHandle(Value[str]):
+    @staticmethod
+    def fake() -> TerminalHandle:
+        return TerminalHandle("terminal-1")
+
+
+class TerminalText(Value[str]):
+    @staticmethod
+    def fake() -> TerminalText:
+        return TerminalText("Implement the issue.")
+
+
+class TimeoutMs(Value[int]):
+    @staticmethod
+    def fake() -> TimeoutMs:
+        return TimeoutMs(60000)
 
 
 class WorktreeSelector(Value[str]):
@@ -128,12 +166,31 @@ class Acknowledgement(Payload):
         return Acknowledgement()
 
 
+class StartupTerminal(Payload):
+    handle: TerminalHandle | None = None
+
+    @staticmethod
+    def fake() -> StartupTerminal:
+        return StartupTerminal(handle=TerminalHandle.fake())
+
+
 class SingleWorktree(Payload):
     worktree: Worktree
+    agent_terminal_handle: TerminalHandle | None = None
+    startup_terminal: StartupTerminal | None = None
 
     @staticmethod
     def fake() -> SingleWorktree:
-        return SingleWorktree(worktree=Worktree.fake())
+        return SingleWorktree(
+            worktree=Worktree.fake(),
+            agent_terminal_handle=TerminalHandle.fake(),
+            startup_terminal=StartupTerminal.fake(),
+        )
+
+    def terminal(self) -> TerminalHandle | None:
+        if self.agent_terminal_handle is not None:
+            return self.agent_terminal_handle
+        return self.startup_terminal.handle if self.startup_terminal is not None else None
 
 
 class Worktrees(Value[tuple[Worktree, ...]]):
@@ -157,6 +214,10 @@ class Worktrees(Value[tuple[Worktree, ...]]):
 def created_path(output: CommandOutput) -> ExistingDirectory:
     envelope = Envelope[SingleWorktree].model_validate_json(output.root)
     return envelope.unwrap().worktree.path.existing()
+
+
+def created(output: CommandOutput) -> SingleWorktree:
+    return Envelope[SingleWorktree].model_validate_json(output.root).unwrap()
 
 
 def single_worktree(output: CommandOutput) -> Worktree:
@@ -202,6 +263,53 @@ class Orca:
                     )
                 )
             )
+        )
+
+    def create_for_issue(
+        self,
+        project: ProjectSelector,
+        name: WorktreeName,
+        issue: IssueIdentifier | None,
+        agent: AgentName | None,
+    ) -> SingleWorktree:
+        command = [
+            "orca",
+            "worktree",
+            "create",
+            "--project",
+            project.root,
+            "--name",
+            name.root,
+            "--activate",
+            "--no-parent",
+            "--json",
+        ]
+        if issue is not None:
+            command += ["--linear-issue", issue.root]
+        if agent is not None:
+            command += ["--agent", agent.root]
+        return created(self._shell.run(Command(tuple(command))))
+
+    def wait_for_idle(self, terminal: TerminalHandle, timeout: TimeoutMs) -> None:
+        _ = self._shell.run(
+            Command(
+                (
+                    "orca",
+                    "terminal",
+                    "wait",
+                    "--terminal",
+                    terminal.root,
+                    "--for",
+                    "tui-idle",
+                    "--timeout-ms",
+                    str(timeout.root),
+                )
+            )
+        )
+
+    def send_text(self, terminal: TerminalHandle, text: TerminalText) -> None:
+        _ = self._shell.run(
+            Command(("orca", "terminal", "send", "--terminal", terminal.root, "--text", text.root))
         )
 
     def set_status(self, pr: PrNumber, status: WorkspaceStatus) -> None:
