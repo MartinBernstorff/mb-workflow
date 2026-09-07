@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -8,7 +9,7 @@ from mb_workflow.models import Payload, Value
 from mb_workflow.shell import Command, CommandOutput, ExistingDirectory, Shell
 
 if TYPE_CHECKING:
-    from mb_workflow.linear import IssueIdentifier
+    from mb_workflow.linear import BranchSlug, IssueIdentifier
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,21 @@ class WorktreeName(Value[str]):
     @staticmethod
     def of(pr: PrNumber) -> WorktreeName:
         return WorktreeName(f"pr-{pr.root}")
+
+    @staticmethod
+    def of_branch(branch: BranchSlug, issue: IssueIdentifier | None) -> WorktreeName:
+        slug = branch.root or (issue.root if issue is not None else "linear-workspace")
+        # Orca prefixes the branch with the git user, so hand it the unprefixed slug.
+        name = slug.split("/", 1)[-1]
+        # Linear prefixes the slug with the issue identifier ("e-4289-..."), which orca shows on its own.
+        name = re.sub(r"^[A-Za-z]+-\d+-", "", name)
+        # Linear slugifies "fix(ci): ..." to "fixci-...", so drop the conventional-commit type and scope.
+        name = re.sub(
+            r"^(?:feat|fix|chore|refactor|revert|perf|docs|test|build|style|ci)[a-z]*-(?=.)",
+            "",
+            name,
+        )
+        return WorktreeName(name)
 
 
 class WorktreeComment(Value[str]):

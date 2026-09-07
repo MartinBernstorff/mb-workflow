@@ -25,15 +25,21 @@ class Assignee(Value[str]):
         return Assignee("mab@flowbase.io")
 
 
+class AssignmentFailure(Value[str]):
+    @staticmethod
+    def fake() -> AssignmentFailure:
+        return AssignmentFailure("linearis is not installed or not on PATH")
+
+
 class Linear:
     def __init__(self, shell: Shell) -> None:
         self._shell = shell
 
-    # Assignment is a convenience, not the point of opening a workspace, so never fail the run over it.
-    def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None:
+    def assign(self, issue: IssueIdentifier, assignee: Assignee) -> AssignmentFailure | None:
         try:
             _ = self._shell.run(
                 Command(("linearis", "issues", "update", issue.root, "--assignee", assignee.root))
             )
         except (CalledProcessError, FileNotFoundError) as error:
-            logger.warning("Could not assign %s to %s: %s", issue.root, assignee.root, error)
+            return AssignmentFailure(str(error))
+        return None
