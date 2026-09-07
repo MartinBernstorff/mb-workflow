@@ -5,13 +5,13 @@ from mb_workflow.github import PrNumber
 from mb_workflow.orca import (
     OrcaError,
     RepoId,
+    SingleWorktree,
     TerminalHandle,
     WorktreeComment,
     WorktreeName,
     WorktreePath,
     Worktrees,
     acknowledged,
-    created,
     created_path,
 )
 from mb_workflow.shell import CommandOutput, ExistingDirectory
@@ -88,7 +88,7 @@ def test_prefers_the_agent_terminal_handle() -> None:
         '{"ok":true,"result":{"worktree":{"repoId":"r","path":"/tmp/x"},'
         '"agentTerminalHandle":"agent-1","startupTerminal":{"handle":"startup-1"}}}'
     )
-    assert created(output).terminal() == TerminalHandle("agent-1")
+    assert SingleWorktree.parse(output).terminal() == TerminalHandle("agent-1")
 
 
 def test_falls_back_to_the_startup_terminal_handle() -> None:
@@ -96,9 +96,9 @@ def test_falls_back_to_the_startup_terminal_handle() -> None:
         '{"ok":true,"result":{"worktree":{"repoId":"r","path":"/tmp/x"},'
         '"startupTerminal":{"handle":"startup-1"}}}'
     )
-    assert created(output).terminal() == TerminalHandle("startup-1")
+    assert SingleWorktree.parse(output).terminal() == TerminalHandle("startup-1")
 
 
 def test_a_worktree_created_without_an_agent_has_no_terminal() -> None:
     output = CommandOutput('{"ok":true,"result":{"worktree":{"repoId":"r","path":"/tmp/x"}}}')
-    assert created(output).terminal() is None
+    assert SingleWorktree.parse(output).terminal() is None

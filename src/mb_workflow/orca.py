@@ -187,6 +187,10 @@ class SingleWorktree(Payload):
             startup_terminal=StartupTerminal.fake(),
         )
 
+    @staticmethod
+    def parse(output: CommandOutput) -> SingleWorktree:
+        return Envelope[SingleWorktree].model_validate_json(output.root).unwrap()
+
     def terminal(self) -> TerminalHandle | None:
         if self.agent_terminal_handle is not None:
             return self.agent_terminal_handle
@@ -212,16 +216,11 @@ class Worktrees(Value[tuple[Worktree, ...]]):
 
 
 def created_path(output: CommandOutput) -> ExistingDirectory:
-    envelope = Envelope[SingleWorktree].model_validate_json(output.root)
-    return envelope.unwrap().worktree.path.existing()
-
-
-def created(output: CommandOutput) -> SingleWorktree:
-    return Envelope[SingleWorktree].model_validate_json(output.root).unwrap()
+    return SingleWorktree.parse(output).worktree.path.existing()
 
 
 def single_worktree(output: CommandOutput) -> Worktree:
-    return Envelope[SingleWorktree].model_validate_json(output.root).unwrap().worktree
+    return SingleWorktree.parse(output).worktree
 
 
 def acknowledged(output: CommandOutput) -> Acknowledgement:
@@ -288,7 +287,7 @@ class Orca:
             command += ["--linear-issue", issue.root]
         if agent is not None:
             command += ["--agent", agent.root]
-        return created(self._shell.run(Command(tuple(command))))
+        return SingleWorktree.parse(self._shell.run(Command(tuple(command))))
 
     def wait_for_idle(self, terminal: TerminalHandle, timeout: TimeoutMs) -> None:
         _ = self._shell.run(
