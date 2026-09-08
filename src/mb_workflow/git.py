@@ -7,6 +7,12 @@ class BranchName(Value[str]):
         return BranchName("feat/review-workspaces")
 
 
+class BranchNames(Value[tuple[BranchName, ...]]):
+    @staticmethod
+    def fake() -> BranchNames:
+        return BranchNames((BranchName.fake(),))
+
+
 class Ref(Value[str]):
     @staticmethod
     def fake() -> Ref:
