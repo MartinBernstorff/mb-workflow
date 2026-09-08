@@ -1,7 +1,8 @@
 import logging
+from datetime import UTC, date, datetime, timedelta
 from itertools import chain
 
-from mb_workflow.git import BranchName
+from mb_workflow.git import BranchName, BranchNames
 from mb_workflow.models import Model, Payload, Value
 from mb_workflow.shell import Command, CommandOutput, ExistingDirectory, Shell
 
@@ -40,6 +41,44 @@ class PullRequests(Value[tuple[PullRequest, ...]]):
     @staticmethod
     def parse(output: CommandOutput) -> PullRequests:
         return PullRequests.model_validate_json(output.root)
+
+    def head_refs(self) -> BranchNames:
+        return BranchNames(tuple(pr.head_ref_name for pr in self.root))
+
+
+class Today(Value[date]):
+    @staticmethod
+    def fake() -> Today:
+        return Today(date(2026, 9, 8))
+
+    @staticmethod
+    def now() -> Today:
+        return Today(datetime.now(UTC).date())
+
+
+class SearchQuery(Value[str]):
+    @staticmethod
+    def fake() -> SearchQuery:
+        return MergedSince.fake().search()
+
+
+class Lookback(Value[int]):
+    @staticmethod
+    def fake() -> Lookback:
+        return Lookback(30)
+
+
+class MergedSince(Value[date]):
+    @staticmethod
+    def fake() -> MergedSince:
+        return MergedSince(date(2026, 8, 9))
+
+    @staticmethod
+    def of(lookback: Lookback, today: Today) -> MergedSince:
+        return MergedSince(today.root - timedelta(days=lookback.root))
+
+    def search(self) -> SearchQuery:
+        return SearchQuery(f"merged:>={self.root.isoformat()}")
 
 
 class ReviewBody(Value[str]):
@@ -220,6 +259,27 @@ class GitHub:
                 )
             )
         )
+
+    def merged_branches(self, since: MergedSince) -> BranchNames:
+        return PullRequests.parse(
+            self._shell.run(
+                Command(
+                    (
+                        "gh",
+                        "pr",
+                        "list",
+                        "--state",
+                        "merged",
+                        "--search",
+                        since.search().root,
+                        "--limit",
+                        "1000",
+                        "--json",
+                        "number,title,headRefName",
+                    )
+                )
+            )
+        ).head_refs()
 
     def checkout(self, pr: PrNumber, into: ExistingDirectory) -> None:
         _ = Shell(into).run(Command(("gh", "pr", "checkout", str(pr.root), "--force")))

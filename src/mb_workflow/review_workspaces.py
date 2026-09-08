@@ -1,7 +1,8 @@
 import logging
 from subprocess import CalledProcessError
+from typing import TYPE_CHECKING
 
-from mb_workflow.github import GitHub, PrNumber, PullRequests
+from mb_workflow.github import GitHub, Lookback, MergedSince, PrNumber, PullRequests, Today
 from mb_workflow.models import Model, Value
 from mb_workflow.orca import (
     Orca,
@@ -13,6 +14,9 @@ from mb_workflow.orca import (
     Worktrees,
 )
 from mb_workflow.shell import ExistingDirectory, ExitCode, Shell
+
+if TYPE_CHECKING:
+    from mb_workflow.git import BranchNames
 
 logger = logging.getLogger(__name__)
 
@@ -122,9 +126,43 @@ def stale(
     )
 
 
-def create_workspaces(shell: Shell, status: WorkspaceStatus) -> ExitCode:
+def prunable(worktrees: Worktrees, repo: RepoId, here: ExistingDirectory) -> Worktrees:
+    cwd = here.root.resolve()
+    return Worktrees(
+        tuple(
+            worktree
+            for worktree in worktrees.root
+            if worktree.repo_id == repo
+            and worktree.branch is not None
+            and worktree.path.root.resolve() != cwd
+        )
+    )
+
+
+def on_branches(worktrees: Worktrees, wanted: BranchNames) -> Worktrees:
+    return Worktrees(
+        tuple(
+            worktree
+            for worktree in worktrees.root
+            if worktree.branch is not None and worktree.branch.branch() in wanted.root
+        )
+    )
+
+
+def union(first: Worktrees, second: Worktrees) -> Worktrees:
+    known = {worktree.path.root.resolve() for worktree in first.root}
+    return Worktrees(
+        (
+            *first.root,
+            *(worktree for worktree in second.root if worktree.path.root.resolve() not in known),
+        )
+    )
+
+
+def create_workspaces(shell: Shell, status: WorkspaceStatus, lookback: Lookback) -> ExitCode:
     try:
-        return workspaces_for_review(GitHub(shell), Orca(shell), status).exit_code()
+        since = MergedSince.of(lookback, Today.now())
+        return workspaces_for_review(GitHub(shell), Orca(shell), status, since).exit_code()
     except FileNotFoundError as error:
         logger.error("%s is not installed or not on PATH.", error.filename)
         return ExitCode(1)
@@ -133,7 +171,9 @@ def create_workspaces(shell: Shell, status: WorkspaceStatus) -> ExitCode:
         return ExitCode(1)
 
 
-def workspaces_for_review(github: GitHub, orca: Orca, status: WorkspaceStatus) -> Outcome:
+def workspaces_for_review(
+    github: GitHub, orca: Orca, status: WorkspaceStatus, since: MergedSince
+) -> Outcome:
     worktrees = orca.worktrees()
     here = orca.where()
     repo = worktrees.repo_id_at(here)
@@ -143,7 +183,12 @@ def workspaces_for_review(github: GitHub, orca: Orca, status: WorkspaceStatus) -
     removed: list[WorktreePath] = []
     failed: list[Failure] = []
 
-    for worktree in stale(requested, worktrees, repo, status, here).root:
+    obsolete = union(
+        stale(requested, worktrees, repo, status, here),
+        on_branches(prunable(worktrees, repo, here), github.merged_branches(since)),
+    )
+
+    for worktree in obsolete.root:
         try:
             orca.remove_worktree(worktree.path)
         except (CalledProcessError, OrcaError, ValueError) as error:

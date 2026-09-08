@@ -4,7 +4,7 @@ from pathlib import Path
 import typer
 
 from mb_workflow.finalize_review import finalize
-from mb_workflow.github import ReviewBody, ReviewDecision, ReviewRequest
+from mb_workflow.github import Lookback, ReviewBody, ReviewDecision, ReviewRequest
 from mb_workflow.linear import Assignee, BranchSlug, IssueIdentifier
 from mb_workflow.logging import LogLevel, configure
 from mb_workflow.open_issue import OpenRequest, open_issue
@@ -25,11 +25,14 @@ def commands() -> None: ...
 @app.command("review-workspaces")
 def review_workspaces(
     status: str = typer.Option(REVIEWING, "--status"),
+    merged_within_days: int = typer.Option(30, "--merged-within-days"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=create_workspaces(shell, WorkspaceStatus(status)).root)
+    raise typer.Exit(
+        code=create_workspaces(shell, WorkspaceStatus(status), Lookback(merged_within_days)).root
+    )
 
 
 @app.command("approve")

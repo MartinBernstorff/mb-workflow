@@ -51,6 +51,7 @@ depends_on = [
 [[modules]]
 path = "mb_workflow.review_workspaces"
 depends_on = [
+    "mb_workflow.git",
     "mb_workflow.github",
     "mb_workflow.models",
     "mb_workflow.orca",

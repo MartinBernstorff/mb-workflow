@@ -2,8 +2,16 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from mb_workflow.git import BranchName, Ref
-from mb_workflow.github import PrNumber, PrTitle, PullRequest, PullRequests
+from mb_workflow.git import BranchName, BranchNames, Ref
+from mb_workflow.github import (
+    Lookback,
+    MergedSince,
+    PrNumber,
+    PrTitle,
+    PullRequest,
+    PullRequests,
+    Today,
+)
 from mb_workflow.orca import (
     RepoId,
     WorkspaceStatus,
@@ -12,7 +20,16 @@ from mb_workflow.orca import (
     WorktreePath,
     Worktrees,
 )
-from mb_workflow.review_workspaces import Failure, Outcome, Unchanged, stale, uncovered
+from mb_workflow.review_workspaces import (
+    Failure,
+    Outcome,
+    Unchanged,
+    on_branches,
+    prunable,
+    stale,
+    uncovered,
+    union,
+)
 from mb_workflow.shell import ExistingDirectory, ExitCode
 
 if TYPE_CHECKING:
@@ -135,3 +152,59 @@ def test_reports_nothing_when_nothing_changed(caplog: pytest.LogCaptureFixture) 
     with caplog.at_level(logging.INFO):
         Outcome(created=(), removed=(), failed=()).report()
     assert caplog.text == ""
+
+
+def test_a_workspace_on_a_branch_is_prunable() -> None:
+    worktrees = Worktrees((bare_worktree().model_copy(update={"branch": Ref.fake()}),))
+    assert prunable(worktrees, RepoId.fake(), elsewhere()) == worktrees
+
+
+def test_a_workspace_without_a_branch_is_not_prunable() -> None:
+    assert prunable(Worktrees((bare_worktree(),)), RepoId.fake(), elsewhere()) == Worktrees(())
+
+
+def test_a_workspace_in_another_repo_is_not_prunable() -> None:
+    worktrees = Worktrees(
+        (bare_worktree().model_copy(update={"branch": Ref.fake(), "repo_id": RepoId("elsewhere")}),)
+    )
+    assert prunable(worktrees, RepoId.fake(), elsewhere()) == Worktrees(())
+
+
+def test_the_workspace_you_are_standing_in_is_not_prunable() -> None:
+    here = elsewhere()
+    worktrees = Worktrees(
+        (
+            bare_worktree().model_copy(
+                update={"branch": Ref.fake(), "path": WorktreePath(here.root)}
+            ),
+        )
+    )
+    assert prunable(worktrees, RepoId.fake(), here) == Worktrees(())
+
+
+def test_a_union_keeps_each_workspace_once() -> None:
+    assert union(Worktrees.fake(), Worktrees.fake()) == Worktrees.fake()
+
+
+def test_a_union_keeps_distinct_workspaces() -> None:
+    second = bare_worktree().model_copy(update={"path": WorktreePath(Path("/tmp/other"))})
+    assert union(Worktrees.fake(), Worktrees((second,))) == Worktrees((Worktree.fake(), second))
+
+
+def test_collects_the_head_ref_of_each_pr() -> None:
+    prs = PullRequests((PullRequest.fake(), other_pr()))
+    assert prs.head_refs() == BranchNames((BranchName.fake(), BranchName("feat/other")))
+
+
+def test_selects_the_workspaces_on_the_given_branches() -> None:
+    wanted = bare_worktree().model_copy(update={"branch": Ref.fake()})
+    other = bare_worktree().model_copy(update={"branch": Ref("refs/heads/feat/other")})
+    assert on_branches(Worktrees((wanted, other)), BranchNames.fake()) == Worktrees((wanted,))
+
+
+def test_the_window_starts_the_lookback_before_today() -> None:
+    assert MergedSince.of(Lookback.fake(), Today.fake()) == MergedSince.fake()
+
+
+def test_the_window_searches_for_prs_merged_since_then() -> None:
+    assert MergedSince.fake().search().root == "merged:>=2026-08-09"
