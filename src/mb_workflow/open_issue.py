@@ -1,8 +1,8 @@
 import logging
 from subprocess import CalledProcessError
 
-from mb_workflow.linear import Assignee, BranchSlug, IssueIdentifier, Linear
-from mb_workflow.models import Model
+from mb_workflow.linear import Assignee, BranchSlug, IssueIdentifier, IssueState, Linear
+from mb_workflow.models import Model, Value
 from mb_workflow.orca import (
     AgentName,
     Orca,
@@ -16,6 +16,31 @@ from mb_workflow.orca import (
 from mb_workflow.shell import ExitCode, Shell
 
 logger = logging.getLogger(__name__)
+
+
+class UnprefixedStateError(Exception):
+    pass
+
+
+class PromptPrefix(Value[str]):
+    @staticmethod
+    def fake() -> PromptPrefix:
+        return PromptPrefix("/implement")
+
+    @staticmethod
+    def of(state: IssueState) -> PromptPrefix:
+        prefixes = {
+            IssueState.backlog: PromptPrefix("/grill"),
+            IssueState.maturing: PromptPrefix("/to-ticket"),
+            IssueState.todo: PromptPrefix("/implement"),
+        }
+        prefix = prefixes.get(state)
+        if prefix is None:
+            raise UnprefixedStateError(f"No prompt prefix for an issue in {state}.")
+        return prefix
+
+    def applied(self, prompt: TerminalText) -> TerminalText:
+        return TerminalText(f"{self.root} {prompt.root}")
 
 
 class OpenRequest(Model):
@@ -40,6 +65,11 @@ class OpenRequest(Model):
     def agent(self) -> AgentName | None:
         return AgentName.claude() if self.prompt is not None else None
 
+    def prefixed(self, state: IssueState | None) -> OpenRequest:
+        if self.prompt is None or state is None:
+            return self
+        return self.model_copy(update={"prompt": PromptPrefix.of(state).applied(self.prompt)})
+
 
 def open_issue(shell: Shell, request: OpenRequest) -> ExitCode:
     try:
@@ -47,7 +77,7 @@ def open_issue(shell: Shell, request: OpenRequest) -> ExitCode:
     except FileNotFoundError as error:
         logger.error("%s is not installed or not on PATH.", error.filename)
         return ExitCode(1)
-    except (CalledProcessError, OrcaError) as error:
+    except (CalledProcessError, OrcaError, UnprefixedStateError) as error:
         logger.error("%s", error)
         return ExitCode(1)
 
@@ -64,12 +94,19 @@ def open_workspace(orca: Orca, linear: Linear, request: OpenRequest) -> ExitCode
                 failure.root,
             )
 
+    # Resolve the prompt before creating anything, so an unprefixable state leaves no half-open workspace.
+    prompting = request.prefixed(issue_state(linear, request.issue))
+
     name = WorktreeName.of_branch(request.branch, request.issue)
     logger.info("Creating worktree with name: %s", name.root)
     worktree = orca.create_for_issue(request.project, name, request.issue, request.agent())
     logger.info("Created %s", worktree.worktree.path.root)
 
-    return send_prompt(orca, worktree, request)
+    return send_prompt(orca, worktree, prompting)
+
+
+def issue_state(linear: Linear, issue: IssueIdentifier | None) -> IssueState | None:
+    return linear.state(issue) if issue is not None else None
 
 
 def send_prompt(orca: Orca, worktree: SingleWorktree, request: OpenRequest) -> ExitCode:
