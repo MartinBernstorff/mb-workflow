@@ -15,6 +15,8 @@ from mb_workflow.review_workspaces import create_workspaces
 from mb_workflow.shell import ExistingDirectory, Shell
 
 app = typer.Typer(no_args_is_help=True)
+linear_app = typer.Typer(no_args_is_help=True)
+app.add_typer(linear_app, name="linear")
 
 REVIEWING = "status-8"
 
@@ -82,8 +84,8 @@ def comment(
     raise typer.Exit(code=finalize(shell, request, WorkspaceStatus(status)).root)
 
 
-@app.command("label")
-@app.command("l")
+@linear_app.command("label")
+@linear_app.command("l")
 def label(
     name: str = typer.Argument(..., help="Linear label to add to the linked issue."),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
@@ -94,8 +96,8 @@ def label(
     raise typer.Exit(code=change_label(shell, request).root)
 
 
-@app.command("unlabel")
-@app.command("ul")
+@linear_app.command("unlabel")
+@linear_app.command("ul")
 def unlabel(
     name: str = typer.Argument(..., help="Linear label to remove from the linked issue."),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
