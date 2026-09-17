@@ -35,6 +35,14 @@ def test_parses_worktree_list() -> None:
     assert parsed.linked_issue == PrNumber.fake()
 
 
+def test_parses_the_linked_linear_issue() -> None:
+    output = CommandOutput(
+        '{"ok":true,"result":{"worktrees":[{"repoId":"r","path":"/tmp/x",'
+        '"linkedLinearIssue":"E-4289"}]}}'
+    )
+    assert Worktrees.parse(output).root[0].linked_linear_issue == IssueIdentifier.fake()
+
+
 def test_worktree_without_branch_or_issue_parses() -> None:
     output = CommandOutput(
         '{"ok":true,"result":{"worktrees":[{"repoId":"r","path":"/tmp/x",'
@@ -43,6 +51,7 @@ def test_worktree_without_branch_or_issue_parses() -> None:
     parsed = Worktrees.parse(output).root[0]
     assert parsed.branch is None
     assert parsed.linked_issue is None
+    assert parsed.linked_linear_issue is None
 
 
 def test_envelope_failure_surfaces_orca_message() -> None:

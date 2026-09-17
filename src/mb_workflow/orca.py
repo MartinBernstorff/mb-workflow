@@ -5,11 +5,12 @@ from typing import TYPE_CHECKING
 
 from mb_workflow.git import Ref
 from mb_workflow.github import PrNumber, PullRequest
+from mb_workflow.linear import IssueIdentifier
 from mb_workflow.models import Payload, Value
 from mb_workflow.shell import Command, CommandOutput, ExistingDirectory, Shell
 
 if TYPE_CHECKING:
-    from mb_workflow.linear import BranchSlug, IssueIdentifier
+    from mb_workflow.linear import BranchSlug
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,7 @@ class Worktree(Payload):
     path: WorktreePath
     branch: Ref | None = None
     linked_issue: PrNumber | None = None
+    linked_linear_issue: IssueIdentifier | None = None
     workspace_status: WorkspaceStatus | None = None
 
     @staticmethod
@@ -168,6 +170,7 @@ class Worktree(Payload):
             path=WorktreePath.fake(),
             branch=Ref.fake(),
             linked_issue=PrNumber.fake(),
+            linked_linear_issue=IssueIdentifier.fake(),
             workspace_status=WorkspaceStatus.fake(),
         )
 
