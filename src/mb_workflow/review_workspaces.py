@@ -220,11 +220,9 @@ def workspaces_for_review(
         logger.info("Processing #%s", pr.number.root)
         try:
             logger.info("    Creating worktree %s", WorktreeName.of(pr.number).root)
-            path = orca.create_worktree(repo, pr)
+            path = orca.create_worktree(repo, pr, status)
             logger.info("    Checking out into %s", path.root)
             github.checkout(pr.number, path)
-            logger.info("    Setting status to %s", status.root)
-            orca.set_status(WorktreePath.of(path), status)
         except (CalledProcessError, OrcaError, ValueError) as error:
             logger.error("    PR #%s failed: %s", pr.number.root, error)
             failed.append(
