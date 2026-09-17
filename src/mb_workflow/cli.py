@@ -5,7 +5,8 @@ import typer
 
 from mb_workflow.finalize_review import finalize
 from mb_workflow.github import Lookback, ReviewBody, ReviewDecision, ReviewRequest
-from mb_workflow.linear import Assignee, BranchSlug, IssueIdentifier
+from mb_workflow.label import LabelChange, LabelRequest, change_label
+from mb_workflow.linear import Assignee, BranchSlug, IssueIdentifier, LabelName
 from mb_workflow.lock import LockName, LockPath
 from mb_workflow.logging import LogLevel, configure
 from mb_workflow.open_issue import OpenRequest, open_issue
@@ -14,6 +15,8 @@ from mb_workflow.review_workspaces import create_workspaces
 from mb_workflow.shell import ExistingDirectory, Shell
 
 app = typer.Typer(no_args_is_help=True)
+linear_app = typer.Typer(no_args_is_help=True)
+app.add_typer(linear_app, name="linear")
 
 REVIEWING = "status-8"
 
@@ -79,6 +82,30 @@ def comment(
     request = ReviewRequest(decision=ReviewDecision.comment(), body=ReviewBody(comment))
     shell = Shell(ExistingDirectory(Path.cwd()))
     raise typer.Exit(code=finalize(shell, request, WorkspaceStatus(status)).root)
+
+
+@linear_app.command("label")
+@linear_app.command("l")
+def label(
+    name: str = typer.Argument(..., help="Linear label to add to the linked issue."),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    request = LabelRequest(label=LabelName(name), change=LabelChange.add)
+    shell = Shell(ExistingDirectory(Path.cwd()))
+    raise typer.Exit(code=change_label(shell, request).root)
+
+
+@linear_app.command("unlabel")
+@linear_app.command("ul")
+def unlabel(
+    name: str = typer.Argument(..., help="Linear label to remove from the linked issue."),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    request = LabelRequest(label=LabelName(name), change=LabelChange.remove)
+    shell = Shell(ExistingDirectory(Path.cwd()))
+    raise typer.Exit(code=change_label(shell, request).root)
 
 
 @app.command("open-issue")
