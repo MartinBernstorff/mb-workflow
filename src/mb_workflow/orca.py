@@ -261,7 +261,9 @@ class Orca:
     def worktrees(self) -> Worktrees:
         return Worktrees.parse(self._shell.run(Command(("orca", "worktree", "list", "--json"))))
 
-    def create_worktree(self, repo: RepoId, pr: PullRequest) -> ExistingDirectory:
+    def create_worktree(
+        self, repo: RepoId, pr: PullRequest, status: WorkspaceStatus
+    ) -> ExistingDirectory:
         return created_path(
             self._shell.run(
                 Command(
@@ -278,6 +280,8 @@ class Orca:
                         str(pr.number.root),
                         "--comment",
                         WorktreeComment.of(pr).root,
+                        "--workspace-status",
+                        status.root,
                         "--json",
                     )
                 )
@@ -329,24 +333,6 @@ class Orca:
     def send_text(self, terminal: TerminalHandle, text: TerminalText) -> None:
         _ = self._shell.run(
             Command(("orca", "terminal", "send", "--terminal", terminal.root, "--text", text.root))
-        )
-
-    def set_status(self, path: WorktreePath, status: WorkspaceStatus) -> None:
-        _ = acknowledged(
-            self._shell.run(
-                Command(
-                    (
-                        "orca",
-                        "worktree",
-                        "set",
-                        "--worktree",
-                        path.selector().root,
-                        "--workspace-status",
-                        status.root,
-                        "--json",
-                    )
-                )
-            )
         )
 
     def remove_worktree(self, path: WorktreePath) -> None:

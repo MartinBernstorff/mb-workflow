@@ -60,7 +60,7 @@ def test_reads_created_worktree_path() -> None:
     assert created_path(output) == ExistingDirectory.fake()
 
 
-def test_acknowledges_a_set_call() -> None:
+def test_acknowledges_a_removal() -> None:
     output = CommandOutput('{"ok":true,"result":{"worktree":{"repoId":"r","path":"/tmp/x"}}}')
     assert acknowledged(output) is not None
 
