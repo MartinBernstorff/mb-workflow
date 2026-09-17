@@ -76,6 +76,10 @@ class WorktreePath(Value[Path]):
     def fake() -> WorktreePath:
         return WorktreePath(Path("/Users/me/orca/workspaces/mb-workflow/pr-1234"))
 
+    @staticmethod
+    def of(directory: ExistingDirectory) -> WorktreePath:
+        return WorktreePath(directory.root)
+
     def existing(self) -> ExistingDirectory:
         return ExistingDirectory(self.root)
 
@@ -327,7 +331,7 @@ class Orca:
             Command(("orca", "terminal", "send", "--terminal", terminal.root, "--text", text.root))
         )
 
-    def set_status(self, pr: PrNumber, status: WorkspaceStatus) -> None:
+    def set_status(self, path: WorktreePath, status: WorkspaceStatus) -> None:
         _ = acknowledged(
             self._shell.run(
                 Command(
@@ -336,7 +340,7 @@ class Orca:
                         "worktree",
                         "set",
                         "--worktree",
-                        f"issue:{pr.root}",
+                        path.selector().root,
                         "--workspace-status",
                         status.root,
                         "--json",

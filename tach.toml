@@ -8,6 +8,7 @@ depends_on = [
     "mb_workflow.git",
     "mb_workflow.github",
     "mb_workflow.linear",
+    "mb_workflow.lock",
     "mb_workflow.open_issue",
     "mb_workflow.orca",
     "mb_workflow.review_workspaces",
@@ -20,6 +21,7 @@ depends_on = [
     "mb_workflow.finalize_review",
     "mb_workflow.github",
     "mb_workflow.linear",
+    "mb_workflow.lock",
     "mb_workflow.logging",
     "mb_workflow.open_issue",
     "mb_workflow.orca",
@@ -53,6 +55,7 @@ path = "mb_workflow.review_workspaces"
 depends_on = [
     "mb_workflow.git",
     "mb_workflow.github",
+    "mb_workflow.lock",
     "mb_workflow.models",
     "mb_workflow.orca",
     "mb_workflow.shell",
@@ -71,6 +74,10 @@ depends_on = [
     "mb_workflow.models",
     "mb_workflow.shell",
 ]
+
+[[modules]]
+path = "mb_workflow.lock"
+depends_on = ["mb_workflow.models"]
 
 [[modules]]
 path = "mb_workflow.shell"

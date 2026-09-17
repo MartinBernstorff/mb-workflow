@@ -138,14 +138,14 @@ def test_reports_each_created_workspace(caplog: pytest.LogCaptureFixture) -> Non
     with caplog.at_level(logging.INFO):
         Outcome.fake().report()
     assert "Created 1 workspace:" in caplog.text
-    assert WorktreeName.fake().root in caplog.text
+    assert f"    {WorktreeName.fake().root} \u2192 " in caplog.text
 
 
 def test_reports_each_removed_workspace(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.INFO):
         Outcome(created=(), removed=(WorktreePath.fake(),), failed=()).report()
     assert "Removed 1 workspace:" in caplog.text
-    assert str(WorktreePath.fake().root) in caplog.text
+    assert f"    {WorktreePath.fake().root}" in caplog.text
 
 
 def test_reports_nothing_when_nothing_changed(caplog: pytest.LogCaptureFixture) -> None:

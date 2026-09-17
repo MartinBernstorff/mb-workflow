@@ -12,6 +12,7 @@ from mb_workflow.orca import (
     WorktreeName,
     WorktreePath,
     Worktrees,
+    WorktreeSelector,
     acknowledged,
     created_path,
 )
@@ -77,6 +78,11 @@ def test_repo_id_at_rejects_an_unmanaged_directory() -> None:
     output = CommandOutput('{"ok":true,"result":{"worktrees":[]}}')
     with pytest.raises(OrcaError, match="not an Orca-managed worktree"):
         _ = Worktrees.parse(output).repo_id_at(ExistingDirectory.fake())
+
+
+def test_a_created_worktree_is_selected_by_its_own_path() -> None:
+    created = ExistingDirectory.fake()
+    assert WorktreePath.of(created).selector() == WorktreeSelector(f"path:{created.root}")
 
 
 def test_worktree_name_and_comment_describe_the_pr() -> None:
