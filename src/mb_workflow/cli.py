@@ -6,6 +6,7 @@ import typer
 from mb_workflow.finalize_review import finalize
 from mb_workflow.github import Lookback, ReviewBody, ReviewDecision, ReviewRequest
 from mb_workflow.linear import Assignee, BranchSlug, IssueIdentifier
+from mb_workflow.lock import LockName, LockPath
 from mb_workflow.logging import LogLevel, configure
 from mb_workflow.open_issue import OpenRequest, open_issue
 from mb_workflow.orca import ProjectSelector, TerminalText, TimeoutMs, WorkspaceStatus
@@ -26,12 +27,18 @@ def commands() -> None: ...
 def review_workspaces(
     status: str = typer.Option(REVIEWING, "--status"),
     merged_within_days: int = typer.Option(30, "--merged-within-days"),
+    lock: str = typer.Option("review-workspaces", "--lock"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     shell = Shell(ExistingDirectory(Path.cwd()))
     raise typer.Exit(
-        code=create_workspaces(shell, WorkspaceStatus(status), Lookback(merged_within_days)).root
+        code=create_workspaces(
+            shell,
+            WorkspaceStatus(status),
+            Lookback(merged_within_days),
+            LockPath.of(LockName(lock)),
+        ).root
     )
 
 

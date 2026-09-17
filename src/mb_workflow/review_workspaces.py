@@ -3,6 +3,7 @@ from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
 from mb_workflow.github import GitHub, Lookback, MergedSince, PrNumber, PullRequests, Today
+from mb_workflow.lock import AlreadyRunningError, LockPath
 from mb_workflow.models import Model, Value
 from mb_workflow.orca import (
     Orca,
@@ -79,12 +80,12 @@ class Outcome(Model):
             noun = "workspace" if len(self.removed) == 1 else "workspaces"
             logger.info("Removed %s %s:", len(self.removed), noun)
             for path in self.removed:
-                logger.info("  %s", path.root)
+                logger.info("    %s", path.root)
         if len(self.created) > 0:
             noun = "workspace" if len(self.created) == 1 else "workspaces"
             logger.info("Created %s %s:", len(self.created), noun)
             for workspace in self.created:
-                logger.info("  %s → %s", workspace.name.root, workspace.path.root)
+                logger.info("    %s → %s", workspace.name.root, workspace.path.root)
 
     def unchanged(self) -> Unchanged:
         return Unchanged(
@@ -159,10 +160,16 @@ def union(first: Worktrees, second: Worktrees) -> Worktrees:
     )
 
 
-def create_workspaces(shell: Shell, status: WorkspaceStatus, lookback: Lookback) -> ExitCode:
+def create_workspaces(
+    shell: Shell, status: WorkspaceStatus, lookback: Lookback, lock: LockPath
+) -> ExitCode:
     try:
-        since = MergedSince.of(lookback, Today.now())
-        return workspaces_for_review(GitHub(shell), Orca(shell), status, since).exit_code()
+        with lock.held():
+            since = MergedSince.of(lookback, Today.now())
+            return workspaces_for_review(GitHub(shell), Orca(shell), status, since).exit_code()
+    except AlreadyRunningError as error:
+        logger.error("%s", error)
+        return ExitCode(1)
     except FileNotFoundError as error:
         logger.error("%s is not installed or not on PATH.", error.filename)
         return ExitCode(1)
@@ -177,7 +184,9 @@ def workspaces_for_review(
     worktrees = orca.worktrees()
     here = orca.where()
     repo = worktrees.repo_id_at(here)
+    logger.info("Inspecting %s Orca worktrees from %s", len(worktrees.root), here.root)
     requested = github.review_requested()
+    logger.info("PRs awaiting your review: %s", len(requested.root))
 
     created: list[CreatedWorkspace] = []
     removed: list[WorktreePath] = []
@@ -187,12 +196,14 @@ def workspaces_for_review(
         stale(requested, worktrees, repo, status, here),
         on_branches(prunable(worktrees, repo, here), github.merged_branches(since)),
     )
+    logger.info("Obsolete workspaces: %s", len(obsolete.root))
 
     for worktree in obsolete.root:
         try:
+            logger.info("    Removing %s", worktree.path.root)
             orca.remove_worktree(worktree.path)
         except (CalledProcessError, OrcaError, ValueError) as error:
-            logger.error("%s could not be removed: %s", worktree.path.root, error)
+            logger.error("    %s could not be removed: %s", worktree.path.root, error)
             failed.append(
                 Failure(
                     subject=FailureSubject.of_path(worktree.path),
@@ -202,13 +213,20 @@ def workspaces_for_review(
         else:
             removed.append(worktree.path)
 
-    for pr in uncovered(requested, worktrees).root:
+    missing = uncovered(requested, worktrees)
+    logger.info("PRs without a workspace: %s", len(missing.root))
+
+    for pr in missing.root:
+        logger.info("Processing #%s", pr.number.root)
         try:
+            logger.info("    Creating worktree %s", WorktreeName.of(pr.number).root)
             path = orca.create_worktree(repo, pr)
+            logger.info("    Checking out into %s", path.root)
             github.checkout(pr.number, path)
-            orca.set_status(pr.number, status)
+            logger.info("    Setting status to %s", status.root)
+            orca.set_status(WorktreePath.of(path), status)
         except (CalledProcessError, OrcaError, ValueError) as error:
-            logger.error("PR #%s failed: %s", pr.number.root, error)
+            logger.error("    PR #%s failed: %s", pr.number.root, error)
             failed.append(
                 Failure(subject=FailureSubject.of_pr(pr.number), reason=FailureReason(str(error)))
             )
@@ -217,6 +235,6 @@ def workspaces_for_review(
 
     outcome = Outcome(created=tuple(created), removed=tuple(removed), failed=tuple(failed))
     if outcome.unchanged().root:
-        logger.info("Review workspaces already match the PRs awaiting review.")
+        logger.info("Review workspaces already match the PRs awaiting review")
     outcome.report()
     return outcome
