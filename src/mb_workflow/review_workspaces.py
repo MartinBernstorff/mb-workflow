@@ -2,7 +2,8 @@ import logging
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
-from mb_workflow.github import GitHub, Lookback, MergedSince, PrNumber, PullRequests, Today
+from mb_workflow.clock import Today
+from mb_workflow.github import GitHub, Lookback, MergedSince, PrNumber, PullRequests
 from mb_workflow.lock import AlreadyRunningError, LockPath
 from mb_workflow.models import Model, Value
 from mb_workflow.orca import (

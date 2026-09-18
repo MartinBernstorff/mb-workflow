@@ -3,7 +3,10 @@ source_roots = ["src"]
 [[modules]]
 path = "mb_workflow"
 depends_on = [
+    "mb_workflow.autolabel",
+    "mb_workflow.cache",
     "mb_workflow.cli",
+    "mb_workflow.clock",
     "mb_workflow.finalize_review",
     "mb_workflow.git",
     "mb_workflow.github",
@@ -19,6 +22,9 @@ depends_on = [
 [[modules]]
 path = "mb_workflow.cli"
 depends_on = [
+    "mb_workflow.autolabel",
+    "mb_workflow.cache",
+    "mb_workflow.clock",
     "mb_workflow.finalize_review",
     "mb_workflow.github",
     "mb_workflow.label",
@@ -50,8 +56,17 @@ depends_on = [
 ]
 
 [[modules]]
+path = "mb_workflow.autolabel"
+depends_on = [
+    "mb_workflow.cache",
+    "mb_workflow.linear",
+    "mb_workflow.models",
+    "mb_workflow.shell",
+]
+
+[[modules]]
 path = "mb_workflow.linear"
-depends_on = ["mb_workflow.models", "mb_workflow.shell"]
+depends_on = ["mb_workflow.clock", "mb_workflow.models", "mb_workflow.shell"]
 
 [[modules]]
 path = "mb_workflow.finalize_review"
@@ -64,6 +79,7 @@ depends_on = [
 [[modules]]
 path = "mb_workflow.review_workspaces"
 depends_on = [
+    "mb_workflow.clock",
     "mb_workflow.git",
     "mb_workflow.github",
     "mb_workflow.lock",
@@ -74,7 +90,12 @@ depends_on = [
 
 [[modules]]
 path = "mb_workflow.github"
-depends_on = ["mb_workflow.git", "mb_workflow.models", "mb_workflow.shell"]
+depends_on = [
+    "mb_workflow.clock",
+    "mb_workflow.git",
+    "mb_workflow.models",
+    "mb_workflow.shell",
+]
 
 [[modules]]
 path = "mb_workflow.orca"
@@ -88,7 +109,7 @@ depends_on = [
 
 [[modules]]
 path = "mb_workflow.lock"
-depends_on = ["mb_workflow.models"]
+depends_on = ["mb_workflow.cache", "mb_workflow.models"]
 
 [[modules]]
 path = "mb_workflow.shell"
@@ -105,3 +126,11 @@ depends_on = []
 [[modules]]
 path = "mb_workflow.logging"
 depends_on = []
+
+[[modules]]
+path = "mb_workflow.cache"
+depends_on = ["mb_workflow.models"]
+
+[[modules]]
+path = "mb_workflow.clock"
+depends_on = ["mb_workflow.models"]

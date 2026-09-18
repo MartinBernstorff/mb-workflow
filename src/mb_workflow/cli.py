@@ -3,10 +3,29 @@ from pathlib import Path
 
 import typer
 
+from mb_workflow.autolabel import (
+    Apply,
+    AutolabelRequest,
+    ExcludePattern,
+    Exclusions,
+    LedgerPath,
+    autolabel,
+)
+from mb_workflow.cache import CacheDirectory
+from mb_workflow.clock import Today
 from mb_workflow.finalize_review import finalize
 from mb_workflow.github import Lookback, ReviewBody, ReviewDecision, ReviewRequest
 from mb_workflow.label import LabelChange, LabelRequest, change_label
-from mb_workflow.linear import Assignee, BranchSlug, IssueIdentifier, LabelName
+from mb_workflow.linear import (
+    Assignee,
+    BranchSlug,
+    CreatedAfter,
+    CreatedWithin,
+    Creator,
+    IssueIdentifier,
+    IssueQuery,
+    LabelName,
+)
 from mb_workflow.lock import LockName, LockPath
 from mb_workflow.logging import LogLevel, configure
 from mb_workflow.open_issue import OpenRequest, open_issue
@@ -106,6 +125,36 @@ def unlabel(
     request = LabelRequest(label=LabelName(name), change=LabelChange.remove)
     shell = Shell(ExistingDirectory(Path.cwd()))
     raise typer.Exit(code=change_label(shell, request).root)
+
+
+@linear_app.command("autolabel")
+def linear_autolabel(
+    *,
+    name: str = typer.Argument(..., help="Linear label to add to the swept issues."),
+    creator: str = typer.Option(..., "--creator"),
+    exclude_projects: str = typer.Option("", "--exclude-projects"),
+    exclude_statuses: str = typer.Option("", "--exclude-statuses"),
+    created_within_days: int = typer.Option(30, "--created-within-days"),
+    apply: bool = typer.Option(False, "--apply"),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    label = LabelName(name)
+    request = AutolabelRequest(
+        label=label,
+        query=IssueQuery(
+            creator=Creator(creator),
+            created_after=CreatedAfter.of(CreatedWithin(created_within_days), Today.now()),
+        ),
+        exclusions=Exclusions(
+            projects=ExcludePattern(exclude_projects) if exclude_projects else None,
+            statuses=ExcludePattern(exclude_statuses) if exclude_statuses else None,
+        ),
+        apply=Apply(apply),
+    )
+    shell = Shell(ExistingDirectory(Path.cwd()))
+    ledger = LedgerPath.of(CacheDirectory.of_user(), label)
+    raise typer.Exit(code=autolabel(shell, request, ledger).root)
 
 
 @app.command("open-issue")

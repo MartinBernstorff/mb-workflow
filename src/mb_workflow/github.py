@@ -1,10 +1,14 @@
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from itertools import chain
+from typing import TYPE_CHECKING
 
 from mb_workflow.git import BranchName, BranchNames
 from mb_workflow.models import Model, Payload, Value
 from mb_workflow.shell import Command, CommandOutput, ExistingDirectory, Shell
+
+if TYPE_CHECKING:
+    from mb_workflow.clock import Today
 
 logger = logging.getLogger(__name__)
 
@@ -44,16 +48,6 @@ class PullRequests(Value[tuple[PullRequest, ...]]):
 
     def head_refs(self) -> BranchNames:
         return BranchNames(tuple(pr.head_ref_name for pr in self.root))
-
-
-class Today(Value[date]):
-    @staticmethod
-    def fake() -> Today:
-        return Today(date(2026, 9, 8))
-
-    @staticmethod
-    def now() -> Today:
-        return Today(datetime.now(UTC).date())
 
 
 class SearchQuery(Value[str]):
