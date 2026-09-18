@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from mb_workflow.clock import Today
 from mb_workflow.git import BranchName, BranchNames, Ref
 from mb_workflow.github import (
     Lookback,
@@ -10,7 +11,6 @@ from mb_workflow.github import (
     PrTitle,
     PullRequest,
     PullRequests,
-    Today,
 )
 from mb_workflow.orca import (
     RepoId,

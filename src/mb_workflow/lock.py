@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from mb_workflow.cache import CacheDirectory
 from mb_workflow.models import Value
 
 if TYPE_CHECKING:
@@ -29,7 +30,7 @@ class LockPath(Value[Path]):
 
     @staticmethod
     def of(name: LockName) -> LockPath:
-        return LockPath(Path.home() / ".cache" / "mb-workflow" / f"{name.root}.lock")
+        return LockPath(CacheDirectory.of_user().root / f"{name.root}.lock")
 
     @contextmanager
     def held(self) -> Generator[None]:
