@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 from mb_workflow.autolabel import (
     Apply,
+    Criteria,
     ExcludePattern,
     Exclusions,
     Ledger,
@@ -71,8 +72,12 @@ def ledger() -> Ledger:
     return Ledger((IssueIdentifier("E-10"),))
 
 
+def criteria() -> Criteria:
+    return Criteria(label=LabelName.fake(), exclusions=Exclusions.fake(), ledger=ledger())
+
+
 def selection() -> Selection:
-    return Selection.of(swept(), LabelName.fake(), Exclusions.fake(), ledger())
+    return Selection.of(swept(), criteria())
 
 
 def chosen() -> tuple[IssueIdentifier, ...]:
@@ -80,12 +85,21 @@ def chosen() -> tuple[IssueIdentifier, ...]:
 
 
 def outcome() -> Outcome:
-    return Outcome(selection=selection(), labelled=chosen(), failed=())
+    return Outcome(selection=selection(), applied=Apply(True), labelled=chosen(), failed=())
+
+
+def dry_outcome() -> Outcome:
+    return Outcome(selection=selection(), applied=Apply(False), labelled=(), failed=())
 
 
 def unexcluded() -> Selection:
     return Selection.of(
-        swept(), LabelName("Backend"), Exclusions(projects=None, statuses=None), Ledger(())
+        swept(),
+        Criteria(
+            label=LabelName("Backend"),
+            exclusions=Exclusions(projects=None, statuses=None),
+            ledger=Ledger(()),
+        ),
     )
 
 
@@ -158,19 +172,18 @@ def test_a_run_with_a_failed_update_exits_non_zero() -> None:
 
 
 def test_a_dry_run_exits_zero_because_it_attempted_nothing() -> None:
-    assert Outcome(selection=selection(), labelled=(), failed=()).exit_code() == ExitCode(0)
+    assert dry_outcome().exit_code() == ExitCode(0)
 
 
 def test_summarises_what_it_labelled_and_what_it_skipped() -> None:
-    assert outcome().summary(Apply(True)).root == (
+    assert outcome().summary().root == (
         "Labelled 2 of 11 issues; skipped 4 excluded statuses, 3 excluded projects, "
         "1 already recorded, 1 already labelled"
     )
 
 
 def test_a_dry_run_summarises_what_it_would_have_labelled() -> None:
-    dry = Outcome(selection=selection(), labelled=(), failed=())
-    assert dry.summary(Apply(False)).root.startswith("Would label 2 of 11 issues;")
+    assert dry_outcome().summary().root.startswith("Would label 2 of 11 issues;")
 
 
 def test_a_single_skip_is_counted_in_the_singular() -> None:
@@ -191,22 +204,21 @@ def test_a_reason_that_is_no_noun_reads_the_same_either_way() -> None:
 
 def test_the_summary_names_the_updates_that_failed() -> None:
     failed = outcome().model_copy(update={"failed": (IssueIdentifier("E-4"),)})
-    assert failed.summary(Apply(True)).root.endswith("; 1 failed")
+    assert failed.summary().root.endswith("; 1 failed")
 
 
 def test_a_sweep_that_skipped_nothing_summarises_only_the_labelling() -> None:
     every = unexcluded()
     labelled = tuple(issue.identifier for issue in every.labellable().root)
-    assert Outcome(selection=every, labelled=labelled, failed=()).summary(Apply(True)).root == (
-        "Labelled 11 of 11 issues"
-    )
+    every_outcome = Outcome(selection=every, applied=Apply(True), labelled=labelled, failed=())
+    assert every_outcome.summary().root == "Labelled 11 of 11 issues"
 
 
 def test_a_dry_run_prints_a_line_per_issue_and_names_apply(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.INFO):
-        Outcome(selection=selection(), labelled=(), failed=()).report(Apply(False))
+        dry_outcome().report()
     assert "would label E-4" in caplog.text
     assert "would label E-11" in caplog.text
     assert "--apply" in caplog.text
@@ -216,7 +228,7 @@ def test_an_applied_run_prints_a_line_per_labelled_issue(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.INFO):
-        outcome().report(Apply(True))
+        outcome().report()
     assert "labelled E-4" in caplog.text
     assert "--apply" not in caplog.text
 

@@ -8,6 +8,7 @@ from mb_workflow.linear import (
     LabelKnown,
     LabelName,
     LabelNames,
+    LabelPage,
     PageCursor,
     Project,
     StatusName,
@@ -99,15 +100,32 @@ def test_the_last_page_yields_no_cursor_despite_reporting_one() -> None:
     assert IssuePage.parse(last_page()).next_cursor() is None
 
 
-def test_looks_the_workspace_labels_up_in_one_call() -> None:
-    assert LabelNames.lookup().root == ("linearis", "labels", "list", "--limit", "250")
+def label_page() -> CommandOutput:
+    return CommandOutput(
+        """
+        {
+          "nodes": [{"name": "Backend"}, {"name": "d-implement"}],
+          "pageInfo": {"hasNextPage": false, "endCursor": "last"}
+        }
+        """
+    )
+
+
+def test_the_first_label_page_is_asked_for_without_a_cursor() -> None:
+    assert LabelNames.lookup(None).root == ("linearis", "labels", "list", "--limit", "250")
+
+
+def test_a_later_label_page_is_asked_for_from_the_cursor() -> None:
+    assert LabelNames.lookup(PageCursor.fake()).root[-2:] == ("--after", PageCursor.fake().root)
+
+
+def test_a_label_page_reports_whether_more_are_coming() -> None:
+    assert LabelPage.parse(label_page()).next_cursor() is None
 
 
 def test_finds_a_label_that_exists() -> None:
-    output = CommandOutput('{"nodes": [{"name": "Backend"}, {"name": "d-implement"}]}')
-    assert LabelNames.parse(output).has(LabelName.fake()) == LabelKnown(True)
+    assert LabelPage.parse(label_page()).names().has(LabelName.fake()) == LabelKnown(True)
 
 
 def test_does_not_find_a_label_that_does_not_exist() -> None:
-    output = CommandOutput('{"nodes": [{"name": "Backend"}]}')
-    assert LabelNames.parse(output).has(LabelName.fake()) == LabelKnown(False)
+    assert LabelPage.parse(label_page()).names().has(LabelName("Frontend")) == LabelKnown(False)

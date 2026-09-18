@@ -37,7 +37,7 @@ class SkipCount(Value[int]):
 class SkipPhrase(Value[str]):
     @staticmethod
     def fake() -> SkipPhrase:
-        return SkipPhrase("1 already labelled")
+        return SkipReason.already_labelled.counted(SkipCount.fake())
 
 
 class SkipReason(StrEnum):
@@ -156,6 +156,27 @@ class LedgerPath(Value[Path]):
         _ = self.root.write_text(ledger.encode().root)
 
 
+class Criteria(Model):
+    label: LabelName
+    exclusions: Exclusions
+    ledger: Ledger
+
+    @staticmethod
+    def fake() -> Criteria:
+        return Criteria(label=LabelName.fake(), exclusions=Exclusions.fake(), ledger=Ledger.fake())
+
+    def skipped(self, issue: ListedIssue) -> SkipReason | None:
+        if self.exclusions.excludes_status(issue.status).root:
+            return SkipReason.excluded_status
+        if self.exclusions.excludes_project(issue.project).root:
+            return SkipReason.excluded_project
+        if self.ledger.records(issue.identifier).root:
+            return SkipReason.already_recorded
+        if self.label in issue.label_names().root:
+            return SkipReason.already_labelled
+        return None
+
+
 class Decision(Model):
     issue: ListedIssue
     skipped: SkipReason | None
@@ -163,26 +184,6 @@ class Decision(Model):
     @staticmethod
     def fake() -> Decision:
         return Decision(issue=ListedIssue.fake(), skipped=None)
-
-    @staticmethod
-    def of(
-        issue: ListedIssue, label: LabelName, exclusions: Exclusions, ledger: Ledger
-    ) -> Decision:
-        return Decision(issue=issue, skipped=skip_reason(issue, label, exclusions, ledger))
-
-
-def skip_reason(
-    issue: ListedIssue, label: LabelName, exclusions: Exclusions, ledger: Ledger
-) -> SkipReason | None:
-    if exclusions.excludes_status(issue.status) == Excluded(True):
-        return SkipReason.excluded_status
-    if exclusions.excludes_project(issue.project) == Excluded(True):
-        return SkipReason.excluded_project
-    if ledger.records(issue.identifier) == Recorded(True):
-        return SkipReason.already_recorded
-    if label in issue.label_names().root:
-        return SkipReason.already_labelled
-    return None
 
 
 class SkipTally(Model):
@@ -200,11 +201,9 @@ class Selection(Value[tuple[Decision, ...]]):
         return Selection((Decision.fake(),))
 
     @staticmethod
-    def of(
-        issues: ListedIssues, label: LabelName, exclusions: Exclusions, ledger: Ledger
-    ) -> Selection:
+    def of(issues: ListedIssues, criteria: Criteria) -> Selection:
         return Selection(
-            tuple(Decision.of(issue, label, exclusions, ledger) for issue in issues.root)
+            tuple(Decision(issue=issue, skipped=criteria.skipped(issue)) for issue in issues.root)
         )
 
     def labellable(self) -> ListedIssues:
@@ -233,7 +232,7 @@ class Apply(Value[bool]):
 class SummaryLine(Value[str]):
     @staticmethod
     def fake() -> SummaryLine:
-        return Outcome.fake().summary(Apply.fake())
+        return Outcome.fake().summary()
 
 
 class AutolabelRequest(Model):
@@ -254,24 +253,30 @@ class AutolabelRequest(Model):
 
 class Outcome(Model):
     selection: Selection
+    applied: Apply
     labelled: tuple[IssueIdentifier, ...]
     failed: tuple[IssueIdentifier, ...]
 
     @staticmethod
     def fake() -> Outcome:
-        return Outcome(selection=Selection.fake(), labelled=(IssueIdentifier.fake(),), failed=())
+        return Outcome(
+            selection=Selection.fake(),
+            applied=Apply(True),
+            labelled=(IssueIdentifier.fake(),),
+            failed=(),
+        )
 
     def exit_code(self) -> ExitCode:
         return ExitCode(1 if len(self.failed) > 0 else 0)
 
-    def chosen(self, apply: Apply) -> tuple[IssueIdentifier, ...]:
-        if apply.root:
+    def chosen(self) -> tuple[IssueIdentifier, ...]:
+        if self.applied.root:
             return self.labelled
         return tuple(issue.identifier for issue in self.selection.labellable().root)
 
-    def summary(self, apply: Apply) -> SummaryLine:
-        chosen = self.chosen(apply)
-        verb = "Labelled" if apply.root else "Would label"
+    def summary(self) -> SummaryLine:
+        chosen = self.chosen()
+        verb = "Labelled" if self.applied.root else "Would label"
         total = len(self.selection.root)
         parts = [f"{verb} {len(chosen)} of {total} issue{'' if total == 1 else 's'}"]
         skips = self.selection.skips()
@@ -283,12 +288,12 @@ class Outcome(Model):
             parts.append(f"{len(self.failed)} failed")
         return SummaryLine("; ".join(parts))
 
-    def report(self, apply: Apply) -> None:
-        verb = "labelled" if apply.root else "would label"
-        for issue in self.chosen(apply):
+    def report(self) -> None:
+        verb = "labelled" if self.applied.root else "would label"
+        for issue in self.chosen():
             logger.info("%s %s", verb, issue.root)
-        logger.info("%s", self.summary(apply).root)
-        if not apply.root:
+        logger.info("%s", self.summary().root)
+        if not self.applied.root:
             logger.info("Re-run with --apply to label them.")
 
 
@@ -304,8 +309,7 @@ def autolabel(shell: Shell, request: AutolabelRequest, ledger: LedgerPath) -> Ex
 
 
 def swept(linear: Linear, request: AutolabelRequest, ledger: LedgerPath) -> ExitCode:
-    known = linear.label_names()
-    if not known.has(request.label).root:
+    if not linear.workspace_labels().has(request.label).root:
         raise UnknownLabelError(f"No Linear label is named {request.label.root}.")
 
     recorded = ledger.read()
@@ -316,17 +320,17 @@ def swept(linear: Linear, request: AutolabelRequest, ledger: LedgerPath) -> Exit
         request.query.created_after.root.isoformat(),
     )
 
-    selection = Selection.of(issues, request.label, request.exclusions, recorded)
-    outcome = labelled(linear, selection, request)
-    outcome.report(request.apply)
+    criteria = Criteria(label=request.label, exclusions=request.exclusions, ledger=recorded)
+    outcome = updated(linear, Selection.of(issues, criteria), request)
+    outcome.report()
     if request.apply.root and len(outcome.labelled) > 0:
         ledger.write(recorded.extended(outcome.labelled))
     return outcome.exit_code()
 
 
-def labelled(linear: Linear, selection: Selection, request: AutolabelRequest) -> Outcome:
+def updated(linear: Linear, selection: Selection, request: AutolabelRequest) -> Outcome:
     if not request.apply.root:
-        return Outcome(selection=selection, labelled=(), failed=())
+        return Outcome(selection=selection, applied=request.apply, labelled=(), failed=())
 
     added: list[IssueIdentifier] = []
     failed: list[IssueIdentifier] = []
@@ -338,4 +342,9 @@ def labelled(linear: Linear, selection: Selection, request: AutolabelRequest) ->
             failed.append(issue.identifier)
         else:
             added.append(issue.identifier)
-    return Outcome(selection=selection, labelled=tuple(added), failed=tuple(failed))
+    return Outcome(
+        selection=selection,
+        applied=request.apply,
+        labelled=tuple(added),
+        failed=tuple(failed),
+    )
