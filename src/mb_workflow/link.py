@@ -3,6 +3,7 @@ from pathlib import Path
 
 from pydantic import model_validator
 
+from mb_workflow.config import ConfigPath
 from mb_workflow.models import Model, Value
 
 
@@ -50,7 +51,12 @@ class IgnoreFileName(Value[str]):
 class WorkspaceRoot(Value[Path]):
     @staticmethod
     def fake() -> WorkspaceRoot:
-        return WorkspaceRoot(Path("/Users/me/orca/workspaces/mb-workflow/leaffish"))
+        return WorkspaceRoot.of(ConfigPath.fake())
+
+    # The configuration file sits at the root of the repository it configures.
+    @staticmethod
+    def of(origin: ConfigPath) -> WorkspaceRoot:
+        return WorkspaceRoot(origin.root.parent)
 
 
 class TaskLink(Model):
@@ -93,10 +99,10 @@ class IgnorePath(Value[Path]):
 
     def ignore(self, name: LinkFileName) -> None:
         listed = self.root.read_text() if self.root.is_file() else ""
-        if name.root in listed.splitlines():
+        if name.root in (entry.strip() for entry in listed.splitlines()):
             return
-        opener = "" if listed == "" or listed.endswith("\n") else "\n"
-        _ = self.root.write_text(f"{listed}{opener}{name.root}\n")
+        separator = "" if listed == "" or listed.endswith("\n") else "\n"
+        _ = self.root.write_text(f"{listed}{separator}{name.root}\n")
 
 
 class WorkspaceLink(Model):

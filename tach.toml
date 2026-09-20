@@ -70,7 +70,7 @@ depends_on = [
 
 [[modules]]
 path = "mb_workflow.link"
-depends_on = ["mb_workflow.models"]
+depends_on = ["mb_workflow.config", "mb_workflow.models"]
 
 [[modules]]
 path = "mb_workflow.lock"

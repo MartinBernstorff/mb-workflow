@@ -199,10 +199,9 @@ def flow_link(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    supplied = TaskId(task) if task else None
     raise typer.Exit(
-        code=link(
-            WorkingDirectory(Path.cwd()), ConfigFileName.default(), TaskId(task) if task else None
-        ).root
+        code=link(WorkingDirectory(Path.cwd()), ConfigFileName.default(), supplied).root
     )
 
 

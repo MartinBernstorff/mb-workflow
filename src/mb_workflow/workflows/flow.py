@@ -52,14 +52,11 @@ class FlowReport(Value[str]):
         )
 
 
-def workspace_link(config: Configuration) -> WorkspaceLink:
-    return WorkspaceLink(workspace=WorkspaceRoot(config.origin.root.parent))
-
-
-def linked_task(config: Configuration) -> TaskId | None:
+# Only a Todoist repository records the link; Linear keeps it on the workspace itself.
+def workspace_link(config: Configuration) -> WorkspaceLink | None:
     match config.settings.issues:
         case TodoistTracker():
-            return workspace_link(config).read()
+            return WorkspaceLink(workspace=WorkspaceRoot.of(config.origin))
         case LinearTracker():
             return None
 
@@ -67,7 +64,8 @@ def linked_task(config: Configuration) -> TaskId | None:
 def show(directory: WorkingDirectory, name: ConfigFileName) -> ExitCode:
     try:
         config = Configuration.resolved(directory, name)
-        report = FlowReport.of(config, linked_task(config))
+        recorded = workspace_link(config)
+        report = FlowReport.of(config, recorded.read() if recorded is not None else None)
     except (InvalidConfigError, InvalidLinkError, MissingConfigError, OSError) as error:
         logger.error("%s", error)
         return ExitCode(1)
@@ -78,15 +76,14 @@ def show(directory: WorkingDirectory, name: ConfigFileName) -> ExitCode:
 def link(directory: WorkingDirectory, name: ConfigFileName, task: TaskId | None) -> ExitCode:
     try:
         config = Configuration.resolved(directory, name)
-        match config.settings.issues:
-            case TodoistTracker():
-                linked = workspace_link(config).resolve(task)
-            case LinearTracker():
-                logger.error(
-                    "%s tracks issues on Linear, where the workspace itself holds the link. Nothing to record.",
-                    config.origin.root,
-                )
-                return ExitCode(1)
+        recorded = workspace_link(config)
+        if recorded is None:
+            logger.error(
+                "%s tracks issues on Linear, where the workspace already holds the link.",
+                config.origin.root,
+            )
+            return ExitCode(1)
+        linked = recorded.resolve(task)
     except (
         InvalidConfigError,
         InvalidLinkError,

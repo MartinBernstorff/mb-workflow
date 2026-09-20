@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from mb_workflow.config import ConfigFileName, ConfigPath
 from mb_workflow.link import (
     InvalidLinkError,
     LinkFileName,
@@ -17,6 +18,12 @@ if TYPE_CHECKING:
 
 def other_task() -> TaskId:
     return TaskId("6hXJP3vMC467HcM2")
+
+
+def test_the_workspace_root_is_the_directory_the_configuration_sits_in(tmp_path: Path) -> None:
+    origin = ConfigPath(tmp_path / ConfigFileName.default().root)
+
+    assert WorkspaceRoot.of(origin) == WorkspaceRoot(tmp_path)
 
 
 def test_a_recorded_task_reads_back(tmp_path: Path) -> None:
@@ -118,6 +125,6 @@ def test_a_malformed_link_file_names_itself(tmp_path: Path) -> None:
     assert str(link.path().root) in str(raised.value)
 
 
-def test_a_task_identifier_that_todoist_would_never_issue_is_refused() -> None:
+def test_a_task_identifier_that_is_not_alphanumeric_is_refused() -> None:
     with pytest.raises(ValueError, match="alphanumeric"):
         _ = TaskId('6hXJ"\ntask = "other')

@@ -30,7 +30,7 @@ def todoist_config(directory: WorkingDirectory) -> None:
     )
 
 
-def workspace_link(directory: WorkingDirectory) -> WorkspaceLink:
+def recorded_link(directory: WorkingDirectory) -> WorkspaceLink:
     return WorkspaceLink(workspace=WorkspaceRoot(directory.root))
 
 
@@ -82,7 +82,7 @@ def test_showing_displays_the_linked_task(
 ) -> None:
     directory = WorkingDirectory(tmp_path)
     todoist_config(directory)
-    workspace_link(directory).record(TaskId.fake())
+    recorded_link(directory).record(TaskId.fake())
 
     assert show(directory, ConfigFileName.fake()) == ExitCode(0)
     assert "task: 6hXJP7X5Q98fc9XR" in capsys.readouterr().out
@@ -101,7 +101,7 @@ def test_showing_an_unlinked_todoist_workspace_succeeds(
 def test_showing_a_malformed_link_fails_the_command(tmp_path: Path) -> None:
     directory = WorkingDirectory(tmp_path)
     todoist_config(directory)
-    _ = workspace_link(directory).path().root.write_text('taks = "6hXJP7X5Q98fc9XR"\n')
+    _ = recorded_link(directory).path().root.write_text('taks = "6hXJP7X5Q98fc9XR"\n')
 
     assert show(directory, ConfigFileName.fake()) == ExitCode(1)
 
@@ -111,7 +111,20 @@ def test_linking_records_the_task_beside_the_configuration(tmp_path: Path) -> No
     todoist_config(directory)
 
     assert link(directory, ConfigFileName.fake(), TaskId.fake()) == ExitCode(0)
-    assert workspace_link(directory).read() == TaskId.fake()
+    assert recorded_link(directory).read() == TaskId.fake()
+
+
+def test_the_link_is_recorded_where_the_configuration_sits_not_where_the_command_ran(
+    tmp_path: Path,
+) -> None:
+    root = WorkingDirectory(tmp_path)
+    todoist_config(root)
+    nested = tmp_path / "src"
+    nested.mkdir()
+
+    assert link(WorkingDirectory(nested), ConfigFileName.fake(), TaskId.fake()) == ExitCode(0)
+    assert recorded_link(root).read() == TaskId.fake()
+    assert not (nested / LinkFileName.default().root).exists()
 
 
 def test_linking_again_without_a_task_reuses_the_recorded_one(
@@ -126,13 +139,13 @@ def test_linking_again_without_a_task_reuses_the_recorded_one(
     assert capsys.readouterr().out == "6hXJP7X5Q98fc9XR\n"
 
 
-def test_linking_keeps_the_recorded_file_out_of_commits(tmp_path: Path) -> None:
+def test_linking_adds_the_link_file_to_the_ignore_list(tmp_path: Path) -> None:
     directory = WorkingDirectory(tmp_path)
     todoist_config(directory)
 
     _ = link(directory, ConfigFileName.fake(), TaskId.fake())
 
-    listed = workspace_link(directory).ignore_path().root.read_text().splitlines()
+    listed = recorded_link(directory).ignore_path().root.read_text().splitlines()
     assert LinkFileName.default().root in listed
 
 
