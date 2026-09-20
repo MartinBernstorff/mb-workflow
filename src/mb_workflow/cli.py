@@ -5,7 +5,7 @@ import typer
 
 from mb_workflow.cache import CacheDirectory
 from mb_workflow.clock import Today
-from mb_workflow.flow import DiagramPath, diagram
+from mb_workflow.diagram import DiagramPath, diagram
 from mb_workflow.issue import BranchSlug, IssueIdentifier
 from mb_workflow.lock import LockName, LockPath
 from mb_workflow.logging import LogLevel, configure
