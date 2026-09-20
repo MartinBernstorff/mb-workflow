@@ -101,3 +101,27 @@ class StateNames(Value[frozenset[StateName]]):
         if initial is None:
             raise ValueError("The chart has no state to start in.")
         return StateName(initial.name)
+
+
+class EventNames(Value[tuple[EventName, ...]]):
+    @staticmethod
+    def fake() -> EventNames:
+        return EventNames((EventName.fake(),))
+
+    @staticmethod
+    def of_state(state: StateName) -> EventNames:
+        outgoing = {edge.event.root for edge in Edges.of_chart().root if edge.source == state}
+        return EventNames(tuple(EventName(name) for name in sorted(outgoing)))
+
+
+class FlowStatus(Model):
+    state: StateName
+    events: EventNames
+
+    @staticmethod
+    def fake() -> FlowStatus:
+        return FlowStatus(state=StateName.fake(), events=EventNames.fake())
+
+    @staticmethod
+    def of(state: StateName) -> FlowStatus:
+        return FlowStatus(state=state, events=EventNames.of_state(state))

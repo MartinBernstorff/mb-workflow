@@ -1,7 +1,16 @@
 import pytest
 from statemachine.exceptions import TransitionNotAllowed
 
-from mb_workflow.flow import Edge, Edges, EventName, StateName, StateNames, WorkflowChart
+from mb_workflow.flow import (
+    Edge,
+    Edges,
+    EventName,
+    EventNames,
+    FlowStatus,
+    StateName,
+    StateNames,
+    WorkflowChart,
+)
 
 GRILLING = StateName("Grilling")
 SPECCING = StateName("Speccing")
@@ -67,3 +76,24 @@ def test_an_exception_raised_during_a_transition_propagates() -> None:
 
     with pytest.raises(RuntimeError, match="boom"):
         WorkflowChart(listeners=[Detonator()]).send(EventName("to-ticket").root)
+
+
+def test_the_events_legal_from_a_state_come_from_the_chart() -> None:
+    assert EventNames.of_state(REVIEW) == EventNames(
+        (
+            EventName("merge"),
+            EventName("merged"),
+            EventName("qa"),
+            EventName("resolve-review"),
+        )
+    )
+
+
+def test_no_event_is_legal_from_the_final_state() -> None:
+    assert EventNames.of_state(MERGED) == EventNames(())
+
+
+def test_a_status_pairs_a_state_with_the_events_legal_from_it() -> None:
+    assert FlowStatus.of(GRILLING) == FlowStatus(
+        state=GRILLING, events=EventNames((EventName("to-ticket"),))
+    )

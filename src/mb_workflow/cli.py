@@ -29,10 +29,11 @@ from mb_workflow.workflows.autolabel import (
     autolabel,
 )
 from mb_workflow.workflows.finalize_review import finalize
-from mb_workflow.workflows.flow import show
+from mb_workflow.workflows.flow import show as show_config
 from mb_workflow.workflows.label import LabelChange, LabelRequest, change_label
 from mb_workflow.workflows.open_issue import OpenRequest, open_issue
 from mb_workflow.workflows.review_workspaces import create_workspaces
+from mb_workflow.workflows.show_flow import AsJson, show_flow
 from mb_workflow.workspace.orca import ProjectSelector, TerminalText, TimeoutMs, WorkspaceStatus
 
 app = typer.Typer(no_args_is_help=True)
@@ -186,10 +187,10 @@ def open_linear_issue(
     raise typer.Exit(code=open_issue(shell, request).root)
 
 
-@flow_app.command("show")
-def flow_show(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
+@flow_app.command("config")
+def flow_config(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=show(WorkingDirectory(Path.cwd()), ConfigFileName.default()).root)
+    raise typer.Exit(code=show_config(WorkingDirectory(Path.cwd()), ConfigFileName.default()).root)
 
 
 @flow_app.command("diagram")
@@ -204,3 +205,13 @@ def flow_diagram(
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     raise typer.Exit(code=diagram(DiagramPath(Path(output)) if output else None).root)
+
+
+@flow_app.command("show")
+def flow_show(
+    as_json: bool = typer.Option(False, "--json"),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    shell = Shell(ExistingDirectory(Path.cwd()))
+    raise typer.Exit(code=show_flow(shell, AsJson(as_json)).root)
