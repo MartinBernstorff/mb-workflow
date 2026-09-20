@@ -1,8 +1,9 @@
 import tomllib
 from enum import StrEnum
 from pathlib import Path
+from typing import Annotated, Literal
 
-from pydantic import model_validator
+from pydantic import Field
 
 from mb_workflow.models import Model, Value
 
@@ -21,7 +22,7 @@ class Tracker(StrEnum):
 
 
 class StatusStore(StrEnum):
-    workspace_board = "workspace-board"
+    orca = "orca"
 
 
 class ProjectTag(Value[str]):
@@ -36,28 +37,42 @@ class ConfigFileName(Value[str]):
         return ConfigFileName("mb-workflow.toml")
 
 
+class LinearTracker(Model):
+    tracker: Literal[Tracker.linear] = Tracker.linear
+
+    @staticmethod
+    def fake() -> LinearTracker:
+        return LinearTracker(tracker=Tracker.linear)
+
+
+class TodoistTracker(Model):
+    tracker: Literal[Tracker.todoist] = Tracker.todoist
+    project_tag: ProjectTag
+
+    @staticmethod
+    def fake() -> TodoistTracker:
+        return TodoistTracker(tracker=Tracker.todoist, project_tag=ProjectTag.fake())
+
+
+class OrcaStatus(Model):
+    store: Literal[StatusStore.orca] = StatusStore.orca
+
+    @staticmethod
+    def fake() -> OrcaStatus:
+        return OrcaStatus(store=StatusStore.orca)
+
+
+type TrackerSettings = Annotated[LinearTracker | TodoistTracker, Field(discriminator="tracker")]
+type StatusSettings = Annotated[OrcaStatus, Field(discriminator="store")]
+
+
 class Settings(Model):
-    tracker: Tracker
-    project_tag: ProjectTag | None = None
-    status_store: StatusStore = StatusStore.workspace_board
+    issues: TrackerSettings
+    status: StatusSettings = OrcaStatus()
 
     @staticmethod
     def fake() -> Settings:
-        return Settings(
-            tracker=Tracker.todoist,
-            project_tag=ProjectTag.fake(),
-            status_store=StatusStore.workspace_board,
-        )
-
-    @model_validator(mode="after")
-    def the_project_tag_belongs_to_todoist(self) -> Settings:
-        if self.tracker == Tracker.todoist and self.project_tag is None:
-            raise ValueError(f'tracker = "{Tracker.todoist}" also needs a project_tag')
-        if self.tracker != Tracker.todoist and self.project_tag is not None:
-            raise ValueError(
-                f'project_tag belongs to tracker = "{Tracker.todoist}", not "{self.tracker}"'
-            )
-        return self
+        return Settings(issues=TodoistTracker.fake(), status=OrcaStatus.fake())
 
 
 class ConfigPath(Value[Path]):

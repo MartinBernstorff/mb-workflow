@@ -5,7 +5,9 @@ from mb_workflow.config import (
     ConfigFileName,
     Configuration,
     InvalidConfigError,
+    LinearTracker,
     MissingConfigError,
+    TodoistTracker,
     WorkingDirectory,
 )
 from mb_workflow.models import Value
@@ -22,10 +24,13 @@ class FlowReport(Value[str]):
     @staticmethod
     def of(config: Configuration) -> FlowReport:
         settings = config.settings
-        lines = [f"tracker: {settings.tracker}"]
-        if settings.project_tag is not None:
-            lines.append(f"project tag: {settings.project_tag.root}")
-        lines += [f"status store: {settings.status_store}", f"origin: {config.origin.root}"]
+        lines = [f"tracker: {settings.issues.tracker}"]
+        match settings.issues:
+            case TodoistTracker():
+                lines.append(f"project tag: {settings.issues.project_tag.root}")
+            case LinearTracker():
+                pass
+        lines += [f"status store: {settings.status.store}", f"origin: {config.origin.root}"]
         return FlowReport("\n".join(lines))
 
 
