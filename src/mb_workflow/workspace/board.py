@@ -98,7 +98,7 @@ class StateColumns(Value[tuple[StateColumn, ...]]):
         for pairing in self.root:
             if pairing.state == state:
                 return pairing.label
-        raise BoardError(f"{state.root} has no board column to sit in.")
+        raise BoardError(f"{state.root} has no board column.")
 
     def state_of(self, label: ColumnLabel) -> StateName | None:
         for pairing in self.root:
@@ -127,7 +127,9 @@ class Columns(Value[tuple[Column, ...]]):
     def column_for(self, state: StateName) -> ColumnLabel:
         label = StateColumns.of_chart().label_of(state)
         if self.id_of(label) is None:
-            raise BoardError(f"The board has no {label.root} column for {state.root} to sit in.")
+            raise BoardError(
+                f"The board defines no {label.root} column, so {state.root} cannot be recorded."
+            )
         return label
 
     def state_of(self, status: WorkspaceStatus | None) -> StateName:

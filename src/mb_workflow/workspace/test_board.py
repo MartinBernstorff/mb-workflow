@@ -27,7 +27,7 @@ def board() -> Columns:
     )
 
 
-def test_reads_the_id_to_label_table_off_the_board_configuration() -> None:
+def test_reads_the_id_to_label_table_from_the_board_configuration() -> None:
     columns = BoardConfiguration.parse(ConfigurationDocument.fake()).columns()
     assert columns.label_of(WorkspaceStatus("status-5-2")) == ColumnLabel("Implementing")
     assert columns.id_of(ColumnLabel("Me reviewing others")) == WorkspaceStatus("status-8")
@@ -68,12 +68,12 @@ def test_a_column_the_board_no_longer_defines_reads_as_the_start_state() -> None
     assert board().state_of(WorkspaceStatus("status-404")) == StateNames.start()
 
 
-def test_a_state_sits_in_the_board_column_its_label_names() -> None:
+def test_a_state_maps_to_the_board_column_its_label_names() -> None:
     assert board().column_for(StateName("Review")) == ColumnLabel("Awaiting review")
 
 
 def test_a_state_the_board_has_no_column_for_is_a_clear_error() -> None:
-    with pytest.raises(BoardError, match="no Archive column"):
+    with pytest.raises(BoardError, match="defines no Archive column"):
         _ = Columns(()).column_for(StateName("Merged"))
 
 

@@ -71,6 +71,20 @@ class ColumnLabel(Value[str]):
     def fake() -> ColumnLabel:
         return ColumnLabel("Implementing")
 
+    def assignment(self, worktree: WorktreeSelector) -> Command:
+        return Command(
+            (
+                "orca",
+                "worktree",
+                "set",
+                "--worktree",
+                worktree.root,
+                "--workspace-status",
+                self.root,
+                "--json",
+            )
+        )
+
 
 class ErrorMessage(Value[str]):
     @staticmethod
@@ -349,22 +363,7 @@ class Orca:
         )
 
     def set_status(self, worktree: WorktreeSelector, column: ColumnLabel) -> None:
-        _ = single_worktree(
-            self._shell.run(
-                Command(
-                    (
-                        "orca",
-                        "worktree",
-                        "set",
-                        "--worktree",
-                        worktree.root,
-                        "--workspace-status",
-                        column.root,
-                        "--json",
-                    )
-                )
-            )
-        )
+        _ = single_worktree(self._shell.run(column.assignment(worktree)))
 
     def remove_worktree(self, path: WorktreePath) -> None:
         _ = acknowledged(

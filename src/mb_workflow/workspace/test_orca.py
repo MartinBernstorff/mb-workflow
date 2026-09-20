@@ -5,6 +5,7 @@ from mb_workflow.issue import BranchSlug, IssueIdentifier
 from mb_workflow.pull_request import PrNumber
 from mb_workflow.shell import CommandOutput, ExistingDirectory
 from mb_workflow.workspace.orca import (
+    ColumnLabel,
     OrcaError,
     RepoId,
     SingleWorktree,
@@ -156,3 +157,16 @@ def test_falls_back_to_the_issue_identifier_without_a_branch() -> None:
 
 def test_falls_back_to_a_literal_name_without_a_branch_or_issue() -> None:
     assert WorktreeName.of_branch(BranchSlug(""), None) == WorktreeName("linear-workspace")
+
+
+def test_moving_a_workspace_names_the_board_column_rather_than_its_id() -> None:
+    assert ColumnLabel.fake().assignment(WorktreeSelector.current()).root == (
+        "orca",
+        "worktree",
+        "set",
+        "--worktree",
+        "current",
+        "--workspace-status",
+        "Implementing",
+        "--json",
+    )
