@@ -1,0 +1,118 @@
+from pathlib import Path
+
+import pytest
+
+from mb_workflow.config import (
+    ConfigFileName,
+    Configuration,
+    MissingConfigError,
+    ProjectTag,
+    SearchedDirectories,
+    Settings,
+    StatusStore,
+    Tracker,
+    WorkingDirectory,
+)
+
+
+def test_the_search_starts_at_the_working_directory_and_walks_up() -> None:
+    searched = SearchedDirectories.of(WorkingDirectory(Path("/a/b/c")))
+    assert searched.root == (Path("/a/b/c"), Path("/a/b"), Path("/a"), Path("/"))
+
+
+def test_the_nearest_configuration_file_wins(tmp_path: Path) -> None:
+    (tmp_path / "repo" / "src").mkdir(parents=True)
+    _ = (tmp_path / "repo" / "mb-workflow.toml").write_text('tracker = "linear"\n')
+    _ = (tmp_path / "repo" / "src" / "mb-workflow.toml").write_text(
+        'tracker = "todoist"\nproject_tag = "it-mb-workflow"\n'
+    )
+
+    resolved = Configuration.resolved(
+        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.default()
+    )
+
+    assert resolved.origin.root == tmp_path / "repo" / "src" / "mb-workflow.toml"
+    assert resolved.settings.tracker == Tracker.todoist
+
+
+def test_the_search_walks_up_when_the_working_directory_holds_no_file(tmp_path: Path) -> None:
+    (tmp_path / "repo" / "src").mkdir(parents=True)
+    _ = (tmp_path / "repo" / "mb-workflow.toml").write_text('tracker = "linear"\n')
+
+    resolved = Configuration.resolved(
+        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.default()
+    )
+
+    assert resolved.origin.root == tmp_path / "repo" / "mb-workflow.toml"
+
+
+def test_a_configuration_in_a_parent_is_not_merged_into_the_nearest_one(tmp_path: Path) -> None:
+    (tmp_path / "repo" / "src").mkdir(parents=True)
+    _ = (tmp_path / "repo" / "mb-workflow.toml").write_text(
+        'tracker = "todoist"\nproject_tag = "it-other-project"\n'
+    )
+    _ = (tmp_path / "repo" / "src" / "mb-workflow.toml").write_text('tracker = "linear"\n')
+
+    resolved = Configuration.resolved(
+        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.default()
+    )
+
+    assert resolved.settings == Settings(tracker=Tracker.linear)
+
+
+def test_an_absent_configuration_file_lists_the_directories_searched(tmp_path: Path) -> None:
+    (tmp_path / "repo").mkdir()
+    with pytest.raises(MissingConfigError) as raised:
+        _ = Configuration.resolved(
+            WorkingDirectory(tmp_path / "repo"), ConfigFileName("absent.toml")
+        )
+    assert "absent.toml" in str(raised.value)
+    assert str(tmp_path / "repo") in str(raised.value)
+    assert str(tmp_path) in str(raised.value)
+
+
+def test_a_linear_configuration_names_only_its_tracker() -> None:
+    settings = Settings.model_validate({"tracker": "linear"})
+    assert settings.tracker == Tracker.linear
+    assert settings.project_tag is None
+
+
+def test_a_todoist_configuration_names_its_project_tag() -> None:
+    settings = Settings.model_validate({"tracker": "todoist", "project_tag": "it-mb-workflow"})
+    assert settings.project_tag == ProjectTag.fake()
+
+
+def test_a_todoist_configuration_without_a_project_tag_is_refused() -> None:
+    with pytest.raises(ValueError, match="needs a project_tag"):
+        _ = Settings.model_validate({"tracker": "todoist"})
+
+
+def test_a_project_tag_without_todoist_is_refused() -> None:
+    with pytest.raises(ValueError, match="project_tag belongs to"):
+        _ = Settings.model_validate({"tracker": "linear", "project_tag": "it-mb-workflow"})
+
+
+def test_an_unknown_tracker_is_refused() -> None:
+    with pytest.raises(ValueError, match="tracker"):
+        _ = Settings.model_validate({"tracker": "jira"})
+
+
+def test_the_status_store_defaults_to_the_workspace_board() -> None:
+    assert (
+        Settings.model_validate({"tracker": "linear"}).status_store == StatusStore.workspace_board
+    )
+
+
+def test_the_status_store_is_selectable() -> None:
+    settings = Settings.model_validate({"tracker": "linear", "status_store": "workspace-board"})
+    assert settings.status_store == StatusStore.workspace_board
+
+
+def test_an_unknown_status_store_is_refused() -> None:
+    with pytest.raises(ValueError, match="status_store"):
+        _ = Settings.model_validate({"tracker": "linear", "status_store": "sticky-notes"})
+
+
+def test_a_setting_the_file_does_not_define_is_refused() -> None:
+    with pytest.raises(ValueError, match="extra_forbidden"):
+        _ = Settings.model_validate({"tracker": "linear", "trakcer": "todoist"})
