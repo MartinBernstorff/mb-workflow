@@ -37,7 +37,7 @@ def test_reporting_a_resolved_configuration_succeeds(
 ) -> None:
     _ = (tmp_path / "mb-workflow.toml").write_text('tracker = "linear"\n')
 
-    assert show(WorkingDirectory(tmp_path), ConfigFileName.default()) == ExitCode(0)
+    assert show(WorkingDirectory(tmp_path), ConfigFileName.fake()) == ExitCode(0)
     assert "tracker: linear" in capsys.readouterr().out
 
 
@@ -45,7 +45,7 @@ def test_an_absent_configuration_file_fails_the_command(tmp_path: Path) -> None:
     assert show(WorkingDirectory(tmp_path), ConfigFileName("absent.toml")) == ExitCode(1)
 
 
-def test_an_unreadable_configuration_file_fails_the_command(tmp_path: Path) -> None:
+def test_a_malformed_configuration_file_fails_the_command(tmp_path: Path) -> None:
     _ = (tmp_path / "mb-workflow.toml").write_text('tracker = "jira"\n')
 
-    assert show(WorkingDirectory(tmp_path), ConfigFileName.default()) == ExitCode(1)
+    assert show(WorkingDirectory(tmp_path), ConfigFileName.fake()) == ExitCode(1)

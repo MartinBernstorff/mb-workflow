@@ -5,6 +5,7 @@ import pytest
 from mb_workflow.config import (
     ConfigFileName,
     Configuration,
+    InvalidConfigError,
     MissingConfigError,
     ProjectTag,
     SearchedDirectories,
@@ -28,7 +29,7 @@ def test_the_nearest_configuration_file_wins(tmp_path: Path) -> None:
     )
 
     resolved = Configuration.resolved(
-        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.default()
+        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.fake()
     )
 
     assert resolved.origin.root == tmp_path / "repo" / "src" / "mb-workflow.toml"
@@ -40,7 +41,7 @@ def test_the_search_walks_up_when_the_working_directory_holds_no_file(tmp_path: 
     _ = (tmp_path / "repo" / "mb-workflow.toml").write_text('tracker = "linear"\n')
 
     resolved = Configuration.resolved(
-        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.default()
+        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.fake()
     )
 
     assert resolved.origin.root == tmp_path / "repo" / "mb-workflow.toml"
@@ -54,7 +55,7 @@ def test_a_configuration_in_a_parent_is_not_merged_into_the_nearest_one(tmp_path
     _ = (tmp_path / "repo" / "src" / "mb-workflow.toml").write_text('tracker = "linear"\n')
 
     resolved = Configuration.resolved(
-        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.default()
+        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.fake()
     )
 
     assert resolved.settings == Settings(tracker=Tracker.linear)
@@ -69,6 +70,13 @@ def test_an_absent_configuration_file_lists_the_directories_searched(tmp_path: P
     assert "absent.toml" in str(raised.value)
     assert str(tmp_path / "repo") in str(raised.value)
     assert str(tmp_path) in str(raised.value)
+
+
+def test_a_malformed_configuration_file_names_itself(tmp_path: Path) -> None:
+    _ = (tmp_path / "mb-workflow.toml").write_text('tracker = "jira"\n')
+    with pytest.raises(InvalidConfigError) as raised:
+        _ = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake())
+    assert str(tmp_path / "mb-workflow.toml") in str(raised.value)
 
 
 def test_a_linear_configuration_names_only_its_tracker() -> None:
@@ -103,7 +111,7 @@ def test_the_status_store_defaults_to_the_workspace_board() -> None:
     )
 
 
-def test_the_status_store_is_selectable() -> None:
+def test_the_status_store_can_be_named_explicitly() -> None:
     settings = Settings.model_validate({"tracker": "linear", "status_store": "workspace-board"})
     assert settings.status_store == StatusStore.workspace_board
 

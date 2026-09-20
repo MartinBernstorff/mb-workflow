@@ -11,6 +11,10 @@ class MissingConfigError(Exception):
     pass
 
 
+class InvalidConfigError(Exception):
+    pass
+
+
 class Tracker(StrEnum):
     linear = "linear"
     todoist = "todoist"
@@ -29,10 +33,6 @@ class ProjectTag(Value[str]):
 class ConfigFileName(Value[str]):
     @staticmethod
     def fake() -> ConfigFileName:
-        return ConfigFileName.default()
-
-    @staticmethod
-    def default() -> ConfigFileName:
         return ConfigFileName("mb-workflow.toml")
 
 
@@ -66,7 +66,10 @@ class ConfigPath(Value[Path]):
         return ConfigPath(Path("/Users/me/orca/workspaces/mb-workflow/mb-workflow.toml"))
 
     def settings(self) -> Settings:
-        return Settings.model_validate(tomllib.loads(self.root.read_text()))
+        try:
+            return Settings.model_validate(tomllib.loads(self.root.read_text()))
+        except ValueError as error:
+            raise InvalidConfigError(f"{self.root} is not valid. {error}") from error
 
 
 class WorkingDirectory(Value[Path]):
@@ -82,7 +85,7 @@ class SearchedDirectories(Value[tuple[Path, ...]]):
 
     @staticmethod
     def of(directory: WorkingDirectory) -> SearchedDirectories:
-        start = directory.root.absolute()
+        start = directory.root.resolve()
         return SearchedDirectories((start, *start.parents))
 
     def locate(self, name: ConfigFileName) -> ConfigPath:

@@ -4,6 +4,7 @@ import sys
 from mb_workflow.config import (
     ConfigFileName,
     Configuration,
+    InvalidConfigError,
     MissingConfigError,
     WorkingDirectory,
 )
@@ -31,7 +32,7 @@ class FlowReport(Value[str]):
 def show(directory: WorkingDirectory, name: ConfigFileName) -> ExitCode:
     try:
         report = FlowReport.of(Configuration.resolved(directory, name))
-    except (MissingConfigError, OSError, ValueError) as error:
+    except (InvalidConfigError, MissingConfigError, OSError) as error:
         logger.error("%s", error)
         return ExitCode(1)
     _ = sys.stdout.write(f"{report.root}\n")
