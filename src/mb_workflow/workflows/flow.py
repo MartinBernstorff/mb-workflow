@@ -24,14 +24,23 @@ class FlowReport(Value[str]):
     @staticmethod
     def of(config: Configuration) -> FlowReport:
         settings = config.settings
-        lines = [f"tracker: {settings.issues.tracker}"]
         match settings.issues:
-            case TodoistTracker():
-                lines.append(f"project tag: {settings.issues.project_tag.root}")
-            case LinearTracker():
-                pass
-        lines += [f"status store: {settings.status.store}", f"origin: {config.origin.root}"]
-        return FlowReport("\n".join(lines))
+            case TodoistTracker() as todoist:
+                issues = (
+                    f"tracker: {todoist.tracker}",
+                    f"project tag: {todoist.project_tag.root}",
+                )
+            case LinearTracker() as linear:
+                issues = (f"tracker: {linear.tracker}",)
+        return FlowReport(
+            "\n".join(
+                (
+                    *issues,
+                    f"status store: {settings.status.store}",
+                    f"origin: {config.origin.root}",
+                )
+            )
+        )
 
 
 def show(directory: WorkingDirectory, name: ConfigFileName) -> ExitCode:

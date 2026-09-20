@@ -1,6 +1,6 @@
 source_roots = ["src"]
 
-# Tests sit beside the code they cover, so the root module also owns test_config.py, test_git.py and test_lock.py.
+# Tests sit beside the code they cover, so the root module also owns their imports.
 [[modules]]
 path = "mb_workflow"
 depends_on = [

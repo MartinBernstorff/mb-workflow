@@ -123,6 +123,11 @@ def test_the_status_store_defaults_to_orca() -> None:
     assert settings.status == OrcaStatus(store=StatusStore.orca)
 
 
+def test_an_empty_status_table_defaults_to_orca() -> None:
+    settings = Settings.model_validate({"issues": {"tracker": "linear"}, "status": {}})
+    assert settings.status == OrcaStatus.fake()
+
+
 def test_the_status_store_can_be_named_explicitly() -> None:
     settings = Settings.model_validate(
         {"issues": {"tracker": "linear"}, "status": {"store": "orca"}}
@@ -131,7 +136,7 @@ def test_the_status_store_can_be_named_explicitly() -> None:
 
 
 def test_an_unknown_status_store_is_refused() -> None:
-    with pytest.raises(ValueError, match="union_tag_invalid"):
+    with pytest.raises(ValueError, match=r"status\.store"):
         _ = Settings.model_validate(
             {"issues": {"tracker": "linear"}, "status": {"store": "sticky-notes"}}
         )

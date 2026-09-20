@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING
 
 from mb_workflow.config import (
     ConfigFileName,
+    ConfigPath,
     Configuration,
     LinearTracker,
     Settings,
@@ -26,9 +27,7 @@ def test_reports_the_resolved_tracker_and_the_file_it_came_from() -> None:
 
 
 def test_a_linear_configuration_reports_no_project_tag() -> None:
-    config = Configuration.fake().model_copy(
-        update={"settings": Settings(issues=LinearTracker.fake())}
-    )
+    config = Configuration(settings=Settings(issues=LinearTracker.fake()), origin=ConfigPath.fake())
     report = FlowReport.of(config)
     assert "tracker: linear" in report.root
     assert "project tag" not in report.root

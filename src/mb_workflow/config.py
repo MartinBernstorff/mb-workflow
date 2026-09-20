@@ -34,11 +34,15 @@ class ProjectTag(Value[str]):
 class ConfigFileName(Value[str]):
     @staticmethod
     def fake() -> ConfigFileName:
+        return ConfigFileName.default()
+
+    @staticmethod
+    def default() -> ConfigFileName:
         return ConfigFileName("mb-workflow.toml")
 
 
 class LinearTracker(Model):
-    tracker: Literal[Tracker.linear] = Tracker.linear
+    tracker: Literal[Tracker.linear]
 
     @staticmethod
     def fake() -> LinearTracker:
@@ -46,7 +50,7 @@ class LinearTracker(Model):
 
 
 class TodoistTracker(Model):
-    tracker: Literal[Tracker.todoist] = Tracker.todoist
+    tracker: Literal[Tracker.todoist]
     project_tag: ProjectTag
 
     @staticmethod
@@ -63,7 +67,7 @@ class OrcaStatus(Model):
 
 
 type TrackerSettings = Annotated[LinearTracker | TodoistTracker, Field(discriminator="tracker")]
-type StatusSettings = Annotated[OrcaStatus, Field(discriminator="store")]
+type StatusSettings = OrcaStatus
 
 
 class Settings(Model):
@@ -90,7 +94,7 @@ class ConfigPath(Value[Path]):
 class WorkingDirectory(Value[Path]):
     @staticmethod
     def fake() -> WorkingDirectory:
-        return WorkingDirectory(Path.cwd())
+        return WorkingDirectory(Path("/Users/me/orca/workspaces/mb-workflow"))
 
 
 class SearchedDirectories(Value[tuple[Path, ...]]):

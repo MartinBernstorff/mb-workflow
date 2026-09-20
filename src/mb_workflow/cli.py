@@ -41,7 +41,6 @@ flow_app = typer.Typer(no_args_is_help=True)
 app.add_typer(flow_app, name="flow")
 
 REVIEWING = "status-8"
-CONFIG_FILE = "mb-workflow.toml"
 
 
 # Typer collapses a single-command app into the root command unless a callback exists.
@@ -189,4 +188,4 @@ def open_linear_issue(
 @flow_app.command("show")
 def flow_show(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=show(WorkingDirectory(Path.cwd()), ConfigFileName(CONFIG_FILE)).root)
+    raise typer.Exit(code=show(WorkingDirectory(Path.cwd()), ConfigFileName.default()).root)
