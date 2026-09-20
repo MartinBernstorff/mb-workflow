@@ -66,6 +66,12 @@ class WorkspaceStatus(Value[str]):
         return WorkspaceStatus("status-8")
 
 
+class ColumnLabel(Value[str]):
+    @staticmethod
+    def fake() -> ColumnLabel:
+        return ColumnLabel("Implementing")
+
+
 class ErrorMessage(Value[str]):
     @staticmethod
     def fake() -> ErrorMessage:
@@ -126,6 +132,10 @@ class WorktreeSelector(Value[str]):
     @staticmethod
     def fake() -> WorktreeSelector:
         return WorktreeSelector(f"path:{WorktreePath.fake().root}")
+
+    @staticmethod
+    def current() -> WorktreeSelector:
+        return WorktreeSelector("current")
 
 
 class EnvelopeError(Payload):
@@ -336,6 +346,24 @@ class Orca:
     def send_text(self, terminal: TerminalHandle, text: TerminalText) -> None:
         _ = self._shell.run(
             Command(("orca", "terminal", "send", "--terminal", terminal.root, "--text", text.root))
+        )
+
+    def set_status(self, worktree: WorktreeSelector, column: ColumnLabel) -> None:
+        _ = single_worktree(
+            self._shell.run(
+                Command(
+                    (
+                        "orca",
+                        "worktree",
+                        "set",
+                        "--worktree",
+                        worktree.root,
+                        "--workspace-status",
+                        column.root,
+                        "--json",
+                    )
+                )
+            )
         )
 
     def remove_worktree(self, path: WorktreePath) -> None:

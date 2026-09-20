@@ -9,6 +9,7 @@ depends_on = [
     "mb_workflow.flow",
     "mb_workflow.git",
     "mb_workflow.lock",
+    "mb_workflow.status",
 ]
 
 [[modules]]
@@ -31,12 +32,14 @@ path = "mb_workflow.workflows"
 depends_on = [
     "mb_workflow.cache",
     "mb_workflow.clock",
+    "mb_workflow.flow",
     "mb_workflow.git",
     "mb_workflow.issue",
     "mb_workflow.lock",
     "mb_workflow.models",
     "mb_workflow.pull_request",
     "mb_workflow.shell",
+    "mb_workflow.status",
     "mb_workflow.trackers",
     "mb_workflow.workspace",
 ]
@@ -44,6 +47,7 @@ depends_on = [
 [[modules]]
 path = "mb_workflow.workspace"
 depends_on = [
+    "mb_workflow.flow",
     "mb_workflow.git",
     "mb_workflow.issue",
     "mb_workflow.models",
@@ -73,6 +77,10 @@ depends_on = ["mb_workflow.flow", "mb_workflow.models", "mb_workflow.shell"]
 [[modules]]
 path = "mb_workflow.flow"
 depends_on = ["mb_workflow.models"]
+
+[[modules]]
+path = "mb_workflow.status"
+depends_on = ["mb_workflow.flow"]
 
 [[modules]]
 path = "mb_workflow.shell"
