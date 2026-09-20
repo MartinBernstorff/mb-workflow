@@ -33,7 +33,7 @@ from mb_workflow.workflows.flow import link, show
 from mb_workflow.workflows.label import LabelChange, LabelRequest, change_label
 from mb_workflow.workflows.open_issue import OpenRequest, open_issue
 from mb_workflow.workflows.review_workspaces import create_workspaces
-from mb_workflow.workspace.link import TaskId
+from mb_workflow.workspace.link import SuppliedTicket
 from mb_workflow.workspace.orca import ProjectSelector, TerminalText, TimeoutMs, WorkspaceStatus
 
 app = typer.Typer(no_args_is_help=True)
@@ -117,7 +117,8 @@ def label(
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     request = LabelRequest(label=LabelName(name), change=LabelChange.add)
     shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=change_label(shell, request).root)
+    directory = WorkingDirectory(Path.cwd())
+    raise typer.Exit(code=change_label(shell, directory, ConfigFileName.default(), request).root)
 
 
 @linear_app.command("unlabel")
@@ -129,7 +130,8 @@ def unlabel(
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     request = LabelRequest(label=LabelName(name), change=LabelChange.remove)
     shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=change_label(shell, request).root)
+    directory = WorkingDirectory(Path.cwd())
+    raise typer.Exit(code=change_label(shell, directory, ConfigFileName.default(), request).root)
 
 
 @linear_app.command("autolabel")
@@ -195,11 +197,11 @@ def flow_show(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
 
 @flow_app.command("link")
 def flow_link(
-    task: str = typer.Argument("", help="Todoist task to link to this workspace."),
+    ticket: str = typer.Argument("", help="Ticket to link to this workspace."),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    supplied = TaskId(task) if task else None
+    supplied = SuppliedTicket(ticket) if ticket else None
     raise typer.Exit(
         code=link(WorkingDirectory(Path.cwd()), ConfigFileName.default(), supplied).root
     )

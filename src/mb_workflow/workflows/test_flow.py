@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING
 
+import pytest
+
 from mb_workflow.config import (
     ConfigFileName,
     ConfigPath,
@@ -8,34 +10,40 @@ from mb_workflow.config import (
     Settings,
     WorkingDirectory,
 )
+from mb_workflow.issue import IssueIdentifier
 from mb_workflow.shell import ExitCode
-from mb_workflow.workflows.flow import FlowReport, link, show
-from mb_workflow.workspace.link import LinkFileName, TaskId, WorkspaceLink, WorkspaceRoot
+from mb_workflow.workflows.flow import FlowReport, linked, shown
+from mb_workflow.workflows.flow import link as link_command
+from mb_workflow.workflows.flow import show as show_command
+from mb_workflow.workspace.link import (
+    LinearTicketLinkStore,
+    MemoryTicketLinkFile,
+    MissingLinkError,
+    SuppliedTicket,
+    TicketLinkFileName,
+    TodoistTaskId,
+    TodoistTicketLinkStore,
+    WorkspaceRoot,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
+
+def linear_config() -> Configuration:
+    return Configuration(settings=Settings(issues=LinearTracker.fake()), origin=ConfigPath.fake())
 
 
-def linear_config(directory: WorkingDirectory) -> None:
-    _ = (directory.root / ConfigFileName.default().root).write_text(
-        '[issues]\ntracker = "linear"\n'
-    )
+def todoist_store() -> TodoistTicketLinkStore:
+    return TodoistTicketLinkStore(MemoryTicketLinkFile())
 
 
-def todoist_config(directory: WorkingDirectory) -> None:
-    _ = (directory.root / ConfigFileName.default().root).write_text(
-        '[issues]\ntracker = "todoist"\nproject_tag = "it-mb-workflow"\n'
-    )
-
-
-def recorded_link(directory: WorkingDirectory) -> WorkspaceLink:
-    return WorkspaceLink(workspace=WorkspaceRoot(directory.root))
+def linear_store() -> LinearTicketLinkStore:
+    return LinearTicketLinkStore(MemoryTicketLinkFile())
 
 
 def test_reports_the_resolved_tracker_and_the_file_it_came_from() -> None:
-    assert FlowReport.of(Configuration.fake(), TaskId.fake()).root == (
+    assert FlowReport.of(Configuration.fake(), TodoistTaskId.fake()).root == (
         "tracker: todoist\n"
         "project tag: it-mb-workflow\n"
         "task: 6hXJP7X5Q98fc9XR\n"
@@ -48,118 +56,94 @@ def test_a_todoist_configuration_with_no_recorded_link_reports_no_task() -> None
     assert "task: none" in FlowReport.of(Configuration.fake(), None).root
 
 
-def test_a_linear_configuration_reports_no_project_tag() -> None:
-    config = Configuration(settings=Settings(issues=LinearTracker.fake()), origin=ConfigPath.fake())
-
-    report = FlowReport.of(config, None)
+def test_a_linear_configuration_reports_its_issue_and_no_project_tag() -> None:
+    report = FlowReport.of(linear_config(), IssueIdentifier.fake())
 
     assert "tracker: linear" in report.root
+    assert "issue: E-4289" in report.root
     assert "project tag" not in report.root
+
+
+def test_a_linear_configuration_with_no_recorded_link_reports_no_issue() -> None:
+    assert "issue: none" in FlowReport.of(linear_config(), None).root
+
+
+def test_showing_displays_the_recorded_task() -> None:
+    store = todoist_store()
+    store.record(TodoistTaskId.fake())
+
+    assert "task: 6hXJP7X5Q98fc9XR" in shown(Configuration.fake(), store).root
+
+
+def test_showing_an_unlinked_workspace_reports_no_ticket() -> None:
+    assert "task: none" in shown(Configuration.fake(), todoist_store()).root
+
+
+def test_showing_a_linear_workspace_displays_the_recorded_issue() -> None:
+    store = linear_store()
+    store.record(IssueIdentifier.fake())
+
+    assert "issue: E-4289" in shown(linear_config(), store).root
+
+
+def test_linking_records_the_supplied_ticket() -> None:
+    store = todoist_store()
+
+    assert linked(store, SuppliedTicket.fake()) == TodoistTaskId.fake()
+    assert store.read() == TodoistTaskId.fake()
+
+
+def test_linking_again_without_a_ticket_reuses_the_recorded_one() -> None:
+    store = linear_store()
+    store.record(IssueIdentifier.fake())
+
+    assert linked(store, None) == IssueIdentifier.fake()
+
+
+def test_a_workspace_with_neither_a_record_nor_a_ticket_is_an_error() -> None:
+    with pytest.raises(MissingLinkError):
+        _ = linked(todoist_store(), None)
 
 
 def test_reporting_a_resolved_configuration_succeeds(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    directory = WorkingDirectory(tmp_path)
-    linear_config(directory)
+    _ = (tmp_path / ConfigFileName.default().root).write_text('[issues]\ntracker = "linear"\n')
 
-    assert show(directory, ConfigFileName.fake()) == ExitCode(0)
+    assert show_command(WorkingDirectory(tmp_path), ConfigFileName.fake()) == ExitCode(0)
     assert "tracker: linear" in capsys.readouterr().out
 
 
 def test_an_absent_configuration_file_fails_the_command(tmp_path: Path) -> None:
-    assert show(WorkingDirectory(tmp_path), ConfigFileName("absent.toml")) == ExitCode(1)
+    assert show_command(WorkingDirectory(tmp_path), ConfigFileName("absent.toml")) == ExitCode(1)
 
 
 def test_a_malformed_configuration_file_fails_the_command(tmp_path: Path) -> None:
-    _ = (tmp_path / "mb-workflow.toml").write_text('[issues]\ntracker = "jira"\n')
+    _ = (tmp_path / ConfigFileName.default().root).write_text('[issues]\ntracker = "jira"\n')
 
-    assert show(WorkingDirectory(tmp_path), ConfigFileName.fake()) == ExitCode(1)
-
-
-def test_showing_displays_the_linked_task(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    directory = WorkingDirectory(tmp_path)
-    todoist_config(directory)
-    recorded_link(directory).record(TaskId.fake())
-
-    assert show(directory, ConfigFileName.fake()) == ExitCode(0)
-    assert "task: 6hXJP7X5Q98fc9XR" in capsys.readouterr().out
-
-
-def test_showing_an_unlinked_todoist_workspace_succeeds(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    directory = WorkingDirectory(tmp_path)
-    todoist_config(directory)
-
-    assert show(directory, ConfigFileName.fake()) == ExitCode(0)
-    assert "task: none" in capsys.readouterr().out
-
-
-def test_showing_a_malformed_link_fails_the_command(tmp_path: Path) -> None:
-    directory = WorkingDirectory(tmp_path)
-    todoist_config(directory)
-    _ = recorded_link(directory).path().root.write_text('taks = "6hXJP7X5Q98fc9XR"\n')
-
-    assert show(directory, ConfigFileName.fake()) == ExitCode(1)
-
-
-def test_linking_records_the_task_beside_the_configuration(tmp_path: Path) -> None:
-    directory = WorkingDirectory(tmp_path)
-    todoist_config(directory)
-
-    assert link(directory, ConfigFileName.fake(), TaskId.fake()) == ExitCode(0)
-    assert recorded_link(directory).read() == TaskId.fake()
+    assert show_command(WorkingDirectory(tmp_path), ConfigFileName.fake()) == ExitCode(1)
 
 
 def test_the_link_is_recorded_where_the_configuration_sits_not_where_the_command_ran(
     tmp_path: Path,
 ) -> None:
-    root = WorkingDirectory(tmp_path)
-    todoist_config(root)
+    _ = (tmp_path / ConfigFileName.default().root).write_text(
+        '[issues]\ntracker = "todoist"\nproject_tag = "it-mb-workflow"\n'
+    )
     nested = tmp_path / "src"
     nested.mkdir()
 
-    assert link(WorkingDirectory(nested), ConfigFileName.fake(), TaskId.fake()) == ExitCode(0)
-    assert recorded_link(root).read() == TaskId.fake()
-    assert not (nested / LinkFileName.default().root).exists()
+    supplied = SuppliedTicket.fake()
+    assert link_command(WorkingDirectory(nested), ConfigFileName.fake(), supplied) == ExitCode(0)
+
+    recorded = TodoistTicketLinkStore.at(WorkspaceRoot(tmp_path))
+    assert recorded.read() == TodoistTaskId.fake()
+    assert not (nested / TicketLinkFileName.default().root).exists()
 
 
-def test_linking_again_without_a_task_reuses_the_recorded_one(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    directory = WorkingDirectory(tmp_path)
-    todoist_config(directory)
-    _ = link(directory, ConfigFileName.fake(), TaskId.fake())
-    _ = capsys.readouterr()
+def test_a_workspace_with_nothing_to_link_fails_the_command(tmp_path: Path) -> None:
+    _ = (tmp_path / ConfigFileName.default().root).write_text(
+        '[issues]\ntracker = "todoist"\nproject_tag = "it-mb-workflow"\n'
+    )
 
-    assert link(directory, ConfigFileName.fake(), None) == ExitCode(0)
-    assert capsys.readouterr().out == "6hXJP7X5Q98fc9XR\n"
-
-
-def test_linking_adds_the_link_file_to_the_ignore_list(tmp_path: Path) -> None:
-    directory = WorkingDirectory(tmp_path)
-    todoist_config(directory)
-
-    _ = link(directory, ConfigFileName.fake(), TaskId.fake())
-
-    listed = recorded_link(directory).ignore_path().root.read_text().splitlines()
-    assert LinkFileName.default().root in listed
-
-
-def test_a_todoist_workspace_with_neither_a_record_nor_a_task_fails_the_command(
-    tmp_path: Path,
-) -> None:
-    directory = WorkingDirectory(tmp_path)
-    todoist_config(directory)
-
-    assert link(directory, ConfigFileName.fake(), None) == ExitCode(1)
-
-
-def test_linking_a_linear_workspace_fails_the_command(tmp_path: Path) -> None:
-    directory = WorkingDirectory(tmp_path)
-    linear_config(directory)
-
-    assert link(directory, ConfigFileName.fake(), TaskId.fake()) == ExitCode(1)
+    assert link_command(WorkingDirectory(tmp_path), ConfigFileName.fake(), None) == ExitCode(1)

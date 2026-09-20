@@ -1,10 +1,20 @@
 import logging
 from subprocess import CalledProcessError
 
+from mb_workflow.config import (
+    ConfigFileName,
+    Configuration,
+    InvalidConfigError,
+    LinearTracker,
+    MissingConfigError,
+    TodoistTracker,
+    WorkingDirectory,
+)
 from mb_workflow.issue import BranchSlug, IssueIdentifier
 from mb_workflow.models import Model, Value
 from mb_workflow.shell import ExitCode, Shell
 from mb_workflow.trackers.linear import Assignee, IssueState, Linear
+from mb_workflow.workspace.link import LinearTicketLinkStore, WorkspaceRoot
 from mb_workflow.workspace.orca import (
     AgentName,
     Orca,
@@ -103,7 +113,37 @@ def open_workspace(orca: Orca, linear: Linear, request: OpenRequest) -> ExitCode
     worktree = orca.create_for_issue(request.project, name, request.issue, request.agent())
     logger.info("Created %s", worktree.worktree.path.root)
 
+    record_link(worktree, request.issue)
+
     return send_prompt(orca, worktree, prompting)
+
+
+# Recording the link is a convenience, like assignment, so never fail the run over it.
+def record_link(worktree: SingleWorktree, issue: IssueIdentifier | None) -> None:
+    if issue is None:
+        return
+    created = worktree.worktree.path.root
+    try:
+        config = Configuration.resolved(WorkingDirectory(created), ConfigFileName.default())
+        workspace = WorkspaceRoot.of(config.origin)
+        # Configuration resolution walks upwards, so a parent repository must not capture the link.
+        if workspace.root.resolve() != created.resolve():
+            logger.info(
+                "%s configures a parent of the new workspace; leaving it unlinked.",
+                config.origin.root,
+            )
+            return
+        match config.settings.issues:
+            case LinearTracker():
+                LinearTicketLinkStore.at(workspace).record(issue)
+                logger.info("Linked %s in %s.", issue.root, workspace.root)
+            case TodoistTracker():
+                logger.info(
+                    "%s tracks issues on Todoist; leaving the Linear issue unrecorded.",
+                    config.origin.root,
+                )
+    except (InvalidConfigError, MissingConfigError, OSError, ValueError) as error:
+        logger.info("Could not record the link: %s", error)
 
 
 def issue_state(linear: Linear, issue: IssueIdentifier | None) -> IssueState | None:

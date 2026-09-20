@@ -10,37 +10,43 @@ from mb_workflow.config import (
     TodoistTracker,
     WorkingDirectory,
 )
+from mb_workflow.issue import IssueIdentifier
 from mb_workflow.models import Value
 from mb_workflow.shell import ExitCode
 from mb_workflow.workspace.link import (
     InvalidLinkError,
+    LinearTicketLinkStore,
     MissingLinkError,
-    TaskId,
-    WorkspaceLink,
+    SuppliedTicket,
+    TicketLinkStore,
+    TodoistTaskId,
+    TodoistTicketLinkStore,
     WorkspaceRoot,
 )
 
 logger = logging.getLogger(__name__)
 
+type LinkedTicket = TodoistTaskId | IssueIdentifier
+
 
 class FlowReport(Value[str]):
     @staticmethod
     def fake() -> FlowReport:
-        return FlowReport.of(Configuration.fake(), TaskId.fake())
+        return FlowReport.of(Configuration.fake(), TodoistTaskId.fake())
 
     @staticmethod
-    def of(config: Configuration, task: TaskId | None) -> FlowReport:
+    def of(config: Configuration, linked: LinkedTicket | None) -> FlowReport:
         settings = config.settings
+        recorded = linked.root if linked is not None else "none"
         match settings.issues:
             case TodoistTracker() as todoist:
-                linked = task.root if task is not None else "none"
                 issues = (
                     f"tracker: {todoist.tracker}",
                     f"project tag: {todoist.project_tag.root}",
-                    f"task: {linked}",
+                    f"task: {recorded}",
                 )
             case LinearTracker() as linear:
-                issues = (f"tracker: {linear.tracker}",)
+                issues = (f"tracker: {linear.tracker}", f"issue: {recorded}")
         return FlowReport(
             "\n".join(
                 (
@@ -52,20 +58,26 @@ class FlowReport(Value[str]):
         )
 
 
-# Only a Todoist repository records the link; Linear keeps it on the workspace itself.
-def workspace_link(config: Configuration) -> WorkspaceLink | None:
+def shown[T: (TodoistTaskId, IssueIdentifier)](
+    config: Configuration, store: TicketLinkStore[T]
+) -> FlowReport:
+    return FlowReport.of(config, store.read())
+
+
+# The tracker decides which identifier the workspace links, so each arm binds its own store.
+def reported(config: Configuration) -> FlowReport:
+    workspace = WorkspaceRoot.of(config.origin)
     match config.settings.issues:
         case TodoistTracker():
-            return WorkspaceLink(workspace=WorkspaceRoot.of(config.origin))
+            return shown(config, TodoistTicketLinkStore.at(workspace))
         case LinearTracker():
-            return None
+            return shown(config, LinearTicketLinkStore.at(workspace))
 
 
 def show(directory: WorkingDirectory, name: ConfigFileName) -> ExitCode:
     try:
         config = Configuration.resolved(directory, name)
-        recorded = workspace_link(config)
-        report = FlowReport.of(config, recorded.read() if recorded is not None else None)
+        report = reported(config)
     except (InvalidConfigError, InvalidLinkError, MissingConfigError, OSError) as error:
         logger.error("%s", error)
         return ExitCode(1)
@@ -73,25 +85,36 @@ def show(directory: WorkingDirectory, name: ConfigFileName) -> ExitCode:
     return ExitCode(0)
 
 
-def link(directory: WorkingDirectory, name: ConfigFileName, task: TaskId | None) -> ExitCode:
+def linked[T: (TodoistTaskId, IssueIdentifier)](
+    store: TicketLinkStore[T], supplied: SuppliedTicket | None
+) -> T:
+    return store.resolve(supplied)
+
+
+def resolved(config: Configuration, supplied: SuppliedTicket | None) -> LinkedTicket:
+    workspace = WorkspaceRoot.of(config.origin)
+    match config.settings.issues:
+        case TodoistTracker():
+            return linked(TodoistTicketLinkStore.at(workspace), supplied)
+        case LinearTracker():
+            return linked(LinearTicketLinkStore.at(workspace), supplied)
+
+
+def link(
+    directory: WorkingDirectory, name: ConfigFileName, supplied: SuppliedTicket | None
+) -> ExitCode:
     try:
         config = Configuration.resolved(directory, name)
-        recorded = workspace_link(config)
-        if recorded is None:
-            logger.error(
-                "%s tracks issues on Linear, where the workspace already holds the link.",
-                config.origin.root,
-            )
-            return ExitCode(1)
-        linked = recorded.resolve(task)
+        recorded = resolved(config, supplied)
     except (
         InvalidConfigError,
         InvalidLinkError,
         MissingConfigError,
         MissingLinkError,
         OSError,
+        ValueError,
     ) as error:
         logger.error("%s", error)
         return ExitCode(1)
-    _ = sys.stdout.write(f"{linked.root}\n")
+    _ = sys.stdout.write(f"{recorded.root}\n")
     return ExitCode(0)
