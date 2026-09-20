@@ -5,7 +5,10 @@ from mb_workflow.issue import BranchSlug, IssueIdentifier
 from mb_workflow.pull_request import PrNumber
 from mb_workflow.shell import CommandOutput, ExistingDirectory
 from mb_workflow.workspace.orca import (
+    Acknowledgement,
     ColumnLabel,
+    Envelope,
+    ErrorMessage,
     OrcaError,
     RepoId,
     SingleWorktree,
@@ -170,3 +173,31 @@ def test_moving_a_workspace_names_the_board_column_rather_than_its_id() -> None:
         "Implementing",
         "--json",
     )
+
+
+def test_asks_which_columns_exist_by_naming_one_that_cannot() -> None:
+    assert ColumnLabel.unknown().assignment(WorktreeSelector.current()).root == (
+        "orca",
+        "worktree",
+        "set",
+        "--worktree",
+        "current",
+        "--workspace-status",
+        "mb-workflow-asks-which-columns-exist",
+        "--json",
+    )
+
+
+def test_a_refusal_carries_the_message_orca_gave() -> None:
+    output = CommandOutput(
+        '{"ok":false,"error":{"code":"invalid_argument","message":"Unknown workspace status."}}'
+    )
+    envelope = Envelope[Acknowledgement].model_validate_json(output.root)
+    assert envelope.refusal() == ErrorMessage("Unknown workspace status.")
+
+
+def test_a_command_orca_accepted_holds_no_refusal() -> None:
+    output = CommandOutput('{"ok":true,"result":{}}')
+    envelope = Envelope[Acknowledgement].model_validate_json(output.root)
+    with pytest.raises(OrcaError, match="meant to refuse"):
+        _ = envelope.refusal()

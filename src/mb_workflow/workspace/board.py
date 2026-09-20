@@ -1,59 +1,18 @@
-import os
-from pathlib import Path
+import re
 
 from mb_workflow.flow import StateName, StateNames
 from mb_workflow.models import Model, Payload, Value
-from mb_workflow.workspace.orca import ColumnLabel, Orca, WorkspaceStatus, WorktreeSelector
+from mb_workflow.workspace.orca import (
+    ColumnLabel,
+    ErrorMessage,
+    Orca,
+    WorkspaceStatus,
+    WorktreeSelector,
+)
 
 
 class BoardError(Exception):
     pass
-
-
-class UserDataPath(Value[Path]):
-    @staticmethod
-    def fake() -> UserDataPath:
-        return UserDataPath(Path("/Users/me/Library/Application Support/orca"))
-
-    @staticmethod
-    def of_environment() -> UserDataPath:
-        directory = os.environ.get("ORCA_USER_DATA_PATH", "")
-        if not directory:
-            raise BoardError(
-                "ORCA_USER_DATA_PATH is unset, so the board configuration cannot be found. "
-                "Run this from a terminal Orca started."
-            )
-        return UserDataPath(Path(directory))
-
-    def configuration(self) -> ConfigurationPath:
-        profiles = sorted(self.root.glob("profiles/*/orca-data.json"))
-        if not profiles:
-            raise BoardError(f"{self.root} holds no Orca profile to read the board from.")
-        if len(profiles) > 1:
-            named = ", ".join(profile.parent.name for profile in profiles)
-            raise BoardError(f"{self.root} holds more than one Orca profile: {named}.")
-        return ConfigurationPath(profiles[0])
-
-
-class ConfigurationPath(Value[Path]):
-    @staticmethod
-    def fake() -> ConfigurationPath:
-        return ConfigurationPath(
-            UserDataPath.fake().root / "profiles" / "local-default" / "orca-data.json"
-        )
-
-    def read(self) -> ConfigurationDocument:
-        return ConfigurationDocument(self.root.read_text())
-
-
-class ConfigurationDocument(Value[str]):
-    @staticmethod
-    def fake() -> ConfigurationDocument:
-        return ConfigurationDocument(
-            '{"ui":{"workspaceStatuses":['
-            '{"id":"status-5-2","label":"Implementing"},'
-            '{"id":"status-8","label":"Me reviewing others"}]}}'
-        )
 
 
 class Column(Payload):
@@ -90,7 +49,7 @@ class StateColumns(Value[tuple[StateColumn, ...]]):
                 StateColumn(state=StateName("QA"), label=ColumnLabel("My QA")),
                 StateColumn(state=StateName("Review"), label=ColumnLabel("Awaiting review")),
                 StateColumn(state=StateName("Merging"), label=ColumnLabel("Merging")),
-                StateColumn(state=StateName("Merged"), label=ColumnLabel("Archive")),
+                StateColumn(state=StateName("Merged"), label=ColumnLabel("Merged")),
             )
         )
 
@@ -111,6 +70,18 @@ class Columns(Value[tuple[Column, ...]]):
     @staticmethod
     def fake() -> Columns:
         return Columns((Column.fake(),))
+
+    @staticmethod
+    def parse(refusal: ErrorMessage) -> Columns:
+        listed = re.findall(r"([\w-]+) \(([^)]+)\)", refusal.root.partition("Available:")[2])
+        if not listed:
+            raise BoardError(f"Orca named no board columns: {refusal.root}")
+        return Columns(
+            tuple(
+                Column(id=WorkspaceStatus(status), label=ColumnLabel(label))
+                for status, label in listed
+            )
+        )
 
     def label_of(self, status: WorkspaceStatus) -> ColumnLabel | None:
         for column in self.root:
@@ -142,38 +113,14 @@ class Columns(Value[tuple[Column, ...]]):
         return state if state is not None else StateNames.start()
 
 
-class BoardUi(Payload):
-    workspace_statuses: tuple[Column, ...] = ()
-
-    @staticmethod
-    def fake() -> BoardUi:
-        return BoardUi(workspace_statuses=Columns.fake().root)
-
-
-class BoardConfiguration(Payload):
-    ui: BoardUi
-
-    @staticmethod
-    def fake() -> BoardConfiguration:
-        return BoardConfiguration(ui=BoardUi.fake())
-
-    @staticmethod
-    def parse(document: ConfigurationDocument) -> BoardConfiguration:
-        return BoardConfiguration.model_validate_json(document.root)
-
-    def columns(self) -> Columns:
-        return Columns(self.ui.workspace_statuses)
-
-
 class Board:
     def __init__(self, orca: Orca, columns: Columns) -> None:
         self._orca = orca
         self._columns = columns
 
     @staticmethod
-    def of_environment(orca: Orca) -> Board:
-        document = UserDataPath.of_environment().configuration().read()
-        return Board(orca, BoardConfiguration.parse(document).columns())
+    def of_orca(orca: Orca) -> Board:
+        return Board(orca, Columns.parse(orca.columns(ColumnLabel.unknown())))
 
     def read(self) -> StateName:
         return self._columns.state_of(self._orca.current().workspace_status)

@@ -36,7 +36,7 @@ class StatusReport(Value[str]):
 
 def show_flow(shell: Shell, as_json: AsJson) -> ExitCode:
     try:
-        return shown(Board.of_environment(Orca(shell)), as_json)
+        return shown(Board.of_orca(Orca(shell)), as_json)
     except FileNotFoundError as error:
         logger.error("%s is not installed or not on PATH.", error.filename)
         return ExitCode(1)

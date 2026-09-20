@@ -1,6 +1,7 @@
 import logging
 import re
 from pathlib import Path
+from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
 from mb_workflow.git import Ref
@@ -70,6 +71,10 @@ class ColumnLabel(Value[str]):
     @staticmethod
     def fake() -> ColumnLabel:
         return ColumnLabel("Implementing")
+
+    @staticmethod
+    def unknown() -> ColumnLabel:
+        return ColumnLabel("mb-workflow-asks-which-columns-exist")
 
     def assignment(self, worktree: WorktreeSelector) -> Command:
         return Command(
@@ -170,6 +175,11 @@ class Envelope[T](Payload):
     ok: Succeeded
     result: T | None = None
     error: EnvelopeError | None = None
+
+    def refusal(self) -> ErrorMessage:
+        if self.ok.root or self.error is None:
+            raise OrcaError("orca accepted a value it was meant to refuse")
+        return self.error.message
 
     def unwrap(self) -> T:
         if self.result is None or not self.ok.root:
@@ -361,6 +371,15 @@ class Orca:
         _ = self._shell.run(
             Command(("orca", "terminal", "send", "--terminal", terminal.root, "--text", text.root))
         )
+
+    # Orca has no command that lists board columns, so its refusal of an unknown one carries the list.
+    def columns(self, unknown: ColumnLabel) -> ErrorMessage:
+        command = unknown.assignment(WorktreeSelector.current())
+        try:
+            output = self._shell.run(command)
+        except CalledProcessError as refused:
+            output = CommandOutput(refused.stdout)
+        return Envelope[Acknowledgement].model_validate_json(output.root).refusal()
 
     def set_status(self, worktree: WorktreeSelector, column: ColumnLabel) -> None:
         _ = single_worktree(self._shell.run(column.assignment(worktree)))

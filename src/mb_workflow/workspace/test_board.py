@@ -1,45 +1,36 @@
-from typing import TYPE_CHECKING
-
 import pytest
 
 from mb_workflow.flow import StateName, StateNames
-from mb_workflow.workspace.board import (
-    BoardConfiguration,
-    BoardError,
-    Column,
-    Columns,
-    ConfigurationDocument,
-    StateColumns,
-    UserDataPath,
-)
-from mb_workflow.workspace.orca import ColumnLabel, WorkspaceStatus
+from mb_workflow.workspace.board import BoardError, Column, Columns, StateColumns
+from mb_workflow.workspace.orca import ColumnLabel, ErrorMessage, WorkspaceStatus
 
-if TYPE_CHECKING:
-    from pathlib import Path
+REFUSAL = ErrorMessage(
+    'Unknown workspace status "zzz". Available: status-8-2 (Tomorrow), in-progress (Grilling), '
+    "status-9 (Speccing), status-5-2 (Implementing), status-8 (Me reviewing others), "
+    "in-review (My QA), status-5 (Awaiting review), completed (Merging), status-6 (Merged)."
+)
 
 
 def board() -> Columns:
-    return Columns(
-        tuple(
-            Column(id=WorkspaceStatus(f"status-{index}"), label=pairing.label)
-            for index, pairing in enumerate(StateColumns.of_chart().root)
-        )
-    )
+    return Columns.parse(REFUSAL)
 
 
-def test_reads_the_id_to_label_table_from_the_board_configuration() -> None:
-    columns = BoardConfiguration.parse(ConfigurationDocument.fake()).columns()
-    assert columns.label_of(WorkspaceStatus("status-5-2")) == ColumnLabel("Implementing")
-    assert columns.id_of(ColumnLabel("Me reviewing others")) == WorkspaceStatus("status-8")
+def test_reads_the_id_to_label_table_from_the_columns_orca_names() -> None:
+    assert board().label_of(WorkspaceStatus("status-5-2")) == ColumnLabel("Implementing")
+    assert board().id_of(ColumnLabel("Me reviewing others")) == WorkspaceStatus("status-8")
 
 
-def test_a_board_with_no_columns_configured_parses() -> None:
-    assert BoardConfiguration.parse(ConfigurationDocument('{"ui":{}}')).columns() == Columns(())
+def test_reads_every_column_orca_names() -> None:
+    assert len(board().root) == 9
+
+
+def test_a_refusal_naming_no_columns_is_a_clear_error() -> None:
+    with pytest.raises(BoardError, match="named no board columns"):
+        _ = Columns.parse(ErrorMessage("Unknown workspace status. Available: ."))
 
 
 def test_an_id_the_board_does_not_define_has_no_label() -> None:
-    columns = BoardConfiguration.parse(ConfigurationDocument.fake()).columns()
-    assert columns.label_of(WorkspaceStatus("status-404")) is None
+    assert board().label_of(WorkspaceStatus("status-404")) is None
 
 
 def test_every_state_the_chart_holds_has_a_board_column() -> None:
@@ -50,14 +41,11 @@ def test_every_state_the_chart_holds_has_a_board_column() -> None:
 
 
 def test_a_column_id_resolves_to_the_state_its_label_stands_for() -> None:
-    assert board().state_of(WorkspaceStatus("status-4")) == StateName("QA")
+    assert board().state_of(WorkspaceStatus("in-review")) == StateName("QA")
 
 
 def test_a_column_outside_the_chart_reads_as_the_start_state() -> None:
-    columns = Columns(
-        (Column(id=WorkspaceStatus("status-8"), label=ColumnLabel("Me reviewing others")),)
-    )
-    assert columns.state_of(WorkspaceStatus("status-8")) == StateNames.start()
+    assert board().state_of(WorkspaceStatus("status-8")) == StateNames.start()
 
 
 def test_a_workspace_with_no_column_reads_as_the_start_state() -> None:
@@ -73,45 +61,11 @@ def test_a_state_maps_to_the_board_column_its_label_names() -> None:
 
 
 def test_a_state_the_board_has_no_column_for_is_a_clear_error() -> None:
-    with pytest.raises(BoardError, match="defines no Archive column"):
-        _ = Columns(()).column_for(StateName("Merged"))
+    columns = Columns((Column(id=WorkspaceStatus("in-progress"), label=ColumnLabel("Grilling")),))
+    with pytest.raises(BoardError, match="defines no Merged column"):
+        _ = columns.column_for(StateName("Merged"))
 
 
 def test_a_state_outside_the_chart_has_no_board_column() -> None:
     with pytest.raises(BoardError, match="no board column"):
         _ = StateColumns.of_chart().label_of(StateName("Abandoned"))
-
-
-def test_the_board_configuration_sits_under_the_orca_profile(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ORCA_USER_DATA_PATH", str(UserDataPath.fake().root))
-    assert UserDataPath.of_environment() == UserDataPath.fake()
-
-
-def test_a_missing_user_data_path_is_a_clear_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ORCA_USER_DATA_PATH", raising=False)
-    with pytest.raises(BoardError, match="ORCA_USER_DATA_PATH is unset"):
-        _ = UserDataPath.of_environment()
-
-
-def test_a_user_data_path_holding_no_profile_is_a_clear_error(tmp_path: Path) -> None:
-    with pytest.raises(BoardError, match="no Orca profile"):
-        _ = UserDataPath(tmp_path).configuration()
-
-
-def test_a_user_data_path_holding_two_profiles_is_a_clear_error(tmp_path: Path) -> None:
-    for profile in ("local-default", "work"):
-        directory = tmp_path / "profiles" / profile
-        directory.mkdir(parents=True)
-        _ = (directory / "orca-data.json").write_text("{}")
-    with pytest.raises(BoardError, match="more than one Orca profile"):
-        _ = UserDataPath(tmp_path).configuration()
-
-
-def test_reads_the_configuration_from_the_only_profile(tmp_path: Path) -> None:
-    directory = tmp_path / "profiles" / "local-default"
-    directory.mkdir(parents=True)
-    _ = (directory / "orca-data.json").write_text(ConfigurationDocument.fake().root)
-    document = UserDataPath(tmp_path).configuration().read()
-    assert document == ConfigurationDocument.fake()
