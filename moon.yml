@@ -86,6 +86,19 @@ tasks:
     options:
       outputStyle: "buffer-only-failure"
 
+  diagram:
+    script: "mkdir -p docs && uv run mw flow diagram --output docs/flow.svg"
+    inputs:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "src/mb_workflow/diagram.py"
+      - "src/mb_workflow/flow.py"
+    outputs:
+      - "docs/flow.svg"
+    options:
+      runInCI: false
+      outputStyle: "buffer-only-failure"
+
   install:
     script: "uv tool install --force ."
     options:

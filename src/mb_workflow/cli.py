@@ -6,6 +6,7 @@ import typer
 from mb_workflow.cache import CacheDirectory
 from mb_workflow.clock import Today
 from mb_workflow.config import ConfigFileName, WorkingDirectory
+from mb_workflow.diagram import DiagramPath, diagram
 from mb_workflow.issue import BranchSlug, IssueIdentifier
 from mb_workflow.lock import LockName, LockPath
 from mb_workflow.logging import LogLevel, configure
@@ -189,3 +190,17 @@ def open_linear_issue(
 def flow_show(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     raise typer.Exit(code=show(WorkingDirectory(Path.cwd()), ConfigFileName.default()).root)
+
+
+@flow_app.command("diagram")
+def flow_diagram(
+    output: str = typer.Option(
+        "",
+        "--output",
+        "-o",
+        help="Write the chart as an image here; the extension picks the format. Prints a mermaid state diagram when omitted.",
+    ),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    raise typer.Exit(code=diagram(DiagramPath(Path(output)) if output else None).root)

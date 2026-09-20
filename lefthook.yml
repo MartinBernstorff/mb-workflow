@@ -7,6 +7,9 @@ pre-commit:
     - name: format-fix
       run: moon run format-fix
       stage_fixed: true
+    - name: diagram
+      run: moon run diagram
+      stage_fixed: true
     - name: types
       run: moon run types
     - name: modularity
