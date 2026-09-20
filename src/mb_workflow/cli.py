@@ -8,7 +8,6 @@ from mb_workflow.clock import Today
 from mb_workflow.config import ConfigFileName, WorkingDirectory
 from mb_workflow.diagram import DiagramPath, diagram
 from mb_workflow.issue import BranchSlug, IssueIdentifier
-from mb_workflow.link import TaskId
 from mb_workflow.lock import LockName, LockPath
 from mb_workflow.logging import LogLevel, configure
 from mb_workflow.shell import ExistingDirectory, Shell
@@ -34,6 +33,7 @@ from mb_workflow.workflows.flow import link, show
 from mb_workflow.workflows.label import LabelChange, LabelRequest, change_label
 from mb_workflow.workflows.open_issue import OpenRequest, open_issue
 from mb_workflow.workflows.review_workspaces import create_workspaces
+from mb_workflow.workspace.link import TaskId
 from mb_workflow.workspace.orca import ProjectSelector, TerminalText, TimeoutMs, WorkspaceStatus
 
 app = typer.Typer(no_args_is_help=True)

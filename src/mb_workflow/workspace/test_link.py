@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from mb_workflow.config import ConfigFileName, ConfigPath
-from mb_workflow.link import (
+from mb_workflow.workspace.link import (
     InvalidLinkError,
     LinkFileName,
     MissingLinkError,

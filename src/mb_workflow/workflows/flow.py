@@ -10,15 +10,15 @@ from mb_workflow.config import (
     TodoistTracker,
     WorkingDirectory,
 )
-from mb_workflow.link import (
+from mb_workflow.models import Value
+from mb_workflow.shell import ExitCode
+from mb_workflow.workspace.link import (
     InvalidLinkError,
     MissingLinkError,
     TaskId,
     WorkspaceLink,
     WorkspaceRoot,
 )
-from mb_workflow.models import Value
-from mb_workflow.shell import ExitCode
 
 logger = logging.getLogger(__name__)
 

@@ -8,9 +8,9 @@ from mb_workflow.config import (
     Settings,
     WorkingDirectory,
 )
-from mb_workflow.link import LinkFileName, TaskId, WorkspaceLink, WorkspaceRoot
 from mb_workflow.shell import ExitCode
 from mb_workflow.workflows.flow import FlowReport, link, show
+from mb_workflow.workspace.link import LinkFileName, TaskId, WorkspaceLink, WorkspaceRoot
 
 if TYPE_CHECKING:
     from pathlib import Path
