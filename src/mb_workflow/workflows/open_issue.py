@@ -1,9 +1,11 @@
 import logging
 from subprocess import CalledProcessError
 
-from mb_workflow.linear import Assignee, BranchSlug, IssueIdentifier, IssueState, Linear
+from mb_workflow.issue import BranchSlug, IssueIdentifier
 from mb_workflow.models import Model, Value
-from mb_workflow.orca import (
+from mb_workflow.shell import ExitCode, Shell
+from mb_workflow.trackers.linear import Assignee, IssueState, Linear
+from mb_workflow.workspace.orca import (
     AgentName,
     Orca,
     OrcaError,
@@ -13,7 +15,6 @@ from mb_workflow.orca import (
     TimeoutMs,
     WorktreeName,
 )
-from mb_workflow.shell import ExitCode, Shell
 
 logger = logging.getLogger(__name__)
 

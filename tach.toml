@@ -1,109 +1,57 @@
 source_roots = ["src"]
 
+# Tests sit beside the code they cover, so the root module also owns test_git.py and test_lock.py.
 [[modules]]
 path = "mb_workflow"
-depends_on = [
-    "mb_workflow.autolabel",
-    "mb_workflow.cache",
-    "mb_workflow.cli",
-    "mb_workflow.clock",
-    "mb_workflow.finalize_review",
-    "mb_workflow.git",
-    "mb_workflow.github",
-    "mb_workflow.label",
-    "mb_workflow.linear",
-    "mb_workflow.lock",
-    "mb_workflow.open_issue",
-    "mb_workflow.orca",
-    "mb_workflow.review_workspaces",
-    "mb_workflow.shell",
-]
+depends_on = ["mb_workflow.cli", "mb_workflow.git", "mb_workflow.lock"]
 
 [[modules]]
 path = "mb_workflow.cli"
 depends_on = [
-    "mb_workflow.autolabel",
     "mb_workflow.cache",
     "mb_workflow.clock",
-    "mb_workflow.finalize_review",
-    "mb_workflow.github",
-    "mb_workflow.label",
-    "mb_workflow.linear",
+    "mb_workflow.issue",
     "mb_workflow.lock",
     "mb_workflow.logging",
-    "mb_workflow.open_issue",
-    "mb_workflow.orca",
-    "mb_workflow.review_workspaces",
     "mb_workflow.shell",
+    "mb_workflow.trackers",
+    "mb_workflow.workflows",
+    "mb_workflow.workspace",
 ]
 
 [[modules]]
-path = "mb_workflow.open_issue"
-depends_on = [
-    "mb_workflow.linear",
-    "mb_workflow.models",
-    "mb_workflow.orca",
-    "mb_workflow.shell",
-]
-
-[[modules]]
-path = "mb_workflow.label"
-depends_on = [
-    "mb_workflow.linear",
-    "mb_workflow.models",
-    "mb_workflow.orca",
-    "mb_workflow.shell",
-]
-
-[[modules]]
-path = "mb_workflow.autolabel"
+path = "mb_workflow.workflows"
 depends_on = [
     "mb_workflow.cache",
-    "mb_workflow.linear",
-    "mb_workflow.models",
-    "mb_workflow.shell",
-]
-
-[[modules]]
-path = "mb_workflow.linear"
-depends_on = ["mb_workflow.clock", "mb_workflow.models", "mb_workflow.shell"]
-
-[[modules]]
-path = "mb_workflow.finalize_review"
-depends_on = [
-    "mb_workflow.github",
-    "mb_workflow.orca",
-    "mb_workflow.shell",
-]
-
-[[modules]]
-path = "mb_workflow.review_workspaces"
-depends_on = [
     "mb_workflow.clock",
     "mb_workflow.git",
-    "mb_workflow.github",
+    "mb_workflow.issue",
     "mb_workflow.lock",
     "mb_workflow.models",
-    "mb_workflow.orca",
+    "mb_workflow.pull_request",
+    "mb_workflow.shell",
+    "mb_workflow.trackers",
+    "mb_workflow.workspace",
+]
+
+[[modules]]
+path = "mb_workflow.workspace"
+depends_on = [
+    "mb_workflow.git",
+    "mb_workflow.issue",
+    "mb_workflow.models",
+    "mb_workflow.pull_request",
     "mb_workflow.shell",
 ]
 
 [[modules]]
-path = "mb_workflow.github"
+path = "mb_workflow.trackers"
 depends_on = [
     "mb_workflow.clock",
     "mb_workflow.git",
+    "mb_workflow.issue",
     "mb_workflow.models",
-    "mb_workflow.shell",
-]
-
-[[modules]]
-path = "mb_workflow.orca"
-depends_on = [
-    "mb_workflow.git",
-    "mb_workflow.github",
-    "mb_workflow.linear",
-    "mb_workflow.models",
+    "mb_workflow.pull_request",
     "mb_workflow.shell",
 ]
 
@@ -117,6 +65,14 @@ depends_on = ["mb_workflow.models"]
 
 [[modules]]
 path = "mb_workflow.git"
+depends_on = ["mb_workflow.models"]
+
+[[modules]]
+path = "mb_workflow.issue"
+depends_on = ["mb_workflow.models"]
+
+[[modules]]
+path = "mb_workflow.pull_request"
 depends_on = ["mb_workflow.models"]
 
 [[modules]]

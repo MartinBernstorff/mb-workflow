@@ -7,8 +7,10 @@ from subprocess import CalledProcessError
 from pydantic import ValidationError
 
 from mb_workflow.cache import CacheDirectory
-from mb_workflow.linear import (
-    IssueIdentifier,
+from mb_workflow.issue import IssueIdentifier
+from mb_workflow.models import Model, Value
+from mb_workflow.shell import ExitCode, Shell
+from mb_workflow.trackers.linear import (
     IssueQuery,
     IssueText,
     LabelName,
@@ -18,8 +20,6 @@ from mb_workflow.linear import (
     Project,
     StatusName,
 )
-from mb_workflow.models import Model, Value
-from mb_workflow.shell import ExitCode, Shell
 
 logger = logging.getLogger(__name__)
 

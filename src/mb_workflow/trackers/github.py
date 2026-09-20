@@ -5,24 +5,13 @@ from typing import TYPE_CHECKING
 
 from mb_workflow.git import BranchName, BranchNames
 from mb_workflow.models import Model, Payload, Value
+from mb_workflow.pull_request import PrNumber, PrTitle
 from mb_workflow.shell import Command, CommandOutput, ExistingDirectory, Shell
 
 if TYPE_CHECKING:
     from mb_workflow.clock import Today
 
 logger = logging.getLogger(__name__)
-
-
-class PrNumber(Value[int]):
-    @staticmethod
-    def fake() -> PrNumber:
-        return PrNumber(1234)
-
-
-class PrTitle(Value[str]):
-    @staticmethod
-    def fake() -> PrTitle:
-        return PrTitle("Add review workspaces")
 
 
 class PullRequest(Payload):

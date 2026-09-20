@@ -1,9 +1,13 @@
 import logging
 from subprocess import CalledProcessError
+from typing import TYPE_CHECKING
 
-from mb_workflow.github import GitHub, PrNumber, ReviewRequest
-from mb_workflow.orca import Orca, OrcaError, WorkspaceStatus, Worktree
 from mb_workflow.shell import ExitCode, Shell
+from mb_workflow.trackers.github import GitHub, ReviewRequest
+from mb_workflow.workspace.orca import Orca, OrcaError, WorkspaceStatus, Worktree
+
+if TYPE_CHECKING:
+    from mb_workflow.pull_request import PrNumber
 
 logger = logging.getLogger(__name__)
 

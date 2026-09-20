@@ -4,13 +4,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mb_workflow.git import Ref
-from mb_workflow.github import PrNumber, PullRequest
-from mb_workflow.linear import IssueIdentifier
+from mb_workflow.issue import IssueIdentifier
 from mb_workflow.models import Payload, Value
+from mb_workflow.pull_request import PrNumber, PrTitle
 from mb_workflow.shell import Command, CommandOutput, ExistingDirectory, Shell
 
 if TYPE_CHECKING:
-    from mb_workflow.linear import BranchSlug
+    from mb_workflow.issue import BranchSlug
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +53,11 @@ class WorktreeName(Value[str]):
 class WorktreeComment(Value[str]):
     @staticmethod
     def fake() -> WorktreeComment:
-        return WorktreeComment.of(PullRequest.fake())
+        return WorktreeComment.of(PrNumber.fake(), PrTitle.fake())
 
     @staticmethod
-    def of(pr: PullRequest) -> WorktreeComment:
-        return WorktreeComment(f"PR #{pr.number.root} — {pr.title.root}")
+    def of(pr: PrNumber, title: PrTitle) -> WorktreeComment:
+        return WorktreeComment(f"PR #{pr.root} — {title.root}")
 
 
 class WorkspaceStatus(Value[str]):
@@ -265,7 +265,7 @@ class Orca:
         return Worktrees.parse(self._shell.run(Command(("orca", "worktree", "list", "--json"))))
 
     def create_worktree(
-        self, repo: RepoId, pr: PullRequest, status: WorkspaceStatus
+        self, repo: RepoId, pr: PrNumber, title: PrTitle, status: WorkspaceStatus
     ) -> ExistingDirectory:
         return created_path(
             self._shell.run(
@@ -277,12 +277,12 @@ class Orca:
                         "--repo",
                         f"id:{repo.root}",
                         "--name",
-                        WorktreeName.of(pr.number).root,
+                        WorktreeName.of(pr).root,
                         "--no-parent",
                         "--issue",
-                        str(pr.number.root),
+                        str(pr.root),
                         "--comment",
-                        WorktreeComment.of(pr).root,
+                        WorktreeComment.of(pr, title).root,
                         "--workspace-status",
                         status.root,
                         "--json",

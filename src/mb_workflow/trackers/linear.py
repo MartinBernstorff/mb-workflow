@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import AliasPath, Field, ValidationError
 
+from mb_workflow.issue import IssueIdentifier
 from mb_workflow.models import Model, Payload, Value
 from mb_workflow.shell import Command, CommandOutput, Shell
 
@@ -13,18 +14,6 @@ if TYPE_CHECKING:
     from mb_workflow.clock import Today
 
 logger = logging.getLogger(__name__)
-
-
-class IssueIdentifier(Value[str]):
-    @staticmethod
-    def fake() -> IssueIdentifier:
-        return IssueIdentifier("E-4289")
-
-
-class BranchSlug(Value[str]):
-    @staticmethod
-    def fake() -> BranchSlug:
-        return BranchSlug(f"mab/{IssueIdentifier.fake().root.lower()}-feat-add-widget")
 
 
 class LabelName(Value[str]):

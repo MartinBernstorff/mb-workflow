@@ -3,10 +3,12 @@ from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
 from mb_workflow.clock import Today
-from mb_workflow.github import GitHub, Lookback, MergedSince, PrNumber, PullRequests
 from mb_workflow.lock import AlreadyRunningError, LockPath
 from mb_workflow.models import Model, Value
-from mb_workflow.orca import (
+from mb_workflow.pull_request import PrNumber
+from mb_workflow.shell import ExistingDirectory, ExitCode, Shell
+from mb_workflow.trackers.github import GitHub, Lookback, MergedSince, PullRequests
+from mb_workflow.workspace.orca import (
     Orca,
     OrcaError,
     RepoId,
@@ -15,7 +17,6 @@ from mb_workflow.orca import (
     WorktreePath,
     Worktrees,
 )
-from mb_workflow.shell import ExistingDirectory, ExitCode, Shell
 
 if TYPE_CHECKING:
     from mb_workflow.git import BranchNames
@@ -221,7 +222,7 @@ def workspaces_for_review(
         logger.info("Processing #%s", pr.number.root)
         try:
             logger.info("    Creating worktree %s", WorktreeName.of(pr.number).root)
-            path = orca.create_worktree(repo, pr, status)
+            path = orca.create_worktree(repo, pr.number, pr.title, status)
             logger.info("    Checking out into %s", path.root)
             github.checkout(pr.number, path)
         except (CalledProcessError, OrcaError, ValueError) as error:
