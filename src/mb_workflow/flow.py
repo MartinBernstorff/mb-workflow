@@ -89,21 +89,25 @@ class Edges(Value[frozenset[Edge]]):
             )
         )
 
-    def checked(self, state: StateName, event: EventName) -> StateName:
+    def events(self) -> EventNames:
+        return EventNames.of(frozenset(edge.event for edge in self.root))
+
+    def events_from(self, state: StateName) -> EventNames:
+        return EventNames.of(frozenset(edge.event for edge in self.root if edge.source == state))
+
+    def target_from(self, state: StateName, event: EventName) -> StateName:
         for edge in self.root:
             if edge.source == state and edge.event == event:
                 return edge.target
-        legal = ", ".join(name.root for name in EventNames.of_state(state).root)
+        legal = ", ".join(name.root for name in self.events_from(state).root)
         raise FlowError(f"{event.root} is not legal from {state.root}. Legal: {legal or 'none'}.")
 
-    def forced(self, event: EventName) -> StateName:
+    def target_of(self, event: EventName) -> StateName:
         targets = {edge.target for edge in self.root if edge.event == event}
         if len(targets) == 1:
             return targets.pop()
-        if not targets:
-            known = ", ".join(name.root for name in EventNames.of_chart().root)
-            raise FlowError(f"{event.root} is no event of the chart. Its events: {known}.")
-        raise FlowError(f"{event.root} leads to more than one state, so it cannot be forced.")
+        known = ", ".join(name.root for name in self.events().root)
+        raise FlowError(f"{event.root} is no event of the chart. Its events: {known}.")
 
 
 class StateNames(Value[frozenset[StateName]]):
@@ -129,14 +133,16 @@ class EventNames(Value[tuple[EventName, ...]]):
         return EventNames((EventName.fake(),))
 
     @staticmethod
+    def of(names: frozenset[EventName]) -> EventNames:
+        return EventNames(tuple(EventName(text) for text in sorted(name.root for name in names)))
+
+    @staticmethod
     def of_chart() -> EventNames:
-        names = {edge.event.root for edge in Edges.of_chart().root}
-        return EventNames(tuple(EventName(name) for name in sorted(names)))
+        return Edges.of_chart().events()
 
     @staticmethod
     def of_state(state: StateName) -> EventNames:
-        outgoing = {edge.event.root for edge in Edges.of_chart().root if edge.source == state}
-        return EventNames(tuple(EventName(name) for name in sorted(outgoing)))
+        return Edges.of_chart().events_from(state)
 
 
 class FlowStatus(Model):

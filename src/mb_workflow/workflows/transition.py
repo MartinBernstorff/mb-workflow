@@ -32,9 +32,8 @@ def transition(shell: Shell, event: EventName, force: Force) -> ExitCode:
 
 
 def transitioned(store: StatusStore, event: EventName, force: Force) -> ExitCode:
-    state = store.read()
     edges = Edges.of_chart()
-    target = edges.forced(event) if force.root else edges.checked(state, event)
+    target = edges.target_of(event) if force.root else edges.target_from(store.read(), event)
     store.write(target)
-    logger.info("Moved from %s to %s.", state.root, target.root)
+    logger.info("Moved to %s.", target.root)
     return ExitCode(0)

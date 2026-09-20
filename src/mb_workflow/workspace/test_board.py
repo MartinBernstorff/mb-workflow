@@ -1,8 +1,14 @@
 import pytest
 
 from mb_workflow.flow import StateName, StateNames
+from mb_workflow.shell import Command
 from mb_workflow.workspace.board import BoardError, Column, Columns, StateColumns
-from mb_workflow.workspace.orca import ColumnLabel, ErrorMessage, WorkspaceStatus
+from mb_workflow.workspace.orca import (
+    ColumnLabel,
+    ErrorMessage,
+    WorkspaceStatus,
+    WorktreeSelector,
+)
 
 REFUSAL = ErrorMessage(
     'Unknown workspace status "zzz". Available: status-8-2 (Tomorrow), in-progress (Grilling), '
@@ -69,3 +75,19 @@ def test_a_state_the_board_has_no_column_for_is_a_clear_error() -> None:
 def test_a_state_outside_the_chart_has_no_board_column() -> None:
     with pytest.raises(BoardError, match="no board column"):
         _ = StateColumns.of_chart().label_of(StateName("Abandoned"))
+
+
+def test_a_state_is_written_to_the_board_by_its_column_label() -> None:
+    assignment = board().column_for(StateName("Review")).assignment(WorktreeSelector.current())
+    assert assignment == Command(
+        (
+            "orca",
+            "worktree",
+            "set",
+            "--worktree",
+            "current",
+            "--workspace-status",
+            "Awaiting review",
+            "--json",
+        )
+    )

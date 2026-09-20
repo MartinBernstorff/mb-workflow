@@ -117,33 +117,39 @@ def test_the_chart_names_every_event_it_holds() -> None:
 
 
 def test_a_legal_event_leads_to_the_state_the_chart_names() -> None:
-    assert Edges.of_chart().checked(QA, EventName("ready")) == REVIEW
+    assert Edges.of_chart().target_from(QA, EventName("ready")) == REVIEW
 
 
 def test_an_illegal_event_names_the_current_state_and_the_events_legal_from_it() -> None:
     with pytest.raises(FlowError, match=r"merge is not legal from Grilling\. Legal: to-ticket\."):
-        _ = Edges.of_chart().checked(GRILLING, EventName("merge"))
+        _ = Edges.of_chart().target_from(GRILLING, EventName("merge"))
 
 
 def test_an_event_outside_the_chart_is_illegal_from_every_state() -> None:
     with pytest.raises(FlowError, match=r"abandon is not legal from QA\."):
-        _ = Edges.of_chart().checked(QA, EventName("abandon"))
+        _ = Edges.of_chart().target_from(QA, EventName("abandon"))
 
 
 def test_the_final_state_has_no_legal_event_to_offer() -> None:
     with pytest.raises(FlowError, match=r"Legal: none\."):
-        _ = Edges.of_chart().checked(MERGED, EventName("merge"))
+        _ = Edges.of_chart().target_from(MERGED, EventName("merge"))
 
 
 def test_forcing_an_event_leads_to_its_state_from_wherever_the_work_sits() -> None:
-    assert Edges.of_chart().forced(EventName("merge")) == MERGING
+    assert Edges.of_chart().target_of(EventName("merge")) == MERGING
 
 
 def test_every_event_leads_to_one_state_so_any_of_them_can_be_forced() -> None:
     edges = Edges.of_chart()
-    assert {edges.forced(name) for name in EventNames.of_chart().root} <= StateNames.of_chart().root
+    assert {edges.target_of(name) for name in edges.events().root} <= StateNames.of_chart().root
 
 
 def test_forcing_an_event_outside_the_chart_lists_the_events_it_holds() -> None:
     with pytest.raises(FlowError, match=r"abandon is no event of the chart\. Its events: grill,"):
-        _ = Edges.of_chart().forced(EventName("abandon"))
+        _ = Edges.of_chart().target_of(EventName("abandon"))
+
+
+def test_the_events_legal_from_a_state_come_from_the_edges_at_hand() -> None:
+    edges = Edges(frozenset({edge(GRILLING, EventName("abandon"), MERGED)}))
+    with pytest.raises(FlowError, match=r"Legal: abandon\."):
+        _ = edges.target_from(GRILLING, EventName("to-ticket"))

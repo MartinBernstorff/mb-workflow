@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 
@@ -7,7 +8,7 @@ from mb_workflow.cache import CacheDirectory
 from mb_workflow.clock import Today
 from mb_workflow.config import ConfigFileName, WorkingDirectory
 from mb_workflow.diagram import DiagramPath, diagram
-from mb_workflow.flow import EventName
+from mb_workflow.flow import EventName, EventNames
 from mb_workflow.issue import BranchSlug, IssueIdentifier
 from mb_workflow.lock import LockName, LockPath
 from mb_workflow.logging import LogLevel, configure
@@ -37,6 +38,9 @@ from mb_workflow.workflows.review_workspaces import create_workspaces
 from mb_workflow.workflows.show_flow import AsJson, show_flow
 from mb_workflow.workflows.transition import Force, transition
 from mb_workflow.workspace.orca import ProjectSelector, TerminalText, TimeoutMs, WorkspaceStatus
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 app = typer.Typer(no_args_is_help=True)
 linear_app = typer.Typer(no_args_is_help=True)
@@ -219,26 +223,21 @@ def flow_show(
     raise typer.Exit(code=show_flow(shell, AsJson(as_json)).root)
 
 
-@flow_app.command("resolve-review")
-@flow_app.command("merged")
-@flow_app.command("merge")
-@flow_app.command("ready")
-@flow_app.command("qa")
-@flow_app.command("implement")
-@flow_app.command("specced")
-@flow_app.command("to-ticket")
-@flow_app.command("grill")
-def flow_event(
-    ctx: typer.Context,
-    force: bool = typer.Option(
-        False,
-        "--force",
-        help="Write the target state without checking the event is legal from the current one.",
-    ),
-    quiet: bool = typer.Option(False, "--quiet", "-q"),
-) -> None:
-    """Move the workspace to the state this event leads to."""
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    event = EventName(ctx.info_name if ctx.info_name is not None else "")
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=transition(shell, event, Force(force)).root)
+def flow_event(event: EventName) -> Callable[..., None]:
+    def move(
+        force: bool = typer.Option(
+            False, "--force", help="Write the target state without checking the event is legal."
+        ),
+        quiet: bool = typer.Option(False, "--quiet", "-q"),
+    ) -> None:
+        configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+        shell = Shell(ExistingDirectory(Path.cwd()))
+        raise typer.Exit(code=transition(shell, event, Force(force)).root)
+
+    return move
+
+
+for name in EventNames.of_chart().root:
+    _ = flow_app.command(name.root, help="Move the workspace to the state this event leads to.")(
+        flow_event(name)
+    )
