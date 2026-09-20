@@ -79,11 +79,11 @@ class Edges(Value[frozenset[Edge]]):
         return Edges(frozenset({Edge.fake()}))
 
     @staticmethod
-    def of_chart() -> Edges:
+    def of_chart(chart: type[WorkflowChart]) -> Edges:
         return Edges(
             frozenset(
                 Edge.of_transition(transition, EventName(str(name)))
-                for state in WorkflowChart.states
+                for state in chart.states
                 for transition in state.transitions
                 for name in transition.events
             )
@@ -116,12 +116,12 @@ class StateNames(Value[frozenset[StateName]]):
         return StateNames(frozenset({StateName.fake()}))
 
     @staticmethod
-    def of_chart() -> StateNames:
-        return StateNames(frozenset(StateName(state.name) for state in WorkflowChart.states))
+    def of_chart(chart: type[WorkflowChart]) -> StateNames:
+        return StateNames(frozenset(StateName(state.name) for state in chart.states))
 
     @staticmethod
-    def start() -> StateName:
-        initial = WorkflowChart.initial_state
+    def start(chart: type[WorkflowChart]) -> StateName:
+        initial = chart.initial_state
         if initial is None:
             raise ValueError("The chart has no state to start in.")
         return StateName(initial.name)
@@ -137,12 +137,12 @@ class EventNames(Value[tuple[EventName, ...]]):
         return EventNames(tuple(EventName(text) for text in sorted(name.root for name in names)))
 
     @staticmethod
-    def of_chart() -> EventNames:
-        return Edges.of_chart().events()
+    def of_chart(chart: type[WorkflowChart]) -> EventNames:
+        return Edges.of_chart(chart).events()
 
     @staticmethod
-    def of_state(state: StateName) -> EventNames:
-        return Edges.of_chart().events_from(state)
+    def of_state(chart: type[WorkflowChart], state: StateName) -> EventNames:
+        return Edges.of_chart(chart).events_from(state)
 
 
 class FlowStatus(Model):
@@ -154,5 +154,5 @@ class FlowStatus(Model):
         return FlowStatus(state=StateName.fake(), events=EventNames.fake())
 
     @staticmethod
-    def of(state: StateName) -> FlowStatus:
-        return FlowStatus(state=state, events=EventNames.of_state(state))
+    def of(chart: type[WorkflowChart], state: StateName) -> FlowStatus:
+        return FlowStatus(state=state, events=EventNames.of_state(chart, state))

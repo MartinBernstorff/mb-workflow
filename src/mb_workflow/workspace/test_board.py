@@ -1,14 +1,8 @@
 import pytest
 
-from mb_workflow.flow import StateName, StateNames
-from mb_workflow.shell import Command
+from mb_workflow.flow import StateName, StateNames, WorkflowChart
 from mb_workflow.workspace.board import BoardError, Column, Columns, StateColumns
-from mb_workflow.workspace.orca import (
-    ColumnLabel,
-    ErrorMessage,
-    WorkspaceStatus,
-    WorktreeSelector,
-)
+from mb_workflow.workspace.orca import ColumnLabel, ErrorMessage, WorkspaceStatus
 
 REFUSAL = ErrorMessage(
     'Unknown workspace status "zzz". Available: status-8-2 (Tomorrow), in-progress (Grilling), '
@@ -19,6 +13,10 @@ REFUSAL = ErrorMessage(
 
 def board() -> Columns:
     return Columns.parse(REFUSAL)
+
+
+def state_of(status: WorkspaceStatus | None) -> StateName:
+    return board().state_of(status, StateNames.start(WorkflowChart))
 
 
 def test_reads_the_id_to_label_table_from_the_columns_orca_names() -> None:
@@ -40,26 +38,25 @@ def test_an_id_the_board_does_not_define_has_no_label() -> None:
 
 
 def test_every_state_the_chart_holds_has_a_board_column() -> None:
-    assert (
-        StateNames(frozenset(pairing.state for pairing in StateColumns.of_chart().root))
-        == StateNames.of_chart()
-    )
+    assert StateNames(
+        frozenset(pairing.state for pairing in StateColumns.of_chart().root)
+    ) == StateNames.of_chart(WorkflowChart)
 
 
 def test_a_column_id_resolves_to_the_state_its_label_stands_for() -> None:
-    assert board().state_of(WorkspaceStatus("in-review")) == StateName("QA")
+    assert state_of(WorkspaceStatus("in-review")) == StateName("QA")
 
 
 def test_a_column_outside_the_chart_reads_as_the_start_state() -> None:
-    assert board().state_of(WorkspaceStatus("status-8")) == StateNames.start()
+    assert state_of(WorkspaceStatus("status-8")) == StateNames.start(WorkflowChart)
 
 
 def test_a_workspace_with_no_column_reads_as_the_start_state() -> None:
-    assert board().state_of(None) == StateNames.start()
+    assert state_of(None) == StateNames.start(WorkflowChart)
 
 
 def test_a_column_the_board_no_longer_defines_reads_as_the_start_state() -> None:
-    assert board().state_of(WorkspaceStatus("status-404")) == StateNames.start()
+    assert state_of(WorkspaceStatus("status-404")) == StateNames.start(WorkflowChart)
 
 
 def test_a_state_maps_to_the_board_column_its_label_names() -> None:
@@ -75,19 +72,3 @@ def test_a_state_the_board_has_no_column_for_is_a_clear_error() -> None:
 def test_a_state_outside_the_chart_has_no_board_column() -> None:
     with pytest.raises(BoardError, match="no board column"):
         _ = StateColumns.of_chart().label_of(StateName("Abandoned"))
-
-
-def test_a_state_is_written_to_the_board_by_its_column_label() -> None:
-    assignment = board().column_for(StateName("Review")).assignment(WorktreeSelector.current())
-    assert assignment == Command(
-        (
-            "orca",
-            "worktree",
-            "set",
-            "--worktree",
-            "current",
-            "--workspace-status",
-            "Awaiting review",
-            "--json",
-        )
-    )

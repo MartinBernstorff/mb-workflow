@@ -1,6 +1,5 @@
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import typer
 
@@ -8,7 +7,7 @@ from mb_workflow.cache import CacheDirectory
 from mb_workflow.clock import Today
 from mb_workflow.config import ConfigFileName, WorkingDirectory
 from mb_workflow.diagram import DiagramPath, diagram
-from mb_workflow.flow import EventName, EventNames
+from mb_workflow.flow import EventName
 from mb_workflow.issue import BranchSlug, IssueIdentifier
 from mb_workflow.lock import LockName, LockPath
 from mb_workflow.logging import LogLevel, configure
@@ -39,9 +38,6 @@ from mb_workflow.workflows.show_flow import AsJson, show_flow
 from mb_workflow.workflows.transition import Force, transition
 from mb_workflow.workspace.orca import ProjectSelector, TerminalText, TimeoutMs, WorkspaceStatus
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
 app = typer.Typer(no_args_is_help=True)
 linear_app = typer.Typer(no_args_is_help=True)
 app.add_typer(linear_app, name="linear")
@@ -49,6 +45,7 @@ flow_app = typer.Typer(no_args_is_help=True)
 app.add_typer(flow_app, name="flow")
 
 REVIEWING = "status-8"
+FORCING = "Write the target state without checking the event is legal from the current one."
 
 
 # Typer collapses a single-command app into the root command unless a callback exists.
@@ -223,21 +220,100 @@ def flow_show(
     raise typer.Exit(code=show_flow(shell, AsJson(as_json)).root)
 
 
-def flow_event(event: EventName) -> Callable[..., None]:
-    def move(
-        force: bool = typer.Option(
-            False, "--force", help="Write the target state without checking the event is legal."
-        ),
-        quiet: bool = typer.Option(False, "--quiet", "-q"),
-    ) -> None:
-        configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-        shell = Shell(ExistingDirectory(Path.cwd()))
-        raise typer.Exit(code=transition(shell, event, Force(force)).root)
-
-    return move
+@flow_app.command("grill")
+def flow_grill(
+    force: bool = typer.Option(False, "--force", help=FORCING),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Move the workspace to the state this event leads to."""
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    shell = Shell(ExistingDirectory(Path.cwd()))
+    raise typer.Exit(code=transition(shell, EventName("grill"), Force(force)).root)
 
 
-for name in EventNames.of_chart().root:
-    _ = flow_app.command(name.root, help="Move the workspace to the state this event leads to.")(
-        flow_event(name)
-    )
+@flow_app.command("to-ticket")
+def flow_to_ticket(
+    force: bool = typer.Option(False, "--force", help=FORCING),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Move the workspace to the state this event leads to."""
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    shell = Shell(ExistingDirectory(Path.cwd()))
+    raise typer.Exit(code=transition(shell, EventName("to-ticket"), Force(force)).root)
+
+
+@flow_app.command("specced")
+def flow_specced(
+    force: bool = typer.Option(False, "--force", help=FORCING),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Move the workspace to the state this event leads to."""
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    shell = Shell(ExistingDirectory(Path.cwd()))
+    raise typer.Exit(code=transition(shell, EventName("specced"), Force(force)).root)
+
+
+@flow_app.command("implement")
+def flow_implement(
+    force: bool = typer.Option(False, "--force", help=FORCING),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Move the workspace to the state this event leads to."""
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    shell = Shell(ExistingDirectory(Path.cwd()))
+    raise typer.Exit(code=transition(shell, EventName("implement"), Force(force)).root)
+
+
+@flow_app.command("qa")
+def flow_qa(
+    force: bool = typer.Option(False, "--force", help=FORCING),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Move the workspace to the state this event leads to."""
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    shell = Shell(ExistingDirectory(Path.cwd()))
+    raise typer.Exit(code=transition(shell, EventName("qa"), Force(force)).root)
+
+
+@flow_app.command("ready")
+def flow_ready(
+    force: bool = typer.Option(False, "--force", help=FORCING),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Move the workspace to the state this event leads to."""
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    shell = Shell(ExistingDirectory(Path.cwd()))
+    raise typer.Exit(code=transition(shell, EventName("ready"), Force(force)).root)
+
+
+@flow_app.command("merge")
+def flow_merge(
+    force: bool = typer.Option(False, "--force", help=FORCING),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Move the workspace to the state this event leads to."""
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    shell = Shell(ExistingDirectory(Path.cwd()))
+    raise typer.Exit(code=transition(shell, EventName("merge"), Force(force)).root)
+
+
+@flow_app.command("merged")
+def flow_merged(
+    force: bool = typer.Option(False, "--force", help=FORCING),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Move the workspace to the state this event leads to."""
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    shell = Shell(ExistingDirectory(Path.cwd()))
+    raise typer.Exit(code=transition(shell, EventName("merged"), Force(force)).root)
+
+
+@flow_app.command("resolve-review")
+def flow_resolve_review(
+    force: bool = typer.Option(False, "--force", help=FORCING),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Move the workspace to the state this event leads to."""
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    shell = Shell(ExistingDirectory(Path.cwd()))
+    raise typer.Exit(code=transition(shell, EventName("resolve-review"), Force(force)).root)

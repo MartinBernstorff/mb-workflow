@@ -2,7 +2,7 @@ import logging
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
-from mb_workflow.flow import Edges, EventName, FlowError
+from mb_workflow.flow import Edges, EventName, FlowError, StateNames, WorkflowChart
 from mb_workflow.models import Value
 from mb_workflow.shell import ExitCode, Shell
 from mb_workflow.workspace.board import Board, BoardError
@@ -22,7 +22,8 @@ class Force(Value[bool]):
 
 def transition(shell: Shell, event: EventName, force: Force) -> ExitCode:
     try:
-        return transitioned(Board.of_orca(Orca(shell)), event, force)
+        board = Board.of_orca(Orca(shell), StateNames.start(WorkflowChart))
+        return transitioned(WorkflowChart, board, event, force)
     except FileNotFoundError as error:
         logger.error("%s is not installed or not on PATH.", error.filename)
         return ExitCode(1)
@@ -31,8 +32,10 @@ def transition(shell: Shell, event: EventName, force: Force) -> ExitCode:
         return ExitCode(1)
 
 
-def transitioned(store: StatusStore, event: EventName, force: Force) -> ExitCode:
-    edges = Edges.of_chart()
+def transitioned(
+    chart: type[WorkflowChart], store: StatusStore, event: EventName, force: Force
+) -> ExitCode:
+    edges = Edges.of_chart(chart)
     target = edges.target_of(event) if force.root else edges.target_from(store.read(), event)
     store.write(target)
     logger.info("Moved to %s.", target.root)
