@@ -8,6 +8,7 @@ from mb_workflow.clock import Today
 from mb_workflow.config import ConfigFileName, WorkingDirectory
 from mb_workflow.diagram import DiagramPath, diagram
 from mb_workflow.issue import BranchSlug, IssueIdentifier
+from mb_workflow.link import TaskId
 from mb_workflow.lock import LockName, LockPath
 from mb_workflow.logging import LogLevel, configure
 from mb_workflow.shell import ExistingDirectory, Shell
@@ -29,7 +30,7 @@ from mb_workflow.workflows.autolabel import (
     autolabel,
 )
 from mb_workflow.workflows.finalize_review import finalize
-from mb_workflow.workflows.flow import show
+from mb_workflow.workflows.flow import link, show
 from mb_workflow.workflows.label import LabelChange, LabelRequest, change_label
 from mb_workflow.workflows.open_issue import OpenRequest, open_issue
 from mb_workflow.workflows.review_workspaces import create_workspaces
@@ -190,6 +191,19 @@ def open_linear_issue(
 def flow_show(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     raise typer.Exit(code=show(WorkingDirectory(Path.cwd()), ConfigFileName.default()).root)
+
+
+@flow_app.command("link")
+def flow_link(
+    task: str = typer.Argument("", help="Todoist task to link to this workspace."),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    raise typer.Exit(
+        code=link(
+            WorkingDirectory(Path.cwd()), ConfigFileName.default(), TaskId(task) if task else None
+        ).root
+    )
 
 
 @flow_app.command("diagram")
