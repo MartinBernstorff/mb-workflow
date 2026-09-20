@@ -1,5 +1,5 @@
 from mb_workflow.git import BranchName
-from mb_workflow.issue import PrNumber, PrTitle
+from mb_workflow.pull_request import PrNumber, PrTitle
 from mb_workflow.shell import CommandOutput
 from mb_workflow.trackers.github import (
     PullRequest,

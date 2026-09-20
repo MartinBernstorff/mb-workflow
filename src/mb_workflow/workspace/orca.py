@@ -4,12 +4,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mb_workflow.git import Ref
-from mb_workflow.issue import IssueIdentifier, PrNumber, PrTitle
+from mb_workflow.issue import IssueIdentifier
 from mb_workflow.models import Payload, Value
+from mb_workflow.pull_request import PrNumber, PrTitle
 from mb_workflow.shell import Command, CommandOutput, ExistingDirectory, Shell
 
 if TYPE_CHECKING:
-    from mb_workflow.git import BranchSlug
+    from mb_workflow.issue import BranchSlug
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +265,7 @@ class Orca:
         return Worktrees.parse(self._shell.run(Command(("orca", "worktree", "list", "--json"))))
 
     def create_worktree(
-        self, repo: RepoId, pr: PrNumber, comment: WorktreeComment, status: WorkspaceStatus
+        self, repo: RepoId, pr: PrNumber, title: PrTitle, status: WorkspaceStatus
     ) -> ExistingDirectory:
         return created_path(
             self._shell.run(
@@ -281,7 +282,7 @@ class Orca:
                         "--issue",
                         str(pr.root),
                         "--comment",
-                        comment.root,
+                        WorktreeComment.of(pr, title).root,
                         "--workspace-status",
                         status.root,
                         "--json",

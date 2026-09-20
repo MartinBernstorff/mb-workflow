@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from mb_workflow.clock import Today
 from mb_workflow.git import BranchName, BranchNames, Ref
-from mb_workflow.issue import PrNumber, PrTitle
+from mb_workflow.pull_request import PrNumber, PrTitle
 from mb_workflow.shell import ExistingDirectory, ExitCode
 from mb_workflow.trackers.github import (
     Lookback,

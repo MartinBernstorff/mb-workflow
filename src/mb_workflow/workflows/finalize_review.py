@@ -7,7 +7,7 @@ from mb_workflow.trackers.github import GitHub, ReviewRequest
 from mb_workflow.workspace.orca import Orca, OrcaError, WorkspaceStatus, Worktree
 
 if TYPE_CHECKING:
-    from mb_workflow.issue import PrNumber
+    from mb_workflow.pull_request import PrNumber
 
 logger = logging.getLogger(__name__)
 

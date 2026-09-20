@@ -1,6 +1,6 @@
 import pytest
 
-from mb_workflow.issue import PrNumber
+from mb_workflow.pull_request import PrNumber
 from mb_workflow.trackers.github import ReviewBody, ReviewDecision, ReviewRequest
 from mb_workflow.workflows.finalize_review import NotFinalizableError, reviewed_pr
 from mb_workflow.workspace.orca import WorkspaceStatus, Worktree

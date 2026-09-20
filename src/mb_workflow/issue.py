@@ -7,13 +7,7 @@ class IssueIdentifier(Value[str]):
         return IssueIdentifier("E-4289")
 
 
-class PrNumber(Value[int]):
+class BranchSlug(Value[str]):
     @staticmethod
-    def fake() -> PrNumber:
-        return PrNumber(1234)
-
-
-class PrTitle(Value[str]):
-    @staticmethod
-    def fake() -> PrTitle:
-        return PrTitle("Add review workspaces")
+    def fake() -> BranchSlug:
+        return BranchSlug(f"mab/{IssueIdentifier.fake().root.lower()}-feat-add-widget")

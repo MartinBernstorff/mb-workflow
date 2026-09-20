@@ -1,8 +1,7 @@
 import logging
 from subprocess import CalledProcessError
 
-from mb_workflow.git import BranchSlug
-from mb_workflow.issue import IssueIdentifier
+from mb_workflow.issue import BranchSlug, IssueIdentifier
 from mb_workflow.models import Model, Value
 from mb_workflow.shell import ExitCode, Shell
 from mb_workflow.trackers.linear import Assignee, IssueState, Linear

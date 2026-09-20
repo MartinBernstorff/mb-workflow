@@ -10,7 +10,6 @@ path = "mb_workflow.cli"
 depends_on = [
     "mb_workflow.cache",
     "mb_workflow.clock",
-    "mb_workflow.git",
     "mb_workflow.issue",
     "mb_workflow.lock",
     "mb_workflow.logging",
@@ -29,18 +28,19 @@ depends_on = [
     "mb_workflow.issue",
     "mb_workflow.lock",
     "mb_workflow.models",
+    "mb_workflow.pull_request",
     "mb_workflow.shell",
     "mb_workflow.trackers",
     "mb_workflow.workspace",
 ]
 
-# The workspace adapter and the tracker adapters share only the pure modules below.
 [[modules]]
 path = "mb_workflow.workspace"
 depends_on = [
     "mb_workflow.git",
     "mb_workflow.issue",
     "mb_workflow.models",
+    "mb_workflow.pull_request",
     "mb_workflow.shell",
 ]
 
@@ -51,6 +51,7 @@ depends_on = [
     "mb_workflow.git",
     "mb_workflow.issue",
     "mb_workflow.models",
+    "mb_workflow.pull_request",
     "mb_workflow.shell",
 ]
 
@@ -64,10 +65,14 @@ depends_on = ["mb_workflow.models"]
 
 [[modules]]
 path = "mb_workflow.git"
-depends_on = ["mb_workflow.issue", "mb_workflow.models"]
+depends_on = ["mb_workflow.models"]
 
 [[modules]]
 path = "mb_workflow.issue"
+depends_on = ["mb_workflow.models"]
+
+[[modules]]
+path = "mb_workflow.pull_request"
 depends_on = ["mb_workflow.models"]
 
 [[modules]]

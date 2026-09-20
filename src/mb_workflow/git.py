@@ -1,4 +1,3 @@
-from mb_workflow.issue import IssueIdentifier
 from mb_workflow.models import Value
 
 
@@ -12,12 +11,6 @@ class BranchNames(Value[tuple[BranchName, ...]]):
     @staticmethod
     def fake() -> BranchNames:
         return BranchNames((BranchName.fake(),))
-
-
-class BranchSlug(Value[str]):
-    @staticmethod
-    def fake() -> BranchSlug:
-        return BranchSlug(f"mab/{IssueIdentifier.fake().root.lower()}-feat-add-widget")
 
 
 class Ref(Value[str]):

@@ -4,8 +4,8 @@ from itertools import chain
 from typing import TYPE_CHECKING
 
 from mb_workflow.git import BranchName, BranchNames
-from mb_workflow.issue import PrNumber, PrTitle
 from mb_workflow.models import Model, Payload, Value
+from mb_workflow.pull_request import PrNumber, PrTitle
 from mb_workflow.shell import Command, CommandOutput, ExistingDirectory, Shell
 
 if TYPE_CHECKING:
