@@ -5,6 +5,7 @@ import typer
 
 from mb_workflow.cache import CacheDirectory
 from mb_workflow.clock import Today
+from mb_workflow.diagram import DiagramPath, diagram
 from mb_workflow.issue import BranchSlug, IssueIdentifier
 from mb_workflow.lock import LockName, LockPath
 from mb_workflow.logging import LogLevel, configure
@@ -35,6 +36,8 @@ from mb_workflow.workspace.orca import ProjectSelector, TerminalText, TimeoutMs,
 app = typer.Typer(no_args_is_help=True)
 linear_app = typer.Typer(no_args_is_help=True)
 app.add_typer(linear_app, name="linear")
+flow_app = typer.Typer(no_args_is_help=True)
+app.add_typer(flow_app, name="flow")
 
 REVIEWING = "status-8"
 
@@ -179,3 +182,17 @@ def open_linear_issue(
     )
     shell = Shell(ExistingDirectory(Path.cwd()))
     raise typer.Exit(code=open_issue(shell, request).root)
+
+
+@flow_app.command("diagram")
+def flow_diagram(
+    output: str = typer.Option(
+        "",
+        "--output",
+        "-o",
+        help="Write the chart as an image here; the extension picks the format. Prints a mermaid state diagram when omitted.",
+    ),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    raise typer.Exit(code=diagram(DiagramPath(Path(output)) if output else None).root)
