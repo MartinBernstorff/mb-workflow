@@ -5,6 +5,7 @@ import typer
 
 from mb_workflow.cache import CacheDirectory
 from mb_workflow.clock import Today
+from mb_workflow.config import ConfigFileName, WorkingDirectory
 from mb_workflow.diagram import DiagramPath, diagram
 from mb_workflow.issue import BranchSlug, IssueIdentifier
 from mb_workflow.lock import LockName, LockPath
@@ -28,6 +29,7 @@ from mb_workflow.workflows.autolabel import (
     autolabel,
 )
 from mb_workflow.workflows.finalize_review import finalize
+from mb_workflow.workflows.flow import show as show_config
 from mb_workflow.workflows.label import LabelChange, LabelRequest, change_label
 from mb_workflow.workflows.open_issue import OpenRequest, open_issue
 from mb_workflow.workflows.review_workspaces import create_workspaces
@@ -183,6 +185,12 @@ def open_linear_issue(
     )
     shell = Shell(ExistingDirectory(Path.cwd()))
     raise typer.Exit(code=open_issue(shell, request).root)
+
+
+@flow_app.command("config")
+def flow_config(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    raise typer.Exit(code=show_config(WorkingDirectory(Path.cwd()), ConfigFileName.default()).root)
 
 
 @flow_app.command("diagram")

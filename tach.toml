@@ -1,10 +1,11 @@
 source_roots = ["src"]
 
-# Tests sit beside the code they cover, so the root module also owns test_git.py and test_lock.py.
+# Tests sit beside the code they cover, so the root module also owns their imports.
 [[modules]]
 path = "mb_workflow"
 depends_on = [
     "mb_workflow.cli",
+    "mb_workflow.config",
     "mb_workflow.diagram",
     "mb_workflow.flow",
     "mb_workflow.git",
@@ -17,6 +18,7 @@ path = "mb_workflow.cli"
 depends_on = [
     "mb_workflow.cache",
     "mb_workflow.clock",
+    "mb_workflow.config",
     "mb_workflow.diagram",
     "mb_workflow.issue",
     "mb_workflow.lock",
@@ -32,6 +34,7 @@ path = "mb_workflow.workflows"
 depends_on = [
     "mb_workflow.cache",
     "mb_workflow.clock",
+    "mb_workflow.config",
     "mb_workflow.flow",
     "mb_workflow.git",
     "mb_workflow.issue",
@@ -112,4 +115,8 @@ depends_on = ["mb_workflow.models"]
 
 [[modules]]
 path = "mb_workflow.clock"
+depends_on = ["mb_workflow.models"]
+
+[[modules]]
+path = "mb_workflow.config"
 depends_on = ["mb_workflow.models"]
