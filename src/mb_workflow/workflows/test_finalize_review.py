@@ -1,8 +1,9 @@
 import pytest
 
-from mb_workflow.finalize_review import NotFinalizableError, reviewed_pr
-from mb_workflow.github import PrNumber, ReviewBody, ReviewDecision, ReviewRequest
-from mb_workflow.orca import WorkspaceStatus, Worktree
+from mb_workflow.issue import PrNumber
+from mb_workflow.trackers.github import ReviewBody, ReviewDecision, ReviewRequest
+from mb_workflow.workflows.finalize_review import NotFinalizableError, reviewed_pr
+from mb_workflow.workspace.orca import WorkspaceStatus, Worktree
 
 
 def test_finalizes_a_worktree_in_the_reviewing_status() -> None:

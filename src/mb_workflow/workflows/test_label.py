@@ -1,9 +1,10 @@
 import pytest
 
-from mb_workflow.label import UnlinkedWorktreeError, labelled_issue
-from mb_workflow.linear import Issue, IssueIdentifier, LabelName, LabelNames
-from mb_workflow.orca import Worktree
+from mb_workflow.issue import IssueIdentifier
 from mb_workflow.shell import CommandOutput
+from mb_workflow.trackers.linear import Issue, LabelName, LabelNames
+from mb_workflow.workflows.label import UnlinkedWorktreeError, labelled_issue
+from mb_workflow.workspace.orca import Worktree
 
 
 def test_labels_the_linear_issue_the_worktree_is_linked_to() -> None:

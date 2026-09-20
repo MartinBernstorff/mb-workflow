@@ -1,11 +1,15 @@
 import logging
 from enum import StrEnum
 from subprocess import CalledProcessError
+from typing import TYPE_CHECKING
 
-from mb_workflow.linear import IssueIdentifier, LabelName, Linear
 from mb_workflow.models import Model
-from mb_workflow.orca import Orca, OrcaError, Worktree
 from mb_workflow.shell import ExitCode, Shell
+from mb_workflow.trackers.linear import LabelName, Linear
+from mb_workflow.workspace.orca import Orca, OrcaError, Worktree
+
+if TYPE_CHECKING:
+    from mb_workflow.issue import IssueIdentifier
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,9 @@
 from mb_workflow.clock import Today
-from mb_workflow.linear import (
+from mb_workflow.issue import IssueIdentifier
+from mb_workflow.shell import CommandOutput
+from mb_workflow.trackers.linear import (
     CreatedAfter,
     CreatedWithin,
-    IssueIdentifier,
     IssuePage,
     IssueQuery,
     LabelKnown,
@@ -13,7 +14,6 @@ from mb_workflow.linear import (
     Project,
     StatusName,
 )
-from mb_workflow.shell import CommandOutput
 
 
 def first_page() -> CommandOutput:

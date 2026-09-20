@@ -1,7 +1,7 @@
 from mb_workflow.git import BranchName
-from mb_workflow.github import (
-    PrNumber,
-    PrTitle,
+from mb_workflow.issue import PrNumber, PrTitle
+from mb_workflow.shell import CommandOutput
+from mb_workflow.trackers.github import (
     PullRequest,
     PullRequests,
     Review,
@@ -14,7 +14,6 @@ from mb_workflow.github import (
     ReviewState,
     UserLogin,
 )
-from mb_workflow.shell import CommandOutput
 
 
 def test_parses_gh_pr_list_output() -> None:

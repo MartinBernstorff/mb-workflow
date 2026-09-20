@@ -1,9 +1,9 @@
 import pytest
 
-from mb_workflow.git import BranchName
-from mb_workflow.github import PrNumber
-from mb_workflow.linear import BranchSlug, IssueIdentifier
-from mb_workflow.orca import (
+from mb_workflow.git import BranchName, BranchSlug
+from mb_workflow.issue import IssueIdentifier, PrNumber
+from mb_workflow.shell import CommandOutput, ExistingDirectory
+from mb_workflow.workspace.orca import (
     OrcaError,
     RepoId,
     SingleWorktree,
@@ -16,7 +16,6 @@ from mb_workflow.orca import (
     acknowledged,
     created_path,
 )
-from mb_workflow.shell import CommandOutput, ExistingDirectory
 
 
 def test_parses_worktree_list() -> None:

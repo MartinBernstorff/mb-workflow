@@ -4,23 +4,15 @@ from typing import TYPE_CHECKING
 
 from mb_workflow.clock import Today
 from mb_workflow.git import BranchName, BranchNames, Ref
-from mb_workflow.github import (
+from mb_workflow.issue import PrNumber, PrTitle
+from mb_workflow.shell import ExistingDirectory, ExitCode
+from mb_workflow.trackers.github import (
     Lookback,
     MergedSince,
-    PrNumber,
-    PrTitle,
     PullRequest,
     PullRequests,
 )
-from mb_workflow.orca import (
-    RepoId,
-    WorkspaceStatus,
-    Worktree,
-    WorktreeName,
-    WorktreePath,
-    Worktrees,
-)
-from mb_workflow.review_workspaces import (
+from mb_workflow.workflows.review_workspaces import (
     Failure,
     Outcome,
     Unchanged,
@@ -30,7 +22,14 @@ from mb_workflow.review_workspaces import (
     uncovered,
     union,
 )
-from mb_workflow.shell import ExistingDirectory, ExitCode
+from mb_workflow.workspace.orca import (
+    RepoId,
+    WorkspaceStatus,
+    Worktree,
+    WorktreeName,
+    WorktreePath,
+    Worktrees,
+)
 
 if TYPE_CHECKING:
     import pytest

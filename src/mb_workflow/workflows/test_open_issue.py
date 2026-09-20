@@ -1,9 +1,9 @@
 import pytest
 
-from mb_workflow.linear import Issue, IssueState
-from mb_workflow.open_issue import OpenRequest, PromptPrefix, UnprefixedStateError
-from mb_workflow.orca import TerminalText
 from mb_workflow.shell import CommandOutput
+from mb_workflow.trackers.linear import Issue, IssueState
+from mb_workflow.workflows.open_issue import OpenRequest, PromptPrefix, UnprefixedStateError
+from mb_workflow.workspace.orca import TerminalText
 
 
 def test_a_backlog_issue_is_grilled() -> None:
