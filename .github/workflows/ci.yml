@@ -17,6 +17,8 @@ jobs:
       - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
+      # `mw flow diagram --output` shells out to Graphviz to render the image.
+      - run: sudo apt-get update && sudo apt-get install --yes graphviz
       - run: moon ci
       - name: "Collect/retrospect on results"
         uses: appthrust/moon-ci-retrospect@631a1e667f96e8ca893eab69f03e425f7fbfdc2b # v2.1.0

@@ -9,62 +9,50 @@ from mb_workflow.flow import (
     Edges,
     EventName,
     ImageFormat,
-    StateName,
-    StateNames,
+    Stage,
+    Stages,
     WorkflowChart,
     render_mermaid,
     write_image,
 )
 
 
-def edge(source: StateName, event: EventName, target: StateName) -> Edge:
-    return Edge(source=source, event=event, target=target)
+def edge(source: Stage, name: EventName, target: Stage) -> Edge:
+    return Edge(source=source, event=name, target=target)
 
 
-GRILLING = StateName("Grilling")
-SPECCING = StateName("Speccing")
-SPECCED = StateName("Specced")
-IMPLEMENTING = StateName("Implementing")
-QA = StateName("QA")
-REVIEW = StateName("Review")
-MERGING = StateName("Merging")
-MERGED = StateName("Merged")
-
-
-def test_the_chart_holds_every_state_the_work_passes_through() -> None:
-    assert StateNames.of_chart() == StateNames(
-        frozenset({GRILLING, SPECCING, SPECCED, IMPLEMENTING, QA, REVIEW, MERGING, MERGED})
-    )
+def test_the_chart_holds_every_stage_the_work_passes_through() -> None:
+    assert Stages.of_chart() == Stages(frozenset(Stage))
 
 
 def test_work_enters_the_chart_at_grilling() -> None:
-    assert StateName.start() == GRILLING
+    assert Stages.start() == Stage.grilling
 
 
 def test_the_chart_holds_every_transition_the_work_can_take() -> None:
     assert Edges.of_chart() == Edges(
         frozenset(
             {
-                edge(GRILLING, EventName("to-ticket"), SPECCING),
-                edge(SPECCING, EventName("specced"), SPECCED),
-                edge(SPECCED, EventName("implement"), IMPLEMENTING),
-                edge(IMPLEMENTING, EventName("qa"), QA),
-                edge(IMPLEMENTING, EventName("grill"), GRILLING),
-                edge(IMPLEMENTING, EventName("to-ticket"), SPECCING),
-                edge(QA, EventName("implement"), IMPLEMENTING),
-                edge(QA, EventName("ready"), REVIEW),
-                edge(QA, EventName("merge"), MERGING),
-                edge(REVIEW, EventName("resolve-review"), IMPLEMENTING),
-                edge(REVIEW, EventName("qa"), QA),
-                edge(REVIEW, EventName("merge"), MERGING),
-                edge(REVIEW, EventName("merged"), MERGED),
-                edge(MERGING, EventName("merged"), MERGED),
+                edge(Stage.grilling, EventName("to-ticket"), Stage.speccing),
+                edge(Stage.speccing, EventName("specced"), Stage.specced),
+                edge(Stage.specced, EventName("implement"), Stage.implementing),
+                edge(Stage.implementing, EventName("qa"), Stage.qa),
+                edge(Stage.implementing, EventName("grill"), Stage.grilling),
+                edge(Stage.implementing, EventName("to-ticket"), Stage.speccing),
+                edge(Stage.qa, EventName("implement"), Stage.implementing),
+                edge(Stage.qa, EventName("ready"), Stage.review),
+                edge(Stage.qa, EventName("merge"), Stage.merging),
+                edge(Stage.review, EventName("resolve-review"), Stage.implementing),
+                edge(Stage.review, EventName("qa"), Stage.qa),
+                edge(Stage.review, EventName("merge"), Stage.merging),
+                edge(Stage.review, EventName("merged"), Stage.merged),
+                edge(Stage.merging, EventName("merged"), Stage.merged),
             }
         )
     )
 
 
-def test_an_event_with_no_transition_from_the_current_state_raises() -> None:
+def test_an_event_with_no_transition_from_the_current_stage_raises() -> None:
     with pytest.raises(TransitionNotAllowed):
         WorkflowChart().send(EventName("merge").root)
 
@@ -127,3 +115,8 @@ def test_writes_the_chart_to_an_image_file(tmp_path: Path) -> None:
     destination = DiagramPath(tmp_path / "flow.png")
     write_image(destination)
     assert destination.root.read_bytes()[:4] == b"\x89PNG"
+
+
+def test_an_extension_graphviz_does_not_know_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="does not know"):
+        write_image(DiagramPath(tmp_path / "flow.bogus"))
