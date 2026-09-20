@@ -20,6 +20,7 @@ depends_on = [
     "mb_workflow.clock",
     "mb_workflow.config",
     "mb_workflow.diagram",
+    "mb_workflow.flow",
     "mb_workflow.issue",
     "mb_workflow.lock",
     "mb_workflow.logging",

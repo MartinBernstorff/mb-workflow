@@ -3,7 +3,7 @@ import pytest
 from mb_workflow.git import BranchName
 from mb_workflow.issue import BranchSlug, IssueIdentifier
 from mb_workflow.pull_request import PrNumber
-from mb_workflow.shell import CommandOutput, ExistingDirectory
+from mb_workflow.shell import Command, CommandOutput, ExistingDirectory
 from mb_workflow.workspace.orca import (
     Acknowledgement,
     ColumnLabel,
@@ -201,3 +201,18 @@ def test_a_command_orca_accepted_holds_no_refusal() -> None:
     envelope = Envelope[Acknowledgement].model_validate_json(output.root)
     with pytest.raises(OrcaError, match="meant to refuse"):
         _ = envelope.refusal()
+
+
+def test_the_board_column_is_set_by_its_label() -> None:
+    assert ColumnLabel("Awaiting review").assignment(WorktreeSelector.current()) == Command(
+        (
+            "orca",
+            "worktree",
+            "set",
+            "--worktree",
+            "current",
+            "--workspace-status",
+            "Awaiting review",
+            "--json",
+        )
+    )

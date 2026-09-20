@@ -9,6 +9,10 @@ if TYPE_CHECKING:
     from statemachine.transition import Transition
 
 
+class FlowError(Exception):
+    pass
+
+
 class WorkflowChart(StateChart[ChartModel]):
     allow_event_without_transition = False
     catch_errors_as_events = False
@@ -85,6 +89,22 @@ class Edges(Value[frozenset[Edge]]):
             )
         )
 
+    def checked(self, state: StateName, event: EventName) -> StateName:
+        for edge in self.root:
+            if edge.source == state and edge.event == event:
+                return edge.target
+        legal = ", ".join(name.root for name in EventNames.of_state(state).root)
+        raise FlowError(f"{event.root} is not legal from {state.root}. Legal: {legal or 'none'}.")
+
+    def forced(self, event: EventName) -> StateName:
+        targets = {edge.target for edge in self.root if edge.event == event}
+        if len(targets) == 1:
+            return targets.pop()
+        if not targets:
+            known = ", ".join(name.root for name in EventNames.of_chart().root)
+            raise FlowError(f"{event.root} is no event of the chart. Its events: {known}.")
+        raise FlowError(f"{event.root} leads to more than one state, so it cannot be forced.")
+
 
 class StateNames(Value[frozenset[StateName]]):
     @staticmethod
@@ -107,6 +127,11 @@ class EventNames(Value[tuple[EventName, ...]]):
     @staticmethod
     def fake() -> EventNames:
         return EventNames((EventName.fake(),))
+
+    @staticmethod
+    def of_chart() -> EventNames:
+        names = {edge.event.root for edge in Edges.of_chart().root}
+        return EventNames(tuple(EventName(name) for name in sorted(names)))
 
     @staticmethod
     def of_state(state: StateName) -> EventNames:
