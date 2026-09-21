@@ -1,6 +1,7 @@
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from mb_workflow.flow import StateName, StateNames
+if TYPE_CHECKING:
+    from mb_workflow.flow import StateName
 
 
 class StatusStore(Protocol):
@@ -10,8 +11,8 @@ class StatusStore(Protocol):
 
 
 class FakeStatusStore:
-    def __init__(self, state: StateName | None = None) -> None:
-        self._state = state if state is not None else StateNames.start()
+    def __init__(self, state: StateName) -> None:
+        self._state = state
 
     def read(self) -> StateName:
         return self._state

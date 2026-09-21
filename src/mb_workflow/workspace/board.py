@@ -1,6 +1,6 @@
 import re
 
-from mb_workflow.flow import StateName, StateNames
+from mb_workflow.flow import StateName
 from mb_workflow.models import Model, Payload, Value
 from mb_workflow.workspace.orca import (
     ColumnLabel,
@@ -103,27 +103,28 @@ class Columns(Value[tuple[Column, ...]]):
             )
         return label
 
-    def state_of(self, status: WorkspaceStatus | None) -> StateName:
+    def state_of(self, status: WorkspaceStatus | None, start: StateName) -> StateName:
         if status is None:
-            return StateNames.start()
+            return start
         label = self.label_of(status)
         if label is None:
-            return StateNames.start()
+            return start
         state = StateColumns.of_chart().state_of(label)
-        return state if state is not None else StateNames.start()
+        return state if state is not None else start
 
 
 class Board:
-    def __init__(self, orca: Orca, columns: Columns) -> None:
+    def __init__(self, orca: Orca, columns: Columns, start: StateName) -> None:
         self._orca = orca
         self._columns = columns
+        self._start = start
 
     @staticmethod
-    def of_orca(orca: Orca) -> Board:
-        return Board(orca, Columns.parse(orca.columns(ColumnLabel.unknown())))
+    def of_orca(orca: Orca, start: StateName) -> Board:
+        return Board(orca, Columns.parse(orca.columns(ColumnLabel.unknown())), start)
 
     def read(self) -> StateName:
-        return self._columns.state_of(self._orca.current().workspace_status)
+        return self._columns.state_of(self._orca.current().workspace_status, self._start)
 
     def write(self, state: StateName) -> None:
         self._orca.set_status(WorktreeSelector.current(), self._columns.column_for(state))

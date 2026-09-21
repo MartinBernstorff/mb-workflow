@@ -3,7 +3,7 @@ import sys
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
-from mb_workflow.flow import FlowStatus
+from mb_workflow.flow import FlowStatus, StateNames, WorkflowChart
 from mb_workflow.models import Value
 from mb_workflow.shell import ExitCode, Shell
 from mb_workflow.workspace.board import Board, BoardError
@@ -36,7 +36,9 @@ class StatusReport(Value[str]):
 
 def show_flow(shell: Shell, as_json: AsJson) -> ExitCode:
     try:
-        return shown(Board.of_orca(Orca(shell)), as_json)
+        return shown(
+            WorkflowChart, Board.of_orca(Orca(shell), StateNames.start(WorkflowChart)), as_json
+        )
     except FileNotFoundError as error:
         logger.error("%s is not installed or not on PATH.", error.filename)
         return ExitCode(1)
@@ -45,6 +47,6 @@ def show_flow(shell: Shell, as_json: AsJson) -> ExitCode:
         return ExitCode(1)
 
 
-def shown(store: StatusStore, as_json: AsJson) -> ExitCode:
-    _ = sys.stdout.write(StatusReport.of(FlowStatus.of(store.read()), as_json).root)
+def shown(chart: type[WorkflowChart], store: StatusStore, as_json: AsJson) -> ExitCode:
+    _ = sys.stdout.write(StatusReport.of(FlowStatus.of(chart, store.read()), as_json).root)
     return ExitCode(0)
