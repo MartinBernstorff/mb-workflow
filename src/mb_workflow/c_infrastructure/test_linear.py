@@ -1,5 +1,5 @@
-from mb_workflow.b_core.clock import Today
-from mb_workflow.b_core.issue import IssueIdentifier
+from mb_workflow.b_core.d_domain_model.clock import Today
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.c_infrastructure.linear import (
     CreatedAfter,
     CreatedWithin,

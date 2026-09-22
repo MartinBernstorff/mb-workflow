@@ -3,22 +3,15 @@ from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
 from mb_workflow.a_presentation.console import ExitCode
-from mb_workflow.b_core.flow import Edges, EventName, FlowError, StateNames, WorkflowChart
+from mb_workflow.b_core.b_domain_services.flow_transition import Force, transitioned
+from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError, StateNames, WorkflowChart
 from mb_workflow.c_infrastructure.board import Board, BoardError
 from mb_workflow.c_infrastructure.orca import Orca, OrcaError
-from mb_workflow.d_lib.models import Value
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.status import StatusStore
     from mb_workflow.c_infrastructure.shell import Shell
 
 logger = logging.getLogger(__name__)
-
-
-class Force(Value[bool]):
-    @staticmethod
-    def fake() -> Force:
-        return Force(False)
 
 
 def transition(shell: Shell, event: EventName, force: Force) -> ExitCode:
@@ -31,13 +24,3 @@ def transition(shell: Shell, event: EventName, force: Force) -> ExitCode:
     except (BoardError, CalledProcessError, FlowError, OSError, OrcaError, ValueError) as error:
         logger.error("%s", error)
         return ExitCode(1)
-
-
-def transitioned(
-    chart: type[WorkflowChart], store: StatusStore, event: EventName, force: Force
-) -> ExitCode:
-    edges = Edges.of_chart(chart)
-    target = edges.target_of(event) if force.root else edges.target_from(store.read(), event)
-    store.write(target)
-    logger.info("Moved to %s.", target.root)
-    return ExitCode(0)

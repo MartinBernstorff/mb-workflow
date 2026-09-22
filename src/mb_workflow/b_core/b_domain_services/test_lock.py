@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from mb_workflow.b_core.lock import AlreadyRunningError, LockName, LockPath
+from mb_workflow.b_core.b_domain_services.lock import AlreadyRunningError, LockName, LockPath
 
 if TYPE_CHECKING:
     from pathlib import Path

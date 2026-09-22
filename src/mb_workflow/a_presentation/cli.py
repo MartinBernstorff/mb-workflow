@@ -4,10 +4,8 @@ from pathlib import Path
 import typer
 
 from mb_workflow.a_presentation.diagram import DiagramPath, diagram
-from mb_workflow.b_core.cache import CacheDirectory
-from mb_workflow.b_core.clock import Today
-from mb_workflow.b_core.config import ConfigFileName, WorkingDirectory
-from mb_workflow.b_core.features.autolabel import (
+from mb_workflow.a_presentation.printer import StdoutPrinter
+from mb_workflow.b_core.a_features.autolabel import (
     Apply,
     AutolabelRequest,
     ExcludePattern,
@@ -15,16 +13,21 @@ from mb_workflow.b_core.features.autolabel import (
     LedgerPath,
     autolabel,
 )
-from mb_workflow.b_core.features.finalize_review import finalize
-from mb_workflow.b_core.features.flow import show as show_config
-from mb_workflow.b_core.features.label import LabelChange, LabelRequest, change_label
-from mb_workflow.b_core.features.open_issue import OpenRequest, open_issue
-from mb_workflow.b_core.features.review_workspaces import create_workspaces
-from mb_workflow.b_core.features.show_flow import AsJson, show_flow
-from mb_workflow.b_core.features.transition import Force, transition
-from mb_workflow.b_core.flow import EventName
-from mb_workflow.b_core.issue import BranchSlug, IssueIdentifier
-from mb_workflow.b_core.lock import LockName, LockPath
+from mb_workflow.b_core.a_features.finalize_review import finalize
+from mb_workflow.b_core.a_features.label import LabelChange, LabelRequest, change_label
+from mb_workflow.b_core.a_features.open_issue import OpenRequest, open_issue
+from mb_workflow.b_core.a_features.review_workspaces import create_workspaces
+from mb_workflow.b_core.a_features.show_config import show_config
+from mb_workflow.b_core.a_features.show_flow import show_flow
+from mb_workflow.b_core.a_features.transition import transition
+from mb_workflow.b_core.b_domain_services.flow_report import AsJson
+from mb_workflow.b_core.b_domain_services.flow_transition import Force
+from mb_workflow.b_core.b_domain_services.lock import LockName, LockPath
+from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
+from mb_workflow.b_core.d_domain_model.clock import Today
+from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
+from mb_workflow.b_core.d_domain_model.flow import EventName
+from mb_workflow.b_core.d_domain_model.issue import BranchSlug, IssueIdentifier
 from mb_workflow.c_infrastructure.github import Lookback, ReviewBody, ReviewDecision, ReviewRequest
 from mb_workflow.c_infrastructure.linear import (
     Assignee,
@@ -198,7 +201,11 @@ def open_linear_issue(
 @flow_app.command("config")
 def flow_config(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=show_config(WorkingDirectory(Path.cwd()), ConfigFileName.default()).root)
+    raise typer.Exit(
+        code=show_config(
+            WorkingDirectory(Path.cwd()), ConfigFileName.default(), StdoutPrinter()
+        ).root
+    )
 
 
 @flow_app.command("diagram")
@@ -222,7 +229,7 @@ def flow_show(
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=show_flow(shell, AsJson(as_json)).root)
+    raise typer.Exit(code=show_flow(shell, StdoutPrinter(), AsJson(as_json)).root)
 
 
 @flow_app.command("grill")

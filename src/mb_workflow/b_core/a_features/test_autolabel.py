@@ -2,8 +2,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from mb_workflow.a_presentation.console import ExitCode
-from mb_workflow.b_core.cache import CacheDirectory
-from mb_workflow.b_core.features.autolabel import (
+from mb_workflow.b_core.a_features.autolabel import (
     Apply,
     Criteria,
     ExcludePattern,
@@ -17,7 +16,8 @@ from mb_workflow.b_core.features.autolabel import (
     SkipCount,
     SkipReason,
 )
-from mb_workflow.b_core.issue import IssueIdentifier
+from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.c_infrastructure.linear import (
     IssuePage,
     LabelName,

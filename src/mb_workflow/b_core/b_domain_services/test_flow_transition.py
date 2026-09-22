@@ -1,9 +1,9 @@
 import pytest
 
 from mb_workflow.a_presentation.console import ExitCode
-from mb_workflow.b_core.features.transition import Force, transitioned
-from mb_workflow.b_core.flow import EventName, FlowError, StateName, WorkflowChart
-from mb_workflow.b_core.status import FakeStatusStore
+from mb_workflow.b_core.b_domain_services.flow_transition import Force, transitioned
+from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
+from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError, StateName, WorkflowChart
 
 
 def test_a_legal_event_writes_the_target_state_to_the_store() -> None:

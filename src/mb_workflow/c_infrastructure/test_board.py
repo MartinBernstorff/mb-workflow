@@ -1,6 +1,6 @@
 import pytest
 
-from mb_workflow.b_core.flow import StateName, StateNames, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import StateName, StateNames, WorkflowChart
 from mb_workflow.c_infrastructure.board import BoardError, Column, Columns, StateColumns
 from mb_workflow.c_infrastructure.orca import ColumnLabel, ErrorMessage, WorkspaceStatus
 

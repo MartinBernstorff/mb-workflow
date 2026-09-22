@@ -1,4 +1,4 @@
-from mb_workflow.b_core.git import BranchName, Ref
+from mb_workflow.b_core.d_domain_model.git import BranchName, Ref
 
 
 def test_ref_strips_heads_prefix() -> None:

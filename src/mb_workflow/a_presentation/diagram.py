@@ -5,7 +5,7 @@ from pathlib import Path
 from statemachine.contrib.diagram import DotGraphMachine, MermaidGraphMachine
 
 from mb_workflow.a_presentation.console import ExitCode
-from mb_workflow.b_core.flow import WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
 from mb_workflow.d_lib.models import Value
 
 logger = logging.getLogger(__name__)

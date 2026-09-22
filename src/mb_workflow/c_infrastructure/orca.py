@@ -4,14 +4,14 @@ from pathlib import Path
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.git import Ref
-from mb_workflow.b_core.issue import IssueIdentifier
-from mb_workflow.b_core.pull_request import PrNumber, PrTitle
+from mb_workflow.b_core.d_domain_model.git import Ref
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
+from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
 from mb_workflow.c_infrastructure.shell import Command, CommandOutput, ExistingDirectory, Shell
 from mb_workflow.d_lib.models import Payload, Value
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.issue import BranchSlug
+    from mb_workflow.b_core.d_domain_model.issue import BranchSlug
 
 logger = logging.getLogger(__name__)
 

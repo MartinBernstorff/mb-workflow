@@ -3,8 +3,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mb_workflow.a_presentation.console import ExitCode
-from mb_workflow.b_core.clock import Today
-from mb_workflow.b_core.features.review_workspaces import (
+from mb_workflow.b_core.a_features.review_workspaces import (
     Failure,
     Outcome,
     Unchanged,
@@ -14,8 +13,9 @@ from mb_workflow.b_core.features.review_workspaces import (
     uncovered,
     union,
 )
-from mb_workflow.b_core.git import BranchName, BranchNames, Ref
-from mb_workflow.b_core.pull_request import PrNumber, PrTitle
+from mb_workflow.b_core.d_domain_model.clock import Today
+from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames, Ref
+from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
 from mb_workflow.c_infrastructure.github import (
     Lookback,
     MergedSince,

@@ -1,5 +1,5 @@
-from mb_workflow.b_core.git import BranchName
-from mb_workflow.b_core.pull_request import PrNumber, PrTitle
+from mb_workflow.b_core.d_domain_model.git import BranchName
+from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
 from mb_workflow.c_infrastructure.github import (
     PullRequest,
     PullRequests,

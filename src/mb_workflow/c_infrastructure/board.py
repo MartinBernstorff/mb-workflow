@@ -1,6 +1,6 @@
 import re
 
-from mb_workflow.b_core.flow import StateName
+from mb_workflow.b_core.d_domain_model.flow import StateName
 from mb_workflow.c_infrastructure.orca import (
     ColumnLabel,
     ErrorMessage,

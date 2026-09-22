@@ -1,5 +1,5 @@
 from mb_workflow.a_presentation.cli import flow_app
-from mb_workflow.b_core.flow import EventNames, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import EventNames, WorkflowChart
 
 
 def test_a_command_exists_for_every_event_the_chart_holds() -> None:

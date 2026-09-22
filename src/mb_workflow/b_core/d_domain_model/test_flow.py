@@ -1,7 +1,7 @@
 import pytest
 from statemachine.exceptions import TransitionNotAllowed
 
-from mb_workflow.b_core.flow import (
+from mb_workflow.b_core.d_domain_model.flow import (
     Edge,
     Edges,
     EventName,

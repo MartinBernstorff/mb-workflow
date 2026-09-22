@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.flow import StateName
+    from mb_workflow.b_core.d_domain_model.flow import StateName
 
 
 class StatusStore(Protocol):

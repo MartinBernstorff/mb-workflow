@@ -3,9 +3,9 @@ from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
 from mb_workflow.a_presentation.console import ExitCode
-from mb_workflow.b_core.clock import Today
-from mb_workflow.b_core.lock import AlreadyRunningError, LockPath
-from mb_workflow.b_core.pull_request import PrNumber
+from mb_workflow.b_core.b_domain_services.lock import AlreadyRunningError, LockPath
+from mb_workflow.b_core.d_domain_model.clock import Today
+from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
 from mb_workflow.c_infrastructure.github import GitHub, Lookback, MergedSince, PullRequests
 from mb_workflow.c_infrastructure.orca import (
     Orca,
@@ -20,7 +20,7 @@ from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.git import BranchNames
+    from mb_workflow.b_core.d_domain_model.git import BranchNames
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.cache import CacheDirectory
+from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.d_lib.models import Value
 
 if TYPE_CHECKING:

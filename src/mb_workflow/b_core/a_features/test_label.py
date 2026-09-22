@@ -1,7 +1,7 @@
 import pytest
 
-from mb_workflow.b_core.features.label import UnlinkedWorktreeError, labelled_issue
-from mb_workflow.b_core.issue import IssueIdentifier
+from mb_workflow.b_core.a_features.label import UnlinkedWorktreeError, labelled_issue
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.c_infrastructure.linear import Issue, LabelName, LabelNames
 from mb_workflow.c_infrastructure.orca import Worktree
 from mb_workflow.c_infrastructure.shell import CommandOutput

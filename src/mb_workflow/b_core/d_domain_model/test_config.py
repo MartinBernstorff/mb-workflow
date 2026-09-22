@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from mb_workflow.b_core.config import (
+from mb_workflow.b_core.d_domain_model.config import (
     ConfigFileName,
     Configuration,
     InvalidConfigError,

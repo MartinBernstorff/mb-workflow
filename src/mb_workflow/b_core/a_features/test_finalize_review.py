@@ -1,7 +1,7 @@
 import pytest
 
-from mb_workflow.b_core.features.finalize_review import NotFinalizableError, reviewed_pr
-from mb_workflow.b_core.pull_request import PrNumber
+from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, reviewed_pr
+from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
 from mb_workflow.c_infrastructure.github import ReviewBody, ReviewDecision, ReviewRequest
 from mb_workflow.c_infrastructure.orca import WorkspaceStatus, Worktree
 

@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING
 
 from pydantic import AliasPath, Field, ValidationError
 
-from mb_workflow.b_core.issue import IssueIdentifier
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.c_infrastructure.shell import Command, CommandOutput, Shell
 from mb_workflow.d_lib.models import Model, Payload, Value
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.clock import Today
+    from mb_workflow.b_core.d_domain_model.clock import Today
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,5 @@
-from mb_workflow.b_core.flow import StateName
-from mb_workflow.b_core.status import FakeStatusStore
+from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
+from mb_workflow.b_core.d_domain_model.flow import StateName
 
 
 def test_the_fake_store_reads_back_what_it_was_given() -> None:

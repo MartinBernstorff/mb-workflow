@@ -9,34 +9,60 @@ depends_on = ["mb_workflow.a_presentation"]
 path = "mb_workflow.a_presentation"
 depends_on = [
     "mb_workflow.a_presentation.console",
-    "mb_workflow.b_core",
-    "mb_workflow.b_core.features",
+    "mb_workflow.b_core.a_features",
+    "mb_workflow.b_core.b_domain_services",
+    "mb_workflow.b_core.c_secondary_ports",
+    "mb_workflow.b_core.d_domain_model",
     "mb_workflow.c_infrastructure",
     "mb_workflow.d_lib",
 ]
 
-# The exit code is a console protocol, and the features below return it. Scoped to the
+# The exit code is a console protocol, and the layers below return it. Scoped to the
 # console alone, so any other reach from a lower layer into presentation still fails.
 [[modules]]
 path = "mb_workflow.a_presentation.console"
 depends_on = ["mb_workflow.d_lib"]
 
 [[modules]]
-path = "mb_workflow.b_core.features"
+path = "mb_workflow.b_core"
+depends_on = []
+
+[[modules]]
+path = "mb_workflow.b_core.a_features"
 depends_on = [
     "mb_workflow.a_presentation.console",
-    "mb_workflow.b_core",
+    "mb_workflow.b_core.b_domain_services",
+    "mb_workflow.b_core.c_secondary_ports",
+    "mb_workflow.b_core.d_domain_model",
     "mb_workflow.c_infrastructure",
     "mb_workflow.d_lib",
 ]
 
 [[modules]]
-path = "mb_workflow.b_core"
+path = "mb_workflow.b_core.b_domain_services"
+depends_on = [
+    "mb_workflow.a_presentation.console",
+    "mb_workflow.b_core.c_secondary_ports",
+    "mb_workflow.b_core.d_domain_model",
+    "mb_workflow.d_lib",
+]
+
+# Any layer may reach the secondary ports; they reach nothing but the domain model.
+[[modules]]
+path = "mb_workflow.b_core.c_secondary_ports"
+depends_on = ["mb_workflow.b_core.d_domain_model", "mb_workflow.d_lib"]
+
+[[modules]]
+path = "mb_workflow.b_core.d_domain_model"
 depends_on = ["mb_workflow.d_lib"]
 
 [[modules]]
 path = "mb_workflow.c_infrastructure"
-depends_on = ["mb_workflow.b_core", "mb_workflow.d_lib"]
+depends_on = [
+    "mb_workflow.b_core.c_secondary_ports",
+    "mb_workflow.b_core.d_domain_model",
+    "mb_workflow.d_lib",
+]
 
 [[modules]]
 path = "mb_workflow.d_lib"

@@ -3,7 +3,7 @@ from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
 from mb_workflow.a_presentation.console import ExitCode
-from mb_workflow.b_core.issue import BranchSlug, IssueIdentifier
+from mb_workflow.b_core.d_domain_model.issue import BranchSlug, IssueIdentifier
 from mb_workflow.c_infrastructure.linear import Assignee, IssueState, Linear
 from mb_workflow.c_infrastructure.orca import (
     AgentName,

@@ -9,7 +9,7 @@ from mb_workflow.c_infrastructure.orca import Orca, OrcaError, Worktree
 from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.issue import IssueIdentifier
+    from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
     from mb_workflow.c_infrastructure.shell import Shell
 
 logger = logging.getLogger(__name__)
