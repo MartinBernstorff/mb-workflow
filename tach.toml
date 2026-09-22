@@ -1,123 +1,60 @@
 source_roots = ["src"]
 
-# Tests sit beside the code they cover, so the root module also owns their imports.
+# Tests sit beside the code they cover, so each layer also owns their imports.
 [[modules]]
 path = "mb_workflow"
+depends_on = ["mb_workflow.a_presentation"]
+
+[[modules]]
+path = "mb_workflow.a_presentation"
 depends_on = [
-    "mb_workflow.cli",
-    "mb_workflow.config",
-    "mb_workflow.diagram",
-    "mb_workflow.flow",
-    "mb_workflow.git",
-    "mb_workflow.lock",
-    "mb_workflow.status",
+    "mb_workflow.b_core.a_features",
+    "mb_workflow.b_core.b_domain_services",
+    "mb_workflow.b_core.c_secondary_ports",
+    "mb_workflow.b_core.d_domain_model",
+    "mb_workflow.c_infrastructure",
+    "mb_workflow.d_lib",
 ]
 
 [[modules]]
-path = "mb_workflow.cli"
-depends_on = [
-    "mb_workflow.cache",
-    "mb_workflow.clock",
-    "mb_workflow.config",
-    "mb_workflow.diagram",
-    "mb_workflow.flow",
-    "mb_workflow.issue",
-    "mb_workflow.lock",
-    "mb_workflow.logging",
-    "mb_workflow.shell",
-    "mb_workflow.trackers",
-    "mb_workflow.workflows",
-    "mb_workflow.workspace",
-]
-
-[[modules]]
-path = "mb_workflow.workflows"
-depends_on = [
-    "mb_workflow.cache",
-    "mb_workflow.clock",
-    "mb_workflow.config",
-    "mb_workflow.flow",
-    "mb_workflow.git",
-    "mb_workflow.issue",
-    "mb_workflow.lock",
-    "mb_workflow.models",
-    "mb_workflow.pull_request",
-    "mb_workflow.shell",
-    "mb_workflow.status",
-    "mb_workflow.trackers",
-    "mb_workflow.workspace",
-]
-
-[[modules]]
-path = "mb_workflow.workspace"
-depends_on = [
-    "mb_workflow.flow",
-    "mb_workflow.git",
-    "mb_workflow.issue",
-    "mb_workflow.models",
-    "mb_workflow.pull_request",
-    "mb_workflow.shell",
-]
-
-[[modules]]
-path = "mb_workflow.trackers"
-depends_on = [
-    "mb_workflow.clock",
-    "mb_workflow.git",
-    "mb_workflow.issue",
-    "mb_workflow.models",
-    "mb_workflow.pull_request",
-    "mb_workflow.shell",
-]
-
-[[modules]]
-path = "mb_workflow.lock"
-depends_on = ["mb_workflow.cache", "mb_workflow.models"]
-
-[[modules]]
-path = "mb_workflow.diagram"
-depends_on = ["mb_workflow.flow", "mb_workflow.models", "mb_workflow.shell"]
-
-[[modules]]
-path = "mb_workflow.flow"
-depends_on = ["mb_workflow.models"]
-
-[[modules]]
-path = "mb_workflow.status"
-depends_on = ["mb_workflow.flow"]
-
-[[modules]]
-path = "mb_workflow.shell"
-depends_on = ["mb_workflow.models"]
-
-[[modules]]
-path = "mb_workflow.git"
-depends_on = ["mb_workflow.models"]
-
-[[modules]]
-path = "mb_workflow.issue"
-depends_on = ["mb_workflow.models"]
-
-[[modules]]
-path = "mb_workflow.pull_request"
-depends_on = ["mb_workflow.models"]
-
-[[modules]]
-path = "mb_workflow.models"
+path = "mb_workflow.b_core"
 depends_on = []
 
 [[modules]]
-path = "mb_workflow.logging"
+path = "mb_workflow.b_core.a_features"
+depends_on = [
+    "mb_workflow.b_core.b_domain_services",
+    "mb_workflow.b_core.c_secondary_ports",
+    "mb_workflow.b_core.d_domain_model",
+    "mb_workflow.c_infrastructure",
+    "mb_workflow.d_lib",
+]
+
+[[modules]]
+path = "mb_workflow.b_core.b_domain_services"
+depends_on = [
+    "mb_workflow.b_core.c_secondary_ports",
+    "mb_workflow.b_core.d_domain_model",
+    "mb_workflow.d_lib",
+]
+
+# Any layer may reach the secondary ports; they reach nothing but the domain model.
+[[modules]]
+path = "mb_workflow.b_core.c_secondary_ports"
+depends_on = ["mb_workflow.b_core.d_domain_model", "mb_workflow.d_lib"]
+
+[[modules]]
+path = "mb_workflow.b_core.d_domain_model"
+depends_on = ["mb_workflow.d_lib"]
+
+[[modules]]
+path = "mb_workflow.c_infrastructure"
+depends_on = [
+    "mb_workflow.b_core.c_secondary_ports",
+    "mb_workflow.b_core.d_domain_model",
+    "mb_workflow.d_lib",
+]
+
+[[modules]]
+path = "mb_workflow.d_lib"
 depends_on = []
-
-[[modules]]
-path = "mb_workflow.cache"
-depends_on = ["mb_workflow.models"]
-
-[[modules]]
-path = "mb_workflow.clock"
-depends_on = ["mb_workflow.models"]
-
-[[modules]]
-path = "mb_workflow.config"
-depends_on = ["mb_workflow.models"]

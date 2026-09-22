@@ -62,7 +62,7 @@ docstring-code-format = true
 runtime-evaluated-base-classes = [
     "pydantic.BaseModel",
     "pydantic.RootModel",
-    "mb_workflow.models.Model",
-    "mb_workflow.models.Payload",
-    "mb_workflow.models.Value",
+    "mb_workflow.d_lib.models.Model",
+    "mb_workflow.d_lib.models.Payload",
+    "mb_workflow.d_lib.models.Value",
 ]

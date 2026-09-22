@@ -1,0 +1,36 @@
+strict digraph {
+mb_workflow;
+"mb_workflow.a_presentation";
+"mb_workflow.a_presentation.console";
+"mb_workflow.b_core.a_features";
+"mb_workflow.b_core.b_domain_services";
+"mb_workflow.b_core.c_secondary_ports";
+"mb_workflow.b_core.d_domain_model";
+"mb_workflow.c_infrastructure";
+"mb_workflow.d_lib";
+mb_workflow -> "mb_workflow.a_presentation";
+"mb_workflow.a_presentation" -> "mb_workflow.a_presentation.console";
+"mb_workflow.a_presentation" -> "mb_workflow.b_core.a_features";
+"mb_workflow.a_presentation" -> "mb_workflow.b_core.b_domain_services";
+"mb_workflow.a_presentation" -> "mb_workflow.b_core.c_secondary_ports";
+"mb_workflow.a_presentation" -> "mb_workflow.b_core.d_domain_model";
+"mb_workflow.a_presentation" -> "mb_workflow.c_infrastructure";
+"mb_workflow.a_presentation" -> "mb_workflow.d_lib";
+"mb_workflow.a_presentation.console" -> "mb_workflow.d_lib";
+"mb_workflow.b_core.a_features" -> "mb_workflow.a_presentation.console";
+"mb_workflow.b_core.a_features" -> "mb_workflow.b_core.b_domain_services";
+"mb_workflow.b_core.a_features" -> "mb_workflow.b_core.c_secondary_ports";
+"mb_workflow.b_core.a_features" -> "mb_workflow.b_core.d_domain_model";
+"mb_workflow.b_core.a_features" -> "mb_workflow.c_infrastructure";
+"mb_workflow.b_core.a_features" -> "mb_workflow.d_lib";
+"mb_workflow.b_core.b_domain_services" -> "mb_workflow.a_presentation.console";
+"mb_workflow.b_core.b_domain_services" -> "mb_workflow.b_core.c_secondary_ports";
+"mb_workflow.b_core.b_domain_services" -> "mb_workflow.b_core.d_domain_model";
+"mb_workflow.b_core.b_domain_services" -> "mb_workflow.d_lib";
+"mb_workflow.b_core.c_secondary_ports" -> "mb_workflow.b_core.d_domain_model";
+"mb_workflow.b_core.c_secondary_ports" -> "mb_workflow.d_lib";
+"mb_workflow.b_core.d_domain_model" -> "mb_workflow.d_lib";
+"mb_workflow.c_infrastructure" -> "mb_workflow.b_core.c_secondary_ports";
+"mb_workflow.c_infrastructure" -> "mb_workflow.b_core.d_domain_model";
+"mb_workflow.c_infrastructure" -> "mb_workflow.d_lib";
+}
