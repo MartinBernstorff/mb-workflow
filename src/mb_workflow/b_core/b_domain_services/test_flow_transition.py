@@ -1,6 +1,5 @@
 import pytest
 
-from mb_workflow.a_presentation.console import ExitCode
 from mb_workflow.b_core.b_domain_services.flow_transition import Force, transitioned
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError, StateName, WorkflowChart
@@ -8,7 +7,7 @@ from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError, StateNa
 
 def test_a_legal_event_writes_the_target_state_to_the_store() -> None:
     store = FakeStatusStore(StateName("Implementing"))
-    assert transitioned(WorkflowChart, store, EventName("qa"), Force(False)) == ExitCode(0)
+    assert transitioned(WorkflowChart, store, EventName("qa"), Force(False)) == StateName("QA")
     assert store.read() == StateName("QA")
 
 
@@ -21,5 +20,7 @@ def test_an_illegal_event_leaves_the_store_where_it_was() -> None:
 
 def test_forcing_writes_the_target_state_without_validating() -> None:
     store = FakeStatusStore(StateName("Grilling"))
-    assert transitioned(WorkflowChart, store, EventName("merged"), Force(True)) == ExitCode(0)
+    assert transitioned(WorkflowChart, store, EventName("merged"), Force(True)) == StateName(
+        "Merged"
+    )
     assert store.read() == StateName("Merged")

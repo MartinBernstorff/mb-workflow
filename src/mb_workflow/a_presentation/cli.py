@@ -3,26 +3,20 @@ from pathlib import Path
 
 import typer
 
+from mb_workflow.a_presentation import commands
 from mb_workflow.a_presentation.diagram import DiagramPath, diagram
-from mb_workflow.a_presentation.printer import StdoutPrinter
 from mb_workflow.b_core.a_features.autolabel import (
     Apply,
     AutolabelRequest,
     ExcludePattern,
     Exclusions,
     LedgerPath,
-    autolabel,
 )
-from mb_workflow.b_core.a_features.finalize_review import finalize
-from mb_workflow.b_core.a_features.label import LabelChange, LabelRequest, change_label
-from mb_workflow.b_core.a_features.open_issue import OpenRequest, open_issue
-from mb_workflow.b_core.a_features.review_workspaces import create_workspaces
-from mb_workflow.b_core.a_features.show_config import show_config
-from mb_workflow.b_core.a_features.show_flow import show_flow
-from mb_workflow.b_core.a_features.transition import transition
+from mb_workflow.b_core.a_features.label import LabelChange, LabelRequest
+from mb_workflow.b_core.a_features.open_issue import OpenRequest
 from mb_workflow.b_core.b_domain_services.flow_report import AsJson
 from mb_workflow.b_core.b_domain_services.flow_transition import Force
-from mb_workflow.b_core.b_domain_services.lock import LockName, LockPath
+from mb_workflow.b_core.b_domain_services.lock import LockName
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
@@ -43,7 +37,6 @@ from mb_workflow.c_infrastructure.orca import (
     TimeoutMs,
     WorkspaceStatus,
 )
-from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.d_lib.logging import LogLevel, configure
 
 app = typer.Typer(no_args_is_help=True)
@@ -58,7 +51,7 @@ FORCING = "Write the target state without checking the event is legal from the c
 
 # Typer collapses a single-command app into the root command unless a callback exists.
 @app.callback()
-def commands() -> None: ...
+def root() -> None: ...
 
 
 @app.command("review-workspaces")
@@ -69,13 +62,9 @@ def review_workspaces(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    shell = Shell(ExistingDirectory(Path.cwd()))
     raise typer.Exit(
-        code=create_workspaces(
-            shell,
-            WorkspaceStatus(status),
-            Lookback(merged_within_days),
-            LockPath.of(LockName(lock)),
+        code=commands.review_workspaces(
+            WorkspaceStatus(status), Lookback(merged_within_days), LockName(lock)
         ).root
     )
 
@@ -89,8 +78,7 @@ def approve(
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     request = ReviewRequest(decision=ReviewDecision.approve(), body=ReviewBody(comment))
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=finalize(shell, request, WorkspaceStatus(status)).root)
+    raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
 
 @app.command("reject")
@@ -102,8 +90,7 @@ def reject(
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     request = ReviewRequest(decision=ReviewDecision.reject(), body=ReviewBody(comment))
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=finalize(shell, request, WorkspaceStatus(status)).root)
+    raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
 
 @app.command("comment")
@@ -115,8 +102,7 @@ def comment(
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     request = ReviewRequest(decision=ReviewDecision.comment(), body=ReviewBody(comment))
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=finalize(shell, request, WorkspaceStatus(status)).root)
+    raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
 
 @linear_app.command("label")
@@ -127,8 +113,7 @@ def label(
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     request = LabelRequest(label=LabelName(name), change=LabelChange.add)
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=change_label(shell, request).root)
+    raise typer.Exit(code=commands.relabel(request).root)
 
 
 @linear_app.command("unlabel")
@@ -139,8 +124,7 @@ def unlabel(
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     request = LabelRequest(label=LabelName(name), change=LabelChange.remove)
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=change_label(shell, request).root)
+    raise typer.Exit(code=commands.relabel(request).root)
 
 
 @linear_app.command("autolabel")
@@ -168,9 +152,8 @@ def linear_autolabel(
         ),
         apply=Apply(apply),
     )
-    shell = Shell(ExistingDirectory(Path.cwd()))
     ledger = LedgerPath.of(CacheDirectory.of_user(), label)
-    raise typer.Exit(code=autolabel(shell, request, ledger).root)
+    raise typer.Exit(code=commands.linear_autolabel(request, ledger).root)
 
 
 @app.command("open-issue")
@@ -194,17 +177,14 @@ def open_linear_issue(
         assignee=Assignee(assignee),
         idle_timeout=TimeoutMs(idle_timeout_ms),
     )
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=open_issue(shell, request).root)
+    raise typer.Exit(code=commands.open_linear_issue(request).root)
 
 
 @flow_app.command("config")
 def flow_config(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     raise typer.Exit(
-        code=show_config(
-            WorkingDirectory(Path.cwd()), ConfigFileName.default(), StdoutPrinter()
-        ).root
+        code=commands.flow_config(WorkingDirectory(Path.cwd()), ConfigFileName.default()).root
     )
 
 
@@ -228,8 +208,7 @@ def flow_show(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=show_flow(shell, StdoutPrinter(), AsJson(as_json)).root)
+    raise typer.Exit(code=commands.flow_show(AsJson(as_json)).root)
 
 
 @flow_app.command("grill")
@@ -239,8 +218,7 @@ def flow_grill(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=transition(shell, EventName("grill"), Force(force)).root)
+    raise typer.Exit(code=commands.flow_event(EventName("grill"), Force(force)).root)
 
 
 @flow_app.command("to-ticket")
@@ -250,8 +228,7 @@ def flow_to_ticket(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=transition(shell, EventName("to-ticket"), Force(force)).root)
+    raise typer.Exit(code=commands.flow_event(EventName("to-ticket"), Force(force)).root)
 
 
 @flow_app.command("specced")
@@ -261,8 +238,7 @@ def flow_specced(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=transition(shell, EventName("specced"), Force(force)).root)
+    raise typer.Exit(code=commands.flow_event(EventName("specced"), Force(force)).root)
 
 
 @flow_app.command("implement")
@@ -272,8 +248,7 @@ def flow_implement(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=transition(shell, EventName("implement"), Force(force)).root)
+    raise typer.Exit(code=commands.flow_event(EventName("implement"), Force(force)).root)
 
 
 @flow_app.command("qa")
@@ -283,8 +258,7 @@ def flow_qa(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=transition(shell, EventName("qa"), Force(force)).root)
+    raise typer.Exit(code=commands.flow_event(EventName("qa"), Force(force)).root)
 
 
 @flow_app.command("ready")
@@ -294,8 +268,7 @@ def flow_ready(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=transition(shell, EventName("ready"), Force(force)).root)
+    raise typer.Exit(code=commands.flow_event(EventName("ready"), Force(force)).root)
 
 
 @flow_app.command("merge")
@@ -305,8 +278,7 @@ def flow_merge(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=transition(shell, EventName("merge"), Force(force)).root)
+    raise typer.Exit(code=commands.flow_event(EventName("merge"), Force(force)).root)
 
 
 @flow_app.command("merged")
@@ -316,8 +288,7 @@ def flow_merged(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=transition(shell, EventName("merged"), Force(force)).root)
+    raise typer.Exit(code=commands.flow_event(EventName("merged"), Force(force)).root)
 
 
 @flow_app.command("resolve-review")
@@ -327,5 +298,4 @@ def flow_resolve_review(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    shell = Shell(ExistingDirectory(Path.cwd()))
-    raise typer.Exit(code=transition(shell, EventName("resolve-review"), Force(force)).root)
+    raise typer.Exit(code=commands.flow_event(EventName("resolve-review"), Force(force)).root)

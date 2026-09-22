@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING
 
-from mb_workflow.a_presentation.console import ExitCode
-from mb_workflow.b_core.c_secondary_ports.printer import PrintedText, Printer
 from mb_workflow.b_core.d_domain_model.flow import FlowStatus, WorkflowChart
 from mb_workflow.d_lib.models import Value
 
@@ -28,9 +26,5 @@ class StatusReport(Value[str]):
         return StatusReport(f"{status.state.root}\n{legal}")
 
 
-def shown(
-    chart: type[WorkflowChart], store: StatusStore, printer: Printer, as_json: AsJson
-) -> ExitCode:
-    report = StatusReport.of(FlowStatus.of(chart, store.read()), as_json)
-    printer.write(PrintedText(report.root))
-    return ExitCode(0)
+def status_report(chart: type[WorkflowChart], store: StatusStore, as_json: AsJson) -> StatusReport:
+    return StatusReport.of(FlowStatus.of(chart, store.read()), as_json)

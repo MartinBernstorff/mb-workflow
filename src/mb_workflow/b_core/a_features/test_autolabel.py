@@ -1,7 +1,6 @@
 import logging
 from typing import TYPE_CHECKING
 
-from mb_workflow.a_presentation.console import ExitCode
 from mb_workflow.b_core.a_features.autolabel import (
     Apply,
     Criteria,
@@ -18,6 +17,7 @@ from mb_workflow.b_core.a_features.autolabel import (
 )
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
+from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.c_infrastructure.linear import (
     IssuePage,
     LabelName,
@@ -164,16 +164,16 @@ def test_counts_the_issues_dropped_for_each_reason() -> None:
 
 
 def test_a_run_that_labelled_everything_it_chose_exits_zero() -> None:
-    assert outcome().exit_code() == ExitCode(0)
+    assert outcome().failed_any() == Failed(False)
 
 
 def test_a_run_with_a_failed_update_exits_non_zero() -> None:
     failed = outcome().model_copy(update={"failed": (IssueIdentifier("E-4"),)})
-    assert failed.exit_code() == ExitCode(1)
+    assert failed.failed_any() == Failed(True)
 
 
 def test_a_dry_run_exits_zero_because_it_attempted_nothing() -> None:
-    assert dry_outcome().exit_code() == ExitCode(0)
+    assert dry_outcome().failed_any() == Failed(False)
 
 
 def test_summarises_what_it_labelled_and_what_it_skipped() -> None:

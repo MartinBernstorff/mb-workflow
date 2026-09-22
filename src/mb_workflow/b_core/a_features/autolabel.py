@@ -5,11 +5,9 @@ from pathlib import Path
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
-from pydantic import ValidationError
-
-from mb_workflow.a_presentation.console import ExitCode
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
+from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.c_infrastructure.linear import (
     IssueQuery,
     IssueText,
@@ -270,8 +268,8 @@ class Outcome(Model):
             failed=(),
         )
 
-    def exit_code(self) -> ExitCode:
-        return ExitCode(1 if len(self.failed) > 0 else 0)
+    def failed_any(self) -> Failed:
+        return Failed(len(self.failed) > 0)
 
     def chosen(self) -> tuple[IssueIdentifier, ...]:
         if self.applied.root:
@@ -301,18 +299,11 @@ class Outcome(Model):
             logger.info("Re-run with --apply to label them.")
 
 
-def autolabel(shell: Shell, request: AutolabelRequest, ledger: LedgerPath) -> ExitCode:
-    try:
-        return swept(Linear(shell), request, ledger)
-    except FileNotFoundError as error:
-        logger.error("%s is not installed or not on PATH.", error.filename)
-        return ExitCode(1)
-    except (CalledProcessError, UnknownLabelError, ValidationError, re.error, ValueError) as error:
-        logger.error("%s", error)
-        return ExitCode(1)
+def autolabel(shell: Shell, request: AutolabelRequest, ledger: LedgerPath) -> Outcome:
+    return swept(Linear(shell), request, ledger)
 
 
-def swept(linear: Linear, request: AutolabelRequest, ledger: LedgerPath) -> ExitCode:
+def swept(linear: Linear, request: AutolabelRequest, ledger: LedgerPath) -> Outcome:
     if not linear.workspace_labels().has(request.label).root:
         raise UnknownLabelError(f"No Linear label is named {request.label.root}.")
 
@@ -329,7 +320,7 @@ def swept(linear: Linear, request: AutolabelRequest, ledger: LedgerPath) -> Exit
     outcome.report()
     if request.apply.root and len(outcome.labelled) > 0:
         ledger.write(recorded.extended(outcome.labelled))
-    return outcome.exit_code()
+    return outcome
 
 
 def updated(linear: Linear, selection: Selection, request: AutolabelRequest) -> Outcome:

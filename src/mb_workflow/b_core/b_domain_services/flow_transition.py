@@ -1,14 +1,10 @@
-import logging
 from typing import TYPE_CHECKING
 
-from mb_workflow.a_presentation.console import ExitCode
-from mb_workflow.b_core.d_domain_model.flow import Edges, EventName, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import Edges, EventName, StateName, WorkflowChart
 from mb_workflow.d_lib.models import Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.status import StatusStore
-
-logger = logging.getLogger(__name__)
 
 
 class Force(Value[bool]):
@@ -19,9 +15,8 @@ class Force(Value[bool]):
 
 def transitioned(
     chart: type[WorkflowChart], store: StatusStore, event: EventName, force: Force
-) -> ExitCode:
+) -> StateName:
     edges = Edges.of_chart(chart)
     target = edges.target_of(event) if force.root else edges.target_from(store.read(), event)
     store.write(target)
-    logger.info("Moved to %s.", target.root)
-    return ExitCode(0)
+    return target

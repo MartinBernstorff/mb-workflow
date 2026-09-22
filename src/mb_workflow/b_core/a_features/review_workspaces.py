@@ -2,9 +2,8 @@ import logging
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
-from mb_workflow.a_presentation.console import ExitCode
-from mb_workflow.b_core.b_domain_services.lock import AlreadyRunningError, LockPath
 from mb_workflow.b_core.d_domain_model.clock import Today
+from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
 from mb_workflow.c_infrastructure.github import GitHub, Lookback, MergedSince, PullRequests
 from mb_workflow.c_infrastructure.orca import (
@@ -20,6 +19,7 @@ from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
+    from mb_workflow.b_core.b_domain_services.lock import LockPath
     from mb_workflow.b_core.d_domain_model.git import BranchNames
 
 logger = logging.getLogger(__name__)
@@ -95,8 +95,8 @@ class Outcome(Model):
             len(self.created) == 0 and len(self.removed) == 0 and len(self.failed) == 0
         )
 
-    def exit_code(self) -> ExitCode:
-        return ExitCode(1 if len(self.failed) > 0 else 0)
+    def failed_any(self) -> Failed:
+        return Failed(len(self.failed) > 0)
 
 
 def uncovered(prs: PullRequests, worktrees: Worktrees) -> PullRequests:
@@ -165,20 +165,10 @@ def union(first: Worktrees, second: Worktrees) -> Worktrees:
 
 def create_workspaces(
     shell: Shell, status: WorkspaceStatus, lookback: Lookback, lock: LockPath
-) -> ExitCode:
-    try:
-        with lock.held():
-            since = MergedSince.of(lookback, Today.now())
-            return workspaces_for_review(GitHub(shell), Orca(shell), status, since).exit_code()
-    except AlreadyRunningError as error:
-        logger.error("%s", error)
-        return ExitCode(1)
-    except FileNotFoundError as error:
-        logger.error("%s is not installed or not on PATH.", error.filename)
-        return ExitCode(1)
-    except (CalledProcessError, OrcaError) as error:
-        logger.error("%s", error)
-        return ExitCode(1)
+) -> Outcome:
+    with lock.held():
+        since = MergedSince.of(lookback, Today.now())
+        return workspaces_for_review(GitHub(shell), Orca(shell), status, since)
 
 
 def workspaces_for_review(

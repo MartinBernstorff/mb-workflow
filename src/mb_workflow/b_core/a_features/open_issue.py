@@ -2,13 +2,11 @@ import logging
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
-from mb_workflow.a_presentation.console import ExitCode
 from mb_workflow.b_core.d_domain_model.issue import BranchSlug, IssueIdentifier
 from mb_workflow.c_infrastructure.linear import Assignee, IssueState, Linear
 from mb_workflow.c_infrastructure.orca import (
     AgentName,
     Orca,
-    OrcaError,
     ProjectSelector,
     SingleWorktree,
     TerminalText,
@@ -24,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 
 class UnprefixedStateError(Exception):
+    pass
+
+
+class PromptUndeliveredError(Exception):
     pass
 
 
@@ -76,18 +78,11 @@ class OpenRequest(Model):
         return self.model_copy(update={"prompt": PromptPrefix.of(state).applied(self.prompt)})
 
 
-def open_issue(shell: Shell, request: OpenRequest) -> ExitCode:
-    try:
-        return open_workspace(Orca(shell), Linear(shell), request)
-    except FileNotFoundError as error:
-        logger.error("%s is not installed or not on PATH.", error.filename)
-        return ExitCode(1)
-    except (CalledProcessError, OrcaError, UnprefixedStateError) as error:
-        logger.error("%s", error)
-        return ExitCode(1)
+def open_issue(shell: Shell, request: OpenRequest) -> None:
+    open_workspace(Orca(shell), Linear(shell), request)
 
 
-def open_workspace(orca: Orca, linear: Linear, request: OpenRequest) -> ExitCode:
+def open_workspace(orca: Orca, linear: Linear, request: OpenRequest) -> None:
     # Assignment is a convenience, not the point of opening a workspace, so never fail the run over it.
     if request.issue is not None:
         failure = linear.assign(request.issue, request.assignee)
@@ -107,21 +102,20 @@ def open_workspace(orca: Orca, linear: Linear, request: OpenRequest) -> ExitCode
     worktree = orca.create_for_issue(request.project, name, request.issue, request.agent())
     logger.info("Created %s", worktree.worktree.path.root)
 
-    return send_prompt(orca, worktree, prompting)
+    send_prompt(orca, worktree, prompting)
 
 
 def issue_state(linear: Linear, issue: IssueIdentifier | None) -> IssueState | None:
     return linear.state(issue) if issue is not None else None
 
 
-def send_prompt(orca: Orca, worktree: SingleWorktree, request: OpenRequest) -> ExitCode:
+def send_prompt(orca: Orca, worktree: SingleWorktree, request: OpenRequest) -> None:
     if request.prompt is None:
-        return ExitCode(0)
+        return
 
     terminal = worktree.terminal()
     if terminal is None:
-        logger.error("No agent terminal handle returned; prompt not typed.")
-        return ExitCode(1)
+        raise PromptUndeliveredError("No agent terminal handle returned; prompt not typed.")
 
     try:
         orca.wait_for_idle(terminal, request.idle_timeout)
@@ -130,4 +124,3 @@ def send_prompt(orca: Orca, worktree: SingleWorktree, request: OpenRequest) -> E
 
     # Type the prompt without Enter so it can be tweaked before submitting.
     orca.send_text(terminal, request.prompt)
-    return ExitCode(0)

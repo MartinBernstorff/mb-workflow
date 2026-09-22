@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from mb_workflow.a_presentation.console import ExitCode
 from mb_workflow.b_core.a_features.review_workspaces import (
     Failure,
     Outcome,
@@ -15,6 +14,7 @@ from mb_workflow.b_core.a_features.review_workspaces import (
 )
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames, Ref
+from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
 from mb_workflow.c_infrastructure.github import (
     Lookback,
@@ -127,11 +127,11 @@ def test_a_run_that_created_a_workspace_is_not_unchanged() -> None:
 
 
 def test_a_clean_run_exits_zero() -> None:
-    assert Outcome.fake().exit_code() == ExitCode(0)
+    assert Outcome.fake().failed_any() == Failed(False)
 
 
 def test_any_failure_exits_non_zero() -> None:
-    assert Outcome(created=(), removed=(), failed=(Failure.fake(),)).exit_code() == ExitCode(1)
+    assert Outcome(created=(), removed=(), failed=(Failure.fake(),)).failed_any() == Failed(True)
 
 
 def test_reports_each_created_workspace(caplog: pytest.LogCaptureFixture) -> None:

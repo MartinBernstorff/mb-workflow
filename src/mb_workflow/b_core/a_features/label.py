@@ -1,11 +1,9 @@
 import logging
 from enum import StrEnum
-from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
-from mb_workflow.a_presentation.console import ExitCode
 from mb_workflow.c_infrastructure.linear import LabelName, Linear
-from mb_workflow.c_infrastructure.orca import Orca, OrcaError, Worktree
+from mb_workflow.c_infrastructure.orca import Orca, Worktree
 from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
@@ -39,32 +37,24 @@ def labelled_issue(worktree: Worktree) -> IssueIdentifier:
     return worktree.linked_linear_issue
 
 
-def change_label(shell: Shell, request: LabelRequest) -> ExitCode:
-    try:
-        return changed(Orca(shell), Linear(shell), request)
-    except FileNotFoundError as error:
-        logger.error("%s is not installed or not on PATH.", error.filename)
-        return ExitCode(1)
-    except (CalledProcessError, OrcaError, UnlinkedWorktreeError, ValueError) as error:
-        logger.error("%s", error)
-        return ExitCode(1)
+def change_label(shell: Shell, request: LabelRequest) -> None:
+    changed(Orca(shell), Linear(shell), request)
 
 
-def changed(orca: Orca, linear: Linear, request: LabelRequest) -> ExitCode:
+def changed(orca: Orca, linear: Linear, request: LabelRequest) -> None:
     issue = labelled_issue(orca.current())
     if request.change == LabelChange.remove:
-        return removed(linear, issue, request.label)
+        removed(linear, issue, request.label)
+        return
     linear.add_label(issue, request.label)
     logger.info("Added %s to %s.", request.label.root, issue.root)
-    return ExitCode(0)
 
 
-def removed(linear: Linear, issue: IssueIdentifier, label: LabelName) -> ExitCode:
+def removed(linear: Linear, issue: IssueIdentifier, label: LabelName) -> None:
     current = linear.labels(issue)
     remaining = current.without(label)
     if remaining == current:
         logger.info("%s does not carry %s.", issue.root, label.root)
-        return ExitCode(0)
+        return
     linear.set_labels(issue, remaining)
     logger.info("Removed %s from %s.", label.root, issue.root)
-    return ExitCode(0)
