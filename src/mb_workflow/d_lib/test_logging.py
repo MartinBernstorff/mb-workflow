@@ -12,7 +12,7 @@ HTTP_LOGGERS = ("httpx", "httpcore")
 
 
 @pytest.fixture(autouse=True)
-def _restore_http_levels(caplog: pytest.LogCaptureFixture) -> Iterator[None]:
+def _root_at_info_and_http_levels_restored(caplog: pytest.LogCaptureFixture) -> Iterator[None]:
     caplog.set_level(logging.INFO)
     levels = {name: logging.getLogger(name).level for name in HTTP_LOGGERS}
     yield
