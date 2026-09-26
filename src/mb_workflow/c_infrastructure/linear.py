@@ -125,6 +125,38 @@ class MilestoneId(Value[str]):
         return MilestoneId("9a1c3e5b-2d4f-4b6a-8c0e-7f1a3b5c7d9e")
 
 
+class StateId(Value[str]):
+    @staticmethod
+    def fake() -> StateId:
+        return StateId("5c7e9a1b-3d5f-4e7a-9b1c-2d4e6f8a0b2c")
+
+
+class StateRecord(Payload):
+    id: StateId
+    name: StatusName
+
+    @staticmethod
+    def fake() -> StateRecord:
+        return StateRecord(id=StateId.fake(), name=StatusName.fake())
+
+
+# Statuses belong to a team, so they are looked up through the issue's team.
+class TeamStates(Payload):
+    states: tuple[StateRecord, ...] = Field(
+        validation_alias=AliasPath("issue", "team", "states", "nodes")
+    )
+
+    @staticmethod
+    def fake() -> TeamStates:
+        return TeamStates(states=(StateRecord.fake(),))
+
+    def named(self, status: StatusName) -> StateId:
+        found = next((known for known in self.states if known.name.names(status).root), None)
+        if found is None:
+            raise IssueTrackerError(f"No status is named {status.root}.")
+        return found.id
+
+
 class MilestoneRecord(Payload):
     id: MilestoneId
     name: MilestoneName
@@ -229,6 +261,7 @@ class IssueChanges(Payload):
     label_ids: tuple[LabelId, ...] | None = None
     assignee_id: UserId | None = None
     project_id: ProjectId | None = None
+    state_id: StateId | None = None
     project_milestone_id: MilestoneId | None = None
 
     @staticmethod
@@ -381,6 +414,8 @@ class Linear(IssueTracker):
             changes["assignee_id"] = self._user_id(update.assignee)
         if update.project is not None:
             changes["project_id"] = self._project_id(update.project)
+        if update.status is not None:
+            changes["state_id"] = self.state(issue, update.status)
         if update.milestone is not None:
             changes["project_milestone_id"] = self._milestone_id(update.milestone)
         wanted = IssueChanges.model_validate(changes)
@@ -401,6 +436,18 @@ class Linear(IssueTracker):
         if viewer is None or viewer.email is None:
             raise IssueTrackerError("Linear did not say who the API key belongs to.")
         return Assignee(viewer.email)
+
+    def state(self, issue: IssueIdentifier, status: StatusName) -> StateId:
+        with translated_errors():
+            data = self._client.execute(
+                """
+                query($id: String!) {
+                  issue(id: $id) { team { states(first: 250) { nodes { id name } } } }
+                }
+                """,
+                {"id": issue.root},
+            )
+        return TeamStates.model_validate(data).named(status)
 
     def _user_id(self, assignee: Assignee | Cleared) -> UserId | None:
         if isinstance(assignee, Cleared):

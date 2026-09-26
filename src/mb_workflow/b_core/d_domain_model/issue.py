@@ -55,7 +55,6 @@ class LabelNames(Value[tuple[LabelName, ...]]):
         matched = (self.matching(label) for label in requested.root)
         return LabelNames(tuple(dict.fromkeys(known for known in matched if known is not None)))
 
-    # gh takes comma-separated names in each repetition of a label flag.
     def split(self) -> LabelNames:
         return LabelNames(
             tuple(
@@ -83,6 +82,15 @@ class StatusName(IssueText):
     @staticmethod
     def fake() -> StatusName:
         return StatusName("Todo")
+
+
+class StatusNames(Value[tuple[StatusName, ...]]):
+    @staticmethod
+    def fake() -> StatusNames:
+        return StatusNames((StatusName.fake(), StatusName("In Progress"), StatusName("Done")))
+
+    def matching(self, status: StatusName) -> StatusName | None:
+        return next((known for known in self.root if known.names(status).root), None)
 
 
 class IssueState(StrEnum):
@@ -235,6 +243,7 @@ class IssueUpdate(Model):
     labels: LabelNames | None
     assignee: Assignee | Cleared | None
     project: ProjectName | Cleared | None
+    status: StatusName | None
     milestone: Milestone | Cleared | None
 
     @staticmethod
@@ -245,13 +254,20 @@ class IssueUpdate(Model):
             labels=LabelNames.fake(),
             assignee=Assignee.fake(),
             project=ProjectName.fake(),
+            status=StatusName.fake(),
             milestone=Milestone.fake(),
         )
 
     @staticmethod
     def nothing() -> IssueUpdate:
         return IssueUpdate(
-            title=None, description=None, labels=None, assignee=None, project=None, milestone=None
+            title=None,
+            description=None,
+            labels=None,
+            assignee=None,
+            project=None,
+            status=None,
+            milestone=None,
         )
 
 

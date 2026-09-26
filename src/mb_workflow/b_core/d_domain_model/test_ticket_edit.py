@@ -12,6 +12,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Milestone,
     MilestoneName,
     ProjectName,
+    StatusName,
 )
 from mb_workflow.b_core.d_domain_model.ticket_edit import (
     RemoveMilestone,
@@ -163,3 +164,8 @@ def test_label_flags_split_on_commas() -> None:
     assert flags.split() == LabelNames(
         (LabelName("Backend"), LabelName("d-grill"), LabelName("d-implement"))
     )
+
+
+def test_a_status_is_passed_on() -> None:
+    edit = TicketEdit.nothing().model_copy(update={"status": StatusName("Done")})
+    assert edit.update(IssueDetail.fake(), viewer()).status == StatusName("Done")

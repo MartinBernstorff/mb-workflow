@@ -53,28 +53,17 @@ class Greeting(RootModel[str]):
 
 Built with Typer, entry point `mb_workflow.cli:app`. Every command must accept `--quiet`, which sets the log level.
 
-The `a_presentation/cli/` package is the Typer boundary, with one file per command group, and is the one place excluded from `noprim`, because Typer can only bind primitives. Keep it free of logic: bind the primitive, wrap it in its domain type on the first line of the body, delegate. Anything with behaviour belongs in another module, where `noprim` still applies.
 
 ## Tickets
 
-`MB-<n>` identifiers are Linear issues. Read them with `mw ticket view`; modify them with `linear-cli`.
+`MB-<n>` identifiers are Linear issues. Read them with `mw ticket view`, modify them with `mw ticket edit`.
 
 ```bash
 uv run mw ticket view MB-19
-linear-cli issues update MB-19 --state Implementing
+mw ticket edit MB-19 --state Implementing
 ```
 
 The team's statuses are the workflow states (`Grilling`, `Speccing`, `Specced`, `Implementing`, `QA`, `Review`, `Merging`, `Merged`), not Linear's defaults.
-
-## Credentials
-
-`mw` reads its Linear keys from `~/.config/mb-workflow/projects/<owner>/<repo>.toml`, where `<owner>/<repo>` comes from the `origin` remote, so every worktree of a repository shares one file:
-
-```toml
-[linear]
-api_key = "lin_api_…"                   # the workspace this repository's issues live in
-integration_test_api_key = "lin_api_…"  # only for `moon run test-linear-live`
-```
 
 ## Commits
 

@@ -12,6 +12,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelNames,
     MilestoneName,
     ProjectName,
+    StatusName,
 )
 from mb_workflow.b_core.d_domain_model.ticket_edit import RemoveMilestone, TicketEdit
 from mb_workflow.d_lib.logging import LogLevel, configure
@@ -51,6 +52,7 @@ def ticket_edit(
     remove_project: str | None = typer.Option(
         None, "--remove-project", help="Remove from a project."
     ),
+    state: str | None = typer.Option(None, "--state", "-s", help="Move to a workflow state."),
     milestone: str | None = typer.Option(None, "--milestone", "-m", help="Set the milestone."),
     remove_milestone: bool = typer.Option(
         False, "--remove-milestone", help="Remove the milestone."
@@ -59,16 +61,17 @@ def ticket_edit(
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     edit = TicketEdit(
-        title=IssueTitle(title) if title is not None else None,
-        body=IssueDescription(body) if body is not None else None,
+        title=IssueTitle.from_nullable(title),
+        body=IssueDescription.from_nullable(body),
         body_file=IssueDescription(body_file.read()) if body_file is not None else None,
         add_labels=LabelNames(tuple(map(LabelName, add_label))).split(),
         remove_labels=LabelNames(tuple(map(LabelName, remove_label))).split(),
-        add_assignee=Assignee(add_assignee) if add_assignee is not None else None,
-        remove_assignee=Assignee(remove_assignee) if remove_assignee is not None else None,
-        add_project=ProjectName(add_project) if add_project is not None else None,
-        remove_project=ProjectName(remove_project) if remove_project is not None else None,
-        milestone=MilestoneName(milestone) if milestone is not None else None,
+        add_assignee=Assignee.from_nullable(add_assignee),
+        remove_assignee=Assignee.from_nullable(remove_assignee),
+        add_project=ProjectName.from_nullable(add_project),
+        remove_project=ProjectName.from_nullable(remove_project),
+        status=StatusName.from_nullable(state),
+        milestone=MilestoneName.from_nullable(milestone),
         remove_milestone=RemoveMilestone(remove_milestone),
     )
     raise typer.Exit(code=commands.ticket_edit(IssueIdentifier(issue), edit).root)

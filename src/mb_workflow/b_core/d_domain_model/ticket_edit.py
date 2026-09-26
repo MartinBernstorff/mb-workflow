@@ -9,6 +9,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Milestone,
     MilestoneName,
     ProjectName,
+    StatusName,
 )
 from mb_workflow.d_lib.models import Model, Value
 
@@ -33,6 +34,7 @@ class TicketEdit(Model):
     remove_assignee: Assignee | None
     add_project: ProjectName | None
     remove_project: ProjectName | None
+    status: StatusName | None
     milestone: MilestoneName | None
     remove_milestone: RemoveMilestone
 
@@ -52,6 +54,7 @@ class TicketEdit(Model):
             remove_assignee=None,
             add_project=None,
             remove_project=None,
+            status=None,
             milestone=None,
             remove_milestone=RemoveMilestone(False),
         )
@@ -73,6 +76,7 @@ class TicketEdit(Model):
             labels=self._labels(current),
             assignee=self._assignee(current, viewer),
             project=project,
+            status=self.status,
             milestone=self._milestone(current, project),
         )
 

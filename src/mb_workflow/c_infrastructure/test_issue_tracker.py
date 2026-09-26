@@ -41,9 +41,15 @@ from mb_workflow.b_core.d_domain_model.issue import (
     ProjectName,
     Projects,
     StatusName,
+    StatusNames,
 )
 from mb_workflow.c_infrastructure.credentials import CredentialsDirectory, RepositorySlug
-from mb_workflow.c_infrastructure.linear import Linear, MilestonePayload, ProjectId
+from mb_workflow.c_infrastructure.linear import (
+    Linear,
+    MilestonePayload,
+    ProjectId,
+    StateId,
+)
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.d_lib.models import Model, Payload, Value
 
@@ -308,6 +314,10 @@ def linear_backlog(linear_client: LinearClient) -> Backlog:
     )
 
 
+def state_id(client: LinearClient, issue: IssueIdentifier, status: StatusName) -> StateId:
+    return Linear(client).state(issue, status)
+
+
 def reset(client: LinearClient, backlog: Backlog) -> None:
     tracker = Linear(client)
     for planted in seeds():
@@ -325,6 +335,7 @@ def reset(client: LinearClient, backlog: Backlog) -> None:
                     "assigneeId": None,
                     "projectId": project.root if project is not None else None,
                     "projectMilestoneId": None,
+                    "stateId": state_id(client, identifier, planted.status).root,
                 },
             },
         )
@@ -366,6 +377,7 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
             for planted in seeds()
         ),
         Projects.fake(),
+        StatusNames.fake(),
         backlog.assignee,
     )
 
@@ -632,4 +644,20 @@ def test_an_unknown_milestone_is_refused(tracker: IssueTracker, backlog: Backlog
         tracker.update_issue(
             backlog.identifier(Seed.recent),
             IssueUpdate.nothing().model_copy(update={"milestone": unknown}),
+        )
+
+
+def test_an_update_moves_an_issue_to_a_status(tracker: IssueTracker, backlog: Backlog) -> None:
+    tracker.update_issue(
+        backlog.identifier(Seed.recent),
+        IssueUpdate.nothing().model_copy(update={"status": StatusName("in progress")}),
+    )
+    assert tracker.read_issue(backlog.identifier(Seed.recent)).status == StatusName("In Progress")
+
+
+def test_moving_to_an_unknown_status_is_refused(tracker: IssueTracker, backlog: Backlog) -> None:
+    with pytest.raises(IssueTrackerError):
+        tracker.update_issue(
+            backlog.identifier(Seed.recent),
+            IssueUpdate.nothing().model_copy(update={"status": StatusName("No such status")}),
         )

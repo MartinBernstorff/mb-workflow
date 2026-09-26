@@ -21,6 +21,8 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Project,
     ProjectName,
     Projects,
+    StatusName,
+    StatusNames,
 )
 from mb_workflow.d_lib.models import Model
 
@@ -77,11 +79,13 @@ class FakeIssueTracker(IssueTracker):
         labels: LabelNames,
         issues: tuple[TrackedIssue, ...],
         projects: Projects = Projects.fake(),
+        statuses: StatusNames = StatusNames.fake(),
         viewer: Assignee = Assignee.fake(),
     ) -> None:
         self._labels = labels
         self._issues = {tracked.issue.identifier: tracked for tracked in issues}
         self._projects = projects
+        self._statuses = statuses
         self._viewer = viewer
 
     @override
@@ -140,6 +144,7 @@ class FakeIssueTracker(IssueTracker):
         tracked = self._tracked(issue)
         labels = tracked.issue.labels if update.labels is None else self._spelled(update.labels)
         project = self._moved(tracked.issue.project, update.project)
+        status = tracked.issue.status if update.status is None else self._status(update.status)
         milestone = self._pinned(
             None if update.project is not None else tracked.milestone, update.milestone
         )
@@ -151,6 +156,7 @@ class FakeIssueTracker(IssueTracker):
                     update={
                         "labels": labels,
                         "project": project,
+                        "status": status,
                         "assigned": Assigned(held is not None),
                     }
                 ),
@@ -197,6 +203,12 @@ class FakeIssueTracker(IssueTracker):
                 f"{wanted.project.root} has no milestone named {wanted.name.root}."
             )
         return found
+
+    def _status(self, name: StatusName) -> StatusName:
+        status = self._statuses.matching(name)
+        if status is None:
+            raise IssueTrackerError(f"No status is named {name.root}.")
+        return status
 
     def _project(self, name: ProjectName) -> Project:
         project = self._projects.matching(name)
