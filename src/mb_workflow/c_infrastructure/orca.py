@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.workspace import (
         AgentName,
         ProjectSelector,
+        Submit,
         TerminalText,
         TimeoutMs,
     )
@@ -338,10 +339,9 @@ class Orca(WorkspaceManager):
         )
 
     @override
-    def send_text(self, terminal: TerminalHandle, text: TerminalText) -> None:
-        _ = self._run(
-            Command(("orca", "terminal", "send", "--terminal", terminal.root, "--text", text.root))
-        )
+    def send_text(self, terminal: TerminalHandle, text: TerminalText, submit: Submit) -> None:
+        command = ("orca", "terminal", "send", "--terminal", terminal.root, "--text", text.root)
+        _ = self._run(Command((*command, "--enter") if submit.root else command))
 
     def columns(self, unknown: ColumnLabel) -> ErrorMessage:
         listed = self.worktrees().root
