@@ -71,17 +71,11 @@ def in_progress(identifier: IssueIdentifier, status: IssueStatusName) -> Tracked
     )
 
 
-def workflow_statuses(*closing: IssueStatus) -> IssueStatuses:
-    final = {StateName(state.name) for state in WorkflowChart.final_states}
+def statuses_in_flight(*closing: IssueStatus) -> IssueStatuses:
+    names = ("Grilling", "Specced", "Implementing", "QA", "Review")
     return IssueStatuses(
         (
-            *(
-                IssueStatus(
-                    name=IssueStatusName(state.root),
-                    type=StatusType.completed if state in final else StatusType.started,
-                )
-                for state in StateNames.of_chart(WorkflowChart).root
-            ),
+            *(IssueStatus(name=IssueStatusName(name), type=StatusType.started) for name in names),
             *closing,
         )
     )
@@ -91,12 +85,12 @@ def pool_of(
     *tickets: TrackedIssue,
     labels: LabelNames | None = None,
     elsewhere: tuple[TrackedIssue, ...] = (),
-    statuses: IssueStatuses | None = None,
+    closing: tuple[IssueStatus, ...] = (),
 ) -> FakeTicketTracker:
     return FakeTicketTracker(
         LabelNames((LabelName("claimed"),)) if labels is None else labels,
         (*tickets, *elsewhere),
-        statuses=workflow_statuses() if statuses is None else statuses,
+        statuses=statuses_in_flight(*closing),
         views={PoolSettings.fake().view: tuple(ticket.issue.identifier for ticket in tickets)},
     )
 
@@ -233,7 +227,7 @@ def test_labelled_tickets_that_are_closed_do_not_count(closing: IssueStatus) -> 
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), closing.name),),
-        statuses=workflow_statuses(closing),
+        closing=(closing,),
     )
     assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-1"),)
 
