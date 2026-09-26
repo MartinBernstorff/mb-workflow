@@ -36,7 +36,9 @@ def workspace_labels() -> LabelNames:
 
 def tracked(identifier: IssueIdentifier, creator: Creator, created: CreatedOn) -> TrackedIssue:
     return TrackedIssue(
-        issue=Issue.fake().model_copy(update={"identifier": identifier, "labels": LabelNames(())}),
+        issue=Issue.fake().model_copy(
+            update={"identifier": identifier, "labels": LabelNames(()), "assigned": Assigned(False)}
+        ),
         creator=creator,
         created_on=created,
     )

@@ -107,7 +107,6 @@ class IssuePayload(Payload):
             status=StatusName.fake(),
             project=ProjectPayload.fake(),
             labels=(LabelPayload.fake(),),
-            assignee=AssigneePayload.fake(),
         )
 
     @staticmethod
@@ -153,7 +152,7 @@ class Linear(IssueTracker):
         found: list[LabelName] = []
         cursor: PageCursor | None = None
         while True:
-            page = self._parsed(LabelPage.parse, self._paged(lookup, cursor))
+            page = self._parsed(LabelPage.parse, self._paged_command(lookup, cursor))
             found.extend(page.names().root)
             cursor = page.next_cursor()
             if cursor is None:
@@ -177,7 +176,7 @@ class Linear(IssueTracker):
         found: list[Issue] = []
         cursor: PageCursor | None = None
         while True:
-            page = self._parsed(IssuePage.parse, self._paged(lookup, cursor))
+            page = self._parsed(IssuePage.parse, self._paged_command(lookup, cursor))
             found.extend(page.issues().root)
             cursor = page.next_cursor()
             if cursor is None:
@@ -185,15 +184,15 @@ class Linear(IssueTracker):
 
     @override
     def read(self, issue: IssueIdentifier) -> Issue:
-        read = Command(("linearis", "issues", "read", issue.root))
-        return self._parsed(IssuePayload.parse, read).issue()
+        lookup = Command(("linearis", "issues", "read", issue.root))
+        return self._parsed(IssuePayload.parse, lookup).issue()
 
     @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
         _ = self._run(
             Command(
                 (
-                    *self._update(issue).root,
+                    *self._update_command(issue).root,
                     "--labels",
                     label.root,
                     "--label-mode",
@@ -206,23 +205,25 @@ class Linear(IssueTracker):
     @override
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
         if len(labels.root) == 0:
-            _ = self._run(Command((*self._update(issue).root, "--clear-labels")))
+            _ = self._run(Command((*self._update_command(issue).root, "--clear-labels")))
             return
         names = ",".join(name.root for name in labels.root)
         _ = self._run(
-            Command((*self._update(issue).root, "--labels", names, "--label-mode", "overwrite"))
+            Command(
+                (*self._update_command(issue).root, "--labels", names, "--label-mode", "overwrite")
+            )
         )
 
     @override
     def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None:
-        _ = self._run(Command((*self._update(issue).root, "--assignee", assignee.root)))
+        _ = self._run(Command((*self._update_command(issue).root, "--assignee", assignee.root)))
 
     @staticmethod
-    def _update(issue: IssueIdentifier) -> Command:
+    def _update_command(issue: IssueIdentifier) -> Command:
         return Command(("linearis", "issues", "update", issue.root))
 
     @staticmethod
-    def _paged(lookup: Command, cursor: PageCursor | None) -> Command:
+    def _paged_command(lookup: Command, cursor: PageCursor | None) -> Command:
         if cursor is None:
             return lookup
         return Command((*lookup.root, "--after", cursor.root))

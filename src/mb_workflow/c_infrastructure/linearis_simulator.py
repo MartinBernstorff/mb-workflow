@@ -139,13 +139,15 @@ class LinearisSimulator(CommandRunner):
                 )
                 return CommandOutput("{}")
             case _:
-                raise self._refused(command, Refusal("unknown command"))
+                raise self._refusal_error(command, Refusal("unknown command"))
 
     def _labels_page(self, arguments: Arguments) -> CommandOutput:
         nodes = tuple(Node.of_label(label) for label in self._labels.root)
         start = int(arguments.after.root) if arguments.after is not None else 0
         end = start + self._page_size.root
-        return self._page(nodes[start:end], PageCursor(str(end)), MorePages(end < len(nodes)))
+        return self._page_output(
+            nodes[start:end], PageCursor(str(end)), MorePages(end < len(nodes))
+        )
 
     def _issues_page(self, arguments: Arguments) -> CommandOutput:
         wanted = arguments.wanted()
@@ -159,7 +161,7 @@ class LinearisSimulator(CommandRunner):
         start = int(arguments.after.root) if arguments.after is not None else 0
         end = start + self._page_size.root
         nodes = tuple(Node.of_issue(issue) for issue in issues.root[start:end])
-        return self._page(nodes, PageCursor(str(end)), MorePages(end < len(issues.root)))
+        return self._page_output(nodes, PageCursor(str(end)), MorePages(end < len(issues.root)))
 
     def _update(self, command: Command, identifier: IssueIdentifier, arguments: Arguments) -> None:
         tracked = self._tracked(command, identifier)
@@ -176,7 +178,7 @@ class LinearisSimulator(CommandRunner):
         unknown = self._labels.unmatched(arguments.labels)
         if len(unknown.root) > 0:
             names = ", ".join(label.root for label in unknown.root)
-            raise self._refused(command, Refusal(f"Label not found: {names}"))
+            raise self._refusal_error(command, Refusal(f"Label not found: {names}"))
         if arguments.label_mode != LabelMode.add:
             return self._labels.spelled(arguments.labels)
         return self._labels.spelled(LabelNames((*current.root, *arguments.labels.root)))
@@ -184,13 +186,13 @@ class LinearisSimulator(CommandRunner):
     def _tracked(self, command: Command, identifier: IssueIdentifier) -> TrackedIssue:
         tracked = self._issues.get(identifier)
         if tracked is None:
-            raise self._refused(
+            raise self._refusal_error(
                 command, Refusal(f"Issue with identifier {identifier.root} not found")
             )
         return tracked
 
     @staticmethod
-    def _page(nodes: tuple[Node, ...], cursor: PageCursor, more: MorePages) -> CommandOutput:
+    def _page_output(nodes: tuple[Node, ...], cursor: PageCursor, more: MorePages) -> CommandOutput:
         return CommandOutput(
             json.dumps(
                 {
@@ -201,5 +203,5 @@ class LinearisSimulator(CommandRunner):
         )
 
     @staticmethod
-    def _refused(command: Command, refusal: Refusal) -> CalledProcessError:
+    def _refusal_error(command: Command, refusal: Refusal) -> CalledProcessError:
         return CalledProcessError(1, command.root, "", json.dumps({"error": refusal.root}))

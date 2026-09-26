@@ -12,5 +12,9 @@ class Value[T](RootModel[T]):
 
 class Payload(BaseModel):
     model_config = ConfigDict(
-        extra="ignore", frozen=True, populate_by_name=True, alias_generator=to_camel
+        extra="ignore",
+        frozen=True,
+        validate_by_name=True,
+        validate_by_alias=True,
+        alias_generator=to_camel,
     )
