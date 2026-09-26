@@ -101,7 +101,7 @@ def drain_pool(
                 continue
             if (
                 request.dry_run.root
-                or started(
+                or try_start_ticket(
                     tracker=tracker,
                     claims=claims,
                     pause=pause,
@@ -113,7 +113,8 @@ def drain_pool(
                 ).root
             ):
                 picked.append(ticket)
-                occupancy = occupancy.plus(ticket.issue.status)
+            # A ticket lost to another host is now in progress there, so it fills a slot too.
+            occupancy = occupancy.with_ticket_in(ticket.issue.status)
         return DrainOutcome(ready=ready, picked=PoolTickets(tuple(picked)))
 
 
@@ -123,7 +124,7 @@ class Started(Value[bool]):
         return Started(True)
 
 
-def started(
+def try_start_ticket(
     *,
     tracker: TicketTracker,
     claims: ClaimRegistry,

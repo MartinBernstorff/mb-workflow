@@ -1,6 +1,6 @@
 from enum import IntEnum
 
-from pydantic import Field, JsonValue, NonNegativeInt, model_validator
+from pydantic import Field, JsonValue, NonNegativeInt, field_validator, model_validator
 
 from mb_workflow.b_core.d_domain_model.flow import StateNames, WorkflowChart
 from mb_workflow.b_core.d_domain_model.issue import (
@@ -94,7 +94,12 @@ class Filled(Value[bool]):
         return Filled(False)
 
 
-# The status of each ticket in progress, repeated once per ticket.
+class TicketCount(Value[NonNegativeInt]):
+    @staticmethod
+    def fake() -> TicketCount:
+        return TicketCount(1)
+
+
 class Occupancy(Value[tuple[IssueStatusName, ...]]):
     @staticmethod
     def fake() -> Occupancy:
@@ -104,11 +109,11 @@ class Occupancy(Value[tuple[IssueStatusName, ...]]):
     def of(issues: Issues) -> Occupancy:
         return Occupancy(tuple(issue.status for issue in issues.root))
 
-    def plus(self, status: IssueStatusName) -> Occupancy:
+    def with_ticket_in(self, status: IssueStatusName) -> Occupancy:
         return Occupancy((*self.root, status))
 
-    def under(self, status: IssueStatusName) -> Limit:
-        return Limit(sum(1 for held in self.root if held.names(status).root))
+    def count_in(self, status: IssueStatusName) -> TicketCount:
+        return TicketCount(sum(1 for held in self.root if held.names(status).root))
 
 
 class LimitSummary(Value[str]):
@@ -121,6 +126,12 @@ def default_status_limits() -> dict[IssueStatusName, Limit]:
     return {IssueStatusName("Grilling"): Limit(1)}
 
 
+def chart_statuses() -> StatusNames:
+    return StatusNames(
+        tuple(IssueStatusName(state.root) for state in StateNames.of_chart(WorkflowChart).root)
+    )
+
+
 class PoolLimits(Model):
     total: Limit = Limit(4)
     statuses: dict[IssueStatusName, Limit] = Field(default_factory=default_status_limits)
@@ -129,27 +140,34 @@ class PoolLimits(Model):
     def fake() -> PoolLimits:
         return PoolLimits()
 
-    # The table names statuses beside total, so each is read in the chart's spelling over the defaults.
+    # [pool.limits] lists status limits flat beside total, and they only override the defaults.
     @model_validator(mode="before")
     @classmethod
-    def statuses_beside_total(cls, data: JsonValue) -> JsonValue:
+    def gather_status_limits(cls, data: JsonValue) -> JsonValue:
         if not isinstance(data, dict) or "statuses" in data:
             return data
-        chart = StatusNames(
-            tuple(IssueStatusName(state.root) for state in StateNames.of_chart(WorkflowChart).root)
-        )
         statuses: dict[str, JsonValue] = {
             name.root: limit.root for name, limit in default_status_limits().items()
         }
-        for key, limit in data.items():
-            if key == "total":
-                continue
-            known = chart.matching(IssueStatusName(key))
+        statuses.update({key: limit for key, limit in data.items() if key != "total"})
+        return {**{key: data[key] for key in ("total",) if key in data}, "statuses": statuses}
+
+    @field_validator("statuses")
+    @classmethod
+    def spell_as_the_chart(
+        cls, statuses: dict[IssueStatusName, Limit]
+    ) -> dict[IssueStatusName, Limit]:
+        chart = chart_statuses()
+        spelled: dict[IssueStatusName, Limit] = {}
+        for name, limit in statuses.items():
+            known = chart.matching(name)
             if known is None:
                 listed = ", ".join(sorted(status.root for status in chart.root))
-                raise ValueError(f"{key} is not a status in the chart. Limit one of {listed}.")
-            statuses[known.root] = limit
-        return {**{key: data[key] for key in ("total",) if key in data}, "statuses": statuses}
+                raise ValueError(
+                    f"{name.root} is not a status in the chart. Limit one of {listed}."
+                )
+            spelled[known] = limit
+        return spelled
 
     def summary(self) -> LimitSummary:
         return LimitSummary(
@@ -170,4 +188,4 @@ class PoolLimits(Model):
         limit = next(
             (held for name, held in self.statuses.items() if name.names(status).root), None
         )
-        return Admitted(limit is None or occupancy.under(status).root < limit.root)
+        return Admitted(limit is None or occupancy.count_in(status).root < limit.root)

@@ -413,7 +413,7 @@ class Linear(TicketTracker):
 
     @override
     def list_issues(self, wanted: IssueFilter) -> Issues:
-        return self._swept(
+        return self._issues_matching(
             {
                 "creator": {"email": {"eq": wanted.creator.root}},
                 "createdAt": {"gte": wanted.created_after.root.isoformat()},
@@ -422,7 +422,7 @@ class Linear(TicketTracker):
 
     @override
     def labelled_issues(self, label: LabelName, excluding: StatusNames) -> Issues:
-        return self._swept(
+        return self._issues_matching(
             {
                 "labels": {"some": {"name": {"eqIgnoreCase": label.root}}},
                 "and": [
@@ -431,7 +431,7 @@ class Linear(TicketTracker):
             }
         )
 
-    def _swept(self, issue_filter: JsonValue) -> Issues:
+    def _issues_matching(self, issue_filter: JsonValue) -> Issues:
         found: list[Issue] = []
         cursor: PageCursor | None = None
         while True:
