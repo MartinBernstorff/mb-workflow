@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         PoolSettings,
         WorkspaceSettings,
     )
+    from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 
 logger = logging.getLogger(__name__)
@@ -74,20 +75,24 @@ def drain_pool(
     tie_break: TieBreak,
     workspace: WorkspaceSettings,
     claim_settings: ClaimSettings,
+    flow_labels: FlowLabels,
     pool: PoolSettings,
     request: DrainRequest,
 ) -> DrainOutcome:
     with lock.held():
         require_claim_label(tracker, claim_settings.label)
         ready = in_pick_order(
-            tracker.unblocked_view_tickets(pool.view).ready(claim_settings.label), tie_break
+            tracker.unblocked_view_tickets(pool.view).ready(claim_settings.label, flow_labels),
+            tie_break,
         )
-        occupancy = Occupancy.of(tracker.labelled_issues(claim_settings.label, Released.types()))
+        occupancy = Occupancy.of(
+            tracker.labelled_issues(claim_settings.label, Released.types()), flow_labels
+        )
         picked: list[PoolTicket] = []
         for ticket in ready.root:
             if pool.limits.filled(occupancy).root:
                 break
-            if not pool.limits.admits(occupancy, ticket.issue.status).root:
+            if not pool.limits.admits(occupancy, ticket.flow_state(flow_labels)).root:
                 continue
             if (
                 request.dry_run.root
@@ -98,12 +103,13 @@ def drain_pool(
                     board=board,
                     workspace=workspace,
                     claim_settings=claim_settings,
+                    flow_labels=flow_labels,
                     request=request.start_request(ticket.issue.identifier),
                 ).root
             ):
                 picked.append(ticket)
             # A ticket lost to another host is now in progress there, so it fills a slot too.
-            occupancy = occupancy.with_ticket_in(ticket.issue.status)
+            occupancy = occupancy.with_ticket_in(ticket.flow_state(flow_labels))
         return DrainOutcome(ready=ready, picked=PoolTickets(tuple(picked)))
 
 
@@ -121,6 +127,7 @@ def try_start_ticket(
     board: WorkspaceStatusStore,
     workspace: WorkspaceSettings,
     claim_settings: ClaimSettings,
+    flow_labels: FlowLabels,
     request: StartRequest,
 ) -> Started:
     try:
@@ -131,6 +138,7 @@ def try_start_ticket(
             board=board,
             workspace=workspace,
             claim_settings=claim_settings,
+            flow_labels=flow_labels,
             request=request,
         )
     except ClaimLostError:

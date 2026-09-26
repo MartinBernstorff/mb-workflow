@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.b_domain_services.next_action import next_action, state_of
+from mb_workflow.b_core.b_domain_services.next_action import next_action
 from mb_workflow.b_core.c_secondary_ports.claims import (
     ClaimRequest,
     LabelledClaim,
@@ -22,6 +22,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
     Skill,
     WorkflowChart,
 )
+from mb_workflow.b_core.d_domain_model.flow_labels import state_of
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.workspace import (
     AgentName,
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow import StateName
+    from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.workspace import OpenedWorktree
 
 logger = logging.getLogger(__name__)
@@ -80,12 +82,12 @@ def start_ticket(
     board: WorkspaceStatusStore,
     workspace: WorkspaceSettings,
     claim_settings: ClaimSettings,
+    flow_labels: FlowLabels,
     request: StartRequest,
 ) -> None:
     # Resolve the state before touching anything, so a ticket with no work left is neither claimed, assigned nor opened.
     detail = tracker.read_issue_detail(request.ticket)
-    status = detail.issue.status
-    state = state_of(WorkflowChart, status)
+    state = state_of(WorkflowChart, flow_labels, detail.issue.grouped)
     prompt = request.prompt_for(action_in(request.ticket, state))
 
     name = WorktreeName.of_issue(request.ticket)
@@ -95,7 +97,7 @@ def start_ticket(
         claims,
         ClaimRequest(
             ticket=request.ticket,
-            status=status,
+            status=detail.issue.status,
             holder=holder,
             take_over=request.take_over,
         ),

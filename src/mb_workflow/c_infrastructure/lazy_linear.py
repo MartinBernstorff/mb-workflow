@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, ClaimId, Claims
-    from mb_workflow.b_core.d_domain_model.flow_labels import LabelGroupName
     from mb_workflow.b_core.d_domain_model.issue import (
         Assignee,
         Issue,
@@ -22,6 +21,7 @@ if TYPE_CHECKING:
         IssueIdentifier,
         Issues,
         IssueUpdate,
+        LabelGroupName,
         LabelName,
         LabelNames,
         StatusTypes,

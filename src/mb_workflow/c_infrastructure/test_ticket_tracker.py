@@ -26,7 +26,6 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     TrackedIssue,
 )
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, ClaimId, Claims, HostName
-from mb_workflow.b_core.d_domain_model.flow_labels import LabelGroupName
 from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
@@ -34,6 +33,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     CreatedAfter,
     CreatedOn,
     Creator,
+    GroupedLabels,
     Issue,
     IssueDescription,
     IssueDetail,
@@ -44,6 +44,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueStatusName,
     IssueTitle,
     IssueUpdate,
+    LabelGroupName,
     LabelName,
     LabelNames,
     Milestone,
@@ -96,6 +97,7 @@ class SeededIssue(Model):
             status=self.status,
             project=self.project,
             labels=self.labels,
+            grouped=GroupedLabels(()),
             assigned=Assigned(False),
         )
 
@@ -618,6 +620,16 @@ def test_an_issue_carries_a_label_of_a_group(groupless: TicketTracker, backlog: 
     assert set(groupless.read_issue(backlog.identifier(Seed.done)).labels.root) == set(
         LabelNames((LabelName("d-grill"), QA)).root
     )
+
+
+def test_an_issue_reads_back_the_group_of_its_labels(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((GRILLING, QA)))
+    groupless.set_labels(backlog.identifier(Seed.done), LabelNames((LabelName("d-grill"), QA)))
+    assert groupless.read_issue(backlog.identifier(Seed.done)).grouped.in_group(
+        LabelGroupName.fake()
+    ) == LabelNames((QA,))
 
 
 def test_an_issue_carrying_two_labels_of_one_group_is_refused(

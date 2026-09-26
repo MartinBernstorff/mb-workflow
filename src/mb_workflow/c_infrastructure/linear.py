@@ -18,6 +18,8 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
     Cleared,
+    GroupedLabel,
+    GroupedLabels,
     Issue,
     IssueDescription,
     IssueDetail,
@@ -25,6 +27,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issues,
     IssueStatusName,
     IssueTitle,
+    LabelGroupName,
     LabelName,
     LabelNames,
     Milestone,
@@ -37,7 +40,6 @@ from mb_workflow.d_lib.models import Payload, Value
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from mb_workflow.b_core.d_domain_model.flow_labels import LabelGroupName
     from mb_workflow.b_core.d_domain_model.issue import IssueFilter, IssueUpdate, StatusTypes
     from mb_workflow.b_core.d_domain_model.pool import ViewSlug
 
@@ -78,8 +80,17 @@ class PageInfo(Payload):
         return self.end_cursor if self.has_next_page.root else None
 
 
+class LabelParentPayload(Payload):
+    name: LabelGroupName
+
+    @staticmethod
+    def fake() -> LabelParentPayload:
+        return LabelParentPayload(name=LabelGroupName.fake())
+
+
 class LabelPayload(Payload):
     name: LabelName
+    parent: LabelParentPayload | None = None
 
     @staticmethod
     def fake() -> LabelPayload:
@@ -310,6 +321,13 @@ class IssuePayload(Payload):
             status=self.status,
             project=self.project.name if self.project is not None else None,
             labels=LabelNames(tuple(label.name for label in self.labels)),
+            grouped=GroupedLabels(
+                tuple(
+                    GroupedLabel(group=label.parent.name, label=label.name)
+                    for label in self.labels
+                    if label.parent is not None
+                )
+            ),
             assigned=Assigned(self.assignee is not None),
         )
 
@@ -515,7 +533,7 @@ class Linear(TicketTracker):
                           identifier
                           state { name }
                           project { name }
-                          labels { nodes { name } }
+                          labels { nodes { name parent { name } } }
                           assignee { id }
                         }
                         pageInfo { hasNextPage endCursor }
@@ -553,7 +571,7 @@ class Linear(TicketTracker):
                             priority
                             state { name }
                             project { name }
-                            labels { nodes { name } }
+                            labels { nodes { name parent { name } } }
                             assignee { id }
                           }
                           pageInfo { hasNextPage endCursor }
@@ -585,7 +603,7 @@ class Linear(TicketTracker):
                     description
                     state { name }
                     project { name }
-                    labels { nodes { name } }
+                    labels { nodes { name parent { name } } }
                     assignee { email }
                     projectMilestone { name }
                   }

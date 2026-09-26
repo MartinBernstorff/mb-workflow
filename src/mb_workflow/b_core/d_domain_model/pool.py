@@ -2,15 +2,22 @@ from enum import IntEnum
 
 from pydantic import Field, JsonValue, NonNegativeInt, field_validator, model_validator
 
-from mb_workflow.b_core.d_domain_model.flow import StateNames, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import (
+    Skill,
+    StateName,
+    StateNames,
+    WorkflowChart,
+    WorkState,
+)
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, state_of
 from mb_workflow.b_core.d_domain_model.issue import (
+    GroupedLabel,
+    GroupedLabels,
     Issue,
     IssueIdentifier,
     Issues,
-    IssueStatusName,
     LabelName,
     LabelNames,
-    StatusNames,
 )
 from mb_workflow.d_lib.models import Model, Value
 
@@ -44,30 +51,31 @@ class PoolTicket(Model):
     def fake() -> PoolTicket:
         return PoolTicket(
             issue=Issue.fake().model_copy(
-                update={"status": IssueStatusName("Specced"), "labels": LabelNames(())}
+                update={
+                    "labels": LabelNames((GroupedLabel.fake().label,)),
+                    "grouped": GroupedLabels((GroupedLabel.fake(),)),
+                }
             ),
             priority=Priority.medium,
         )
 
+    # A ticket is ready when its state names a skill an agent can run.
     @staticmethod
-    def ready_statuses() -> StatusNames:
-        return StatusNames(
-            tuple(
-                IssueStatusName(name)
-                for name in (
-                    "Backlog",
-                    "Grilling",
-                    "Speccing",
-                    "Specced",
-                    "Implementing",
-                    "Merging",
-                )
+    def ready_states() -> StateNames:
+        return StateNames(
+            frozenset(
+                StateName(state.name)
+                for state in WorkflowChart.states
+                if isinstance(state, WorkState) and isinstance(state.action, Skill)
             )
         )
 
-    def ready(self, claim_label: LabelName) -> Ready:
+    def flow_state(self, flow_labels: FlowLabels) -> StateName:
+        return state_of(WorkflowChart, flow_labels, self.issue.grouped)
+
+    def ready(self, claim_label: LabelName, flow_labels: FlowLabels) -> Ready:
         return Ready(
-            PoolTicket.ready_statuses().matching(self.issue.status) is not None
+            self.flow_state(flow_labels) in PoolTicket.ready_states().root
             and self.issue.labels.matching(claim_label) is None
         )
 
@@ -77,8 +85,10 @@ class PoolTickets(Value[tuple[PoolTicket, ...]]):
     def fake() -> PoolTickets:
         return PoolTickets((PoolTicket.fake(),))
 
-    def ready(self, claim_label: LabelName) -> PoolTickets:
-        return PoolTickets(tuple(ticket for ticket in self.root if ticket.ready(claim_label).root))
+    def ready(self, claim_label: LabelName, flow_labels: FlowLabels) -> PoolTickets:
+        return PoolTickets(
+            tuple(ticket for ticket in self.root if ticket.ready(claim_label, flow_labels).root)
+        )
 
     def identifiers(self) -> tuple[IssueIdentifier, ...]:
         return tuple(ticket.issue.identifier for ticket in self.root)
@@ -108,20 +118,22 @@ class TicketCount(Value[NonNegativeInt]):
         return TicketCount(1)
 
 
-class Occupancy(Value[tuple[IssueStatusName, ...]]):
+class Occupancy(Value[tuple[StateName, ...]]):
     @staticmethod
     def fake() -> Occupancy:
-        return Occupancy((IssueStatusName("Implementing"),))
+        return Occupancy((StateName("Implementing"),))
 
     @staticmethod
-    def of(issues: Issues) -> Occupancy:
-        return Occupancy(tuple(issue.status for issue in issues.root))
+    def of(issues: Issues, flow_labels: FlowLabels) -> Occupancy:
+        return Occupancy(
+            tuple(state_of(WorkflowChart, flow_labels, issue.grouped) for issue in issues.root)
+        )
 
-    def with_ticket_in(self, status: IssueStatusName) -> Occupancy:
-        return Occupancy((*self.root, status))
+    def with_ticket_in(self, state: StateName) -> Occupancy:
+        return Occupancy((*self.root, state))
 
-    def count_in(self, status: IssueStatusName) -> TicketCount:
-        return TicketCount(sum(1 for held in self.root if held.names(status).root))
+    def count_in(self, state: StateName) -> TicketCount:
+        return TicketCount(sum(1 for held in self.root if held == state))
 
 
 class LimitSummary(Value[str]):
@@ -130,50 +142,53 @@ class LimitSummary(Value[str]):
         return LimitSummary("total 4, Grilling 1")
 
 
-def default_status_limits() -> dict[IssueStatusName, Limit]:
-    return {IssueStatusName("Grilling"): Limit(1)}
+def default_state_limits() -> dict[StateName, Limit]:
+    return {StateName("Grilling"): Limit(1)}
 
 
-def chart_statuses() -> StatusNames:
-    return StatusNames(
-        tuple(IssueStatusName(state.root) for state in StateNames.of_chart(WorkflowChart).root)
+def chart_state_named(name: StateName) -> StateName | None:
+    wanted = name.root.casefold()
+    return next(
+        (
+            state
+            for state in StateNames.of_chart(WorkflowChart).root
+            if state.root.casefold() == wanted
+        ),
+        None,
     )
 
 
 class PoolLimits(Model):
     total: Limit = Limit(4)
-    statuses: dict[IssueStatusName, Limit] = Field(default_factory=default_status_limits)
+    states: dict[StateName, Limit] = Field(default_factory=default_state_limits)
 
     @staticmethod
     def fake() -> PoolLimits:
         return PoolLimits()
 
-    # [pool.limits] lists status limits flat beside total, and they only override the defaults.
+    # [pool.limits] lists state limits flat beside total, and they only override the defaults.
     @model_validator(mode="before")
     @classmethod
-    def gather_status_limits(cls, data: JsonValue) -> JsonValue:
-        if not isinstance(data, dict) or "statuses" in data:
+    def gather_state_limits(cls, data: JsonValue) -> JsonValue:
+        if not isinstance(data, dict) or "states" in data:
             return data
-        statuses: dict[str, JsonValue] = {
-            name.root: limit.root for name, limit in default_status_limits().items()
+        states: dict[str, JsonValue] = {
+            name.root: limit.root for name, limit in default_state_limits().items()
         }
-        statuses.update({key: limit for key, limit in data.items() if key != "total"})
-        return {**{key: data[key] for key in ("total",) if key in data}, "statuses": statuses}
+        states.update({key: limit for key, limit in data.items() if key != "total"})
+        return {**{key: data[key] for key in ("total",) if key in data}, "states": states}
 
-    @field_validator("statuses")
+    @field_validator("states")
     @classmethod
-    def spell_as_the_chart(
-        cls, statuses: dict[IssueStatusName, Limit]
-    ) -> dict[IssueStatusName, Limit]:
-        chart = chart_statuses()
-        spelled: dict[IssueStatusName, Limit] = {}
-        for name, limit in statuses.items():
-            known = chart.matching(name)
+    def spell_as_the_chart(cls, states: dict[StateName, Limit]) -> dict[StateName, Limit]:
+        spelled: dict[StateName, Limit] = {}
+        for name, limit in states.items():
+            known = chart_state_named(name)
             if known is None:
-                listed = ", ".join(sorted(status.root for status in chart.root))
-                raise ValueError(
-                    f"{name.root} is not a status in the chart. Limit one of {listed}."
+                listed = ", ".join(
+                    sorted(state.root for state in StateNames.of_chart(WorkflowChart).root)
                 )
+                raise ValueError(f"{name.root} is not a state in the chart. Limit one of {listed}.")
             spelled[known] = limit
         return spelled
 
@@ -182,7 +197,7 @@ class PoolLimits(Model):
             ", ".join(
                 (
                     f"total {self.total.root}",
-                    *(f"{name.root} {limit.root}" for name, limit in self.statuses.items()),
+                    *(f"{name.root} {limit.root}" for name, limit in self.states.items()),
                 )
             )
         )
@@ -190,10 +205,8 @@ class PoolLimits(Model):
     def filled(self, occupancy: Occupancy) -> Filled:
         return Filled(len(occupancy.root) >= self.total.root)
 
-    def admits(self, occupancy: Occupancy, status: IssueStatusName) -> Admitted:
+    def admits(self, occupancy: Occupancy, state: StateName) -> Admitted:
         if self.filled(occupancy).root:
             return Admitted(False)
-        limit = next(
-            (held for name, held in self.statuses.items() if name.names(status).root), None
-        )
-        return Admitted(limit is None or occupancy.count_in(status).root < limit.root)
+        limit = self.states.get(state)
+        return Admitted(limit is None or occupancy.count_in(state).root < limit.root)

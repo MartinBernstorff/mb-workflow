@@ -1,5 +1,6 @@
 from mb_workflow.a_presentation.console import Output
 from mb_workflow.a_presentation.drain_report import pick_listing
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority
 
@@ -21,6 +22,6 @@ def test_the_listing_names_each_ready_ticket_its_priority_and_state_in_order() -
             "priority": Priority.no_priority,
         }
     )
-    assert pick_listing(PoolTickets((urgent, unprioritised))) == Output(
+    assert pick_listing(PoolTickets((urgent, unprioritised)), FlowLabels.fake()) == Output(
         "E-2\turgent\tSpecced\nE-1\tno_priority\tSpecced\n"
     )
