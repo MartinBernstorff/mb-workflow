@@ -100,8 +100,8 @@ def drain_pool(
                     claim_settings=claim_settings,
                     request=request.start_request(ticket),
                 )
-            except ClaimLostError as error:
-                logger.info("%s Trying the next ticket.", error)
+            except ClaimLostError:
+                logger.info("Another host holds %s; trying the next ticket.", ticket.root)
                 continue
             except Exception:
                 release_claim(

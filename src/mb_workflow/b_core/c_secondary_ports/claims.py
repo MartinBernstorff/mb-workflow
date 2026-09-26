@@ -21,7 +21,7 @@ class ClaimRefusedError(Exception):
     pass
 
 
-# Another holder has the ticket, as distinct from a claim this run could never have made.
+# Split out so a drain can move on when another host wins, yet stop on any other refusal.
 class ClaimLostError(ClaimRefusedError):
     pass
 

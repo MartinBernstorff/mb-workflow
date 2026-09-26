@@ -40,4 +40,4 @@ def test_a_configured_pool_reports_its_view() -> None:
         ),
         origin=ConfigPath.fake(),
     )
-    assert "pool view: 4efb86b38740" in ConfigReport.of(config).root
+    assert f"pool view: {PoolSettings.fake().view.root}" in ConfigReport.of(config).root

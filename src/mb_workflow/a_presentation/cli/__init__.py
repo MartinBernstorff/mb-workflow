@@ -203,7 +203,9 @@ def drain(
         "--claim-settle-ms",
         help="How long to wait between posting the claim and checking who holds the ticket.",
     ),
-    lock: str = typer.Option("drain", "--lock"),
+    lock: str = typer.Option(
+        "drain", "--lock", help="Name of the lock that keeps passes from overlapping."
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Start the top ready ticket in the pool."""
