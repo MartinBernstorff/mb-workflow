@@ -1,14 +1,12 @@
 import re
-from typing import TYPE_CHECKING, override
+from functools import cached_property
+from typing import override
 
 from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
 from mb_workflow.b_core.d_domain_model.flow import StateName
 from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus
 from mb_workflow.c_infrastructure.orca import ColumnLabel, ErrorMessage, Orca
 from mb_workflow.d_lib.models import Model, Payload, Value
-
-if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
 
 
 class BoardError(Exception):
@@ -119,22 +117,22 @@ class Columns(Value[tuple[Column, ...]]):
 
 
 class WorkspaceBoard(WorkspaceStatusStore):
-    def __init__(self, manager: WorkspaceManager, columns: Columns, start: StateName) -> None:
-        self._manager = manager
-        self._columns = columns
+    def __init__(self, orca: Orca, start: StateName) -> None:
+        self._orca = orca
         self._start = start
 
-    @staticmethod
-    def of_orca(orca: Orca, start: StateName) -> WorkspaceBoard:
-        return WorkspaceBoard(orca, Columns.parse(orca.columns(ColumnLabel.unknown())), start)
+    # Read on first use, so a command that never touches the board never asks Orca for its columns.
+    @cached_property
+    def _columns(self) -> Columns:
+        return Columns.parse(self._orca.columns(ColumnLabel.unknown()))
 
     @override
     def read(self) -> StateName:
-        return self._columns.state_of(self._manager.current().status, self._start)
+        return self._columns.state_of(self._orca.current().status, self._start)
 
     @override
     def write(self, state: StateName) -> None:
-        self._manager.set_status(self._manager.current().path, self.column_for(state))
+        self._orca.set_status(self._orca.current().path, self.column_for(state))
 
     @override
     def column_for(self, state: StateName) -> WorkspaceStatus:

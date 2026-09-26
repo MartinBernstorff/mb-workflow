@@ -11,6 +11,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
     StateName,
     StateNames,
     WorkflowChart,
+    WorkState,
 )
 
 GRILLING = StateName("Grilling")
@@ -31,6 +32,10 @@ def test_the_chart_holds_every_state_the_work_passes_through() -> None:
     assert StateNames.of_chart(WorkflowChart) == StateNames(
         frozenset({GRILLING, SPECCING, SPECCED, IMPLEMENTING, QA, REVIEW, MERGING, MERGED})
     )
+
+
+def test_every_state_names_what_happens_in_it() -> None:
+    assert all(isinstance(state, WorkState) for state in WorkflowChart.states)
 
 
 def test_work_enters_the_chart_at_grilling() -> None:

@@ -344,8 +344,14 @@ class Orca(WorkspaceManager):
         )
 
     # Orca has no command that lists board columns, so its refusal of an unknown one carries the list.
+    # The columns are the board's, so any worktree can be asked, and the current directory may be none.
     def columns(self, unknown: ColumnLabel) -> ErrorMessage:
-        command = status_assignment(WorktreeSelector.current(), unknown)
+        listed = self.worktrees().root
+        if not listed:
+            raise WorkspaceManagerError(
+                "Orca manages no worktree to read the board's columns through."
+            )
+        command = status_assignment(WorktreeSelector.of(listed[0].path), unknown)
         try:
             output = self._shell.run(command)
         except CalledProcessError as refused:

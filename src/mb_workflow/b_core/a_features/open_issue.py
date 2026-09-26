@@ -61,7 +61,7 @@ class OpenRequest(Model):
     def agent(self) -> AgentName | None:
         return AgentName.claude() if self.prompt is not None else None
 
-    def directed(self, action: Skill | AwaitingHuman | None) -> OpenRequest:
+    def prompted_for(self, action: Skill | AwaitingHuman | None) -> OpenRequest:
         if self.prompt is None or action is None:
             return self
         if isinstance(action, AwaitingHuman):
@@ -77,7 +77,8 @@ def open_workspace(
 ) -> None:
     # Resolve the state before touching anything, so an issue with no work left is neither assigned nor opened.
     state = issue_state(tracker, request.issue)
-    prompting = request.directed(None if state is None else action_in(state))
+    prompting = request.prompted_for(None if state is None else action_in(state))
+    column = None if state is None else board.column_for(state)
 
     # Assignment is a convenience, not the point of opening a workspace, so never fail the run over it.
     if request.issue is not None:
@@ -91,7 +92,6 @@ def open_workspace(
                 error,
             )
 
-    column = None if state is None else board.column_for(state)
     name = WorktreeName.of_branch(request.branch, request.issue)
     logger.info("Creating worktree with name: %s", name.root)
     opened = manager.create_for_issue(

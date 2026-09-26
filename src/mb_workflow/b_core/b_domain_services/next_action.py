@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.flow import NextAction
 
 
-# The team's tracker statuses are the chart's states, save for these few.
 def state_of(chart: type[WorkflowChart], status: StatusName) -> StateName:
     closed = StatusNames((StatusName("Canceled"), StatusName("Duplicate")))
     if closed.matching(status) is not None:
