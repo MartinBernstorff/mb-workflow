@@ -9,16 +9,16 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
     IssueIdentifier,
     Issues,
+    IssueStatusName,
     LabelName,
     LabelNames,
     ProjectName,
-    StatusName,
 )
 
 
 def issue_with(
     identifier: IssueIdentifier,
-    status: StatusName,
+    status: IssueStatusName,
     project: ProjectName | None,
     labels: LabelNames = LabelNames(()),
 ) -> Issue:
@@ -28,7 +28,7 @@ def issue_with(
 
 
 def default_issues() -> Issues:
-    todo = StatusName("Todo")
+    todo = IssueStatusName("Todo")
     editor = ProjectName("Editor Bugs")
     return Issues(
         (
@@ -36,10 +36,10 @@ def default_issues() -> Issues:
             issue_with(IssueIdentifier("E-2"), todo, ProjectName("BE Shop")),
             issue_with(IssueIdentifier("E-3"), todo, ProjectName("Sentry Backend")),
             issue_with(IssueIdentifier("E-4"), todo, None),
-            issue_with(IssueIdentifier("E-5"), StatusName("Done"), editor),
-            issue_with(IssueIdentifier("E-6"), StatusName("Canceled"), editor),
-            issue_with(IssueIdentifier("E-7"), StatusName("Duplicate"), editor),
-            issue_with(IssueIdentifier("E-8"), StatusName("Triage"), editor),
+            issue_with(IssueIdentifier("E-5"), IssueStatusName("Done"), editor),
+            issue_with(IssueIdentifier("E-6"), IssueStatusName("Canceled"), editor),
+            issue_with(IssueIdentifier("E-7"), IssueStatusName("Duplicate"), editor),
+            issue_with(IssueIdentifier("E-8"), IssueStatusName("Triage"), editor),
             issue_with(IssueIdentifier("E-9"), todo, editor, LabelNames.fake()),
             issue_with(IssueIdentifier("E-10"), todo, editor),
             issue_with(IssueIdentifier("E-11"), todo, editor),

@@ -10,7 +10,7 @@ from mb_workflow.b_core.d_domain_model.claim import (
     SettleTime,
     TakeOver,
 )
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, StatusName
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName
 from mb_workflow.d_lib.models import Model
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class Pause(Protocol):
 
 class ClaimRequest(Model):
     ticket: IssueIdentifier
-    status: StatusName
+    status: IssueStatusName
     holder: ClaimHolder
     take_over: TakeOver
     settle: SettleTime
@@ -43,7 +43,7 @@ class ClaimRequest(Model):
     def fake() -> ClaimRequest:
         return ClaimRequest(
             ticket=IssueIdentifier.fake(),
-            status=StatusName("Specced"),
+            status=IssueStatusName("Specced"),
             holder=ClaimHolder.fake(),
             take_over=TakeOver.fake(),
             settle=SettleTime.fake(),

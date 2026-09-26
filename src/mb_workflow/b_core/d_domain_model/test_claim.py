@@ -8,7 +8,7 @@ from mb_workflow.b_core.d_domain_model.claim import (
     CommentBody,
     HostName,
 )
-from mb_workflow.b_core.d_domain_model.issue import StatusName
+from mb_workflow.b_core.d_domain_model.issue import IssueStatusName
 from mb_workflow.b_core.d_domain_model.workspace import WorktreeName
 
 
@@ -29,15 +29,15 @@ def rival() -> Claim:
 
 
 def test_the_earliest_claim_holds_the_ticket() -> None:
-    assert Claims((Claim.fake(), rival())).holding(StatusName("Specced")) == Claim.fake()
+    assert Claims((Claim.fake(), rival())).holding(IssueStatusName("Specced")) == Claim.fake()
 
 
 def test_an_unclaimed_ticket_is_held_by_no_one() -> None:
-    assert Claims(()).holding(StatusName("Specced")) is None
+    assert Claims(()).holding(IssueStatusName("Specced")) is None
 
 
 @pytest.mark.parametrize(
-    "status", [StatusName("Merged"), StatusName("canceled"), StatusName("Duplicate")]
+    "status", [IssueStatusName("Merged"), IssueStatusName("canceled"), IssueStatusName("Duplicate")]
 )
-def test_a_claim_on_a_finished_ticket_is_released(status: StatusName) -> None:
+def test_a_claim_on_a_finished_ticket_is_released(status: IssueStatusName) -> None:
     assert Claims((Claim.fake(),)).holding(status) is None

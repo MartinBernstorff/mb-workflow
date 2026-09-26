@@ -22,13 +22,13 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueDetail,
     IssueIdentifier,
     Issues,
+    IssueStatusName,
     IssueTitle,
     LabelName,
     LabelNames,
     Milestone,
     MilestoneName,
     ProjectName,
-    StatusName,
 )
 from mb_workflow.d_lib.models import Payload, Value
 
@@ -133,11 +133,11 @@ class StateId(Value[str]):
 
 class StateRecord(Payload):
     id: StateId
-    name: StatusName
+    name: IssueStatusName
 
     @staticmethod
     def fake() -> StateRecord:
-        return StateRecord(id=StateId.fake(), name=StatusName.fake())
+        return StateRecord(id=StateId.fake(), name=IssueStatusName.fake())
 
 
 class LabelRecord(Payload):
@@ -245,7 +245,7 @@ class UpdateLookup(Payload):
             raise TicketTrackerError(f"No project is named {milestone.project.root}.")
         return self.milestone_projects[0].milestone(milestone.name)
 
-    def state_id(self, status: StatusName) -> StateId:
+    def state_id(self, status: IssueStatusName) -> StateId:
         found = next((known for known in self.states if known.name.names(status).root), None)
         if found is None:
             raise TicketTrackerError(f"No status is named {status.root}.")
@@ -254,7 +254,7 @@ class UpdateLookup(Payload):
 
 class IssuePayload(Payload):
     identifier: IssueIdentifier
-    status: StatusName = Field(validation_alias=AliasPath("state", "name"))
+    status: IssueStatusName = Field(validation_alias=AliasPath("state", "name"))
     project: ProjectPayload | None = None
     labels: tuple[LabelPayload, ...] = Field(
         default=(), validation_alias=AliasPath("labels", "nodes")
@@ -265,7 +265,7 @@ class IssuePayload(Payload):
     def fake() -> IssuePayload:
         return IssuePayload(
             identifier=IssueIdentifier.fake(),
-            status=StatusName.fake(),
+            status=IssueStatusName.fake(),
             project=ProjectPayload.fake(),
             labels=(LabelPayload.fake(),),
         )
@@ -290,7 +290,7 @@ class IssueDetailPayload(IssuePayload):
     def fake() -> IssueDetailPayload:
         return IssueDetailPayload(
             identifier=IssueIdentifier.fake(),
-            status=StatusName.fake(),
+            status=IssueStatusName.fake(),
             project=ProjectPayload.fake(),
             labels=(LabelPayload.fake(),),
             title=IssueTitle.fake(),

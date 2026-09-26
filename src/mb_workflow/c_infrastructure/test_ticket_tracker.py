@@ -39,6 +39,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueDetail,
     IssueFilter,
     IssueIdentifier,
+    IssueStatusName,
     IssueTitle,
     IssueUpdate,
     LabelName,
@@ -49,7 +50,6 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Project,
     ProjectName,
     Projects,
-    StatusName,
     StatusNames,
 )
 from mb_workflow.c_infrastructure.credentials import CredentialsDirectory, RepositorySlug
@@ -78,7 +78,7 @@ class Seed(StrEnum):
 class SeededIssue(Model):
     seed: Seed
     created_on: CreatedOn
-    status: StatusName
+    status: IssueStatusName
     project: ProjectName | None
     labels: LabelNames
     description: IssueDescription | None
@@ -113,7 +113,7 @@ def seeded(seed: Seed, created: CreatedOn) -> SeededIssue:
     return SeededIssue(
         seed=seed,
         created_on=created,
-        status=StatusName.fake(),
+        status=IssueStatusName.fake(),
         project=ProjectName.fake(),
         labels=LabelNames(()),
         description=IssueDescription.fake(),
@@ -128,7 +128,7 @@ def seeds() -> tuple[SeededIssue, ...]:
         SeededIssue(
             seed=Seed.done,
             created_on=CreatedOn.fake(),
-            status=StatusName("Done"),
+            status=IssueStatusName("Done"),
             project=None,
             labels=LabelNames((LabelName("d-grill"),)),
             description=None,
@@ -669,16 +669,18 @@ def test_an_unknown_milestone_is_refused(tracker: TicketTracker, backlog: Backlo
 def test_an_update_moves_an_issue_to_a_status(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.recent),
-        IssueUpdate.nothing().model_copy(update={"status": StatusName("in progress")}),
+        IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("in progress")}),
     )
-    assert tracker.read_issue(backlog.identifier(Seed.recent)).status == StatusName("In Progress")
+    assert tracker.read_issue(backlog.identifier(Seed.recent)).status == IssueStatusName(
+        "In Progress"
+    )
 
 
 def test_moving_to_an_unknown_status_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
     with pytest.raises(TicketTrackerError):
         tracker.update_issue(
             backlog.identifier(Seed.recent),
-            IssueUpdate.nothing().model_copy(update={"status": StatusName("No such status")}),
+            IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("No such status")}),
         )
 
 
@@ -751,6 +753,6 @@ def test_a_claim_on_a_finished_ticket_reads_as_released(
     ticket = backlog.identifier(Seed.recent)
     _ = claims.post(ticket, ClaimHolder.fake())
     tracker.update_issue(
-        ticket, IssueUpdate.nothing().model_copy(update={"status": StatusName("Canceled")})
+        ticket, IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("Canceled")})
     )
     assert claims.claims(ticket).holding(tracker.read_issue(ticket).status) is None

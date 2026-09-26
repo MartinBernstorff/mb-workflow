@@ -3,13 +3,13 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Cleared,
     IssueDescription,
     IssueDetail,
+    IssueStatusName,
     IssueTitle,
     IssueUpdate,
     LabelNames,
     Milestone,
     MilestoneName,
     ProjectName,
-    StatusName,
 )
 from mb_workflow.d_lib.models import Model, Value
 
@@ -34,7 +34,7 @@ class TicketEdit(Model):
     remove_assignee: Assignee | None
     add_project: ProjectName | None
     remove_project: ProjectName | None
-    status: StatusName | None
+    status: IssueStatusName | None
     milestone: MilestoneName | None
     remove_milestone: RemoveMilestone
 

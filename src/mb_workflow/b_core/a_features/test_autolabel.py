@@ -22,10 +22,10 @@ from mb_workflow.b_core.d_domain_model.issue import (
     CreatedOn,
     Issue,
     IssueIdentifier,
+    IssueStatusName,
     LabelName,
     LabelNames,
     ProjectName,
-    StatusName,
 )
 from mb_workflow.b_core.d_domain_model.outcome import Failed
 
@@ -34,7 +34,7 @@ def unlabelled_tracked_issue(identifier: IssueIdentifier, project: ProjectName) 
     issue = Issue.fake().model_copy(
         update={
             "identifier": identifier,
-            "status": StatusName("Todo"),
+            "status": IssueStatusName("Todo"),
             "project": project,
             "labels": LabelNames(()),
         }

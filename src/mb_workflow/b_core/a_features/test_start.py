@@ -33,8 +33,8 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     Issue,
     IssueIdentifier,
+    IssueStatusName,
     LabelNames,
-    StatusName,
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
     ProjectSelector,
@@ -48,7 +48,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 )
 
 
-def tracking(status: StatusName) -> FakeTicketTracker:
+def tracking(status: IssueStatusName) -> FakeTicketTracker:
     issue = Issue.fake().model_copy(update={"status": status})
     return FakeTicketTracker(
         LabelNames.fake(), (TrackedIssue.fake().model_copy(update={"issue": issue}),)
@@ -93,27 +93,27 @@ def starting(
     )
 
 
-def started(status: StatusName, request: StartRequest) -> FakeWorkspaceManager:
+def started(status: IssueStatusName, request: StartRequest) -> FakeWorkspaceManager:
     manager = fake_manager()
     starting(manager, tracking(status), request)
     return manager
 
 
 def test_opens_a_worktree_named_and_linked_after_the_ticket() -> None:
-    opened = opened_in(started(StatusName("Specced"), StartRequest.fake()))
+    opened = opened_in(started(IssueStatusName("Specced"), StartRequest.fake()))
     assert opened.issue == IssueIdentifier.fake()
     assert opened.path == WorktreePath.fake().sibling(WorktreeName.of_issue(IssueIdentifier.fake()))
 
 
 def test_types_the_prompt_without_submitting_it_by_default() -> None:
-    starting = started(StatusName("Specced"), StartRequest.fake())
+    starting = started(IssueStatusName("Specced"), StartRequest.fake())
     assert starting.typed_texts() == (TerminalText("/implement E-4289"),)
     assert starting.submitted_texts() == ()
 
 
 def test_submits_the_prompt_when_asked_to() -> None:
     submitting = StartRequest.fake().model_copy(update={"submit": Submit(True)})
-    assert started(StatusName("Specced"), submitting).submitted_texts() == (
+    assert started(IssueStatusName("Specced"), submitting).submitted_texts() == (
         TerminalText("/implement E-4289"),
     )
 
@@ -121,26 +121,26 @@ def test_submits_the_prompt_when_asked_to() -> None:
 @pytest.mark.parametrize(
     ("status", "prompt"),
     [
-        (StatusName("Backlog"), TerminalText("/grill E-4289")),
-        (StatusName("Grilling"), TerminalText("/grill E-4289")),
-        (StatusName("Speccing"), TerminalText("/to-ticket E-4289")),
-        (StatusName("Specced"), TerminalText("/implement E-4289")),
+        (IssueStatusName("Backlog"), TerminalText("/grill E-4289")),
+        (IssueStatusName("Grilling"), TerminalText("/grill E-4289")),
+        (IssueStatusName("Speccing"), TerminalText("/to-ticket E-4289")),
+        (IssueStatusName("Specced"), TerminalText("/implement E-4289")),
     ],
 )
 def test_the_prompt_is_the_next_action_for_the_tickets_state(
-    status: StatusName, prompt: TerminalText
+    status: IssueStatusName, prompt: TerminalText
 ) -> None:
     assert started(status, StartRequest.fake()).typed_texts() == (prompt,)
 
 
 def test_a_ticket_waiting_for_a_human_is_opened_without_a_prompt() -> None:
-    starting = started(StatusName("QA"), StartRequest.fake())
+    starting = started(IssueStatusName("QA"), StartRequest.fake())
     assert starting.typed_texts() == ()
     assert opened_in(starting).issue == IssueIdentifier.fake()
 
 
 def test_seeds_the_board_column_from_the_tickets_state() -> None:
-    opened = opened_in(started(StatusName("Backlog"), StartRequest.fake()))
+    opened = opened_in(started(IssueStatusName("Backlog"), StartRequest.fake()))
     assert opened.status == fake_board().status_for(StateName("Grilling"))
 
 
@@ -148,7 +148,7 @@ def test_a_ticket_the_tracker_cannot_read_is_not_opened() -> None:
     manager = fake_manager()
     unreadable = StartRequest.fake().model_copy(update={"ticket": IssueIdentifier("E-404")})
     with pytest.raises(TicketTrackerError):
-        starting(manager, tracking(StatusName.fake()), unreadable)
+        starting(manager, tracking(IssueStatusName.fake()), unreadable)
     assert manager.worktrees() == Worktrees.fake()
 
 
@@ -158,12 +158,14 @@ def test_opens_the_worktree_in_the_configured_project() -> None:
         Worktrees.fake(), WorktreePath.fake(), fake_board_statuses(), project=project
     )
     workspace = WorkspaceSettings.fake().model_copy(update={"orca_project": project})
-    starting(manager, tracking(StatusName("Specced")), StartRequest.fake(), workspace=workspace)
+    starting(
+        manager, tracking(IssueStatusName("Specced")), StartRequest.fake(), workspace=workspace
+    )
     assert opened_in(manager).issue == IssueIdentifier.fake()
 
 
 def test_assigns_the_ticket_to_the_configured_assignee() -> None:
-    tracker = tracking(StatusName("Specced"))
+    tracker = tracking(IssueStatusName("Specced"))
     assignee = Assignee("other@flowbase.io")
     workspace = WorkspaceSettings.fake().model_copy(update={"assignee": assignee})
     starting(fake_manager(), tracker, StartRequest.fake(), workspace=workspace)
@@ -171,9 +173,9 @@ def test_assigns_the_ticket_to_the_configured_assignee() -> None:
 
 
 @pytest.mark.parametrize(
-    "status", [StatusName("Merged"), StatusName("Canceled"), StatusName("Duplicate")]
+    "status", [IssueStatusName("Merged"), IssueStatusName("Canceled"), IssueStatusName("Duplicate")]
 )
-def test_a_ticket_with_no_work_left_is_neither_opened_nor_assigned(status: StatusName) -> None:
+def test_a_ticket_with_no_work_left_is_neither_opened_nor_assigned(status: IssueStatusName) -> None:
     manager = fake_manager()
     tracker = tracking(status)
     claims = FakeClaimRegistry()
@@ -205,7 +207,7 @@ def holders(claims: FakeClaimRegistry) -> tuple[ClaimHolder, ...]:
 
 def test_claims_the_ticket_for_this_host_and_worktree() -> None:
     claims = FakeClaimRegistry()
-    starting(fake_manager(), tracking(StatusName("Specced")), StartRequest.fake(), claims)
+    starting(fake_manager(), tracking(IssueStatusName("Specced")), StartRequest.fake(), claims)
     assert holders(claims) == (ours(),)
 
 
@@ -213,7 +215,7 @@ def test_the_claim_settles_before_it_is_verified() -> None:
     pause = FakePause()
     start_ticket(
         manager=fake_manager(),
-        tracker=tracking(StatusName("Specced")),
+        tracker=tracking(IssueStatusName("Specced")),
         claims=FakeClaimRegistry(),
         pause=pause,
         board=fake_board(),
@@ -225,7 +227,7 @@ def test_the_claim_settles_before_it_is_verified() -> None:
 
 def test_a_ticket_claimed_by_another_holder_is_neither_opened_nor_assigned() -> None:
     manager = fake_manager()
-    tracker = tracking(StatusName("Specced"))
+    tracker = tracking(IssueStatusName("Specced"))
     with pytest.raises(ClaimRefusedError, match=r"bob-mbp\.local"):
         starting(manager, tracker, StartRequest.fake(), claimed_by_a_rival())
     assert manager.worktrees() == Worktrees.fake()
@@ -236,7 +238,7 @@ def test_force_takes_the_claim_over() -> None:
     manager = fake_manager()
     claims = claimed_by_a_rival()
     forcing = StartRequest.fake().model_copy(update={"take_over": TakeOver(True)})
-    starting(manager, tracking(StatusName("Specced")), forcing, claims)
+    starting(manager, tracking(IssueStatusName("Specced")), forcing, claims)
     assert holders(claims) == (ours(),)
     assert opened_in(manager).issue == IssueIdentifier.fake()
 
@@ -245,5 +247,5 @@ def test_a_ticket_this_worktree_already_claimed_is_not_claimed_twice() -> None:
     claims = FakeClaimRegistry(
         {IssueIdentifier.fake(): Claims((Claim(id=ClaimId("ours"), holder=ours()),))}
     )
-    starting(fake_manager(), tracking(StatusName("Specced")), StartRequest.fake(), claims)
+    starting(fake_manager(), tracking(IssueStatusName("Specced")), StartRequest.fake(), claims)
     assert holders(claims) == (ours(),)

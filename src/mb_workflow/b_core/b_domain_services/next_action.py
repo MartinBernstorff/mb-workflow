@@ -7,19 +7,19 @@ from mb_workflow.b_core.d_domain_model.flow import (
     WorkflowChart,
     WorkState,
 )
-from mb_workflow.b_core.d_domain_model.issue import StatusName, StatusNames
+from mb_workflow.b_core.d_domain_model.issue import IssueStatusName, StatusNames
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.flow import NextAction
 
 
-def state_of(chart: type[WorkflowChart], status: StatusName) -> StateName:
+def state_of(chart: type[WorkflowChart], status: IssueStatusName) -> StateName:
     if StatusNames.closed().matching(status) is not None:
         raise FlowError(f"The issue is {status.root}, so there is no work left in it.")
-    if status.names(StatusName("Backlog")).root:
+    if status.names(IssueStatusName("Backlog")).root:
         return StateNames.initial_state(chart)
     for state in StateNames.of_chart(chart).root:
-        if status.names(StatusName(state.root)).root:
+        if status.names(IssueStatusName(state.root)).root:
             return state
     raise FlowError(f"{status.root} is no state of the chart.")
 

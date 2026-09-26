@@ -3,7 +3,7 @@ import socket
 from datetime import timedelta
 
 from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
-from mb_workflow.b_core.d_domain_model.issue import StatusName, StatusNames
+from mb_workflow.b_core.d_domain_model.issue import IssueStatusName, StatusNames
 from mb_workflow.b_core.d_domain_model.workspace import WorktreeName
 from mb_workflow.d_lib.models import Model, Value
 
@@ -75,7 +75,7 @@ class Claims(Value[tuple[Claim, ...]]):
     def fake() -> Claims:
         return Claims((Claim.fake(),))
 
-    def holding(self, status: StatusName) -> Claim | None:
+    def holding(self, status: IssueStatusName) -> Claim | None:
         if Released.of(status).root:
             return None
         return self.root[0] if self.root else None
@@ -90,8 +90,8 @@ class Released(Value[bool]):
         return Released(False)
 
     @staticmethod
-    def of(status: StatusName) -> Released:
-        merged = tuple(StatusName(state.name) for state in WorkflowChart.final_states)
+    def of(status: IssueStatusName) -> Released:
+        merged = tuple(IssueStatusName(state.name) for state in WorkflowChart.final_states)
         finished = StatusNames((*StatusNames.closed().root, *merged))
         return Released(finished.matching(status) is not None)
 

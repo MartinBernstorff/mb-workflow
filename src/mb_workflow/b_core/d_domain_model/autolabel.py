@@ -4,10 +4,10 @@ from enum import StrEnum
 from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
     IssueIdentifier,
+    IssueStatusName,
     IssueText,
     LabelName,
     ProjectName,
-    StatusName,
 )
 from mb_workflow.d_lib.models import Model, Value
 
@@ -56,7 +56,7 @@ class Exclusions(Model):
             return Excluded(False)
         return self.projects.matches(project)
 
-    def excludes_status(self, status: StatusName) -> Excluded:
+    def excludes_status(self, status: IssueStatusName) -> Excluded:
         if self.statuses is None:
             return Excluded(False)
         return self.statuses.matches(status)

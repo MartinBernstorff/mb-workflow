@@ -71,22 +71,24 @@ class ProjectName(IssueText):
         return ProjectName("BE: Campaigns MVP")
 
 
-class StatusName(IssueText):
+class IssueStatusName(IssueText):
     @staticmethod
-    def fake() -> StatusName:
-        return StatusName("Todo")
+    def fake() -> IssueStatusName:
+        return IssueStatusName("Todo")
 
 
-class StatusNames(Value[tuple[StatusName, ...]]):
+class StatusNames(Value[tuple[IssueStatusName, ...]]):
     @staticmethod
     def fake() -> StatusNames:
-        return StatusNames((StatusName.fake(), StatusName("In Progress"), StatusName("Done")))
+        return StatusNames(
+            (IssueStatusName.fake(), IssueStatusName("In Progress"), IssueStatusName("Done"))
+        )
 
     @staticmethod
     def closed() -> StatusNames:
-        return StatusNames((StatusName("Canceled"), StatusName("Duplicate")))
+        return StatusNames((IssueStatusName("Canceled"), IssueStatusName("Duplicate")))
 
-    def matching(self, status: StatusName) -> StatusName | None:
+    def matching(self, status: IssueStatusName) -> IssueStatusName | None:
         return next((known for known in self.root if known.names(status).root), None)
 
 
@@ -98,7 +100,7 @@ class Assigned(Value[bool]):
 
 class Issue(Model):
     identifier: IssueIdentifier
-    status: StatusName
+    status: IssueStatusName
     project: ProjectName | None
     labels: LabelNames
     assigned: Assigned
@@ -107,7 +109,7 @@ class Issue(Model):
     def fake() -> Issue:
         return Issue(
             identifier=IssueIdentifier.fake(),
-            status=StatusName.fake(),
+            status=IssueStatusName.fake(),
             project=ProjectName.fake(),
             labels=LabelNames.fake(),
             assigned=Assigned.fake(),
@@ -221,7 +223,7 @@ class IssueUpdate(Model):
     labels: LabelNames | None
     assignee: Assignee | Cleared | None
     project: ProjectName | Cleared | None
-    status: StatusName | None
+    status: IssueStatusName | None
     milestone: Milestone | Cleared | None
 
     @staticmethod
@@ -232,7 +234,7 @@ class IssueUpdate(Model):
             labels=LabelNames.fake(),
             assignee=Assignee.fake(),
             project=ProjectName.fake(),
-            status=StatusName.fake(),
+            status=IssueStatusName.fake(),
             milestone=Milestone.fake(),
         )
 

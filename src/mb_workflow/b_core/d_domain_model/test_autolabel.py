@@ -9,9 +9,9 @@ from mb_workflow.b_core.d_domain_model.autolabel import (
 from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
     IssueIdentifier,
+    IssueStatusName,
     LabelNames,
     ProjectName,
-    StatusName,
 )
 
 
@@ -27,7 +27,7 @@ def unlabelled() -> Issue:
     return Issue.fake().model_copy(
         update={
             "identifier": IssueIdentifier("E-4"),
-            "status": StatusName("Todo"),
+            "status": IssueStatusName("Todo"),
             "project": ProjectName("Editor Bugs"),
             "labels": LabelNames(()),
         }
@@ -48,13 +48,13 @@ def test_a_project_matching_the_pattern_is_skipped() -> None:
 
 
 def test_a_status_matching_the_pattern_is_skipped() -> None:
-    issue = unlabelled().model_copy(update={"status": StatusName("Canceled")})
+    issue = unlabelled().model_copy(update={"status": IssueStatusName("Canceled")})
     assert criteria().skipped(issue) == SkipReason.excluded_status
 
 
 def test_an_excluded_status_outranks_an_excluded_project() -> None:
     issue = unlabelled().model_copy(
-        update={"status": StatusName("Done"), "project": ProjectName("BE Shop")}
+        update={"status": IssueStatusName("Done"), "project": ProjectName("BE Shop")}
     )
     assert criteria().skipped(issue) == SkipReason.excluded_status
 
@@ -71,7 +71,7 @@ def test_an_issue_already_carrying_the_label_is_skipped() -> None:
 
 def test_an_absent_pattern_excludes_nothing() -> None:
     issue = unlabelled().model_copy(
-        update={"status": StatusName("Done"), "project": ProjectName("BE Shop")}
+        update={"status": IssueStatusName("Done"), "project": ProjectName("BE Shop")}
     )
     unexcluded = criteria().model_copy(
         update={"exclusions": Exclusions(projects=None, statuses=None)}
