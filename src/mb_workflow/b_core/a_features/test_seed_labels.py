@@ -18,20 +18,22 @@ def test_seeding_reports_the_labels_it_created() -> None:
     assert seed_flow_labels(empty_tracker(), FlowLabels.fake()) == FlowLabels.fake().labels
 
 
-def test_seeding_again_changes_nothing() -> None:
+def test_seeding_again_leaves_the_group_as_it_was() -> None:
     tracker = empty_tracker()
     _ = seed_flow_labels(tracker, FlowLabels.fake())
-    assert (
-        seed_flow_labels(tracker, FlowLabels.fake()),
-        tracker.group_labels(FlowLabels.fake().group),
-    ) == (LabelNames(()), FlowLabels.fake().labels)
+    _ = seed_flow_labels(tracker, FlowLabels.fake())
+    assert tracker.group_labels(FlowLabels.fake().group) == FlowLabels.fake().labels
+
+
+def test_seeding_again_creates_nothing() -> None:
+    tracker = empty_tracker()
+    _ = seed_flow_labels(tracker, FlowLabels.fake())
+    assert seed_flow_labels(tracker, FlowLabels.fake()) == LabelNames(())
 
 
 def test_seeding_adds_only_the_labels_the_group_lacks() -> None:
     wanted = FlowLabels.fake()
-    tracker = FakeTicketTracker(
-        LabelNames((LabelName("Grilling"),)),
-        (),
-        groups={wanted.group: LabelNames((LabelName("Grilling"),))},
-    )
-    assert seed_flow_labels(tracker, wanted) == wanted.missing(LabelNames((LabelName("Grilling"),)))
+    grilling = LabelNames((LabelName("Grilling"),))
+    tracker = FakeTicketTracker(grilling, (), groups={wanted.group: grilling})
+    _ = seed_flow_labels(tracker, wanted)
+    assert tracker.group_labels(wanted.group) == wanted.labels

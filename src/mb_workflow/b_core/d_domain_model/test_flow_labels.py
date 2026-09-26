@@ -7,7 +7,7 @@ QA = LabelName("QA")
 MERGED = LabelName("Merged")
 
 
-def flow_of(*labels: LabelName) -> FlowLabels:
+def flow_labels_of(*labels: LabelName) -> FlowLabels:
     return FlowLabels(group=LabelGroupName.fake(), labels=LabelNames(labels))
 
 
@@ -40,14 +40,14 @@ def test_a_full_group_misses_none() -> None:
 
 
 def test_the_labels_the_group_lacks_are_missing() -> None:
-    assert flow_of(GRILLING, QA, MERGED).missing(LabelNames((QA,))) == LabelNames(
+    assert flow_labels_of(GRILLING, QA, MERGED).missing(LabelNames((QA,))) == LabelNames(
         (GRILLING, MERGED)
     )
 
 
 def test_a_label_held_in_another_case_is_not_missing() -> None:
-    assert flow_of(QA).missing(LabelNames((LabelName("qa"),))) == LabelNames(())
+    assert flow_labels_of(QA).missing(LabelNames((LabelName("qa"),))) == LabelNames(())
 
 
 def test_labels_outside_the_flow_do_not_count() -> None:
-    assert flow_of(QA).missing(LabelNames((LabelName("Blocked"), QA))) == LabelNames(())
+    assert flow_labels_of(QA).missing(LabelNames((LabelName("Blocked"), QA))) == LabelNames(())

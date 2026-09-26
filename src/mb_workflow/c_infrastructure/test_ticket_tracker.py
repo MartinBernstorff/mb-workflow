@@ -565,14 +565,11 @@ def drop_group(client: LinearClient, group: LabelGroupName) -> None:
         )
     ).groups
     for held in found:
-        for child in held.children:
+        for label in (*(child.id for child in held.children), held.id):
             _ = client.execute(
                 "mutation($id: String!) { issueLabelDelete(id: $id) { success } }",
-                {"id": child.id.root},
+                {"id": label.root},
             )
-        _ = client.execute(
-            "mutation($id: String!) { issueLabelDelete(id: $id) { success } }", {"id": held.id.root}
-        )
 
 
 # Linear keeps a created group between runs, so each test that seeds one starts without it.

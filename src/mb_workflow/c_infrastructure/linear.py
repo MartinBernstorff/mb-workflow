@@ -502,12 +502,12 @@ class Linear(TicketTracker):
 
     @override
     def group_labels(self, group: LabelGroupName) -> LabelNames:
-        found = self._group(group)
+        found = self._found_group(group)
         return found.labels() if found is not None else LabelNames(())
 
     @override
     def create_group_labels(self, group: LabelGroupName, labels: LabelNames) -> None:
-        found = self._group(group)
+        found = self._found_group(group)
         parent = (
             found.id
             if found is not None
@@ -518,7 +518,7 @@ class Linear(TicketTracker):
         for label in labels.root:
             _ = self._created_label({"name": label.root, "parentId": parent.root})
 
-    def _group(self, group: LabelGroupName) -> LabelGroupRecord | None:
+    def _found_group(self, group: LabelGroupName) -> LabelGroupRecord | None:
         with translated_errors():
             data = self._client.execute(
                 """

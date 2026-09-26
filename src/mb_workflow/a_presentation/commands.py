@@ -133,7 +133,7 @@ def linear() -> Linear:
     return Linear.connected(linear_key())
 
 
-def flow_labels() -> FlowLabels:
+def flow_labels_of_chart() -> FlowLabels:
     return FlowLabels.of_chart(WorkflowChart, LabelGroupName("flow"))
 
 
@@ -290,7 +290,7 @@ def flow_event(event: EventName, force: Force) -> ExitCode:
 
 @guarded
 def flow_seed_labels() -> ExitCode:
-    wanted = flow_labels()
+    wanted = flow_labels_of_chart()
     created = seed_flow_labels(linear(), wanted)
     if created.root:
         logger.info(
