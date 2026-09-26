@@ -51,7 +51,13 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Projects,
     StatusNames,
 )
-from mb_workflow.b_core.d_domain_model.pool import PoolTicket, Priority, ViewSlug
+from mb_workflow.b_core.d_domain_model.pool import (
+    Blocker,
+    Blockers,
+    PoolTicket,
+    Priority,
+    ViewSlug,
+)
 from mb_workflow.c_infrastructure.credentials import CredentialsDirectory, RepositorySlug
 from mb_workflow.c_infrastructure.linear import (
     Linear,
@@ -83,6 +89,7 @@ class SeededIssue(Model):
     labels: LabelNames
     description: IssueDescription | None
     priority: Priority
+    blocked_by: tuple[Seed, ...]
 
     def issue(self, identifier: IssueIdentifier) -> Issue:
         return Issue(
@@ -110,7 +117,9 @@ def workspace_labels() -> LabelNames:
     return LabelNames(tuple(LabelName(name) for name in ("Backend", "d-grill", "d-implement")))
 
 
-def seeded(seed: Seed, created: CreatedOn, priority: Priority) -> SeededIssue:
+def seeded(
+    seed: Seed, created: CreatedOn, priority: Priority, blocked_by: tuple[Seed, ...] = ()
+) -> SeededIssue:
     return SeededIssue(
         seed=seed,
         created_on=created,
@@ -119,12 +128,13 @@ def seeded(seed: Seed, created: CreatedOn, priority: Priority) -> SeededIssue:
         labels=LabelNames(()),
         description=IssueDescription.fake(),
         priority=priority,
+        blocked_by=blocked_by,
     )
 
 
 def seeds() -> tuple[SeededIssue, ...]:
     return (
-        seeded(Seed.recent, CreatedOn(date(2026, 9, 1)), Priority.urgent),
+        seeded(Seed.recent, CreatedOn(date(2026, 9, 1)), Priority.urgent, blocked_by=(Seed.old,)),
         seeded(Seed.old, CreatedOn(date(2026, 8, 1)), Priority.low),
         seeded(Seed.newest, CreatedOn(date(2026, 9, 2)), Priority.no_priority),
         SeededIssue(
@@ -135,6 +145,7 @@ def seeds() -> tuple[SeededIssue, ...]:
             labels=LabelNames((LabelName("d-grill"),)),
             description=None,
             priority=Priority.high,
+            blocked_by=(),
         ),
     )
 
@@ -157,7 +168,22 @@ class Backlog(Model):
 
     def ticket(self, seed: Seed) -> PoolTicket:
         planted = next(planted for planted in seeds() if planted.seed == seed)
-        return PoolTicket(issue=self.issue(seed), priority=planted.priority)
+        return PoolTicket(
+            issue=self.issue(seed),
+            priority=planted.priority,
+            blockers=Blockers(
+                tuple(
+                    Blocker(issue=self.identifier(blocker), status=self.issue(blocker).status)
+                    for blocker in planted.blocked_by
+                )
+            ),
+        )
+
+    def blockers(self, seed: Seed, tracker: TicketTracker) -> Blockers:
+        listed = tracker.view_tickets(self.view).root
+        return next(
+            ticket for ticket in listed if ticket.issue.identifier == self.identifier(seed)
+        ).blockers
 
     def picked(self, wanted: IssueFilter, tracker: TicketTracker) -> tuple[Seed, ...]:
         swept = tracker.list_issues(wanted).identifiers()
@@ -341,6 +367,48 @@ class CreatedView(Payload):
         return CreatedView(view=ViewRecord.fake())
 
 
+class RelatedIssue(Payload):
+    identifier: IssueIdentifier
+
+    @staticmethod
+    def fake() -> RelatedIssue:
+        return RelatedIssue(identifier=IssueIdentifier.fake())
+
+
+class HeldRelations(Payload):
+    related: tuple[RelatedIssue, ...] = Field(
+        validation_alias=AliasPath("issue", "relations", "nodes")
+    )
+
+    @staticmethod
+    def fake() -> HeldRelations:
+        return HeldRelations(related=(RelatedIssue.fake(),))
+
+
+class RelationKind(StrEnum):
+    blocks = "blocks"
+    related = "related"
+
+
+def ensure_relation(
+    client: LinearClient, issue: IssueIdentifier, related: IssueIdentifier, kind: RelationKind
+) -> None:
+    held = HeldRelations.model_validate(
+        client.execute(
+            "query($id: String!) {"
+            " issue(id: $id) { relations { nodes { relatedIssue { identifier } } } } }",
+            {"id": issue.root},
+        )
+    )
+    if RelatedIssue(identifier=related) in held.related:
+        return
+    _ = client.execute(
+        "mutation($input: IssueRelationCreateInput!) {"
+        " issueRelationCreate(input: $input) { success } }",
+        {"input": {"issueId": issue.root, "relatedIssueId": related.root, "type": kind.value}},
+    )
+
+
 # The view filters on the seeds' shared title prefix, so it holds every seed and nothing else.
 def ensure_view(client: LinearClient) -> ViewSlug:
     name = "contract: pool"
@@ -377,7 +445,7 @@ def linear_backlog(linear_client: LinearClient) -> Backlog:
     viewer = linear_client.viewer().viewer
     if viewer is None or viewer.email is None:
         pytest.fail("Linear did not say who the API key belongs to.")
-    return Backlog(
+    backlog = Backlog(
         identifiers={
             planted.seed: ensure_issue(linear_client, team, planted) for planted in seeds()
         },
@@ -385,6 +453,22 @@ def linear_backlog(linear_client: LinearClient) -> Backlog:
         assignee=Assignee(viewer.email),
         view=ensure_view(linear_client),
     )
+    for planted in seeds():
+        for blocker in planted.blocked_by:
+            ensure_relation(
+                linear_client,
+                backlog.identifier(blocker),
+                backlog.identifier(planted.seed),
+                RelationKind.blocks,
+            )
+    # Only a blocking relation holds a ticket back, so the suite also seeds one that doesn't.
+    ensure_relation(
+        linear_client,
+        backlog.identifier(Seed.newest),
+        backlog.identifier(Seed.done),
+        RelationKind.related,
+    )
+    return backlog
 
 
 def reset(client: LinearClient, backlog: Backlog) -> None:
@@ -449,6 +533,7 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
                 creator=backlog.creator,
                 created_on=planted.created_on,
                 priority=planted.priority,
+                blocked_by=tuple(backlog.identifier(blocker) for blocker in planted.blocked_by),
             )
             for planted in seeds()
         ),
@@ -495,6 +580,35 @@ def test_a_view_lists_its_tickets_with_their_priority(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
     assert set(tracker.view_tickets(backlog.view).root) == {backlog.ticket(seed) for seed in Seed}
+
+
+def test_a_view_lists_a_tickets_blockers_with_their_status(
+    tracker: TicketTracker, backlog: Backlog
+) -> None:
+    assert backlog.blockers(Seed.recent, tracker) == Blockers(
+        (Blocker(issue=backlog.identifier(Seed.old), status=IssueStatusName.fake()),)
+    )
+
+
+def test_a_blocker_carries_its_current_status(tracker: TicketTracker, backlog: Backlog) -> None:
+    tracker.update_issue(
+        backlog.identifier(Seed.old),
+        IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("Canceled")}),
+    )
+    assert backlog.blockers(Seed.recent, tracker) == Blockers(
+        (Blocker(issue=backlog.identifier(Seed.old), status=IssueStatusName("Canceled")),)
+    )
+
+
+def test_a_ticket_blocks_nothing_it_is_blocked_by(tracker: TicketTracker, backlog: Backlog) -> None:
+    assert backlog.blockers(Seed.old, tracker) == Blockers(())
+
+
+def test_a_related_issue_is_no_blocker(tracker: TicketTracker, backlog: Backlog) -> None:
+    assert (backlog.blockers(Seed.newest, tracker), backlog.blockers(Seed.done, tracker)) == (
+        Blockers(()),
+        Blockers(()),
+    )
 
 
 def test_reading_an_unknown_view_is_refused(tracker: TicketTracker) -> None:

@@ -24,7 +24,14 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Projects,
     StatusNames,
 )
-from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority, ViewSlug
+from mb_workflow.b_core.d_domain_model.pool import (
+    Blocker,
+    Blockers,
+    PoolTicket,
+    PoolTickets,
+    Priority,
+    ViewSlug,
+)
 from mb_workflow.d_lib.models import Model
 
 
@@ -65,6 +72,7 @@ class TrackedIssue(Model):
     creator: Creator
     created_on: CreatedOn
     priority: Priority
+    blocked_by: tuple[IssueIdentifier, ...]
 
     @staticmethod
     def fake() -> TrackedIssue:
@@ -77,6 +85,7 @@ class TrackedIssue(Model):
             creator=Creator.fake(),
             created_on=CreatedOn.fake(),
             priority=Priority.medium,
+            blocked_by=(),
         )
 
 
@@ -119,7 +128,11 @@ class FakeTicketTracker(TicketTracker):
             raise TicketTrackerError(f"No view has the slug {view.root}.")
         return PoolTickets(
             tuple(
-                PoolTicket(issue=tracked.issue, priority=tracked.priority)
+                PoolTicket(
+                    issue=tracked.issue,
+                    priority=tracked.priority,
+                    blockers=self._blockers(tracked),
+                )
                 for tracked in (self._tracked(identifier) for identifier in listed)
             )
         )
@@ -242,6 +255,14 @@ class FakeTicketTracker(TicketTracker):
         if project is None:
             raise TicketTrackerError(f"No project is named {name.root}.")
         return project
+
+    def _blockers(self, tracked: TrackedIssue) -> Blockers:
+        return Blockers(
+            tuple(
+                Blocker(issue=blocker, status=self._tracked(blocker).issue.status)
+                for blocker in tracked.blocked_by
+            )
+        )
 
     def _tracked(self, issue: IssueIdentifier) -> TrackedIssue:
         tracked = self._issues.get(issue)

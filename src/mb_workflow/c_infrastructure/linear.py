@@ -31,7 +31,13 @@ from mb_workflow.b_core.d_domain_model.issue import (
     MilestoneName,
     ProjectName,
 )
-from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority
+from mb_workflow.b_core.d_domain_model.pool import (
+    Blocker,
+    Blockers,
+    PoolTicket,
+    PoolTickets,
+    Priority,
+)
 from mb_workflow.d_lib.models import Payload, Value
 
 if TYPE_CHECKING:
@@ -283,8 +289,36 @@ class IssuePayload(Payload):
         )
 
 
+class RelationType(Value[str]):
+    @staticmethod
+    def fake() -> RelationType:
+        return RelationType("blocks")
+
+
+class RelatedIssuePayload(Payload):
+    identifier: IssueIdentifier
+    status: IssueStatusName = Field(validation_alias=AliasPath("state", "name"))
+
+    @staticmethod
+    def fake() -> RelatedIssuePayload:
+        return RelatedIssuePayload(identifier=IssueIdentifier.fake(), status=IssueStatusName.fake())
+
+
+# Linear stores only "A blocks B", so a ticket's blockers are its inverse relations of that type.
+class InverseRelationPayload(Payload):
+    type: RelationType
+    issue: RelatedIssuePayload
+
+    @staticmethod
+    def fake() -> InverseRelationPayload:
+        return InverseRelationPayload(type=RelationType.fake(), issue=RelatedIssuePayload.fake())
+
+
 class PoolTicketPayload(IssuePayload):
     priority: Priority
+    inverse_relations: tuple[InverseRelationPayload, ...] = Field(
+        default=(), validation_alias=AliasPath("inverseRelations", "nodes")
+    )
 
     @override
     @staticmethod
@@ -295,10 +329,21 @@ class PoolTicketPayload(IssuePayload):
             project=ProjectPayload.fake(),
             labels=(LabelPayload.fake(),),
             priority=Priority.medium,
+            inverse_relations=(InverseRelationPayload.fake(),),
         )
 
     def ticket(self) -> PoolTicket:
-        return PoolTicket(issue=self.issue(), priority=self.priority)
+        return PoolTicket(
+            issue=self.issue(),
+            priority=self.priority,
+            blockers=Blockers(
+                tuple(
+                    Blocker(issue=relation.issue.identifier, status=relation.issue.status)
+                    for relation in self.inverse_relations
+                    if relation.type == RelationType("blocks")
+                )
+            ),
+        )
 
 
 class IssueDetailPayload(IssuePayload):
@@ -446,6 +491,7 @@ class Linear(TicketTracker):
             if cursor is None:
                 return Issues(tuple(found))
 
+    # Linear caps a query's complexity at 10,000; relations nested under 250 issues exceed it.
     @override
     def view_tickets(self, view: ViewSlug) -> PoolTickets:
         found: list[PoolTicket] = []
@@ -456,7 +502,7 @@ class Linear(TicketTracker):
                     """
                     query($view: String!, $after: String) {
                       customView(id: $view) {
-                        issues(first: 250, after: $after) {
+                        issues(first: 50, after: $after) {
                           nodes {
                             identifier
                             priority
@@ -464,6 +510,9 @@ class Linear(TicketTracker):
                             project { name }
                             labels { nodes { name } }
                             assignee { id }
+                            inverseRelations(first: 50) {
+                              nodes { type issue { identifier state { name } } }
+                            }
                           }
                           pageInfo { hasNextPage endCursor }
                         }
