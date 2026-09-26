@@ -283,13 +283,16 @@ def flow_show(as_json: AsJson) -> ExitCode:
 
 
 @guarded
-def flow_event(event: EventName, force: Force) -> ExitCode:
+def flow_event(
+    event: EventName, force: Force, directory: WorkingDirectory, name: ConfigFileName
+) -> ExitCode:
     orca = Orca(here())
     moved_to = transition(
         store=workspace_board(orca),
         tracker=linear(),
         manager=orca,
         wanted=flow_labels_of_chart(),
+        statuses=Configuration.resolved(directory, name).settings.ticket_statuses,
         event=event,
         force=force,
     )

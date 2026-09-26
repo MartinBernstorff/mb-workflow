@@ -7,6 +7,7 @@ from pydantic import Field, model_validator
 
 from mb_workflow.b_core.d_domain_model.issue import Assignee, LabelName
 from mb_workflow.b_core.d_domain_model.pool import PoolLimits, ViewSlug
+from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
 from mb_workflow.d_lib.models import Model, Value
 
@@ -105,6 +106,7 @@ class Settings(Model):
     workspace: WorkspaceSettings
     claims: ClaimSettings = ClaimSettings()
     pool: PoolSettings | None = None
+    ticket_statuses: TicketStatuses
 
     @staticmethod
     def fake() -> Settings:
@@ -114,6 +116,7 @@ class Settings(Model):
             workspace=WorkspaceSettings.fake(),
             claims=ClaimSettings.fake(),
             pool=None,
+            ticket_statuses=TicketStatuses.fake(),
         )
 
     # The pool is a Linear view, so no other tracker can supply its tickets.

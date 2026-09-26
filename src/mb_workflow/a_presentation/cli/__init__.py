@@ -279,7 +279,14 @@ def flow_grill(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("grill"), Force(force)).root)
+    raise typer.Exit(
+        code=commands.flow_event(
+            EventName("grill"),
+            Force(force),
+            WorkingDirectory(Path.cwd()),
+            ConfigFileName.default(),
+        ).root
+    )
 
 
 @flow_app.command("to-ticket")
@@ -289,7 +296,14 @@ def flow_to_ticket(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("to-ticket"), Force(force)).root)
+    raise typer.Exit(
+        code=commands.flow_event(
+            EventName("to-ticket"),
+            Force(force),
+            WorkingDirectory(Path.cwd()),
+            ConfigFileName.default(),
+        ).root
+    )
 
 
 @flow_app.command("specced")
@@ -299,7 +313,14 @@ def flow_specced(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("specced"), Force(force)).root)
+    raise typer.Exit(
+        code=commands.flow_event(
+            EventName("specced"),
+            Force(force),
+            WorkingDirectory(Path.cwd()),
+            ConfigFileName.default(),
+        ).root
+    )
 
 
 @flow_app.command("implement")
@@ -309,7 +330,14 @@ def flow_implement(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("implement"), Force(force)).root)
+    raise typer.Exit(
+        code=commands.flow_event(
+            EventName("implement"),
+            Force(force),
+            WorkingDirectory(Path.cwd()),
+            ConfigFileName.default(),
+        ).root
+    )
 
 
 @flow_app.command("qa")
@@ -319,7 +347,14 @@ def flow_qa(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("qa"), Force(force)).root)
+    raise typer.Exit(
+        code=commands.flow_event(
+            EventName("qa"),
+            Force(force),
+            WorkingDirectory(Path.cwd()),
+            ConfigFileName.default(),
+        ).root
+    )
 
 
 @flow_app.command("ready")
@@ -329,7 +364,14 @@ def flow_ready(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("ready"), Force(force)).root)
+    raise typer.Exit(
+        code=commands.flow_event(
+            EventName("ready"),
+            Force(force),
+            WorkingDirectory(Path.cwd()),
+            ConfigFileName.default(),
+        ).root
+    )
 
 
 @flow_app.command("merge")
@@ -339,7 +381,14 @@ def flow_merge(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("merge"), Force(force)).root)
+    raise typer.Exit(
+        code=commands.flow_event(
+            EventName("merge"),
+            Force(force),
+            WorkingDirectory(Path.cwd()),
+            ConfigFileName.default(),
+        ).root
+    )
 
 
 @flow_app.command("merged")
@@ -349,7 +398,14 @@ def flow_merged(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("merged"), Force(force)).root)
+    raise typer.Exit(
+        code=commands.flow_event(
+            EventName("merged"),
+            Force(force),
+            WorkingDirectory(Path.cwd()),
+            ConfigFileName.default(),
+        ).root
+    )
 
 
 @flow_app.command("resolve-review")
@@ -359,4 +415,11 @@ def flow_resolve_review(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("resolve-review"), Force(force)).root)
+    raise typer.Exit(
+        code=commands.flow_event(
+            EventName("resolve-review"),
+            Force(force),
+            WorkingDirectory(Path.cwd()),
+            ConfigFileName.default(),
+        ).root
+    )
