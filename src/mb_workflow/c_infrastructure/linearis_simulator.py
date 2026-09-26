@@ -2,9 +2,10 @@ import json
 from datetime import date
 from enum import StrEnum
 from subprocess import CalledProcessError
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from mb_workflow.b_core.d_domain_model.issue import (
+    Assigned,
     Assignee,
     CreatedAfter,
     Creator,
@@ -16,7 +17,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelNames,
 )
 from mb_workflow.c_infrastructure.linear import MorePages, PageCursor
-from mb_workflow.c_infrastructure.shell import Command, CommandOutput
+from mb_workflow.c_infrastructure.shell import Command, CommandOutput, CommandRunner
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
@@ -63,6 +64,7 @@ class Node(Value[dict[str, object]]):
                 "state": {"name": issue.status.root},
                 "project": {"name": issue.project.root} if issue.project is not None else None,
                 "labels": {"nodes": [Node.of_label(label).root for label in issue.labels.root]},
+                "assignee": {"id": "0", "name": "Assignee"} if issue.assigned.root else None,
             }
         )
 
@@ -110,7 +112,7 @@ class Arguments(Model):
         return IssueFilter(creator=self.creator, created_after=self.created_after)
 
 
-class LinearisSimulator:
+class LinearisSimulator(CommandRunner):
     def __init__(
         self,
         labels: LabelNames,
@@ -121,6 +123,7 @@ class LinearisSimulator:
         self._issues = {tracked.issue.identifier: tracked for tracked in issues}
         self._page_size = page_size
 
+    @override
     def run(self, command: Command) -> CommandOutput:
         match command.root:
             case ("linearis", "labels", "list", *flags):
@@ -136,13 +139,13 @@ class LinearisSimulator:
                 )
                 return CommandOutput("{}")
             case _:
-                raise refused(command, Refusal("unknown command"))
+                raise self._refused(command, Refusal("unknown command"))
 
     def _labels_page(self, arguments: Arguments) -> CommandOutput:
         nodes = tuple(Node.of_label(label) for label in self._labels.root)
         start = int(arguments.after.root) if arguments.after is not None else 0
         end = start + self._page_size.root
-        return page(nodes[start:end], PageCursor(str(end)), MorePages(end < len(nodes)))
+        return self._page(nodes[start:end], PageCursor(str(end)), MorePages(end < len(nodes)))
 
     def _issues_page(self, arguments: Arguments) -> CommandOutput:
         wanted = arguments.wanted()
@@ -156,14 +159,15 @@ class LinearisSimulator:
         start = int(arguments.after.root) if arguments.after is not None else 0
         end = start + self._page_size.root
         nodes = tuple(Node.of_issue(issue) for issue in issues.root[start:end])
-        return page(nodes, PageCursor(str(end)), MorePages(end < len(issues.root)))
+        return self._page(nodes, PageCursor(str(end)), MorePages(end < len(issues.root)))
 
     def _update(self, command: Command, identifier: IssueIdentifier, arguments: Arguments) -> None:
         tracked = self._tracked(command, identifier)
         if arguments.assignee is not None:
-            return
-        labels = self._labelled(command, tracked.issue.labels, arguments)
-        issue = tracked.issue.model_copy(update={"labels": labels})
+            issue = tracked.issue.model_copy(update={"assigned": Assigned(True)})
+        else:
+            labels = self._labelled(command, tracked.issue.labels, arguments)
+            issue = tracked.issue.model_copy(update={"labels": labels})
         self._issues[identifier] = tracked.model_copy(update={"issue": issue})
 
     def _labelled(self, command: Command, current: LabelNames, arguments: Arguments) -> LabelNames:
@@ -172,7 +176,7 @@ class LinearisSimulator:
         unknown = self._labels.unmatched(arguments.labels)
         if len(unknown.root) > 0:
             names = ", ".join(label.root for label in unknown.root)
-            raise refused(command, Refusal(f"Label not found: {names}"))
+            raise self._refused(command, Refusal(f"Label not found: {names}"))
         if arguments.label_mode != LabelMode.add:
             return self._labels.spelled(arguments.labels)
         return self._labels.spelled(LabelNames((*current.root, *arguments.labels.root)))
@@ -180,20 +184,22 @@ class LinearisSimulator:
     def _tracked(self, command: Command, identifier: IssueIdentifier) -> TrackedIssue:
         tracked = self._issues.get(identifier)
         if tracked is None:
-            raise refused(command, Refusal(f"Issue with identifier {identifier.root} not found"))
+            raise self._refused(
+                command, Refusal(f"Issue with identifier {identifier.root} not found")
+            )
         return tracked
 
-
-def page(nodes: tuple[Node, ...], cursor: PageCursor, more: MorePages) -> CommandOutput:
-    return CommandOutput(
-        json.dumps(
-            {
-                "nodes": [node.root for node in nodes],
-                "pageInfo": {"hasNextPage": more.root, "endCursor": cursor.root},
-            }
+    @staticmethod
+    def _page(nodes: tuple[Node, ...], cursor: PageCursor, more: MorePages) -> CommandOutput:
+        return CommandOutput(
+            json.dumps(
+                {
+                    "nodes": [node.root for node in nodes],
+                    "pageInfo": {"hasNextPage": more.root, "endCursor": cursor.root},
+                }
+            )
         )
-    )
 
-
-def refused(command: Command, refusal: Refusal) -> CalledProcessError:
-    return CalledProcessError(1, command.root, "", json.dumps({"error": refusal.root}))
+    @staticmethod
+    def _refused(command: Command, refusal: Refusal) -> CalledProcessError:
+        return CalledProcessError(1, command.root, "", json.dumps({"error": refusal.root}))

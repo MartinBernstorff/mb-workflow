@@ -10,6 +10,7 @@ from mb_workflow.b_core.c_secondary_ports.issue_tracker import (
     TrackedIssue,
 )
 from mb_workflow.b_core.d_domain_model.issue import (
+    Assigned,
     Assignee,
     CreatedAfter,
     CreatedOn,
@@ -135,8 +136,13 @@ def test_setting_an_unknown_label_is_refused(tracker: IssueTracker) -> None:
         tracker.set_labels(IssueIdentifier("E-5"), LabelNames((LabelName("Frontend"),)))
 
 
-def test_assigning_a_known_issue_succeeds(tracker: IssueTracker) -> None:
+def test_an_issue_starts_unassigned(tracker: IssueTracker) -> None:
+    assert tracker.read(IssueIdentifier("E-1")).assigned == Assigned(False)
+
+
+def test_assigning_an_issue_leaves_it_assigned(tracker: IssueTracker) -> None:
     tracker.assign(IssueIdentifier("E-1"), Assignee.fake())
+    assert tracker.read(IssueIdentifier("E-1")).assigned == Assigned(True)
 
 
 def test_assigning_an_unknown_issue_is_refused(tracker: IssueTracker) -> None:

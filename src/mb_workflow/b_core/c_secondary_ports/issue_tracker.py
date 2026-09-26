@@ -1,6 +1,7 @@
-from typing import Protocol
+from typing import Protocol, override
 
 from mb_workflow.b_core.d_domain_model.issue import (
+    Assigned,
     Assignee,
     CreatedOn,
     Creator,
@@ -42,14 +43,16 @@ class TrackedIssue(Model):
         return TrackedIssue(issue=Issue.fake(), creator=Creator.fake(), created_on=CreatedOn.fake())
 
 
-class FakeIssueTracker:
+class FakeIssueTracker(IssueTracker):
     def __init__(self, labels: LabelNames, issues: tuple[TrackedIssue, ...]) -> None:
         self._labels = labels
         self._issues = {tracked.issue.identifier: tracked for tracked in issues}
 
+    @override
     def workspace_labels(self) -> LabelNames:
         return self._labels
 
+    @override
     def issues(self, wanted: IssueFilter) -> Issues:
         return Issues(
             tuple(
@@ -59,12 +62,15 @@ class FakeIssueTracker:
             )
         )
 
+    @override
     def read(self, issue: IssueIdentifier) -> Issue:
         return self._tracked(issue).issue
 
+    @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
         self.set_labels(issue, LabelNames((*self.read(issue).labels.root, label)))
 
+    @override
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
         unknown = self._labels.unmatched(labels)
         if len(unknown.root) > 0:
@@ -77,8 +83,12 @@ class FakeIssueTracker:
             update={"issue": tracked.issue.model_copy(update={"labels": spelled})}
         )
 
-    def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None:  # noqa: ARG002
-        _ = self._tracked(issue)
+    @override
+    def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None:
+        tracked = self._tracked(issue)
+        self._issues[issue] = tracked.model_copy(
+            update={"issue": tracked.issue.model_copy(update={"assigned": Assigned(True)})}
+        )
 
     def _tracked(self, issue: IssueIdentifier) -> TrackedIssue:
         tracked = self._issues.get(issue)

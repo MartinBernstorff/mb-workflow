@@ -85,11 +85,18 @@ class IssueState(StrEnum):
     triage = "Triage"
 
 
+class Assigned(Value[bool]):
+    @staticmethod
+    def fake() -> Assigned:
+        return Assigned(False)
+
+
 class Issue(Model):
     identifier: IssueIdentifier
     status: StatusName
     project: ProjectName | None
     labels: LabelNames
+    assigned: Assigned = Assigned(False)
 
     @staticmethod
     def fake() -> Issue:
@@ -98,6 +105,7 @@ class Issue(Model):
             status=StatusName.fake(),
             project=ProjectName.fake(),
             labels=LabelNames.fake(),
+            assigned=Assigned.fake(),
         )
 
     def state(self) -> IssueState | None:
