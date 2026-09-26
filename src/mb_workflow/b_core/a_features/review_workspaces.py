@@ -1,8 +1,10 @@
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, Protocol
 
+from mb_workflow.b_core.a_features.teardown import release_and_remove
 from mb_workflow.b_core.b_domain_services.worktree_reconciliation import obsolete, uncovered
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.b_core.d_domain_model.pull_request import CheckoutDirectory, PrNumber
@@ -10,9 +12,13 @@ from mb_workflow.b_core.d_domain_model.workspace import WorktreeName, WorktreePa
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
+    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
     from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
     from mb_workflow.b_core.c_secondary_ports.run_lock import RunLock
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
+    from mb_workflow.b_core.d_domain_model.claim import HostName
+    from mb_workflow.b_core.d_domain_model.config import ClaimSettings
     from mb_workflow.b_core.d_domain_model.pull_request import MergedSince, PullRequests
     from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus, Worktrees
 
@@ -103,18 +109,37 @@ def create_workspaces(
     *,
     review: CodeForge,
     manager: WorkspaceManager,
+    claims: ClaimRegistry,
+    tracker: TicketTracker,
+    claim_settings: ClaimSettings,
+    host: HostName,
     lock: RunLock,
     narrator: Narrator,
     status: WorkspaceStatus,
     since: MergedSince,
 ) -> Outcome:
     with lock.held():
-        return reconcile_workspaces(review, manager, narrator, status, since)
+        return reconcile_workspaces(
+            review=review,
+            manager=manager,
+            claims=claims,
+            tracker=tracker,
+            claim_settings=claim_settings,
+            host=host,
+            narrator=narrator,
+            status=status,
+            since=since,
+        )
 
 
 def reconcile_workspaces(
+    *,
     review: CodeForge,
     manager: WorkspaceManager,
+    claims: ClaimRegistry,
+    tracker: TicketTracker,
+    claim_settings: ClaimSettings,
+    host: HostName,
     narrator: Narrator,
     status: WorkspaceStatus,
     since: MergedSince,
@@ -144,8 +169,15 @@ def reconcile_workspaces(
     for worktree in to_remove.root:
         try:
             narrator.removing(worktree.path)
-            manager.remove(worktree.path)
-        except WorkspaceManagerError as error:
+            release_and_remove(
+                manager=manager,
+                claims=claims,
+                tracker=tracker,
+                claim_settings=claim_settings,
+                worktree=worktree,
+                host=host,
+            )
+        except (TicketTrackerError, WorkspaceManagerError) as error:
             failure = Failure(
                 subject=FailureSubject.of_path(worktree.path), reason=FailureReason(str(error))
             )

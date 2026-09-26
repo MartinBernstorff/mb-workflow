@@ -6,7 +6,11 @@ from mb_workflow.b_core.d_domain_model.claim import (
     CommentBody,
     HostName,
 )
-from mb_workflow.c_infrastructure.linear_claims import CommentedAt, CommentPayload, CommentThread
+from mb_workflow.c_infrastructure.linear_claims import (
+    CommentedAt,
+    CommentPayload,
+    CommentThread,
+)
 from mb_workflow.d_lib.models import Value
 
 

@@ -26,6 +26,7 @@ from mb_workflow.b_core.a_features.start import (
     StartRequest,
     start_ticket,
 )
+from mb_workflow.b_core.a_features.teardown import TeardownRequest, teardown_worktree
 from mb_workflow.b_core.a_features.transition import transition
 from mb_workflow.b_core.a_features.unclaim import unclaim_ticket
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
@@ -36,6 +37,7 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerErr
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.b_core.d_domain_model.config import (
+    ClaimSettings,
     ConfigFileName,
     Configuration,
     InvalidConfigError,
@@ -51,6 +53,7 @@ from mb_workflow.c_infrastructure.credentials import (
 )
 from mb_workflow.c_infrastructure.flock import FlockRunLock, LockName, LockPath
 from mb_workflow.c_infrastructure.github import GitHub
+from mb_workflow.c_infrastructure.lazy_linear import LazyLinear, LazyLinearClaims
 from mb_workflow.c_infrastructure.ledger_file import FileLedgerStore
 from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
 from mb_workflow.c_infrastructure.linear_claims import LinearClaims
@@ -64,6 +67,7 @@ if TYPE_CHECKING:
 
     from mb_workflow.b_core.b_domain_services.flow_report import AsJson
     from mb_workflow.b_core.b_domain_services.flow_transition import Force
+    from mb_workflow.b_core.d_domain_model.claim import HostName
     from mb_workflow.b_core.d_domain_model.issue import CreatedAfter, IssueIdentifier
     from mb_workflow.b_core.d_domain_model.pull_request import MergedSince, ReviewRequest
     from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit
@@ -128,11 +132,24 @@ def workspace_board(orca: Orca) -> WorkspaceBoard:
 
 
 @guarded
-def review_workspaces(status: WorkspaceStatus, since: MergedSince, lock: LockName) -> ExitCode:
+def review_workspaces(
+    status: WorkspaceStatus, since: MergedSince, lock: LockName, host: HostName
+) -> ExitCode:
+    # Review-workspaces predates the config file, so a repo without one still has its worktrees reconciled.
+    try:
+        claim_settings = Configuration.resolved(
+            WorkingDirectory(Path.cwd()), ConfigFileName.default()
+        ).settings.claims
+    except MissingConfigError:
+        claim_settings = ClaimSettings()
     shell = here()
     outcome = create_workspaces(
         review=GitHub(shell),
         manager=Orca(shell),
+        claims=LazyLinearClaims(linear_key),
+        tracker=LazyLinear(linear_key),
+        claim_settings=claim_settings,
+        host=host,
         lock=FlockRunLock(LockPath.of(lock)),
         narrator=LoggingNarrator(),
         status=status,
@@ -179,6 +196,20 @@ def ticket_start(
         board=workspace_board(orca),
         workspace=settings.workspace,
         claim_settings=settings.claims,
+        request=request,
+    )
+    return ExitCode(0)
+
+
+@guarded
+def teardown(
+    request: TeardownRequest, directory: WorkingDirectory, name: ConfigFileName
+) -> ExitCode:
+    teardown_worktree(
+        manager=Orca(here()),
+        claims=LazyLinearClaims(linear_key),
+        tracker=LazyLinear(linear_key),
+        claim_settings=Configuration.resolved(directory, name).settings.claims,
         request=request,
     )
     return ExitCode(0)

@@ -10,6 +10,7 @@ from mb_workflow.a_presentation.diagram import DiagramPath, diagram
 from mb_workflow.b_core.a_features.autolabel import AutolabelRequest, DryRun
 from mb_workflow.b_core.a_features.label import LabelChange, LabelRequest
 from mb_workflow.b_core.a_features.start import StartRequest
+from mb_workflow.b_core.a_features.teardown import TeardownRequest
 from mb_workflow.b_core.b_domain_services.flow_report import AsJson
 from mb_workflow.b_core.b_domain_services.flow_transition import Force
 from mb_workflow.b_core.d_domain_model.autolabel import ExcludePattern, Exclusions
@@ -35,6 +36,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     Submit,
     TimeoutMs,
     WorkspaceStatus,
+    WorktreeName,
 )
 from mb_workflow.c_infrastructure.flock import LockName
 from mb_workflow.d_lib.logging import LogLevel, configure
@@ -65,7 +67,9 @@ def review_workspaces(
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     since = MergedSince.of(Lookback(merged_within_days), Today.now())
     raise typer.Exit(
-        code=commands.review_workspaces(WorkspaceStatus(status), since, LockName(lock)).root
+        code=commands.review_workspaces(
+            WorkspaceStatus(status), since, LockName(lock), HostName.of_machine()
+        ).root
     )
 
 
@@ -183,6 +187,19 @@ def start_ticket(
         code=commands.ticket_start(
             request, WorkingDirectory(Path.cwd()), ConfigFileName.default()
         ).root
+    )
+
+
+@app.command("teardown")
+def teardown(
+    worktree: str = typer.Argument(..., help="Worktree to tear down, e.g. MB-35."),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Release the worktree's claim on its ticket, then remove the worktree."""
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    request = TeardownRequest(worktree=WorktreeName(worktree), host=HostName.of_machine())
+    raise typer.Exit(
+        code=commands.teardown(request, WorkingDirectory(Path.cwd()), ConfigFileName.default()).root
     )
 
 
