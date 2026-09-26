@@ -8,7 +8,7 @@ from mb_workflow.a_presentation.cli.ticket import ticket_app
 from mb_workflow.a_presentation.diagram import DiagramPath, diagram
 from mb_workflow.b_core.a_features.autolabel import AutolabelRequest, DryRun
 from mb_workflow.b_core.a_features.label import LabelChange, LabelRequest
-from mb_workflow.b_core.a_features.open_issue import OpenRequest
+from mb_workflow.b_core.a_features.start import StartRequest
 from mb_workflow.b_core.b_domain_services.flow_report import AsJson
 from mb_workflow.b_core.b_domain_services.flow_transition import Force
 from mb_workflow.b_core.d_domain_model.autolabel import ExcludePattern, Exclusions
@@ -16,7 +16,6 @@ from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
 from mb_workflow.b_core.d_domain_model.flow import EventName
 from mb_workflow.b_core.d_domain_model.issue import (
-    BranchSlug,
     CreatedAfter,
     CreatedWithin,
     Creator,
@@ -31,7 +30,7 @@ from mb_workflow.b_core.d_domain_model.pull_request import (
     ReviewRequest,
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
-    TerminalText,
+    Submit,
     TimeoutMs,
     WorkspaceStatus,
 )
@@ -151,25 +150,24 @@ def linear_autolabel(
     raise typer.Exit(code=commands.linear_autolabel(request, window).root)
 
 
-@app.command("open-issue")
-@app.command("oi")
-def open_linear_issue(
+@app.command("start")
+def start_ticket(
     *,
-    branch: str = typer.Option("", "--branch", envvar="LINEAR_ISSUE_BRANCH_NAME"),
-    issue: str = typer.Option("", "--issue", envvar="LINEAR_ISSUE_IDENTIFIER"),
-    prompt: str = typer.Option("", "--prompt", envvar="LINEAR_PROMPT"),
+    ticket: str = typer.Argument(..., help="Ticket to start, e.g. MB-33."),
+    submit: bool = typer.Option(
+        False, "--submit", help="Submit the prompt instead of leaving it typed."
+    ),
     idle_timeout_ms: int = typer.Option(60000, "--idle-timeout-ms"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    request = OpenRequest(
-        branch=BranchSlug(branch),
-        issue=IssueIdentifier(issue) if issue else None,
-        prompt=TerminalText(prompt) if prompt else None,
+    request = StartRequest(
+        ticket=IssueIdentifier(ticket),
+        submit=Submit(submit),
         idle_timeout=TimeoutMs(idle_timeout_ms),
     )
     raise typer.Exit(
-        code=commands.open_linear_issue(
+        code=commands.ticket_start(
             request, WorkingDirectory(Path.cwd()), ConfigFileName.default()
         ).root
     )

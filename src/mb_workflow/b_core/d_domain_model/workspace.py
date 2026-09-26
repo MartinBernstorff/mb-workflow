@@ -1,8 +1,7 @@
-import re
 from pathlib import Path
 
 from mb_workflow.b_core.d_domain_model.git import Ref
-from mb_workflow.b_core.d_domain_model.issue import BranchSlug, IssueIdentifier
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
 from mb_workflow.d_lib.models import Model, Value
 
@@ -29,19 +28,8 @@ class WorktreeName(Value[str]):
         return WorktreeName(f"pr-{pr.root}")
 
     @staticmethod
-    def of_branch(branch: BranchSlug, issue: IssueIdentifier | None) -> WorktreeName:
-        slug = branch.root or (issue.root if issue is not None else "linear-workspace")
-        # Orca prefixes the branch with the git user, so hand it the unprefixed slug.
-        name = slug.split("/", 1)[-1]
-        # Linear prefixes the slug with the issue identifier ("e-4289-..."), which orca shows on its own.
-        name = re.sub(r"^[A-Za-z]+-\d+-", "", name)
-        # Linear slugifies "fix(ci): ..." to "fixci-...", so drop the conventional-commit type and scope.
-        name = re.sub(
-            r"^(?:feat|fix|chore|refactor|revert|perf|docs|test|build|style|ci)[a-z]*-(?=.)",
-            "",
-            name,
-        )
-        return WorktreeName(name)
+    def of_issue(issue: IssueIdentifier) -> WorktreeName:
+        return WorktreeName(issue.root)
 
 
 class WorktreePath(Value[Path]):
@@ -95,6 +83,12 @@ class TerminalText(Value[str]):
     @staticmethod
     def fake() -> TerminalText:
         return TerminalText("Implement the issue.")
+
+
+class Submit(Value[bool]):
+    @staticmethod
+    def fake() -> Submit:
+        return Submit(False)
 
 
 class TimeoutMs(Value[int]):

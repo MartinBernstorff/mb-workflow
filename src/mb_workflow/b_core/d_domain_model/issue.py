@@ -13,12 +13,6 @@ class IssueIdentifier(Value[str]):
         return IssueIdentifier("E-4289")
 
 
-class BranchSlug(Value[str]):
-    @staticmethod
-    def fake() -> BranchSlug:
-        return BranchSlug(f"mab/{IssueIdentifier.fake().root.lower()}-feat-add-widget")
-
-
 class LabelName(Value[str]):
     @staticmethod
     def fake() -> LabelName:
