@@ -4,8 +4,13 @@ from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.outcome import Failed
-from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
-from mb_workflow.c_infrastructure.github import GitHub, Lookback, MergedSince, PullRequests
+from mb_workflow.b_core.d_domain_model.pull_request import (
+    CheckoutDirectory,
+    Lookback,
+    MergedSince,
+    PrNumber,
+    PullRequests,
+)
 from mb_workflow.c_infrastructure.orca import (
     Orca,
     OrcaError,
@@ -15,11 +20,12 @@ from mb_workflow.c_infrastructure.orca import (
     WorktreePath,
     Worktrees,
 )
-from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
+from mb_workflow.c_infrastructure.shell import ExistingDirectory
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.lock import LockPath
+    from mb_workflow.b_core.c_secondary_ports.code_review import CodeReview
     from mb_workflow.b_core.d_domain_model.git import BranchNames
 
 logger = logging.getLogger(__name__)
@@ -103,7 +109,7 @@ def uncovered(prs: PullRequests, worktrees: Worktrees) -> PullRequests:
     linked = {w.linked_issue for w in worktrees.root if w.linked_issue is not None}
     branches = {w.branch.branch() for w in worktrees.root if w.branch is not None}
     return PullRequests(
-        tuple(pr for pr in prs.root if pr.number not in linked and pr.head_ref_name not in branches)
+        tuple(pr for pr in prs.root if pr.number not in linked and pr.branch not in branches)
     )
 
 
@@ -115,7 +121,7 @@ def stale(
     here: ExistingDirectory,
 ) -> Worktrees:
     numbers = {pr.number for pr in prs.root}
-    branches = {pr.head_ref_name for pr in prs.root}
+    branches = {pr.branch for pr in prs.root}
     cwd = here.root.resolve()
     return Worktrees(
         tuple(
@@ -164,21 +170,21 @@ def union(first: Worktrees, second: Worktrees) -> Worktrees:
 
 
 def create_workspaces(
-    shell: Shell, status: WorkspaceStatus, lookback: Lookback, lock: LockPath
+    review: CodeReview, orca: Orca, status: WorkspaceStatus, lookback: Lookback, lock: LockPath
 ) -> Outcome:
     with lock.held():
         since = MergedSince.of(lookback, Today.now())
-        return workspaces_for_review(GitHub(shell), Orca(shell), status, since)
+        return workspaces_for_review(review, orca, status, since)
 
 
 def workspaces_for_review(
-    github: GitHub, orca: Orca, status: WorkspaceStatus, since: MergedSince
+    review: CodeReview, orca: Orca, status: WorkspaceStatus, since: MergedSince
 ) -> Outcome:
     worktrees = orca.worktrees()
     here = orca.where()
     repo = worktrees.repo_id_at(here)
     logger.info("Inspecting %s Orca worktrees from %s", len(worktrees.root), here.root)
-    requested = github.review_requested()
+    requested = review.review_requested()
     logger.info("PRs awaiting your review: %s", len(requested.root))
 
     created: list[CreatedWorkspace] = []
@@ -187,7 +193,7 @@ def workspaces_for_review(
 
     obsolete = union(
         stale(requested, worktrees, repo, status, here),
-        on_branches(prunable(worktrees, repo, here), github.merged_branches(since)),
+        on_branches(prunable(worktrees, repo, here), review.merged_branches(since)),
     )
     logger.info("Obsolete workspaces: %s", len(obsolete.root))
 
@@ -215,7 +221,7 @@ def workspaces_for_review(
             logger.info("    Creating worktree %s", WorktreeName.of(pr.number).root)
             path = orca.create_worktree(repo, pr.number, pr.title, status)
             logger.info("    Checking out into %s", path.root)
-            github.checkout(pr.number, path)
+            review.checkout(pr.number, CheckoutDirectory(path.root))
         except (CalledProcessError, OrcaError, ValueError) as error:
             logger.error("    PR #%s failed: %s", pr.number.root, error)
             failed.append(

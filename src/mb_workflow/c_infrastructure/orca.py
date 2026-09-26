@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING
 from mb_workflow.b_core.d_domain_model.git import Ref
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
-from mb_workflow.c_infrastructure.shell import Command, CommandOutput, ExistingDirectory, Shell
+from mb_workflow.c_infrastructure.shell import (
+    Command,
+    CommandOutput,
+    CommandRunner,
+    ExistingDirectory,
+)
 from mb_workflow.d_lib.models import Payload, Value
 
 if TYPE_CHECKING:
@@ -285,7 +290,7 @@ def acknowledged(output: CommandOutput) -> Acknowledgement:
 
 
 class Orca:
-    def __init__(self, shell: Shell) -> None:
+    def __init__(self, shell: CommandRunner) -> None:
         self._shell = shell
         _ = shell.run(Command(("orca", "--version")))
 
