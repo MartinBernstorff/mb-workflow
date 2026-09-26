@@ -29,7 +29,7 @@ class IssueTracker(Protocol):
 
     def read_issue(self, issue: IssueIdentifier) -> Issue: ...
 
-    def view_issue(self, issue: IssueIdentifier) -> IssueDetail: ...
+    def read_issue_detail(self, issue: IssueIdentifier) -> IssueDetail: ...
 
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None: ...
 
@@ -80,7 +80,7 @@ class FakeIssueTracker(IssueTracker):
         return self._tracked(issue).issue
 
     @override
-    def view_issue(self, issue: IssueIdentifier) -> IssueDetail:
+    def read_issue_detail(self, issue: IssueIdentifier) -> IssueDetail:
         tracked = self._tracked(issue)
         return IssueDetail(
             issue=tracked.issue, title=tracked.title, description=tracked.description

@@ -57,7 +57,7 @@ Built with Typer, entry point `mb_workflow.cli:app`. Every command must accept `
 
 ## Tickets
 
-`MB-<n>` identifiers are Linear issues. Read them with `mw ticket view`; modify them with `linear-cli`.
+`MB-<n>` identifiers are Linear issues. Read them with `mw ticket view`; modify them with `linear-cli`. `mw` needs `LINEAR_API_KEY` set to a key for the mb-workflow workspace.
 
 ```bash
 uv run mw ticket view MB-19

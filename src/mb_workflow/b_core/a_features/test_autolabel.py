@@ -24,12 +24,9 @@ from mb_workflow.b_core.c_secondary_ports.issue_tracker import FakeIssueTracker,
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
-    CreatedOn,
-    Creator,
     Issue,
     IssueIdentifier,
     Issues,
-    IssueTitle,
     LabelName,
     LabelNames,
     ProjectName,
@@ -334,13 +331,7 @@ def test_an_applied_sweep_labels_the_survivors_on_the_tracker(tmp_path: Path) ->
     tracker = FakeIssueTracker(
         LabelNames.fake(),
         tuple(
-            TrackedIssue(
-                issue=issue,
-                title=IssueTitle.fake(),
-                description=None,
-                creator=Creator.fake(),
-                created_on=CreatedOn.fake(),
-            )
+            TrackedIssue.fake().model_copy(update={"issue": issue})
             for issue in default_issues().root
         ),
     )
@@ -352,13 +343,7 @@ def test_an_applied_sweep_records_what_it_labelled(tmp_path: Path) -> None:
     tracker = FakeIssueTracker(
         LabelNames.fake(),
         tuple(
-            TrackedIssue(
-                issue=issue,
-                title=IssueTitle.fake(),
-                description=None,
-                creator=Creator.fake(),
-                created_on=CreatedOn.fake(),
-            )
+            TrackedIssue.fake().model_copy(update={"issue": issue})
             for issue in default_issues().root
         ),
     )
@@ -371,13 +356,7 @@ def test_a_dry_sweep_leaves_the_tracker_untouched(tmp_path: Path) -> None:
     tracker = FakeIssueTracker(
         LabelNames.fake(),
         tuple(
-            TrackedIssue(
-                issue=issue,
-                title=IssueTitle.fake(),
-                description=None,
-                creator=Creator.fake(),
-                created_on=CreatedOn.fake(),
-            )
+            TrackedIssue.fake().model_copy(update={"issue": issue})
             for issue in default_issues().root
         ),
     )

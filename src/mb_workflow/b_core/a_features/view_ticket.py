@@ -8,4 +8,4 @@ if TYPE_CHECKING:
 
 
 def view_ticket(tracker: IssueTracker, issue: IssueIdentifier) -> TicketReport:
-    return TicketReport.of(tracker.view_issue(issue))
+    return TicketReport.of(tracker.read_issue_detail(issue))

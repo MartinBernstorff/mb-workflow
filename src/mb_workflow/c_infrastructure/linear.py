@@ -129,14 +129,6 @@ class IssuePayload(Payload):
         )
 
 
-class IssueRead(Payload):
-    issue: IssuePayload
-
-    @staticmethod
-    def fake() -> IssueRead:
-        return IssueRead(issue=IssuePayload.fake())
-
-
 class IssueDetailPayload(IssuePayload):
     title: IssueTitle
     description: IssueDescription | None = None
@@ -245,25 +237,10 @@ class Linear(IssueTracker):
 
     @override
     def read_issue(self, issue: IssueIdentifier) -> Issue:
-        with translated_errors():
-            data = self._client.execute(
-                """
-                query($id: String!) {
-                  issue(id: $id) {
-                    identifier
-                    state { name }
-                    project { name }
-                    labels { nodes { name } }
-                    assignee { id }
-                  }
-                }
-                """,
-                {"id": issue.root},
-            )
-        return IssueRead.model_validate(data).issue.issue()
+        return self.read_issue_detail(issue).issue
 
     @override
-    def view_issue(self, issue: IssueIdentifier) -> IssueDetail:
+    def read_issue_detail(self, issue: IssueIdentifier) -> IssueDetail:
         with translated_errors():
             data = self._client.execute(
                 """

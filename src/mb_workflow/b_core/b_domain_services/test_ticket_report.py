@@ -1,5 +1,11 @@
 from mb_workflow.b_core.b_domain_services.ticket_report import TicketReport
-from mb_workflow.b_core.d_domain_model.issue import Issue, IssueDetail, LabelName, LabelNames
+from mb_workflow.b_core.d_domain_model.issue import (
+    Issue,
+    IssueDescription,
+    IssueDetail,
+    LabelName,
+    LabelNames,
+)
 
 
 def test_reports_the_heading_the_fields_and_the_description() -> None:
@@ -32,3 +38,8 @@ def test_labels_are_joined_by_commas() -> None:
         }
     )
     assert "labels: Backend, d-grill\n" in TicketReport.of(labelled).root
+
+
+def test_an_empty_description_reports_no_body() -> None:
+    blank = IssueDetail.fake().model_copy(update={"description": IssueDescription("")})
+    assert TicketReport.of(blank).root.endswith("labels: d-implement\n")

@@ -356,18 +356,18 @@ def test_reading_an_unknown_issue_is_refused(tracker: IssueTracker) -> None:
 def test_viewing_an_issue_carries_its_title_and_description(
     tracker: IssueTracker, backlog: Backlog
 ) -> None:
-    assert tracker.view_issue(backlog.identifier(Seed.recent)) == backlog.detail(Seed.recent)
+    assert tracker.read_issue_detail(backlog.identifier(Seed.recent)) == backlog.detail(Seed.recent)
 
 
 def test_an_issue_without_a_description_carries_none(
     tracker: IssueTracker, backlog: Backlog
 ) -> None:
-    assert tracker.view_issue(backlog.identifier(Seed.done)).description is None
+    assert tracker.read_issue_detail(backlog.identifier(Seed.done)).description is None
 
 
 def test_viewing_an_unknown_issue_is_refused(tracker: IssueTracker) -> None:
     with pytest.raises(IssueTrackerError):
-        _ = tracker.view_issue(IssueIdentifier("E-404"))
+        _ = tracker.read_issue_detail(IssueIdentifier("E-404"))
 
 
 def test_an_added_label_joins_the_ones_already_there(
