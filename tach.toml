@@ -1,4 +1,5 @@
 source_roots = ["src"]
+ignore_type_checking_imports = false
 
 # Tests sit beside the code they cover, so each layer also owns their imports.
 [[modules]]
@@ -26,7 +27,6 @@ depends_on = [
     "mb_workflow.b_core.b_domain_services",
     "mb_workflow.b_core.c_secondary_ports",
     "mb_workflow.b_core.d_domain_model",
-    "mb_workflow.c_infrastructure",
     "mb_workflow.d_lib",
 ]
 

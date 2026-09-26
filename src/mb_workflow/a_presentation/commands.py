@@ -40,7 +40,7 @@ from mb_workflow.b_core.d_domain_model.config import (
     MissingConfigError,
     WorkingDirectory,
 )
-from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError
+from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError, StateNames, WorkflowChart
 from mb_workflow.c_infrastructure.credentials import (
     CredentialsDirectory,
     InvalidCredentialsError,
@@ -53,7 +53,7 @@ from mb_workflow.c_infrastructure.ledger_file import FileLedgerStore
 from mb_workflow.c_infrastructure.linear import Linear
 from mb_workflow.c_infrastructure.orca import Orca
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
-from mb_workflow.c_infrastructure.workspace_board import BoardError
+from mb_workflow.c_infrastructure.workspace_board import BoardError, WorkspaceBoard
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -113,6 +113,10 @@ def here() -> Shell:
 def linear() -> Linear:
     path = CredentialsDirectory.of_user().path_for(RepositorySlug.of_origin(here()))
     return Linear.connected(path.credentials().linear.api_key)
+
+
+def workspace_board() -> WorkspaceBoard:
+    return WorkspaceBoard.of_orca(Orca(here()), StateNames.initial_state(WorkflowChart))
 
 
 @guarded
@@ -179,11 +183,11 @@ def flow_config(directory: WorkingDirectory, name: ConfigFileName) -> ExitCode:
 
 @guarded
 def flow_show(as_json: AsJson) -> ExitCode:
-    write(Output(show_flow(here(), as_json).root))
+    write(Output(show_flow(workspace_board(), as_json).root))
     return ExitCode(0)
 
 
 @guarded
 def flow_event(event: EventName, force: Force) -> ExitCode:
-    logger.info("Moved to %s.", transition(here(), event, force).root)
+    logger.info("Moved to %s.", transition(workspace_board(), event, force).root)
     return ExitCode(0)
