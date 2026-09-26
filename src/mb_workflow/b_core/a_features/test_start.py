@@ -102,7 +102,7 @@ def started(status: StatusName, request: StartRequest) -> FakeWorkspaceManager:
 def test_opens_a_worktree_named_and_linked_after_the_ticket() -> None:
     opened = opened_in(started(StatusName("Specced"), StartRequest.fake()))
     assert opened.issue == IssueIdentifier.fake()
-    assert opened.path == WorktreePath.fake().sibling(WorktreeName("E-4289"))
+    assert opened.path == WorktreePath.fake().sibling(WorktreeName.of_issue(IssueIdentifier.fake()))
 
 
 def test_types_the_prompt_without_submitting_it_by_default() -> None:
@@ -185,11 +185,15 @@ def test_a_ticket_with_no_work_left_is_neither_opened_nor_assigned(status: Statu
 
 
 def ours() -> ClaimHolder:
-    return ClaimHolder(host=StartRequest.fake().host, worktree=WorktreeName("E-4289"))
+    return ClaimHolder(
+        host=StartRequest.fake().host, worktree=WorktreeName.of_issue(IssueIdentifier.fake())
+    )
 
 
 def claimed_by_a_rival() -> FakeClaimRegistry:
-    rival = ClaimHolder(host=HostName("bob-mbp.local"), worktree=WorktreeName("E-4289"))
+    rival = ClaimHolder(
+        host=HostName("bob-mbp.local"), worktree=WorktreeName.of_issue(IssueIdentifier.fake())
+    )
     return FakeClaimRegistry(
         {IssueIdentifier.fake(): Claims((Claim(id=ClaimId("rival"), holder=rival),))}
     )

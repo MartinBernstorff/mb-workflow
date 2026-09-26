@@ -709,7 +709,7 @@ def test_an_unclaimed_ticket_has_no_claims(claims: ClaimRegistry, backlog: Backl
     assert claims.claims(backlog.identifier(Seed.recent)) == Claims(())
 
 
-# Runs a whole rival claim just before the first post, so both claimers pass the check for a holder.
+# Both claimers must pass the check for a holder before either posts, or no race is run.
 class RacedRegistry(ClaimRegistry):
     def __init__(self, inner: ClaimRegistry, rival: Callable[[], None]) -> None:
         self._inner = inner

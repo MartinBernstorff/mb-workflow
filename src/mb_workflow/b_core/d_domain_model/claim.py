@@ -33,9 +33,14 @@ class ClaimHolder(Model):
         return ClaimHolder(host=HostName.fake(), worktree=WorktreeName.fake())
 
     @staticmethod
+    def claim_comment_prefix() -> CommentBody:
+        return CommentBody("Claimed by mw from worktree")
+
+    @staticmethod
     def parsed(body: CommentBody) -> ClaimHolder | None:
         found = re.fullmatch(
-            r"Claimed by mw from worktree `(?P<worktree>[^`]+)` on host `(?P<host>[^`]+)`\.",
+            re.escape(ClaimHolder.claim_comment_prefix().root)
+            + r" `(?P<worktree>[^`]+)` on host `(?P<host>[^`]+)`\.",
             body.root.strip(),
         )
         if found is None:
@@ -44,7 +49,8 @@ class ClaimHolder(Model):
 
     def comment(self) -> CommentBody:
         return CommentBody(
-            f"Claimed by mw from worktree `{self.worktree.root}` on host `{self.host.root}`."
+            f"{ClaimHolder.claim_comment_prefix().root} `{self.worktree.root}`"
+            f" on host `{self.host.root}`."
         )
 
 

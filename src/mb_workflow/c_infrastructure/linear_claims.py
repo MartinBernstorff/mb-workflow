@@ -5,6 +5,7 @@ from linear_python_client import LinearClient
 from pydantic import AliasPath, Field
 
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.d_domain_model.claim import (
     Claim,
     ClaimHolder,
@@ -75,12 +76,29 @@ class CommentThreadRead(Payload):
         return CommentThreadRead(issue=CommentThread.fake())
 
 
+class Succeeded(Value[bool]):
+    @staticmethod
+    def fake() -> Succeeded:
+        return Succeeded(True)
+
+
 class PostedComment(Payload):
-    id: ClaimId = Field(validation_alias=AliasPath("commentCreate", "comment", "id"))
+    success: Succeeded = Field(validation_alias=AliasPath("commentCreate", "success"))
+    id: ClaimId | None = Field(
+        default=None, validation_alias=AliasPath("commentCreate", "comment", "id")
+    )
 
     @staticmethod
     def fake() -> PostedComment:
-        return PostedComment(id=ClaimId.fake())
+        return PostedComment(success=Succeeded.fake(), id=ClaimId.fake())
+
+
+class DeletedComment(Payload):
+    success: Succeeded = Field(validation_alias=AliasPath("commentDelete", "success"))
+
+    @staticmethod
+    def fake() -> DeletedComment:
+        return DeletedComment(success=Succeeded.fake())
 
 
 class LinearClaims(ClaimRegistry):
@@ -104,27 +122,34 @@ class LinearClaims(ClaimRegistry):
                 " commentCreate(input: $input) { success comment { id } } }",
                 {"input": {"issueId": issue.root, "body": holder.comment().root}},
             )
-        return PostedComment.model_validate(data).id
+        posted = PostedComment.model_validate(data)
+        if not posted.success.root or posted.id is None:
+            raise TicketTrackerError(f"Linear did not post the claim on {ticket.root}.")
+        return posted.id
 
     @override
     def withdraw(self, ticket: IssueIdentifier, claim: ClaimId) -> None:
         with translated_errors():
-            _ = self._client.execute(
+            data = self._client.execute(
                 "mutation($id: String!) { commentDelete(id: $id) { success } }",
                 {"id": claim.root},
             )
+        if not DeletedComment.model_validate(data).success.root:
+            raise TicketTrackerError(f"Linear did not delete the claim {claim.root}.")
 
     def _thread(self, ticket: IssueIdentifier) -> CommentThread:
         with translated_errors():
             data = self._client.execute(
                 """
-                query($id: String!) {
+                query($id: String!, $prefix: String!) {
                   issue(id: $id) {
                     id
-                    comments(first: 250) { nodes { id body createdAt } }
+                    comments(first: 250, filter: { body: { startsWith: $prefix } }) {
+                      nodes { id body createdAt }
+                    }
                   }
                 }
                 """,
-                {"id": ticket.root},
+                {"id": ticket.root, "prefix": ClaimHolder.claim_comment_prefix().root},
             )
         return CommentThreadRead.model_validate(data).issue

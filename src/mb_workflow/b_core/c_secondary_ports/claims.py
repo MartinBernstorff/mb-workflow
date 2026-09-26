@@ -56,7 +56,7 @@ def claim_ticket(registry: ClaimRegistry, pause: Pause, request: ClaimRequest) -
     if current is not None and current.holder == request.holder:
         return
     if current is not None and not request.take_over.root:
-        raise refused(request.ticket, current)
+        raise claimed_error(request.ticket, current)
     for stale in held.root:
         logger.info("Withdrawing the claim of %s.", stale.holder.worktree.root)
         registry.withdraw(request.ticket, stale.id)
@@ -72,10 +72,10 @@ def claim_ticket(registry: ClaimRegistry, pause: Pause, request: ClaimRequest) -
         registry.withdraw(request.ticket, posted)
     if winner is None:
         raise ClaimRefusedError(f"Our claim on {request.ticket.root} was withdrawn by another.")
-    raise refused(request.ticket, winner)
+    raise claimed_error(request.ticket, winner)
 
 
-def refused(ticket: IssueIdentifier, holder: Claim) -> ClaimRefusedError:
+def claimed_error(ticket: IssueIdentifier, holder: Claim) -> ClaimRefusedError:
     return ClaimRefusedError(
         f"{ticket.root} is claimed by worktree {holder.holder.worktree.root}"
         f" on {holder.holder.host.root}. Pass --force to take the claim over."
