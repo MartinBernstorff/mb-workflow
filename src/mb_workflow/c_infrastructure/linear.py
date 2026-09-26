@@ -37,6 +37,7 @@ from mb_workflow.d_lib.models import Payload, Value
 if TYPE_CHECKING:
     from collections.abc import Generator
 
+    from mb_workflow.b_core.d_domain_model.flow_labels import LabelGroupName
     from mb_workflow.b_core.d_domain_model.issue import IssueFilter, IssueUpdate, StatusTypes
     from mb_workflow.b_core.d_domain_model.pool import ViewSlug
 
@@ -150,6 +151,36 @@ class LabelRecord(Payload):
     @staticmethod
     def fake() -> LabelRecord:
         return LabelRecord(id=LabelId.fake(), name=LabelName.fake())
+
+
+class LabelGroupRecord(Payload):
+    id: LabelId
+    children: tuple[LabelRecord, ...] = Field(
+        default=(), validation_alias=AliasPath("children", "nodes")
+    )
+
+    @staticmethod
+    def fake() -> LabelGroupRecord:
+        return LabelGroupRecord(id=LabelId.fake(), children=(LabelRecord.fake(),))
+
+    def labels(self) -> LabelNames:
+        return LabelNames(tuple(child.name for child in self.children))
+
+
+class LabelGroupRead(Payload):
+    groups: tuple[LabelGroupRecord, ...] = Field(validation_alias=AliasPath("issueLabels", "nodes"))
+
+    @staticmethod
+    def fake() -> LabelGroupRead:
+        return LabelGroupRead(groups=(LabelGroupRecord.fake(),))
+
+
+class CreatedLabel(Payload):
+    id: LabelId = Field(validation_alias=AliasPath("issueLabelCreate", "issueLabel", "id"))
+
+    @staticmethod
+    def fake() -> CreatedLabel:
+        return CreatedLabel(id=LabelId.fake())
 
 
 class UserRecord(Payload):
@@ -410,6 +441,48 @@ class Linear(TicketTracker):
         with translated_errors():
             labels = self._client.paginate(self._client.issue_labels, IssueLabelsRequest(first=250))
             return LabelNames(tuple(LabelName(label.name) for label in labels if label.name))
+
+    @override
+    def group_labels(self, group: LabelGroupName) -> LabelNames:
+        found = self._found_group(group)
+        return found.labels() if found is not None else LabelNames(())
+
+    @override
+    def create_group_labels(self, group: LabelGroupName, labels: LabelNames) -> None:
+        found = self._found_group(group)
+        parent = (
+            found.id
+            if found is not None
+            else self._created_label(
+                {"name": group.root, "isGroup": True, "groupType": "singleSelect"}
+            )
+        )
+        for label in labels.root:
+            _ = self._created_label({"name": label.root, "parentId": parent.root})
+
+    def _found_group(self, group: LabelGroupName) -> LabelGroupRecord | None:
+        with translated_errors():
+            data = self._client.execute(
+                """
+                query($name: String!) {
+                  issueLabels(first: 1, filter: { name: { eqIgnoreCase: $name }, isGroup: { eq: true } }) {
+                    nodes { id children(first: 250) { nodes { id name } } }
+                  }
+                }
+                """,
+                {"name": group.root},
+            )
+        groups = LabelGroupRead.model_validate(data).groups
+        return groups[0] if groups else None
+
+    def _created_label(self, label: JsonValue) -> LabelId:
+        with translated_errors():
+            data = self._client.execute(
+                "mutation($input: IssueLabelCreateInput!) {"
+                " issueLabelCreate(input: $input) { issueLabel { id } } }",
+                {"input": label},
+            )
+        return CreatedLabel.model_validate(data).id
 
     @override
     def list_issues(self, wanted: IssueFilter) -> Issues:
