@@ -7,6 +7,7 @@ from mb_workflow.a_presentation import commands
 from mb_workflow.a_presentation.cli.ticket import ticket_app
 from mb_workflow.a_presentation.diagram import DiagramPath, diagram
 from mb_workflow.b_core.a_features.autolabel import AutolabelRequest, DryRun
+from mb_workflow.b_core.a_features.drain import DrainRequest
 from mb_workflow.b_core.a_features.label import LabelChange, LabelRequest
 from mb_workflow.b_core.a_features.start import StartRequest
 from mb_workflow.b_core.a_features.teardown import TeardownRequest
@@ -179,6 +180,32 @@ def start_ticket(
     raise typer.Exit(
         code=commands.ticket_start(
             request, WorkingDirectory(Path.cwd()), ConfigFileName.default()
+        ).root
+    )
+
+
+@app.command("drain")
+def drain(
+    *,
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Print the ready tickets in pick order and start none."
+    ),
+    idle_timeout_ms: int = typer.Option(60000, "--idle-timeout-ms"),
+    lock: str = typer.Option(
+        "drain", "--lock", help="Name of the lock that keeps passes from overlapping."
+    ),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Start the top ready ticket in the pool."""
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    request = DrainRequest(
+        dry_run=DryRun(dry_run),
+        idle_timeout=TimeoutMs(idle_timeout_ms),
+        host=HostName.of_machine(),
+    )
+    raise typer.Exit(
+        code=commands.drain(
+            request, LockName(lock), WorkingDirectory(Path.cwd()), ConfigFileName.default()
         ).root
     )
 

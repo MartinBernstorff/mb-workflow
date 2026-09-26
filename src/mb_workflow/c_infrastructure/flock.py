@@ -43,9 +43,7 @@ class FlockRunLock(RunLock):
             try:
                 fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as error:
-                raise AlreadyRunningError(
-                    f"another run holds {path}; it is still creating workspaces"
-                ) from error
+                raise AlreadyRunningError(f"another run holds {path}") from error
             logger.info("Holding %s", path)
             try:
                 yield

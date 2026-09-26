@@ -51,6 +51,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Projects,
     StatusNames,
 )
+from mb_workflow.b_core.d_domain_model.pool import PoolTicket, Priority, ViewSlug
 from mb_workflow.c_infrastructure.credentials import CredentialsDirectory, RepositorySlug
 from mb_workflow.c_infrastructure.linear import (
     Linear,
@@ -81,6 +82,7 @@ class SeededIssue(Model):
     project: ProjectName | None
     labels: LabelNames
     description: IssueDescription | None
+    priority: Priority
 
     def issue(self, identifier: IssueIdentifier) -> Issue:
         return Issue(
@@ -108,7 +110,7 @@ def workspace_labels() -> LabelNames:
     return LabelNames(tuple(LabelName(name) for name in ("Backend", "d-grill", "d-implement")))
 
 
-def seeded(seed: Seed, created: CreatedOn) -> SeededIssue:
+def seeded(seed: Seed, created: CreatedOn, priority: Priority) -> SeededIssue:
     return SeededIssue(
         seed=seed,
         created_on=created,
@@ -116,14 +118,15 @@ def seeded(seed: Seed, created: CreatedOn) -> SeededIssue:
         project=ProjectName.fake(),
         labels=LabelNames(()),
         description=IssueDescription.fake(),
+        priority=priority,
     )
 
 
 def seeds() -> tuple[SeededIssue, ...]:
     return (
-        seeded(Seed.recent, CreatedOn(date(2026, 9, 1))),
-        seeded(Seed.old, CreatedOn(date(2026, 8, 1))),
-        seeded(Seed.newest, CreatedOn(date(2026, 9, 2))),
+        seeded(Seed.recent, CreatedOn(date(2026, 9, 1)), Priority.urgent),
+        seeded(Seed.old, CreatedOn(date(2026, 8, 1)), Priority.low),
+        seeded(Seed.newest, CreatedOn(date(2026, 9, 2)), Priority.no_priority),
         SeededIssue(
             seed=Seed.done,
             created_on=CreatedOn.fake(),
@@ -131,6 +134,7 @@ def seeds() -> tuple[SeededIssue, ...]:
             project=None,
             labels=LabelNames((LabelName("d-grill"),)),
             description=None,
+            priority=Priority.high,
         ),
     )
 
@@ -139,6 +143,7 @@ class Backlog(Model):
     identifiers: dict[Seed, IssueIdentifier]
     creator: Creator
     assignee: Assignee
+    view: ViewSlug
 
     def identifier(self, seed: Seed) -> IssueIdentifier:
         return self.identifiers[seed]
@@ -149,6 +154,10 @@ class Backlog(Model):
     def detail(self, seed: Seed) -> IssueDetail:
         planted = next(planted for planted in seeds() if planted.seed == seed)
         return planted.detail(self.identifier(seed))
+
+    def ticket(self, seed: Seed) -> PoolTicket:
+        planted = next(planted for planted in seeds() if planted.seed == seed)
+        return PoolTicket(issue=self.issue(seed), priority=planted.priority)
 
     def picked(self, wanted: IssueFilter, tracker: TicketTracker) -> tuple[Seed, ...]:
         swept = tracker.list_issues(wanted).identifiers()
@@ -208,6 +217,7 @@ def fake_backlog() -> Backlog:
         identifiers={seed: IssueIdentifier(f"E-{n}") for n, seed in enumerate(Seed, start=1)},
         creator=Creator.fake(),
         assignee=Assignee.fake(),
+        view=ViewSlug.fake(),
     )
 
 
@@ -298,12 +308,64 @@ def ensure_issue(client: LinearClient, team: TeamId, planted: SeededIssue) -> Is
             title=title,
             state_id=planted.status.root,
             project_id=planted.project.root if planted.project is not None else None,
+            priority=planted.priority.value,
             createdAt=f"{planted.created_on.root.isoformat()}T12:00:00Z",
         )
     ).issue
     if created is None or created.identifier is None:
         pytest.fail(f"Linear did not create {title}.")
     return IssueIdentifier(created.identifier)
+
+
+class ViewRecord(Payload):
+    slug_id: ViewSlug
+
+    @staticmethod
+    def fake() -> ViewRecord:
+        return ViewRecord(slug_id=ViewSlug.fake())
+
+
+class FoundViews(Payload):
+    views: tuple[ViewRecord, ...] = Field(validation_alias=AliasPath("customViews", "nodes"))
+
+    @staticmethod
+    def fake() -> FoundViews:
+        return FoundViews(views=(ViewRecord.fake(),))
+
+
+class CreatedView(Payload):
+    view: ViewRecord = Field(validation_alias=AliasPath("customViewCreate", "customView"))
+
+    @staticmethod
+    def fake() -> CreatedView:
+        return CreatedView(view=ViewRecord.fake())
+
+
+# The view filters on the seeds' shared title prefix, so it holds every seed and nothing else.
+def ensure_view(client: LinearClient) -> ViewSlug:
+    name = "contract: pool"
+    found = FoundViews.model_validate(
+        client.execute(
+            "query($name: String!) {"
+            " customViews(first: 1, filter: { name: { eq: $name } }) { nodes { slugId } } }",
+            {"name": name},
+        )
+    ).views
+    if found:
+        return found[0].slug_id
+    return CreatedView.model_validate(
+        client.execute(
+            "mutation($input: CustomViewCreateInput!) {"
+            " customViewCreate(input: $input) { customView { slugId } } }",
+            {
+                "input": {
+                    "name": name,
+                    "shared": True,
+                    "filterData": {"title": {"startsWith": "contract: "}},
+                }
+            },
+        )
+    ).view.slug_id
 
 
 # Seeded once per session; reset() restores whatever a test changes.
@@ -321,6 +383,7 @@ def linear_backlog(linear_client: LinearClient) -> Backlog:
         },
         creator=Creator(viewer.email),
         assignee=Assignee(viewer.email),
+        view=ensure_view(linear_client),
     )
 
 
@@ -347,6 +410,7 @@ def reset(client: LinearClient, backlog: Backlog) -> None:
                     "assigneeId": None,
                     "projectId": project.root if project is not None else None,
                     "projectMilestoneId": None,
+                    "priority": planted.priority.value,
                 },
             },
         )
@@ -384,12 +448,14 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
                 milestone=None,
                 creator=backlog.creator,
                 created_on=planted.created_on,
+                priority=planted.priority,
             )
             for planted in seeds()
         ),
         Projects.fake(),
         StatusNames((*StatusNames.fake().root, *StatusNames.closed().root)),
         backlog.assignee,
+        views={backlog.view: tuple(backlog.identifier(seed) for seed in Seed)},
     )
 
 
@@ -423,6 +489,17 @@ def test_the_filter_skips_issues_another_creator_made(
 def test_the_filter_start_date_is_inclusive(tracker: TicketTracker, backlog: Backlog) -> None:
     after = IssueFilter(creator=backlog.creator, created_after=CreatedAfter(date(2026, 9, 2)))
     assert backlog.picked(after, tracker) == (Seed.newest,)
+
+
+def test_a_view_lists_its_tickets_with_their_priority(
+    tracker: TicketTracker, backlog: Backlog
+) -> None:
+    assert set(tracker.view_tickets(backlog.view).root) == {backlog.ticket(seed) for seed in Seed}
+
+
+def test_reading_an_unknown_view_is_refused(tracker: TicketTracker) -> None:
+    with pytest.raises(TicketTrackerError):
+        _ = tracker.view_tickets(ViewSlug("000000000000"))
 
 
 def test_reads_an_issue_back_as_it_was_given(tracker: TicketTracker, backlog: Backlog) -> None:
