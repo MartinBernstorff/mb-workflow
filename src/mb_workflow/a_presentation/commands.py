@@ -12,7 +12,7 @@ from mb_workflow.b_core.a_features.autolabel import (
     sweep,
 )
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
-from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, changed
+from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
 from mb_workflow.b_core.a_features.open_issue import (
     OpenRequest,
     PromptUndeliveredError,
@@ -32,10 +32,10 @@ from mb_workflow.b_core.d_domain_model.config import (
     WorkingDirectory,
 )
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError
-from mb_workflow.c_infrastructure.board import BoardError
 from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
 from mb_workflow.c_infrastructure.orca import Orca, OrcaError, WorkspaceStatus
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
+from mb_workflow.c_infrastructure.workspace_board import BoardError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -103,7 +103,7 @@ def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode
 
 @guarded
 def relabel(request: LabelRequest) -> ExitCode:
-    changed(Orca(here()), linear(), request)
+    change_label(Orca(here()), linear(), request)
     return ExitCode(0)
 
 

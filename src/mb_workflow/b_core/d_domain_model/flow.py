@@ -120,7 +120,7 @@ class StateNames(Value[frozenset[StateName]]):
         return StateNames(frozenset(StateName(state.name) for state in chart.states))
 
     @staticmethod
-    def start(chart: type[WorkflowChart]) -> StateName:
+    def initial_state(chart: type[WorkflowChart]) -> StateName:
         initial = chart.initial_state
         if initial is None:
             raise ValueError("The chart has no state to start in.")

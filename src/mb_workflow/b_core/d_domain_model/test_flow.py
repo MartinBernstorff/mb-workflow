@@ -34,7 +34,7 @@ def test_the_chart_holds_every_state_the_work_passes_through() -> None:
 
 
 def test_work_enters_the_chart_at_grilling() -> None:
-    assert StateNames.start(WorkflowChart) == GRILLING
+    assert StateNames.initial_state(WorkflowChart) == GRILLING
 
 
 def test_the_chart_holds_every_transition_the_work_can_take() -> None:

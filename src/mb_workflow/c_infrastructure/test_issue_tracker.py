@@ -105,7 +105,7 @@ class Backlog(Model):
         return planted.issue(self.identifier(seed))
 
     def picked(self, wanted: IssueFilter, tracker: IssueTracker) -> tuple[Seed, ...]:
-        swept = tracker.issues(wanted).identifiers()
+        swept = tracker.list_issue(wanted).identifiers()
         return tuple(seed for seed in Seed if self.identifier(seed) in swept)
 
 
@@ -311,27 +311,27 @@ def test_the_filter_start_date_is_inclusive(tracker: IssueTracker, backlog: Back
 
 
 def test_reads_an_issue_back_as_it_was_given(tracker: IssueTracker, backlog: Backlog) -> None:
-    assert tracker.read(backlog.identifier(Seed.done)) == backlog.issue(Seed.done)
+    assert tracker.read_issue(backlog.identifier(Seed.done)) == backlog.issue(Seed.done)
 
 
 def test_an_issue_without_a_project_carries_none(tracker: IssueTracker, backlog: Backlog) -> None:
-    assert tracker.read(backlog.identifier(Seed.done)).project is None
+    assert tracker.read_issue(backlog.identifier(Seed.done)).project is None
 
 
 def test_a_project_survives_the_round_trip(tracker: IssueTracker, backlog: Backlog) -> None:
-    assert tracker.read(backlog.identifier(Seed.recent)).project == ProjectName.fake()
+    assert tracker.read_issue(backlog.identifier(Seed.recent)).project == ProjectName.fake()
 
 
 def test_reading_an_unknown_issue_is_refused(tracker: IssueTracker) -> None:
     with pytest.raises(IssueTrackerError):
-        _ = tracker.read(IssueIdentifier("E-404"))
+        _ = tracker.read_issue(IssueIdentifier("E-404"))
 
 
 def test_an_added_label_joins_the_ones_already_there(
     tracker: IssueTracker, backlog: Backlog
 ) -> None:
     tracker.add_label(backlog.identifier(Seed.done), LabelName.fake())
-    assert set(tracker.read(backlog.identifier(Seed.done)).labels.root) == {
+    assert set(tracker.read_issue(backlog.identifier(Seed.done)).labels.root) == {
         LabelName("d-grill"),
         LabelName.fake(),
     }
@@ -340,7 +340,7 @@ def test_an_added_label_joins_the_ones_already_there(
 def test_adding_a_label_twice_carries_it_once(tracker: IssueTracker, backlog: Backlog) -> None:
     tracker.add_label(backlog.identifier(Seed.recent), LabelName.fake())
     tracker.add_label(backlog.identifier(Seed.recent), LabelName.fake())
-    assert tracker.read(backlog.identifier(Seed.recent)).labels == LabelNames.fake()
+    assert tracker.read_issue(backlog.identifier(Seed.recent)).labels == LabelNames.fake()
 
 
 def test_adding_an_unknown_label_is_refused(tracker: IssueTracker, backlog: Backlog) -> None:
@@ -350,12 +350,14 @@ def test_adding_an_unknown_label_is_refused(tracker: IssueTracker, backlog: Back
 
 def test_setting_labels_replaces_the_ones_there(tracker: IssueTracker, backlog: Backlog) -> None:
     tracker.set_labels(backlog.identifier(Seed.done), LabelNames((LabelName("Backend"),)))
-    assert tracker.read(backlog.identifier(Seed.done)).labels == LabelNames((LabelName("Backend"),))
+    assert tracker.read_issue(backlog.identifier(Seed.done)).labels == LabelNames(
+        (LabelName("Backend"),)
+    )
 
 
 def test_setting_no_labels_clears_them(tracker: IssueTracker, backlog: Backlog) -> None:
     tracker.set_labels(backlog.identifier(Seed.done), LabelNames(()))
-    assert tracker.read(backlog.identifier(Seed.done)).labels == LabelNames(())
+    assert tracker.read_issue(backlog.identifier(Seed.done)).labels == LabelNames(())
 
 
 def test_setting_an_unknown_label_is_refused(tracker: IssueTracker, backlog: Backlog) -> None:
@@ -364,12 +366,12 @@ def test_setting_an_unknown_label_is_refused(tracker: IssueTracker, backlog: Bac
 
 
 def test_an_issue_starts_unassigned(tracker: IssueTracker, backlog: Backlog) -> None:
-    assert tracker.read(backlog.identifier(Seed.recent)).assigned == Assigned(False)
+    assert tracker.read_issue(backlog.identifier(Seed.recent)).assigned == Assigned(False)
 
 
 def test_assigning_an_issue_leaves_it_assigned(tracker: IssueTracker, backlog: Backlog) -> None:
     tracker.assign(backlog.identifier(Seed.recent), backlog.assignee)
-    assert tracker.read(backlog.identifier(Seed.recent)).assigned == Assigned(True)
+    assert tracker.read_issue(backlog.identifier(Seed.recent)).assigned == Assigned(True)
 
 
 def test_assigning_an_unknown_issue_is_refused(tracker: IssueTracker, backlog: Backlog) -> None:
@@ -379,14 +381,14 @@ def test_assigning_an_unknown_issue_is_refused(tracker: IssueTracker, backlog: B
 
 def test_a_label_is_found_whatever_its_case(tracker: IssueTracker, backlog: Backlog) -> None:
     tracker.add_label(backlog.identifier(Seed.recent), LabelName("D-IMPLEMENT"))
-    assert tracker.read(backlog.identifier(Seed.recent)).labels == LabelNames.fake()
+    assert tracker.read_issue(backlog.identifier(Seed.recent)).labels == LabelNames.fake()
 
 
 def test_setting_labels_takes_the_workspace_spelling(
     tracker: IssueTracker, backlog: Backlog
 ) -> None:
     tracker.set_labels(backlog.identifier(Seed.recent), LabelNames((LabelName("backend"),)))
-    assert tracker.read(backlog.identifier(Seed.recent)).labels == LabelNames(
+    assert tracker.read_issue(backlog.identifier(Seed.recent)).labels == LabelNames(
         (LabelName("Backend"),)
     )
 
@@ -396,4 +398,4 @@ def test_adding_a_label_in_another_case_carries_it_once(
 ) -> None:
     tracker.add_label(backlog.identifier(Seed.recent), LabelName.fake())
     tracker.add_label(backlog.identifier(Seed.recent), LabelName("D-Implement"))
-    assert tracker.read(backlog.identifier(Seed.recent)).labels == LabelNames.fake()
+    assert tracker.read_issue(backlog.identifier(Seed.recent)).labels == LabelNames.fake()

@@ -8,7 +8,7 @@ from mb_workflow.d_lib.models import Model
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
-    from mb_workflow.c_infrastructure.orca import Orca, Worktree
+    from mb_workflow.c_infrastructure.orca import Orca, Workspace
 
 logger = logging.getLogger(__name__)
 
@@ -31,23 +31,23 @@ class LabelRequest(Model):
         return LabelRequest(label=LabelName.fake(), change=LabelChange.add)
 
 
-def labelled_issue(worktree: Worktree) -> IssueIdentifier:
-    if worktree.linked_linear_issue is None:
-        raise UnlinkedWorktreeError(f"{worktree.path.root} has no linked Linear issue")
-    return worktree.linked_linear_issue
+def issue_from_workspace(workspace: Workspace) -> IssueIdentifier:
+    if workspace.linked_linear_issue is None:
+        raise UnlinkedWorktreeError(f"{workspace.path.root} has no linked Linear issue")
+    return workspace.linked_linear_issue
 
 
-def changed(orca: Orca, tracker: IssueTracker, request: LabelRequest) -> None:
-    issue = labelled_issue(orca.current())
+def change_label(orca: Orca, tracker: IssueTracker, request: LabelRequest) -> None:
+    issue = issue_from_workspace(orca.current())
     if request.change == LabelChange.remove:
-        removed(tracker, issue, request.label)
+        remove_label(tracker, issue, request.label)
         return
     tracker.add_label(issue, request.label)
     logger.info("Added %s to %s.", request.label.root, issue.root)
 
 
-def removed(tracker: IssueTracker, issue: IssueIdentifier, label: LabelName) -> None:
-    current = tracker.read(issue).labels
+def remove_label(tracker: IssueTracker, issue: IssueIdentifier, label: LabelName) -> None:
+    current = tracker.read_issue(issue).labels
     remaining = current.without(label)
     if remaining == current:
         logger.info("%s does not carry %s.", issue.root, label.root)

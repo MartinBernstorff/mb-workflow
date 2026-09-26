@@ -1,6 +1,10 @@
 import pytest
 
-from mb_workflow.b_core.a_features.label import UnlinkedWorktreeError, labelled_issue, removed
+from mb_workflow.b_core.a_features.label import (
+    UnlinkedWorktreeError,
+    issue_from_workspace,
+    remove_label,
+)
 from mb_workflow.b_core.c_secondary_ports.issue_tracker import FakeIssueTracker, TrackedIssue
 from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
@@ -8,7 +12,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelName,
     LabelNames,
 )
-from mb_workflow.c_infrastructure.orca import Worktree
+from mb_workflow.c_infrastructure.orca import Workspace
 
 
 def carrying(labels: LabelNames) -> FakeIssueTracker:
@@ -20,28 +24,28 @@ def carrying(labels: LabelNames) -> FakeIssueTracker:
 
 
 def test_labels_the_linear_issue_the_worktree_is_linked_to() -> None:
-    assert labelled_issue(Worktree.fake()) == IssueIdentifier.fake()
+    assert issue_from_workspace(Workspace.fake()) == IssueIdentifier.fake()
 
 
 def test_rejects_a_worktree_with_no_linked_linear_issue() -> None:
-    worktree = Worktree.fake().model_copy(update={"linked_linear_issue": None})
+    worktree = Workspace.fake().model_copy(update={"linked_linear_issue": None})
     with pytest.raises(UnlinkedWorktreeError, match="no linked Linear issue"):
-        _ = labelled_issue(worktree)
+        _ = issue_from_workspace(worktree)
 
 
 def test_removing_a_label_keeps_the_others() -> None:
     tracker = carrying(LabelNames((LabelName("d-grill"), LabelName.fake())))
-    removed(tracker, IssueIdentifier.fake(), LabelName.fake())
-    assert tracker.read(IssueIdentifier.fake()).labels == LabelNames((LabelName("d-grill"),))
+    remove_label(tracker, IssueIdentifier.fake(), LabelName.fake())
+    assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames((LabelName("d-grill"),))
 
 
 def test_removing_the_only_label_leaves_none() -> None:
     tracker = carrying(LabelNames.fake())
-    removed(tracker, IssueIdentifier.fake(), LabelName.fake())
-    assert tracker.read(IssueIdentifier.fake()).labels == LabelNames(())
+    remove_label(tracker, IssueIdentifier.fake(), LabelName.fake())
+    assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames(())
 
 
 def test_removing_a_label_the_issue_does_not_carry_leaves_it_alone() -> None:
     tracker = carrying(LabelNames.fake())
-    removed(tracker, IssueIdentifier.fake(), LabelName("d-grill"))
-    assert tracker.read(IssueIdentifier.fake()).labels == LabelNames.fake()
+    remove_label(tracker, IssueIdentifier.fake(), LabelName("d-grill"))
+    assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames.fake()

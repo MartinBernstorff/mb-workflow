@@ -178,7 +178,7 @@ class Linear(IssueTracker):
             return LabelNames(tuple(LabelName(label.name) for label in labels if label.name))
 
     @override
-    def issues(self, wanted: IssueFilter) -> Issues:
+    def list_issue(self, wanted: IssueFilter) -> Issues:
         found: list[Issue] = []
         cursor: PageCursor | None = None
         while True:
@@ -213,7 +213,7 @@ class Linear(IssueTracker):
                 return Issues(tuple(found))
 
     @override
-    def read(self, issue: IssueIdentifier) -> Issue:
+    def read_issue(self, issue: IssueIdentifier) -> Issue:
         with translated_errors():
             data = self._client.execute(
                 """

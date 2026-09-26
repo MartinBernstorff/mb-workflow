@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def swept() -> Issues:
+def default_issues() -> Issues:
     return Issues(
         (
             Issue(
@@ -133,7 +133,7 @@ def criteria() -> Criteria:
 
 
 def selection() -> Selection:
-    return Selection.of(swept(), criteria())
+    return Selection.of(default_issues(), criteria())
 
 
 def chosen() -> tuple[IssueIdentifier, ...]:
@@ -150,7 +150,7 @@ def dry_outcome() -> Outcome:
 
 def unexcluded() -> Selection:
     return Selection.of(
-        swept(),
+        default_issues(),
         Criteria(
             label=LabelName("Backend"),
             exclusions=Exclusions(projects=None, statuses=None),
@@ -160,7 +160,7 @@ def unexcluded() -> Selection:
 
 
 def test_an_absent_pattern_excludes_nothing() -> None:
-    assert unexcluded().labellable() == swept()
+    assert unexcluded().labellable() == default_issues()
 
 
 def test_a_project_matching_the_pattern_is_excluded() -> None:
@@ -330,7 +330,7 @@ def sweeping() -> FakeIssueTracker:
         LabelNames.fake(),
         tuple(
             TrackedIssue(issue=issue, creator=Creator.fake(), created_on=CreatedOn.fake())
-            for issue in swept().root
+            for issue in default_issues().root
         ),
     )
 
@@ -342,7 +342,7 @@ def request(apply: Apply) -> AutolabelRequest:
 def test_an_applied_sweep_labels_the_survivors_on_the_tracker(tmp_path: Path) -> None:
     tracker = sweeping()
     _ = sweep(tracker, request(Apply(True)), LedgerPath(tmp_path / "ledger.txt"))
-    assert tracker.read(IssueIdentifier("E-4")).labels == LabelNames.fake()
+    assert tracker.read_issue(IssueIdentifier("E-4")).labels == LabelNames.fake()
 
 
 def test_an_applied_sweep_records_what_it_labelled(tmp_path: Path) -> None:
@@ -354,7 +354,7 @@ def test_an_applied_sweep_records_what_it_labelled(tmp_path: Path) -> None:
 def test_a_dry_sweep_leaves_the_tracker_untouched(tmp_path: Path) -> None:
     tracker = sweeping()
     _ = sweep(tracker, request(Apply(False)), LedgerPath(tmp_path / "ledger.txt"))
-    assert tracker.read(IssueIdentifier("E-4")).labels == LabelNames(())
+    assert tracker.read_issue(IssueIdentifier("E-4")).labels == LabelNames(())
 
 
 def test_sweeping_for_a_label_the_tracker_lacks_is_refused(tmp_path: Path) -> None:

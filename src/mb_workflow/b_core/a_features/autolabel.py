@@ -301,7 +301,7 @@ def sweep(tracker: IssueTracker, request: AutolabelRequest, ledger: LedgerPath) 
         raise UnknownLabelError(f"No label is named {request.label.root}.")
 
     recorded = ledger.read()
-    issues = tracker.issues(request.wanted)
+    issues = tracker.list_issue(request.wanted)
     logger.info(
         "Sweeping %s issues created since %s",
         len(issues.root),

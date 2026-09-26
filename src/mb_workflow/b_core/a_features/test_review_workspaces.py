@@ -24,8 +24,8 @@ from mb_workflow.c_infrastructure.github import (
 )
 from mb_workflow.c_infrastructure.orca import (
     RepoId,
+    Workspace,
     WorkspaceStatus,
-    Worktree,
     WorktreeName,
     WorktreePath,
     Worktrees,
@@ -42,11 +42,11 @@ def other_pr() -> PullRequest:
     )
 
 
-def bare_worktree() -> Worktree:
-    return Worktree(repo_id=RepoId.fake(), path=WorktreePath.fake())
+def bare_worktree() -> Workspace:
+    return Workspace(repo_id=RepoId.fake(), path=WorktreePath.fake())
 
 
-def review_worktree() -> Worktree:
+def review_worktree() -> Workspace:
     return bare_worktree().model_copy(
         update={"linked_issue": PrNumber.fake(), "workspace_status": WorkspaceStatus.fake()}
     )
@@ -188,7 +188,7 @@ def test_a_union_keeps_each_workspace_once() -> None:
 
 def test_a_union_keeps_distinct_workspaces() -> None:
     second = bare_worktree().model_copy(update={"path": WorktreePath(Path("/tmp/other"))})
-    assert union(Worktrees.fake(), Worktrees((second,))) == Worktrees((Worktree.fake(), second))
+    assert union(Worktrees.fake(), Worktrees((second,))) == Worktrees((Workspace.fake(), second))
 
 
 def test_collects_the_head_ref_of_each_pr() -> None:

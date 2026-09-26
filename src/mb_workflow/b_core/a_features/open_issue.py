@@ -111,7 +111,7 @@ def issue_state(tracker: IssueTracker, issue: IssueIdentifier | None) -> IssueSt
     if issue is None:
         return None
     try:
-        read = tracker.read(issue)
+        read = tracker.read_issue(issue)
     except IssueTrackerError as error:
         logger.warning("Could not read the state of %s: %s", issue.root, error)
         return None

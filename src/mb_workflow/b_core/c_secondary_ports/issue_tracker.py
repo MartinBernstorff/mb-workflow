@@ -22,9 +22,9 @@ class IssueTrackerError(Exception):
 class IssueTracker(Protocol):
     def workspace_labels(self) -> LabelNames: ...
 
-    def issues(self, wanted: IssueFilter) -> Issues: ...
+    def list_issue(self, wanted: IssueFilter) -> Issues: ...
 
-    def read(self, issue: IssueIdentifier) -> Issue: ...
+    def read_issue(self, issue: IssueIdentifier) -> Issue: ...
 
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None: ...
 
@@ -53,7 +53,7 @@ class FakeIssueTracker(IssueTracker):
         return self._labels
 
     @override
-    def issues(self, wanted: IssueFilter) -> Issues:
+    def list_issue(self, wanted: IssueFilter) -> Issues:
         return Issues(
             tuple(
                 tracked.issue
@@ -63,12 +63,12 @@ class FakeIssueTracker(IssueTracker):
         )
 
     @override
-    def read(self, issue: IssueIdentifier) -> Issue:
+    def read_issue(self, issue: IssueIdentifier) -> Issue:
         return self._tracked(issue).issue
 
     @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
-        self.set_labels(issue, LabelNames((*self.read(issue).labels.root, label)))
+        self.set_labels(issue, LabelNames((*self.read_issue(issue).labels.root, label)))
 
     @override
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
