@@ -53,15 +53,14 @@ class Greeting(RootModel[str]):
 
 Built with Typer, entry point `mb_workflow.cli:app`. Every command must accept `--quiet`, which sets the log level.
 
-`cli.py` is the Typer boundary and is the one file excluded from `noprim`, because Typer can only bind primitives. Keep it free of logic: bind the primitive, wrap it in its domain type on the first line of the body, delegate. Anything with behaviour belongs in another module, where `noprim` still applies.
 
 ## Tickets
 
-`MB-<n>` identifiers are Linear issues which, use `linear-cli` to read and modify.
+`MB-<n>` identifiers are Linear issues. Read them with `mw ticket view`, modify them with `mw ticket edit`.
 
 ```bash
-linear-cli issues get MB-19
-linear-cli issues update MB-19 --state Implementing
+uv run mw ticket view MB-19
+mw ticket edit MB-19 --state Implementing
 ```
 
 The team's statuses are the workflow states (`Grilling`, `Speccing`, `Specced`, `Implementing`, `QA`, `Review`, `Merging`, `Merged`), not Linear's defaults.

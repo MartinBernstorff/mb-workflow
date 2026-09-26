@@ -11,6 +11,7 @@ from mb_workflow.b_core.a_features.autolabel import (
     UnknownLabelError,
     sweep,
 )
+from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
 from mb_workflow.b_core.a_features.open_issue import (
@@ -23,6 +24,7 @@ from mb_workflow.b_core.a_features.review_workspaces import create_workspaces
 from mb_workflow.b_core.a_features.show_config import show_config
 from mb_workflow.b_core.a_features.show_flow import show_flow
 from mb_workflow.b_core.a_features.transition import transition
+from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.b_domain_services.lock import AlreadyRunningError, LockName, LockPath
 from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
 from mb_workflow.b_core.d_domain_model.config import (
@@ -32,7 +34,13 @@ from mb_workflow.b_core.d_domain_model.config import (
     WorkingDirectory,
 )
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError
-from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
+from mb_workflow.c_infrastructure.credentials import (
+    CredentialsDirectory,
+    InvalidCredentialsError,
+    MissingCredentialsError,
+    RepositorySlug,
+)
+from mb_workflow.c_infrastructure.linear import Linear
 from mb_workflow.c_infrastructure.orca import Orca, OrcaError, WorkspaceStatus
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.c_infrastructure.workspace_board import BoardError
@@ -42,6 +50,8 @@ if TYPE_CHECKING:
 
     from mb_workflow.b_core.b_domain_services.flow_report import AsJson
     from mb_workflow.b_core.b_domain_services.flow_transition import Force
+    from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
+    from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit
     from mb_workflow.c_infrastructure.github import Lookback, ReviewRequest
 
 logger = logging.getLogger(__name__)
@@ -54,8 +64,10 @@ FAILURES = (
     CalledProcessError,
     FlowError,
     InvalidConfigError,
+    InvalidCredentialsError,
     IssueTrackerError,
     MissingConfigError,
+    MissingCredentialsError,
     NotFinalizableError,
     OSError,
     OrcaError,
@@ -87,7 +99,8 @@ def here() -> Shell:
 
 
 def linear() -> Linear:
-    return Linear.connected(LinearApiKey.from_environment())
+    path = CredentialsDirectory.of_user().path_for(RepositorySlug.of_origin(here()))
+    return Linear.connected(path.credentials().linear.api_key)
 
 
 @guarded
@@ -115,6 +128,19 @@ def linear_autolabel(request: AutolabelRequest, ledger: LedgerPath) -> ExitCode:
 @guarded
 def open_linear_issue(request: OpenRequest) -> ExitCode:
     open_workspace(Orca(here()), linear(), request)
+    return ExitCode(0)
+
+
+@guarded
+def ticket_view(issue: IssueIdentifier) -> ExitCode:
+    write(Output(view_ticket(linear(), issue).root))
+    return ExitCode(0)
+
+
+@guarded
+def ticket_edit(issue: IssueIdentifier, edit: TicketEdit) -> ExitCode:
+    edit_ticket(linear(), issue, edit)
+    write(Output(f"{issue.root}\n"))
     return ExitCode(0)
 
 

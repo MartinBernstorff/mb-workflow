@@ -4,6 +4,7 @@ from pathlib import Path
 import typer
 
 from mb_workflow.a_presentation import commands
+from mb_workflow.a_presentation.cli.ticket import ticket_app
 from mb_workflow.a_presentation.diagram import DiagramPath, diagram
 from mb_workflow.b_core.a_features.autolabel import (
     AutolabelRequest,
@@ -45,6 +46,7 @@ linear_app = typer.Typer(no_args_is_help=True)
 app.add_typer(linear_app, name="linear")
 flow_app = typer.Typer(no_args_is_help=True)
 app.add_typer(flow_app, name="flow")
+app.add_typer(ticket_app, name="ticket")
 
 REVIEWING = "status-8"
 FORCING = "Write the target state without checking the event is legal from the current one."

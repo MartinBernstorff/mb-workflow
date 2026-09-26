@@ -1,4 +1,3 @@
-import os
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, override
 
@@ -16,11 +15,18 @@ from pydantic import AliasPath, Field
 from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker, IssueTrackerError
 from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
+    Assignee,
+    Cleared,
     Issue,
+    IssueDescription,
+    IssueDetail,
     IssueIdentifier,
     Issues,
+    IssueTitle,
     LabelName,
     LabelNames,
+    Milestone,
+    MilestoneName,
     ProjectName,
     StatusName,
 )
@@ -29,20 +35,13 @@ from mb_workflow.d_lib.models import Payload, Value
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from mb_workflow.b_core.d_domain_model.issue import Assignee, IssueFilter
+    from mb_workflow.b_core.d_domain_model.issue import IssueFilter, IssueUpdate
 
 
 class LinearApiKey(Value[str]):
     @staticmethod
     def fake() -> LinearApiKey:
         return LinearApiKey("lin_api_0000000000000000000000000000000000000000")
-
-    @staticmethod
-    def from_environment() -> LinearApiKey:
-        key = os.environ.get("LINEAR_API_KEY")
-        if not key:
-            raise IssueTrackerError("Set LINEAR_API_KEY to a Linear personal API key.")
-        return LinearApiKey(key)
 
 
 class LabelId(Value[str]):
@@ -91,11 +90,166 @@ class ProjectPayload(Payload):
         return ProjectPayload(name=ProjectName.fake())
 
 
-# Only whether someone is assigned matters, so none of the assignee's fields are read.
+# The sweep only asks whether someone is assigned, so it leaves the email out.
 class AssigneePayload(Payload):
+    email: Assignee | None = None
+
     @staticmethod
     def fake() -> AssigneePayload:
-        return AssigneePayload()
+        return AssigneePayload(email=Assignee.fake())
+
+
+class MilestonePayload(Payload):
+    name: MilestoneName
+
+    @staticmethod
+    def fake() -> MilestonePayload:
+        return MilestonePayload(name=MilestoneName.fake())
+
+
+class UserId(Value[str]):
+    @staticmethod
+    def fake() -> UserId:
+        return UserId("0b8e6c1f-7d2a-4f5e-9c3b-1a2d4e6f8a0c")
+
+
+class ProjectId(Value[str]):
+    @staticmethod
+    def fake() -> ProjectId:
+        return ProjectId("3d9f1e2a-5b7c-4a8d-8e6f-0c1b2a3d4e5f")
+
+
+class MilestoneId(Value[str]):
+    @staticmethod
+    def fake() -> MilestoneId:
+        return MilestoneId("9a1c3e5b-2d4f-4b6a-8c0e-7f1a3b5c7d9e")
+
+
+class StateId(Value[str]):
+    @staticmethod
+    def fake() -> StateId:
+        return StateId("5c7e9a1b-3d5f-4e7a-9b1c-2d4e6f8a0b2c")
+
+
+class StateRecord(Payload):
+    id: StateId
+    name: StatusName
+
+    @staticmethod
+    def fake() -> StateRecord:
+        return StateRecord(id=StateId.fake(), name=StatusName.fake())
+
+
+class LabelRecord(Payload):
+    id: LabelId
+    name: LabelName
+
+    @staticmethod
+    def fake() -> LabelRecord:
+        return LabelRecord(id=LabelId.fake(), name=LabelName.fake())
+
+
+class UserRecord(Payload):
+    id: UserId
+
+    @staticmethod
+    def fake() -> UserRecord:
+        return UserRecord(id=UserId.fake())
+
+
+class MilestoneRecord(Payload):
+    id: MilestoneId
+    name: MilestoneName
+
+    @staticmethod
+    def fake() -> MilestoneRecord:
+        return MilestoneRecord(id=MilestoneId.fake(), name=MilestoneName.fake())
+
+
+class ProjectRecord(Payload):
+    id: ProjectId
+    name: ProjectName
+    milestones: tuple[MilestoneRecord, ...] = Field(
+        default=(), validation_alias=AliasPath("projectMilestones", "nodes")
+    )
+
+    @staticmethod
+    def fake() -> ProjectRecord:
+        return ProjectRecord(
+            id=ProjectId.fake(), name=ProjectName.fake(), milestones=(MilestoneRecord.fake(),)
+        )
+
+    def milestone(self, name: MilestoneName) -> MilestoneId:
+        found = next((known for known in self.milestones if known.name.names(name).root), None)
+        if found is None:
+            raise IssueTrackerError(f"{self.name.root} has no milestone named {name.root}.")
+        return found.id
+
+
+# One read resolves every name an update carries, each part included only when the update needs it.
+class UpdateLookup(Payload):
+    labels: tuple[LabelRecord, ...] = Field(
+        default=(), validation_alias=AliasPath("issueLabels", "nodes")
+    )
+    users: tuple[UserRecord, ...] = Field(default=(), validation_alias=AliasPath("users", "nodes"))
+    projects: tuple[ProjectRecord, ...] = Field(
+        default=(), validation_alias=AliasPath("project", "nodes")
+    )
+    milestone_projects: tuple[ProjectRecord, ...] = Field(
+        default=(), validation_alias=AliasPath("milestoneProject", "nodes")
+    )
+    states: tuple[StateRecord, ...] = Field(
+        default=(), validation_alias=AliasPath("issue", "team", "states", "nodes")
+    )
+
+    @staticmethod
+    def fake() -> UpdateLookup:
+        return UpdateLookup(
+            labels=(LabelRecord.fake(),),
+            users=(UserRecord.fake(),),
+            projects=(ProjectRecord.fake(),),
+            milestone_projects=(ProjectRecord.fake(),),
+            states=(StateRecord.fake(),),
+        )
+
+    def label_ids(self, labels: LabelNames) -> tuple[LabelId, ...]:
+        known = LabelNames(tuple(record.name for record in self.labels))
+        unknown = known.unmatched(labels)
+        if unknown.root:
+            raise IssueTrackerError(
+                f"No label is named {', '.join(label.root for label in unknown.root)}."
+            )
+        return tuple(
+            next(record.id for record in self.labels if record.name == name)
+            for name in known.spelled(labels).root
+        )
+
+    def user_id(self, assignee: Assignee | Cleared) -> UserId | None:
+        if isinstance(assignee, Cleared):
+            return None
+        if not self.users:
+            raise IssueTrackerError(f"No Linear user has the email {assignee.root}.")
+        return self.users[0].id
+
+    def project_id(self, project: ProjectName | Cleared) -> ProjectId | None:
+        if isinstance(project, Cleared):
+            return None
+        if not self.projects:
+            raise IssueTrackerError(f"No project is named {project.root}.")
+        return self.projects[0].id
+
+    def milestone_id(self, milestone: Milestone | Cleared) -> MilestoneId | None:
+        if isinstance(milestone, Cleared):
+            return None
+        if not self.milestone_projects:
+            raise IssueTrackerError(f"No project is named {milestone.project.root}.")
+        return self.milestone_projects[0].milestone(milestone.name)
+
+    def state_id(self, status: StatusName) -> StateId:
+        found = next((known for known in self.states if known.name.names(status).root), None)
+        if found is None:
+            raise IssueTrackerError(f"No status is named {status.root}.")
+        return found.id
 
 
 class IssuePayload(Payload):
@@ -126,12 +280,54 @@ class IssuePayload(Payload):
         )
 
 
-class IssueRead(Payload):
-    issue: IssuePayload
+class IssueDetailPayload(IssuePayload):
+    title: IssueTitle
+    description: IssueDescription | None = None
+    milestone: MilestonePayload | None = Field(default=None, validation_alias="projectMilestone")
+
+    @override
+    @staticmethod
+    def fake() -> IssueDetailPayload:
+        return IssueDetailPayload(
+            identifier=IssueIdentifier.fake(),
+            status=StatusName.fake(),
+            project=ProjectPayload.fake(),
+            labels=(LabelPayload.fake(),),
+            title=IssueTitle.fake(),
+            description=IssueDescription.fake(),
+        )
+
+    def detail(self) -> IssueDetail:
+        return IssueDetail(
+            issue=self.issue(),
+            title=self.title,
+            description=self.description,
+            assignee=self.assignee.email if self.assignee is not None else None,
+            milestone=self.milestone.name if self.milestone is not None else None,
+        )
+
+
+# A field left unset stays as it is, while one set to None is emptied.
+class IssueChanges(Payload):
+    title: IssueTitle | None = None
+    description: IssueDescription | None = None
+    label_ids: tuple[LabelId, ...] | None = None
+    assignee_id: UserId | None = None
+    project_id: ProjectId | None = None
+    state_id: StateId | None = None
+    project_milestone_id: MilestoneId | None = None
 
     @staticmethod
-    def fake() -> IssueRead:
-        return IssueRead(issue=IssuePayload.fake())
+    def fake() -> IssueChanges:
+        return IssueChanges(title=IssueTitle.fake())
+
+
+class IssueDetailRead(Payload):
+    issue: IssueDetailPayload
+
+    @staticmethod
+    def fake() -> IssueDetailRead:
+        return IssueDetailRead(issue=IssueDetailPayload.fake())
 
 
 class IssuePage(Payload):
@@ -214,22 +410,29 @@ class Linear(IssueTracker):
 
     @override
     def read_issue(self, issue: IssueIdentifier) -> Issue:
+        return self.read_issue_detail(issue).issue
+
+    @override
+    def read_issue_detail(self, issue: IssueIdentifier) -> IssueDetail:
         with translated_errors():
             data = self._client.execute(
                 """
                 query($id: String!) {
                   issue(id: $id) {
                     identifier
+                    title
+                    description
                     state { name }
                     project { name }
                     labels { nodes { name } }
-                    assignee { id }
+                    assignee { email }
+                    projectMilestone { name }
                   }
                 }
                 """,
                 {"id": issue.root},
             )
-        return IssueRead.model_validate(data).issue.issue()
+        return IssueDetailRead.model_validate(data).issue.detail()
 
     @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
@@ -250,6 +453,94 @@ class Linear(IssueTracker):
             if user is None or user.id is None:
                 raise IssueTrackerError(f"No Linear user has the email {assignee.root}.")
             _ = self._client.update_issue(IssueUpdateRequest(id=issue.root, assignee_id=user.id))
+
+    @override
+    def update_issue(self, issue: IssueIdentifier, update: IssueUpdate) -> None:
+        found = self._lookup(issue, update)
+        changes: dict[str, object] = {}
+        if update.title is not None:
+            changes["title"] = update.title
+        if update.description is not None:
+            changes["description"] = update.description
+        if update.labels is not None:
+            changes["label_ids"] = found.label_ids(update.labels)
+        if update.assignee is not None:
+            changes["assignee_id"] = found.user_id(update.assignee)
+        if update.project is not None:
+            changes["project_id"] = found.project_id(update.project)
+        if update.status is not None:
+            changes["state_id"] = found.state_id(update.status)
+        if update.milestone is not None:
+            changes["project_milestone_id"] = found.milestone_id(update.milestone)
+        wanted = IssueChanges.model_validate(changes)
+        with translated_errors():
+            _ = self._client.execute(
+                "mutation($id: String!, $input: IssueUpdateInput!) {"
+                " issueUpdate(id: $id, input: $input) { success } }",
+                {
+                    "id": issue.root,
+                    "input": wanted.model_dump(mode="json", by_alias=True, exclude_unset=True),
+                },
+            )
+
+    @override
+    def viewer(self) -> Assignee:
+        with translated_errors():
+            viewer = self._client.viewer().viewer
+        if viewer is None or viewer.email is None:
+            raise IssueTrackerError("Linear did not say who the API key belongs to.")
+        return Assignee(viewer.email)
+
+    def _lookup(self, issue: IssueIdentifier, update: IssueUpdate) -> UpdateLookup:
+        labels = update.labels.root if update.labels is not None else ()
+        assignee = update.assignee if isinstance(update.assignee, Assignee) else None
+        project = update.project if isinstance(update.project, ProjectName) else None
+        milestone = update.milestone if isinstance(update.milestone, Milestone) else None
+        if not (labels or assignee or project or milestone or update.status):
+            return UpdateLookup()
+        with translated_errors():
+            data = self._client.execute(
+                """
+                query(
+                  $issue: String!
+                  $labels: IssueLabelFilter, $withLabels: Boolean!
+                  $user: UserFilter, $withUser: Boolean!
+                  $project: ProjectFilter, $withProject: Boolean!
+                  $milestoneProject: ProjectFilter, $withMilestone: Boolean!
+                  $withStates: Boolean!
+                ) {
+                  issueLabels(first: 250, filter: $labels) @include(if: $withLabels) {
+                    nodes { id name }
+                  }
+                  users(first: 1, filter: $user) @include(if: $withUser) { nodes { id } }
+                  project: projects(first: 1, filter: $project) @include(if: $withProject) {
+                    nodes { id name }
+                  }
+                  milestoneProject: projects(first: 1, filter: $milestoneProject)
+                    @include(if: $withMilestone) {
+                    nodes { id name projectMilestones { nodes { id name } } }
+                  }
+                  issue(id: $issue) @include(if: $withStates) {
+                    team { states(first: 250) { nodes { id name } } }
+                  }
+                }
+                """,
+                {
+                    "issue": issue.root,
+                    "labels": {"or": [{"name": {"eqIgnoreCase": label.root}} for label in labels]},
+                    "withLabels": bool(labels),
+                    "user": {"email": {"eq": assignee.root}} if assignee else None,
+                    "withUser": assignee is not None,
+                    "project": {"name": {"eqIgnoreCase": project.root}} if project else None,
+                    "withProject": project is not None,
+                    "milestoneProject": (
+                        {"name": {"eqIgnoreCase": milestone.project.root}} if milestone else None
+                    ),
+                    "withMilestone": milestone is not None,
+                    "withStates": update.status is not None,
+                },
+            )
+        return UpdateLookup.model_validate(data)
 
     def _label_id(self, label: LabelName) -> LabelId:
         with translated_errors():

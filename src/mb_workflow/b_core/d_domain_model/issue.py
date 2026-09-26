@@ -55,9 +55,21 @@ class LabelNames(Value[tuple[LabelName, ...]]):
         matched = (self.matching(label) for label in requested.root)
         return LabelNames(tuple(dict.fromkeys(known for known in matched if known is not None)))
 
+    def split(self) -> LabelNames:
+        return LabelNames(
+            tuple(
+                LabelName(part.strip())
+                for label in self.root
+                for part in label.root.split(",")
+                if part.strip()
+            )
+        )
+
 
 # ProjectName and StatusName share a base so one exclusion pattern can match either.
-class IssueText(Value[str]): ...
+class IssueText(Value[str]):
+    def names(self, other: IssueText) -> Matches:
+        return Matches(self.root.casefold() == other.root.casefold())
 
 
 class ProjectName(IssueText):
@@ -70,6 +82,15 @@ class StatusName(IssueText):
     @staticmethod
     def fake() -> StatusName:
         return StatusName("Todo")
+
+
+class StatusNames(Value[tuple[StatusName, ...]]):
+    @staticmethod
+    def fake() -> StatusNames:
+        return StatusNames((StatusName.fake(), StatusName("In Progress"), StatusName("Done")))
+
+    def matching(self, status: StatusName) -> StatusName | None:
+        return next((known for known in self.root if known.names(status).root), None)
 
 
 class IssueState(StrEnum):
@@ -115,6 +136,69 @@ class Issue(Model):
             return None
 
 
+class IssueTitle(Value[str]):
+    @staticmethod
+    def fake() -> IssueTitle:
+        return IssueTitle("Add widget")
+
+
+class IssueDescription(Value[str]):
+    @staticmethod
+    def fake() -> IssueDescription:
+        return IssueDescription("The dashboard needs a widget.")
+
+
+class MilestoneName(IssueText):
+    @staticmethod
+    def fake() -> MilestoneName:
+        return MilestoneName("Beta")
+
+
+class MilestoneNames(Value[tuple[MilestoneName, ...]]):
+    @staticmethod
+    def fake() -> MilestoneNames:
+        return MilestoneNames((MilestoneName.fake(),))
+
+    def matching(self, milestone: MilestoneName) -> MilestoneName | None:
+        return next((known for known in self.root if known.names(milestone).root), None)
+
+
+class Project(Model):
+    name: ProjectName
+    milestones: MilestoneNames
+
+    @staticmethod
+    def fake() -> Project:
+        return Project(name=ProjectName.fake(), milestones=MilestoneNames.fake())
+
+
+class Projects(Value[tuple[Project, ...]]):
+    @staticmethod
+    def fake() -> Projects:
+        return Projects((Project.fake(),))
+
+    def matching(self, project: ProjectName) -> Project | None:
+        return next((known for known in self.root if known.name.names(project).root), None)
+
+
+class IssueDetail(Model):
+    issue: Issue
+    title: IssueTitle
+    description: IssueDescription | None
+    assignee: Assignee | None
+    milestone: MilestoneName | None
+
+    @staticmethod
+    def fake() -> IssueDetail:
+        return IssueDetail(
+            issue=Issue.fake(),
+            title=IssueTitle.fake(),
+            description=IssueDescription.fake(),
+            assignee=None,
+            milestone=MilestoneName.fake(),
+        )
+
+
 class Issues(Value[tuple[Issue, ...]]):
     @staticmethod
     def fake() -> Issues:
@@ -128,6 +212,63 @@ class Assignee(Value[str]):
     @staticmethod
     def fake() -> Assignee:
         return Assignee("mab@flowbase.io")
+
+    @staticmethod
+    def me() -> Assignee:
+        return Assignee("@me")
+
+    def resolved(self, viewer: Assignee) -> Assignee:
+        return viewer if self == Assignee.me() else self
+
+
+# Stands for a field the update empties, where None means the update leaves it alone.
+class Cleared(Model):
+    @staticmethod
+    def fake() -> Cleared:
+        return Cleared()
+
+
+class Milestone(Model):
+    project: ProjectName
+    name: MilestoneName
+
+    @staticmethod
+    def fake() -> Milestone:
+        return Milestone(project=ProjectName.fake(), name=MilestoneName.fake())
+
+
+class IssueUpdate(Model):
+    title: IssueTitle | None
+    description: IssueDescription | None
+    labels: LabelNames | None
+    assignee: Assignee | Cleared | None
+    project: ProjectName | Cleared | None
+    status: StatusName | None
+    milestone: Milestone | Cleared | None
+
+    @staticmethod
+    def fake() -> IssueUpdate:
+        return IssueUpdate(
+            title=IssueTitle.fake(),
+            description=IssueDescription.fake(),
+            labels=LabelNames.fake(),
+            assignee=Assignee.fake(),
+            project=ProjectName.fake(),
+            status=StatusName.fake(),
+            milestone=Milestone.fake(),
+        )
+
+    @staticmethod
+    def nothing() -> IssueUpdate:
+        return IssueUpdate(
+            title=None,
+            description=None,
+            labels=None,
+            assignee=None,
+            project=None,
+            status=None,
+            milestone=None,
+        )
 
 
 class Creator(Value[str]):
