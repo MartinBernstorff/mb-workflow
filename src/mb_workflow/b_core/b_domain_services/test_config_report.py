@@ -7,6 +7,7 @@ from mb_workflow.b_core.d_domain_model.config import (
     Settings,
     WorkspaceSettings,
 )
+from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
 
 def test_reports_the_resolved_tracker_and_the_file_it_came_from() -> None:
@@ -23,7 +24,11 @@ def test_reports_the_resolved_tracker_and_the_file_it_came_from() -> None:
 
 def test_a_linear_configuration_reports_no_project_tag() -> None:
     config = Configuration(
-        settings=Settings(issues=LinearTracker.fake(), workspace=WorkspaceSettings.fake()),
+        settings=Settings(
+            issues=LinearTracker.fake(),
+            workspace=WorkspaceSettings.fake(),
+            ticket_statuses=TicketStatuses.fake(),
+        ),
         origin=ConfigPath.fake(),
     )
     report = ConfigReport.of(config)
@@ -37,6 +42,7 @@ def test_a_configured_pool_reports_its_view() -> None:
             issues=LinearTracker.fake(),
             workspace=WorkspaceSettings.fake(),
             pool=PoolSettings.fake(),
+            ticket_statuses=TicketStatuses.fake(),
         ),
         origin=ConfigPath.fake(),
     )
@@ -49,6 +55,7 @@ def test_a_configured_pool_reports_its_limits() -> None:
             issues=LinearTracker.fake(),
             workspace=WorkspaceSettings.fake(),
             pool=PoolSettings.fake(),
+            ticket_statuses=TicketStatuses.fake(),
         ),
         origin=ConfigPath.fake(),
     )
