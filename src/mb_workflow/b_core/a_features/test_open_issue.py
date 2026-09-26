@@ -7,7 +7,7 @@ from mb_workflow.b_core.a_features.open_issue import (
     issue_state,
     open_workspace,
 )
-from mb_workflow.b_core.c_secondary_ports.issue_tracker import FakeIssueTracker, TrackedIssue
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracker, TrackedIssue
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
 from mb_workflow.b_core.d_domain_model.config import WorkspaceSettings
 from mb_workflow.b_core.d_domain_model.issue import (
@@ -26,9 +26,9 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 )
 
 
-def tracking(status: StatusName) -> FakeIssueTracker:
+def tracking(status: StatusName) -> FakeTicketTracker:
     issue = Issue.fake().model_copy(update={"status": status})
-    return FakeIssueTracker(
+    return FakeTicketTracker(
         LabelNames.fake(), (TrackedIssue.fake().model_copy(update={"issue": issue}),)
     )
 

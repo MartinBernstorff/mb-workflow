@@ -30,8 +30,8 @@ from mb_workflow.b_core.a_features.show_flow import show_flow
 from mb_workflow.b_core.a_features.transition import transition
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
-from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.b_core.d_domain_model.config import (
@@ -78,12 +78,12 @@ FAILURES = (
     FlowError,
     InvalidConfigError,
     InvalidCredentialsError,
-    IssueTrackerError,
     MissingConfigError,
     MissingCredentialsError,
     NotFinalizableError,
     OSError,
     PromptUndeliveredError,
+    TicketTrackerError,
     UnknownLabelError,
     UnlinkedWorktreeError,
     UnprefixedStateError,

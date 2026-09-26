@@ -18,7 +18,7 @@ class InvalidConfigError(Exception):
     pass
 
 
-class Tracker(StrEnum):
+class TicketTracker(StrEnum):
     linear = "linear"
     todoist = "todoist"
 
@@ -44,20 +44,20 @@ class ConfigFileName(Value[str]):
 
 
 class LinearTracker(Model):
-    tracker: Literal[Tracker.linear]
+    tracker: Literal[TicketTracker.linear]
 
     @staticmethod
     def fake() -> LinearTracker:
-        return LinearTracker(tracker=Tracker.linear)
+        return LinearTracker(tracker=TicketTracker.linear)
 
 
 class TodoistTracker(Model):
-    tracker: Literal[Tracker.todoist]
+    tracker: Literal[TicketTracker.todoist]
     project_tag: ProjectTag
 
     @staticmethod
     def fake() -> TodoistTracker:
-        return TodoistTracker(tracker=Tracker.todoist, project_tag=ProjectTag.fake())
+        return TodoistTracker(tracker=TicketTracker.todoist, project_tag=ProjectTag.fake())
 
 
 class OrcaStatus(Model):

@@ -14,8 +14,8 @@ from mb_workflow.b_core.d_domain_model.config import (
     SearchedDirectories,
     Settings,
     StatusStore,
+    TicketTracker,
     TodoistTracker,
-    Tracker,
     WorkingDirectory,
     WorkspaceSettings,
 )
@@ -109,14 +109,16 @@ def test_a_malformed_configuration_file_names_itself(tmp_path: Path) -> None:
 
 def test_a_linear_configuration_names_only_its_tracker() -> None:
     settings = settings_with_fake_workspace(issues={"tracker": "linear"})
-    assert settings.issues == LinearTracker(tracker=Tracker.linear)
+    assert settings.issues == LinearTracker(tracker=TicketTracker.linear)
 
 
 def test_a_todoist_configuration_names_its_project_tag() -> None:
     settings = settings_with_fake_workspace(
         issues={"tracker": "todoist", "project_tag": "it-mb-workflow"}
     )
-    assert settings.issues == TodoistTracker(tracker=Tracker.todoist, project_tag=ProjectTag.fake())
+    assert settings.issues == TodoistTracker(
+        tracker=TicketTracker.todoist, project_tag=ProjectTag.fake()
+    )
 
 
 def test_a_todoist_configuration_without_a_project_tag_is_refused() -> None:

@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.issue import (
     BranchSlug,
@@ -17,7 +17,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.config import WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.workspace import OpenedWorktree
@@ -80,7 +80,7 @@ class OpenRequest(Model):
 
 def open_workspace(
     manager: WorkspaceManager,
-    tracker: IssueTracker,
+    tracker: TicketTracker,
     workspace: WorkspaceSettings,
     request: OpenRequest,
 ) -> None:
@@ -88,7 +88,7 @@ def open_workspace(
     if request.issue is not None:
         try:
             tracker.assign(request.issue, workspace.assignee)
-        except IssueTrackerError as error:
+        except TicketTrackerError as error:
             logger.warning(
                 "Could not assign %s to %s: %s",
                 request.issue.root,
@@ -107,12 +107,12 @@ def open_workspace(
     send_prompt(manager, opened, prompting)
 
 
-def issue_state(tracker: IssueTracker, issue: IssueIdentifier | None) -> IssueState | None:
+def issue_state(tracker: TicketTracker, issue: IssueIdentifier | None) -> IssueState | None:
     if issue is None:
         return None
     try:
         read = tracker.read_issue(issue)
-    except IssueTrackerError as error:
+    except TicketTrackerError as error:
         logger.warning("Could not read the state of %s: %s", issue.root, error)
         return None
     state = read.state()

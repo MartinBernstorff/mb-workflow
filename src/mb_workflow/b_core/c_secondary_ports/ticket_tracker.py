@@ -27,11 +27,11 @@ from mb_workflow.b_core.d_domain_model.issue import (
 from mb_workflow.d_lib.models import Model
 
 
-class IssueTrackerError(Exception):
+class TicketTrackerError(Exception):
     pass
 
 
-class IssueTracker(Protocol):
+class TicketTracker(Protocol):
     def workspace_labels(self) -> LabelNames: ...
 
     def list_issues(self, wanted: IssueFilter) -> Issues: ...
@@ -73,7 +73,7 @@ class TrackedIssue(Model):
         )
 
 
-class FakeIssueTracker(IssueTracker):
+class FakeTicketTracker(TicketTracker):
     def __init__(
         self,
         labels: LabelNames,
@@ -176,7 +176,7 @@ class FakeIssueTracker(IssueTracker):
     def _spelled(self, labels: LabelNames) -> LabelNames:
         unknown = self._labels.unmatched(labels)
         if len(unknown.root) > 0:
-            raise IssueTrackerError(
+            raise TicketTrackerError(
                 f"No label is named {', '.join(label.root for label in unknown.root)}."
             )
         return self._labels.spelled(labels)
@@ -199,7 +199,7 @@ class FakeIssueTracker(IssueTracker):
             return None
         found = self._project(wanted.project).milestones.matching(wanted.name)
         if found is None:
-            raise IssueTrackerError(
+            raise TicketTrackerError(
                 f"{wanted.project.root} has no milestone named {wanted.name.root}."
             )
         return found
@@ -207,17 +207,17 @@ class FakeIssueTracker(IssueTracker):
     def _status(self, name: StatusName) -> StatusName:
         status = self._statuses.matching(name)
         if status is None:
-            raise IssueTrackerError(f"No status is named {name.root}.")
+            raise TicketTrackerError(f"No status is named {name.root}.")
         return status
 
     def _project(self, name: ProjectName) -> Project:
         project = self._projects.matching(name)
         if project is None:
-            raise IssueTrackerError(f"No project is named {name.root}.")
+            raise TicketTrackerError(f"No project is named {name.root}.")
         return project
 
     def _tracked(self, issue: IssueIdentifier) -> TrackedIssue:
         tracked = self._issues.get(issue)
         if tracked is None:
-            raise IssueTrackerError(f"No issue is identified as {issue.root}.")
+            raise TicketTrackerError(f"No issue is identified as {issue.root}.")
         return tracked

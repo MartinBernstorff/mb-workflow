@@ -2,7 +2,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.b_domain_services.label_selection import Selection
-from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.d_domain_model.autolabel import AutoLabelCriteria, Exclusions
 from mb_workflow.b_core.d_domain_model.issue import (
     CreatedAfter,
@@ -15,8 +15,8 @@ from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
     from mb_workflow.b_core.c_secondary_ports.ledger_store import LedgerStore
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class Outcome(Model):
 
 
 def label_eligible_issues(
-    tracker: IssueTracker,
+    tracker: TicketTracker,
     ledger_store: LedgerStore,
     request: AutolabelRequest,
     window: CreatedAfter,
@@ -96,7 +96,7 @@ def label_eligible_issues(
 
 
 def add_label_to_eligible(
-    tracker: IssueTracker, selection: Selection, request: AutolabelRequest
+    tracker: TicketTracker, selection: Selection, request: AutolabelRequest
 ) -> Outcome:
     if request.dry_run.root:
         return Outcome(selection=selection, dry_run=request.dry_run, labelled=(), failed=())
@@ -106,7 +106,7 @@ def add_label_to_eligible(
     for issue in selection.labellable().root:
         try:
             tracker.add_label(issue.identifier, request.label)
-        except IssueTrackerError as error:
+        except TicketTrackerError as error:
             logger.error("%s could not be labelled: %s", issue.identifier.root, error)
             failed.append(issue.identifier)
         else:
