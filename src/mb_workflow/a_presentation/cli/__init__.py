@@ -187,7 +187,7 @@ def flow_diagram(
         "",
         "--output",
         "-o",
-        help="Write the chart as an image here; the extension picks the format. Prints a mermaid state diagram when omitted.",
+        help="Write the chart here; .md writes a fenced mermaid state diagram, any other extension picks the image format. Prints the mermaid diagram when omitted.",
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:

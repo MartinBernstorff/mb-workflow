@@ -8,8 +8,7 @@ pre-commit:
       run: moon run format-fix
       stage_fixed: true
     - name: diagram
-      run: moon run diagram
-      stage_fixed: true
+      run: moon run diagram && git add docs/flow.svg docs/flow.md
     - name: types
       run: moon run types
     - name: modularity
