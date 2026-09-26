@@ -1,19 +1,17 @@
 import logging
-from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     BranchSlug,
     IssueIdentifier,
     IssueState,
 )
-from mb_workflow.c_infrastructure.orca import (
+from mb_workflow.b_core.d_domain_model.workspace import (
     AgentName,
-    Orca,
     ProjectSelector,
-    SingleWorktree,
     TerminalText,
     TimeoutMs,
     WorktreeName,
@@ -22,6 +20,8 @@ from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
+    from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
+    from mb_workflow.b_core.d_domain_model.workspace import OpenedWorktree
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class OpenRequest(Model):
         return self.model_copy(update={"prompt": PromptPrefix.of(state).applied(self.prompt)})
 
 
-def open_workspace(orca: Orca, tracker: IssueTracker, request: OpenRequest) -> None:
+def open_workspace(manager: WorkspaceManager, tracker: IssueTracker, request: OpenRequest) -> None:
     # Assignment is a convenience, not the point of opening a workspace, so never fail the run over it.
     if request.issue is not None:
         try:
@@ -101,10 +101,10 @@ def open_workspace(orca: Orca, tracker: IssueTracker, request: OpenRequest) -> N
 
     name = WorktreeName.of_branch(request.branch, request.issue)
     logger.info("Creating worktree with name: %s", name.root)
-    worktree = orca.create_for_issue(request.project, name, request.issue, request.agent())
-    logger.info("Created %s", worktree.worktree.path.root)
+    opened = manager.create_for_issue(request.project, name, request.issue, request.agent())
+    logger.info("Created %s", opened.worktree.path.root)
 
-    send_prompt(orca, worktree, prompting)
+    send_prompt(manager, opened, prompting)
 
 
 def issue_state(tracker: IssueTracker, issue: IssueIdentifier | None) -> IssueState | None:
@@ -121,18 +121,17 @@ def issue_state(tracker: IssueTracker, issue: IssueIdentifier | None) -> IssueSt
     return state
 
 
-def send_prompt(orca: Orca, worktree: SingleWorktree, request: OpenRequest) -> None:
+def send_prompt(manager: WorkspaceManager, opened: OpenedWorktree, request: OpenRequest) -> None:
     if request.prompt is None:
         return
 
-    terminal = worktree.terminal()
-    if terminal is None:
+    if opened.terminal is None:
         raise PromptUndeliveredError("No agent terminal handle returned; prompt not typed.")
 
     try:
-        orca.wait_for_idle(terminal, request.idle_timeout)
-    except CalledProcessError:
+        manager.wait_for_idle(opened.terminal, request.idle_timeout)
+    except WorkspaceManagerError:
         logger.warning("Agent terminal never went idle; typing the prompt anyway.")
 
     # Type the prompt without Enter so it can be tweaked before submitting.
-    orca.send_text(terminal, request.prompt)
+    manager.send_text(opened.terminal, request.prompt)

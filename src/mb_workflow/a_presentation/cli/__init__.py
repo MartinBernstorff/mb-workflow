@@ -38,7 +38,7 @@ from mb_workflow.b_core.d_domain_model.pull_request import (
     ReviewDecision,
     ReviewRequest,
 )
-from mb_workflow.c_infrastructure.orca import (
+from mb_workflow.b_core.d_domain_model.workspace import (
     ProjectSelector,
     TerminalText,
     TimeoutMs,

@@ -28,6 +28,7 @@ from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.b_domain_services.lock import AlreadyRunningError, LockName, LockPath
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.config import (
     ConfigFileName,
     InvalidConfigError,
@@ -43,7 +44,7 @@ from mb_workflow.c_infrastructure.credentials import (
 )
 from mb_workflow.c_infrastructure.github import GitHub
 from mb_workflow.c_infrastructure.linear import Linear
-from mb_workflow.c_infrastructure.orca import Orca, OrcaError, WorkspaceStatus
+from mb_workflow.c_infrastructure.orca import Orca
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.c_infrastructure.workspace_board import BoardError
 
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
     from mb_workflow.b_core.d_domain_model.pull_request import Lookback, ReviewRequest
     from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit
+    from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus
 
 logger = logging.getLogger(__name__)
 
@@ -73,12 +75,12 @@ FAILURES = (
     MissingCredentialsError,
     NotFinalizableError,
     OSError,
-    OrcaError,
     PromptUndeliveredError,
     UnknownLabelError,
     UnlinkedWorktreeError,
     UnprefixedStateError,
     ValueError,
+    WorkspaceManagerError,
     re.error,
 )
 
@@ -108,13 +110,15 @@ def linear() -> Linear:
 
 @guarded
 def review_workspaces(status: WorkspaceStatus, lookback: Lookback, lock: LockName) -> ExitCode:
-    outcome = create_workspaces(GitHub(here()), Orca(here()), status, lookback, LockPath.of(lock))
+    shell = here()
+    outcome = create_workspaces(GitHub(shell), Orca(shell), status, lookback, LockPath.of(lock))
     return ExitCode.of(outcome.failed_any())
 
 
 @guarded
 def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode:
-    finalize(GitHub(here()), Orca(here()), request, status)
+    shell = here()
+    finalize(GitHub(shell), Orca(shell), request, status)
     return ExitCode(0)
 
 
