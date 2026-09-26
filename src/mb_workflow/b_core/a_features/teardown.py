@@ -27,13 +27,15 @@ def teardown_worktree(
     worktree = manager.worktrees().named(request.worktree)
     if worktree is None:
         raise WorkspaceManagerError(f"No worktree is named {request.worktree.root}.")
-    tear_down(manager, claims, worktree, request.host)
+    release_and_remove(manager, claims, worktree, request.host)
 
 
 # Release before removing, so a failed release leaves the claim beside the worktree that holds it.
-def tear_down(
+# The holder is named after the ticket, as start claims it before Orca may suffix the directory.
+def release_and_remove(
     manager: WorkspaceManager, claims: ClaimRegistry, worktree: Worktree, host: HostName
 ) -> None:
     if worktree.issue is not None:
-        release_claim(claims, worktree.issue, ClaimHolder(host=host, worktree=worktree.path.name()))
+        holder = ClaimHolder(host=host, worktree=WorktreeName.of_issue(worktree.issue))
+        release_claim(claims, worktree.issue, holder)
     manager.remove(worktree.path)

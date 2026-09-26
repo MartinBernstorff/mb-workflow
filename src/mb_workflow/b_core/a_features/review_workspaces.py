@@ -1,7 +1,7 @@
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, Protocol
 
-from mb_workflow.b_core.a_features.teardown import tear_down
+from mb_workflow.b_core.a_features.teardown import release_and_remove
 from mb_workflow.b_core.b_domain_services.worktree_reconciliation import obsolete, uncovered
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
@@ -161,7 +161,7 @@ def reconcile_workspaces(
     for worktree in to_remove.root:
         try:
             narrator.removing(worktree.path)
-            tear_down(manager, claims, worktree, host)
+            release_and_remove(manager, claims, worktree, host)
         except (TicketTrackerError, WorkspaceManagerError) as error:
             failure = Failure(
                 subject=FailureSubject.of_path(worktree.path), reason=FailureReason(str(error))

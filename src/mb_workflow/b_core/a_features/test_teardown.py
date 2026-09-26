@@ -36,8 +36,9 @@ def claimed_by(*holders: ClaimHolder) -> FakeClaimRegistry:
     )
 
 
-def holding(claims: FakeClaimRegistry) -> Claim | None:
-    return claims.claims(IssueIdentifier.fake()).holding(IssueStatusName("Implementing"))
+def holder_of_ticket(claims: FakeClaimRegistry) -> ClaimHolder | None:
+    held = claims.claims(IssueIdentifier.fake()).holding(IssueStatusName.fake())
+    return None if held is None else held.holder
 
 
 def managing(*worktrees: Worktree) -> FakeWorkspaceManager:
@@ -45,36 +46,48 @@ def managing(*worktrees: Worktree) -> FakeWorkspaceManager:
     return FakeWorkspaceManager(Worktrees((here, *worktrees)), here.path)
 
 
-def tearing_down(
-    manager: FakeWorkspaceManager, claims: FakeClaimRegistry, request: TeardownRequest
-) -> None:
-    teardown_worktree(manager=manager, claims=claims, request=request)
-
-
 def test_releases_the_claim_and_removes_the_worktree() -> None:
     manager = managing(Worktree.fake())
-    claims = claimed_by(ClaimHolder.fake())
-    tearing_down(manager, claims, TeardownRequest.fake())
-    assert holding(claims) is None
+    claims = claimed_by(
+        ClaimHolder(host=HostName.fake(), worktree=WorktreeName.of_issue(IssueIdentifier.fake()))
+    )
+    teardown_worktree(manager=manager, claims=claims, request=TeardownRequest.fake())
+    assert holder_of_ticket(claims) is None
     assert manager.worktrees().at(WorktreePath.fake()) is None
 
 
 def test_leaves_a_claim_held_from_another_host() -> None:
-    elsewhere = ClaimHolder.fake().model_copy(update={"host": HostName("elsewhere.local")})
+    elsewhere = ClaimHolder(
+        host=HostName("elsewhere.local"), worktree=WorktreeName.of_issue(IssueIdentifier.fake())
+    )
     claims = claimed_by(elsewhere)
-    tearing_down(managing(Worktree.fake()), claims, TeardownRequest.fake())
-    assert holding(claims) == Claim(id=ClaimId("claim-0"), holder=elsewhere)
+    teardown_worktree(
+        manager=managing(Worktree.fake()), claims=claims, request=TeardownRequest.fake()
+    )
+    assert holder_of_ticket(claims) == elsewhere
 
 
 def test_removes_a_worktree_linked_to_no_ticket() -> None:
     unlinked = Worktree.fake().model_copy(update={"issue": None})
     manager = managing(unlinked)
-    tearing_down(manager, FakeClaimRegistry(), TeardownRequest.fake())
+    teardown_worktree(manager=manager, claims=FakeClaimRegistry(), request=TeardownRequest.fake())
     assert manager.worktrees().at(WorktreePath.fake()) is None
+
+
+def test_releases_the_claim_of_a_worktree_orca_suffixed() -> None:
+    suffixed = Worktree.fake().model_copy(
+        update={"path": WorktreePath.fake().sibling(WorktreeName("E-4289-2"))}
+    )
+    claims = claimed_by(
+        ClaimHolder(host=HostName.fake(), worktree=WorktreeName.of_issue(IssueIdentifier.fake()))
+    )
+    request = TeardownRequest.fake().model_copy(update={"worktree": WorktreeName("E-4289-2")})
+    teardown_worktree(manager=managing(suffixed), claims=claims, request=request)
+    assert holder_of_ticket(claims) is None
 
 
 def test_refuses_a_worktree_that_does_not_exist() -> None:
     manager = managing()
     request = TeardownRequest.fake().model_copy(update={"worktree": WorktreeName("MB-999")})
     with pytest.raises(WorkspaceManagerError):
-        tearing_down(manager, FakeClaimRegistry(), request)
+        teardown_worktree(manager=manager, claims=FakeClaimRegistry(), request=request)
