@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
+    from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
 
 def transition(
@@ -17,6 +18,7 @@ def transition(
     tracker: TicketTracker,
     manager: WorkspaceManager,
     wanted: FlowLabels,
+    statuses: TicketStatuses,
     event: EventName,
     force: flow_transition.Force,
 ) -> StateName:
@@ -27,6 +29,7 @@ def transition(
         tracker=tracker,
         issue=issue,
         wanted=wanted,
+        statuses=statuses,
         event=event,
         force=force,
     )

@@ -7,3 +7,13 @@ assignee = "martinbernstorff@gmail.com"
 
 [pool]
 view = "4efb86b38740"
+
+[ticket_statuses]
+Grilling = "Grilling"
+Speccing = "Speccing"
+Specced = "Specced"
+Implementing = "Implementing"
+QA = "QA"
+Review = "Review"
+Merging = "Merging"
+Merged = "Merged"

@@ -16,7 +16,10 @@ from mb_workflow.b_core.c_secondary_ports.claims import FakeClaimRegistry
 from mb_workflow.b_core.c_secondary_ports.code_review import FakeCodeReview, MergedPullRequest
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, FakeRunLock
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracker, TrackedIssue
-from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
+    DisplayNameRefusingWorkspaceManager,
+    FakeWorkspaceManager,
+)
 from mb_workflow.b_core.d_domain_model.claim import Claim, ClaimHolder, Claims, HostName
 from mb_workflow.b_core.d_domain_model.config import ClaimSettings
 from mb_workflow.b_core.d_domain_model.git import Ref
@@ -26,9 +29,11 @@ from mb_workflow.b_core.d_domain_model.pull_request import (
     CheckoutDirectory,
     MergedSince,
     PrNumber,
+    PrTitle,
     PullRequests,
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
+    DisplayName,
     RepoId,
     WorkspaceStatus,
     Worktree,
@@ -128,6 +133,25 @@ def test_the_new_workspace_sits_in_the_review_status(here: WorktreePath) -> None
     created = manager.worktrees().at(path)
     assert created is not None
     assert created.status == WorkspaceStatus.fake()
+
+
+def test_the_new_workspace_is_named_after_the_pr_title(here: WorktreePath) -> None:
+    path = create_review_directory(here)
+    manager = standing_in(here)
+    _ = run_review_workspaces(FakeCodeReview(PullRequests.fake()), manager)
+    created = manager.worktrees().at(path)
+    assert created is not None
+    assert created.display_name == DisplayName.of_pr(PrTitle.fake())
+
+
+def test_a_refused_display_name_is_not_a_failed_creation(here: WorktreePath) -> None:
+    path = create_review_directory(here)
+    manager = DisplayNameRefusingWorkspaceManager(
+        Worktrees((Worktree.bare(RepoId.fake(), here),)), here
+    )
+    outcome = run_review_workspaces(FakeCodeReview(PullRequests.fake()), manager)
+    assert outcome.created == (CreatedWorkspace(name=WorktreeName.fake(), path=path),)
+    assert outcome.failed == ()
 
 
 def test_removes_a_review_workspace_whose_pr_no_longer_awaits_review(here: WorktreePath) -> None:

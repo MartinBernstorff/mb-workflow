@@ -11,6 +11,7 @@ stateDiagram-v2
     state "Merged" as merged
     [*] --> grilling
     merged --> [*]
+    grilling --> grilling : grill
     grilling --> speccing : to-ticket
     speccing --> specced : specced
     specced --> implementing : implement
@@ -24,5 +25,6 @@ stateDiagram-v2
     review --> merging : merge
     review --> merged : merged
     review --> implementing : resolve-review
+    merging --> qa : qa
     merging --> merged : merged
 ```

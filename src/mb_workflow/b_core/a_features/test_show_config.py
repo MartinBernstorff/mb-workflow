@@ -18,6 +18,9 @@ def test_reporting_a_resolved_configuration_succeeds(tmp_path: Path) -> None:
     _ = (tmp_path / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
+        '[ticket_statuses]\nGrilling = "Maturing"\nSpeccing = "Maturing"\nSpecced = "Todo"\n'
+        'Implementing = "In Progress"\nQA = "In Progress"\nReview = "In Review"\n'
+        'Merging = "Ready For Release"\nMerged = "Done"\n'
     )
 
     report = show_config(WorkingDirectory(tmp_path), ConfigFileName.fake())

@@ -9,6 +9,7 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspace
 from mb_workflow.b_core.d_domain_model.flow import EventName, StateName
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, LabelNames
+from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 from mb_workflow.b_core.d_domain_model.workspace import Worktree, WorktreePath, Worktrees
 
 
@@ -29,6 +30,7 @@ def test_labels_the_issue_linked_to_the_worktree_you_stand_in() -> None:
         tracker=tracker,
         manager=manager,
         wanted=FlowLabels.fake(),
+        statuses=TicketStatuses.fake(),
         event=EventName("qa"),
         force=Force(False),
     )
@@ -47,6 +49,7 @@ def test_a_worktree_with_no_linked_issue_leaves_the_board_where_it_was() -> None
             tracker=seeded_tracker(),
             manager=manager,
             wanted=FlowLabels.fake(),
+            statuses=TicketStatuses.fake(),
             event=EventName("qa"),
             force=Force(False),
         )

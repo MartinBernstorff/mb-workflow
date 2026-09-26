@@ -5,10 +5,13 @@ from mb_workflow.b_core.a_features.teardown import release_and_remove
 from mb_workflow.b_core.b_domain_services.worktree_reconciliation import obsolete, uncovered
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
-from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
+    WorkspaceManagerError,
+    set_display_name_or_warn,
+)
 from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.b_core.d_domain_model.pull_request import CheckoutDirectory, PrNumber
-from mb_workflow.b_core.d_domain_model.workspace import WorktreeName, WorktreePath
+from mb_workflow.b_core.d_domain_model.workspace import DisplayName, WorktreeName, WorktreePath
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
@@ -192,7 +195,8 @@ def reconcile_workspaces(
     for pr in missing.root:
         try:
             narrator.creating(pr.number)
-            path = manager.create_for_review(repo, pr.number, pr.title, status).path
+            path = manager.create_for_review(repo, pr.number, status).path
+            set_display_name_or_warn(manager, path, DisplayName.of_pr(pr.title))
             narrator.checking_out(path)
             review.checkout(pr.number, CheckoutDirectory(path.root))
         except (CalledProcessError, CodeReviewError, WorkspaceManagerError, ValueError) as error:

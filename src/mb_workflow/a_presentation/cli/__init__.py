@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 
@@ -40,6 +41,9 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 )
 from mb_workflow.c_infrastructure.flock import LockName
 from mb_workflow.d_lib.logging import LogLevel, configure
+
+if TYPE_CHECKING:
+    from mb_workflow.a_presentation.console import ExitCode
 
 app = typer.Typer(no_args_is_help=True)
 linear_app = typer.Typer(no_args_is_help=True)
@@ -272,6 +276,10 @@ def flow_seed_labels(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None
     raise typer.Exit(code=commands.flow_seed_labels().root)
 
 
+def flow_event(event: EventName, force: Force) -> ExitCode:
+    return commands.flow_event(event, force, WorkingDirectory(Path.cwd()), ConfigFileName.default())
+
+
 @flow_app.command("grill")
 def flow_grill(
     force: bool = typer.Option(False, "--force", help=FORCING),
@@ -279,7 +287,7 @@ def flow_grill(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("grill"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("grill"), Force(force)).root)
 
 
 @flow_app.command("to-ticket")
@@ -289,7 +297,7 @@ def flow_to_ticket(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("to-ticket"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("to-ticket"), Force(force)).root)
 
 
 @flow_app.command("specced")
@@ -299,7 +307,7 @@ def flow_specced(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("specced"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("specced"), Force(force)).root)
 
 
 @flow_app.command("implement")
@@ -309,7 +317,7 @@ def flow_implement(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("implement"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("implement"), Force(force)).root)
 
 
 @flow_app.command("qa")
@@ -319,7 +327,7 @@ def flow_qa(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("qa"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("qa"), Force(force)).root)
 
 
 @flow_app.command("ready")
@@ -329,7 +337,7 @@ def flow_ready(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("ready"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("ready"), Force(force)).root)
 
 
 @flow_app.command("merge")
@@ -339,7 +347,7 @@ def flow_merge(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("merge"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("merge"), Force(force)).root)
 
 
 @flow_app.command("merged")
@@ -349,7 +357,7 @@ def flow_merged(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("merged"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("merged"), Force(force)).root)
 
 
 @flow_app.command("resolve-review")
@@ -359,4 +367,4 @@ def flow_resolve_review(
 ) -> None:
     """Move the workspace to the state this event leads to."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_event(EventName("resolve-review"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("resolve-review"), Force(force)).root)
