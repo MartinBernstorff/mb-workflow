@@ -4,8 +4,10 @@ from typing import TYPE_CHECKING
 from mb_workflow.b_core.b_domain_services.next_action import next_action, state_of
 from mb_workflow.b_core.c_secondary_ports.claims import (
     ClaimRequest,
-    add_claim_label,
+    LabelledClaim,
     claim_ticket,
+    label_claim_or_withdraw,
+    require_claim_label,
 )
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
@@ -86,6 +88,7 @@ def start_ticket(
 
     name = WorktreeName.of_issue(request.ticket)
     holder = ClaimHolder(host=request.host, worktree=name)
+    require_claim_label(tracker, claim_settings.label)
     claim_ticket(
         claims,
         pause,
@@ -103,7 +106,11 @@ def start_ticket(
         holder.worktree.root,
         holder.host.root,
     )
-    add_claim_label(tracker, request.ticket, claim_settings.label)
+    label_claim_or_withdraw(
+        claims,
+        tracker,
+        LabelledClaim(ticket=request.ticket, holder=holder, label=claim_settings.label),
+    )
 
     # Assignment is a convenience, not the point of starting a ticket, so never fail the run over it.
     try:
