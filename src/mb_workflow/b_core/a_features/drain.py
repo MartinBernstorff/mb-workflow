@@ -80,7 +80,7 @@ def drain_pool(
     with lock.held():
         require_claim_label(tracker, claim_settings.label)
         ready = in_pick_order(
-            tracker.view_tickets(pool.view).ready(claim_settings.label), tie_break
+            tracker.unblocked_view_tickets(pool.view).ready(claim_settings.label), tie_break
         )
         occupancy = Occupancy.of(tracker.labelled_issues(claim_settings.label, Released.statuses()))
         picked: list[PoolTicket] = []
