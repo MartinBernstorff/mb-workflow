@@ -36,6 +36,7 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceMana
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.b_core.d_domain_model.config import (
     ConfigFileName,
+    Configuration,
     InvalidConfigError,
     MissingConfigError,
     WorkingDirectory,
@@ -157,8 +158,11 @@ def linear_autolabel(request: AutolabelRequest, window: CreatedAfter) -> ExitCod
 
 
 @guarded
-def open_linear_issue(request: OpenRequest) -> ExitCode:
-    open_workspace(Orca(here()), linear(), request)
+def open_linear_issue(
+    request: OpenRequest, directory: WorkingDirectory, name: ConfigFileName
+) -> ExitCode:
+    workspace = Configuration.resolved(directory, name).settings.workspace
+    open_workspace(Orca(here()), linear(), workspace, request)
     return ExitCode(0)
 
 

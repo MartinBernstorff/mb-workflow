@@ -16,7 +16,6 @@ from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
 from mb_workflow.b_core.d_domain_model.flow import EventName
 from mb_workflow.b_core.d_domain_model.issue import (
-    Assignee,
     BranchSlug,
     CreatedAfter,
     CreatedWithin,
@@ -32,7 +31,6 @@ from mb_workflow.b_core.d_domain_model.pull_request import (
     ReviewRequest,
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
-    ProjectSelector,
     TerminalText,
     TimeoutMs,
     WorkspaceStatus,
@@ -160,21 +158,21 @@ def open_linear_issue(
     branch: str = typer.Option("", "--branch", envvar="LINEAR_ISSUE_BRANCH_NAME"),
     issue: str = typer.Option("", "--issue", envvar="LINEAR_ISSUE_IDENTIFIER"),
     prompt: str = typer.Option("", "--prompt", envvar="LINEAR_PROMPT"),
-    project: str = typer.Option("github:flowbasedk/flowbase", "--project"),
-    assignee: str = typer.Option("mab@flowbase.io", "--assignee"),
     idle_timeout_ms: int = typer.Option(60000, "--idle-timeout-ms"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     request = OpenRequest(
-        project=ProjectSelector(project),
         branch=BranchSlug(branch),
         issue=IssueIdentifier(issue) if issue else None,
         prompt=TerminalText(prompt) if prompt else None,
-        assignee=Assignee(assignee),
         idle_timeout=TimeoutMs(idle_timeout_ms),
     )
-    raise typer.Exit(code=commands.open_linear_issue(request).root)
+    raise typer.Exit(
+        code=commands.open_linear_issue(
+            request, WorkingDirectory(Path.cwd()), ConfigFileName.default()
+        ).root
+    )
 
 
 @flow_app.command("config")
