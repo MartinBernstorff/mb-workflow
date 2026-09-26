@@ -177,7 +177,7 @@ def ticket_start(
         pause=SleepingPause(),
         board=workspace_board(orca),
         workspace=settings.workspace,
-        claiming=settings.claims,
+        claim_settings=settings.claims,
         request=request,
     )
     return ExitCode(0)

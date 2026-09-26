@@ -84,7 +84,9 @@ def claimed_error(ticket: IssueIdentifier, holder: Claim) -> ClaimRefusedError:
 
 
 # The label only makes the claim visible; the comment is the claim, so a failed label never fails it.
-def label_claimed(tracker: TicketTracker, ticket: IssueIdentifier, label: LabelName | None) -> None:
+def add_claim_label(
+    tracker: TicketTracker, ticket: IssueIdentifier, label: LabelName | None
+) -> None:
     if label is None:
         return
     try:

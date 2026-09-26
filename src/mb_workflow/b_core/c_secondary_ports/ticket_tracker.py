@@ -125,11 +125,8 @@ class FakeTicketTracker(TicketTracker):
 
     @override
     def remove_label(self, issue: IssueIdentifier, label: LabelName) -> None:
-        spelled = self._spelled(LabelNames((label,)))
-        held = self.read_issue(issue).labels
-        self.set_labels(
-            issue, LabelNames(tuple(name for name in held.root if name not in spelled.root))
-        )
+        (known,) = self._spelled(LabelNames((label,))).root
+        self.set_labels(issue, self.read_issue(issue).labels.without(known))
 
     @override
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
