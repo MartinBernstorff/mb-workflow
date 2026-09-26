@@ -139,7 +139,7 @@ tasks:
       outputStyle: "buffer-only-failure"
 
   install:
-    script: "uv tool install --force ."
+    script: "uv tool install --force --reinstall ."
     options:
       cache: false
       runInCI: false
