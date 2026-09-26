@@ -53,7 +53,7 @@ class Greeting(RootModel[str]):
 
 Built with Typer, entry point `mb_workflow.cli:app`. Every command must accept `--quiet`, which sets the log level.
 
-`cli.py` is the Typer boundary and is the one file excluded from `noprim`, because Typer can only bind primitives. Keep it free of logic: bind the primitive, wrap it in its domain type on the first line of the body, delegate. Anything with behaviour belongs in another module, where `noprim` still applies.
+The `a_presentation/cli/` package is the Typer boundary, with one file per command group, and is the one place excluded from `noprim`, because Typer can only bind primitives. Keep it free of logic: bind the primitive, wrap it in its domain type on the first line of the body, delegate. Anything with behaviour belongs in another module, where `noprim` still applies.
 
 ## Tickets
 

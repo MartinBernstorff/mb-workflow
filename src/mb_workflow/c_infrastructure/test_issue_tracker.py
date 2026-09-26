@@ -21,6 +21,7 @@ from mb_workflow.b_core.c_secondary_ports.issue_tracker import (
 from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
+    Cleared,
     CreatedAfter,
     CreatedOn,
     Creator,
@@ -30,13 +31,19 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueFilter,
     IssueIdentifier,
     IssueTitle,
+    IssueUpdate,
     LabelName,
     LabelNames,
+    Milestone,
+    MilestoneName,
+    MilestoneNames,
+    Project,
     ProjectName,
+    Projects,
     StatusName,
 )
 from mb_workflow.c_infrastructure.credentials import CredentialsDirectory, RepositorySlug
-from mb_workflow.c_infrastructure.linear import Linear
+from mb_workflow.c_infrastructure.linear import Linear, MilestonePayload, ProjectId
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.d_lib.models import Model, Payload, Value
 
@@ -73,7 +80,11 @@ class SeededIssue(Model):
 
     def detail(self, identifier: IssueIdentifier) -> IssueDetail:
         return IssueDetail(
-            issue=self.issue(identifier), title=self.title(), description=self.description
+            issue=self.issue(identifier),
+            title=self.title(),
+            description=self.description,
+            assignee=None,
+            milestone=None,
         )
 
 
@@ -215,14 +226,49 @@ def ensure_labels(client: LinearClient, wanted: LabelNames) -> None:
         )
 
 
-def ensure_project(client: LinearClient, team: TeamId, project: ProjectName) -> None:
-    if client.find_project(FindProjectRequest(name=project.root)).project is not None:
-        return
-    _ = client.execute(
-        "mutation($name: String!, $team: String!) {"
-        " projectCreate(input: { name: $name, teamIds: [$team] }) { success } }",
-        {"name": project.root, "team": team.root},
+class HeldProject(Payload):
+    milestones: tuple[MilestonePayload, ...] = Field(
+        default=(), validation_alias=AliasPath("project", "projectMilestones", "nodes")
     )
+
+    @staticmethod
+    def fake() -> HeldProject:
+        return HeldProject(milestones=(MilestonePayload.fake(),))
+
+    def names(self) -> MilestoneNames:
+        return MilestoneNames(tuple(milestone.name for milestone in self.milestones))
+
+
+def find_project(client: LinearClient, project: ProjectName) -> ProjectId | None:
+    found = client.find_project(FindProjectRequest(name=project.root)).project
+    return ProjectId(found.id) if found is not None and found.id is not None else None
+
+
+def ensure_project(client: LinearClient, team: TeamId, project: Project) -> ProjectId:
+    if find_project(client, project.name) is None:
+        _ = client.execute(
+            "mutation($name: String!, $team: String!) {"
+            " projectCreate(input: { name: $name, teamIds: [$team] }) { success } }",
+            {"name": project.name.root, "team": team.root},
+        )
+    created = find_project(client, project.name)
+    if created is None:
+        pytest.fail(f"Linear did not create {project.name.root}.")
+    held = HeldProject.model_validate(
+        client.execute(
+            "query($id: String!) { project(id: $id) { projectMilestones { nodes { name } } } }",
+            {"id": created.root},
+        )
+    ).names()
+    for milestone in project.milestones.root:
+        if held.matching(milestone) is None:
+            _ = client.execute(
+                "mutation($name: String!, $project: String!) {"
+                " projectMilestoneCreate(input: { name: $name, projectId: $project })"
+                " { success } }",
+                {"name": milestone.root, "project": created.root},
+            )
+    return created
 
 
 def ensure_issue(client: LinearClient, team: TeamId, planted: SeededIssue) -> IssueIdentifier:
@@ -244,12 +290,12 @@ def ensure_issue(client: LinearClient, team: TeamId, planted: SeededIssue) -> Is
     return IssueIdentifier(created.identifier)
 
 
-# Seeded once per session; a test only ever changes labels and the assignee, which reset() restores.
+# Seeded once per session; reset() restores whatever a test changes.
 @pytest.fixture(scope="session")
 def linear_backlog(linear_client: LinearClient) -> Backlog:
     team = Workspace.of(linear_client).teams[0].id
     ensure_labels(linear_client, workspace_labels())
-    ensure_project(linear_client, team, ProjectName.fake())
+    _ = ensure_project(linear_client, team, Project.fake())
     viewer = linear_client.viewer().viewer
     if viewer is None or viewer.email is None:
         pytest.fail("Linear did not say who the API key belongs to.")
@@ -267,13 +313,19 @@ def reset(client: LinearClient, backlog: Backlog) -> None:
     for planted in seeds():
         identifier = backlog.identifier(planted.seed)
         tracker.set_labels(identifier, planted.labels)
+        project = find_project(client, planted.project) if planted.project else None
         _ = client.execute(
-            "mutation($id: String!, $description: String) {"
-            " issueUpdate(id: $id, input: { assigneeId: null, description: $description })"
-            " { success } }",
+            "mutation($id: String!, $input: IssueUpdateInput!) {"
+            " issueUpdate(id: $id, input: $input) { success } }",
             {
                 "id": identifier.root,
-                "description": planted.description.root if planted.description else None,
+                "input": {
+                    "title": planted.title().root,
+                    "description": planted.description.root if planted.description else None,
+                    "assigneeId": None,
+                    "projectId": project.root if project is not None else None,
+                    "projectMilestoneId": None,
+                },
             },
         )
 
@@ -306,11 +358,15 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
                 issue=planted.issue(backlog.identifier(planted.seed)),
                 title=planted.title(),
                 description=planted.description,
+                assignee=None,
+                milestone=None,
                 creator=backlog.creator,
                 created_on=planted.created_on,
             )
             for planted in seeds()
         ),
+        Projects.fake(),
+        backlog.assignee,
     )
 
 
@@ -445,3 +501,135 @@ def test_adding_a_label_in_another_case_carries_it_once(
     tracker.add_label(backlog.identifier(Seed.recent), LabelName.fake())
     tracker.add_label(backlog.identifier(Seed.recent), LabelName("D-Implement"))
     assert tracker.read_issue(backlog.identifier(Seed.recent)).labels == LabelNames.fake()
+
+
+def test_the_viewer_is_the_one_holding_the_key(tracker: IssueTracker, backlog: Backlog) -> None:
+    assert tracker.viewer() == backlog.assignee
+
+
+def test_an_update_sets_the_title_and_description(tracker: IssueTracker, backlog: Backlog) -> None:
+    tracker.update_issue(
+        backlog.identifier(Seed.done),
+        IssueUpdate.nothing().model_copy(
+            update={
+                "title": IssueTitle("contract: renamed"),
+                "description": IssueDescription("Rewritten."),
+            }
+        ),
+    )
+    detail = tracker.read_issue_detail(backlog.identifier(Seed.done))
+    assert (detail.title, detail.description) == (
+        IssueTitle("contract: renamed"),
+        IssueDescription("Rewritten."),
+    )
+
+
+def test_an_update_leaves_the_fields_it_does_not_name(
+    tracker: IssueTracker, backlog: Backlog
+) -> None:
+    tracker.update_issue(
+        backlog.identifier(Seed.done),
+        IssueUpdate.nothing().model_copy(update={"title": IssueTitle("contract: x")}),
+    )
+    assert tracker.read_issue(backlog.identifier(Seed.done)) == backlog.issue(Seed.done)
+
+
+def test_an_update_replaces_the_labels(tracker: IssueTracker, backlog: Backlog) -> None:
+    tracker.update_issue(
+        backlog.identifier(Seed.done),
+        IssueUpdate.nothing().model_copy(update={"labels": LabelNames((LabelName("backend"),))}),
+    )
+    assert tracker.read_issue(backlog.identifier(Seed.done)).labels == LabelNames(
+        (LabelName("Backend"),)
+    )
+
+
+def test_an_update_with_an_unknown_label_is_refused(
+    tracker: IssueTracker, backlog: Backlog
+) -> None:
+    with pytest.raises(IssueTrackerError):
+        tracker.update_issue(
+            backlog.identifier(Seed.done),
+            IssueUpdate.nothing().model_copy(
+                update={"labels": LabelNames((LabelName("Frontend"),))}
+            ),
+        )
+
+
+def test_an_update_names_the_assignee(tracker: IssueTracker, backlog: Backlog) -> None:
+    tracker.update_issue(
+        backlog.identifier(Seed.recent),
+        IssueUpdate.nothing().model_copy(update={"assignee": backlog.assignee}),
+    )
+    detail = tracker.read_issue_detail(backlog.identifier(Seed.recent))
+    assert (detail.assignee, detail.issue.assigned) == (backlog.assignee, Assigned(True))
+
+
+def test_an_update_can_unassign(tracker: IssueTracker, backlog: Backlog) -> None:
+    tracker.update_issue(
+        backlog.identifier(Seed.recent),
+        IssueUpdate.nothing().model_copy(update={"assignee": backlog.assignee}),
+    )
+    tracker.update_issue(
+        backlog.identifier(Seed.recent),
+        IssueUpdate.nothing().model_copy(update={"assignee": Cleared()}),
+    )
+    detail = tracker.read_issue_detail(backlog.identifier(Seed.recent))
+    assert (detail.assignee, detail.issue.assigned) == (None, Assigned(False))
+
+
+def test_an_update_moves_an_issue_into_a_project(tracker: IssueTracker, backlog: Backlog) -> None:
+    tracker.update_issue(
+        backlog.identifier(Seed.done),
+        IssueUpdate.nothing().model_copy(update={"project": ProjectName.fake()}),
+    )
+    assert tracker.read_issue(backlog.identifier(Seed.done)).project == ProjectName.fake()
+
+
+def test_an_update_can_take_an_issue_out_of_its_project(
+    tracker: IssueTracker, backlog: Backlog
+) -> None:
+    tracker.update_issue(
+        backlog.identifier(Seed.recent),
+        IssueUpdate.nothing().model_copy(update={"project": Cleared()}),
+    )
+    assert tracker.read_issue(backlog.identifier(Seed.recent)).project is None
+
+
+def test_moving_to_an_unknown_project_is_refused(tracker: IssueTracker, backlog: Backlog) -> None:
+    with pytest.raises(IssueTrackerError):
+        tracker.update_issue(
+            backlog.identifier(Seed.recent),
+            IssueUpdate.nothing().model_copy(update={"project": ProjectName("No such project")}),
+        )
+
+
+def test_an_update_sets_a_milestone(tracker: IssueTracker, backlog: Backlog) -> None:
+    tracker.update_issue(
+        backlog.identifier(Seed.recent),
+        IssueUpdate.nothing().model_copy(update={"milestone": Milestone.fake()}),
+    )
+    assert tracker.read_issue_detail(backlog.identifier(Seed.recent)).milestone == (
+        MilestoneName.fake()
+    )
+
+
+def test_an_update_can_clear_the_milestone(tracker: IssueTracker, backlog: Backlog) -> None:
+    tracker.update_issue(
+        backlog.identifier(Seed.recent),
+        IssueUpdate.nothing().model_copy(update={"milestone": Milestone.fake()}),
+    )
+    tracker.update_issue(
+        backlog.identifier(Seed.recent),
+        IssueUpdate.nothing().model_copy(update={"milestone": Cleared()}),
+    )
+    assert tracker.read_issue_detail(backlog.identifier(Seed.recent)).milestone is None
+
+
+def test_an_unknown_milestone_is_refused(tracker: IssueTracker, backlog: Backlog) -> None:
+    unknown = Milestone(project=ProjectName.fake(), name=MilestoneName("No such milestone"))
+    with pytest.raises(IssueTrackerError):
+        tracker.update_issue(
+            backlog.identifier(Seed.recent),
+            IssueUpdate.nothing().model_copy(update={"milestone": unknown}),
+        )

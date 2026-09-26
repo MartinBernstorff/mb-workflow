@@ -11,6 +11,7 @@ from mb_workflow.b_core.a_features.autolabel import (
     UnknownLabelError,
     sweep,
 )
+from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
 from mb_workflow.b_core.a_features.open_issue import (
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_report import AsJson
     from mb_workflow.b_core.b_domain_services.flow_transition import Force
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
+    from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit
     from mb_workflow.c_infrastructure.github import Lookback, ReviewRequest
 
 logger = logging.getLogger(__name__)
@@ -132,6 +134,13 @@ def open_linear_issue(request: OpenRequest) -> ExitCode:
 @guarded
 def ticket_view(issue: IssueIdentifier) -> ExitCode:
     write(Output(view_ticket(linear(), issue).root))
+    return ExitCode(0)
+
+
+@guarded
+def ticket_edit(issue: IssueIdentifier, edit: TicketEdit) -> ExitCode:
+    edit_ticket(linear(), issue, edit)
+    write(Output(f"{issue.root}\n"))
     return ExitCode(0)
 
 

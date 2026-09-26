@@ -3,6 +3,7 @@ from typing import Protocol, override
 from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
+    Cleared,
     CreatedOn,
     Creator,
     Issue,
@@ -12,8 +13,14 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueIdentifier,
     Issues,
     IssueTitle,
+    IssueUpdate,
     LabelName,
     LabelNames,
+    Milestone,
+    MilestoneName,
+    Project,
+    ProjectName,
+    Projects,
 )
 from mb_workflow.d_lib.models import Model
 
@@ -37,11 +44,17 @@ class IssueTracker(Protocol):
 
     def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None: ...
 
+    def update_issue(self, issue: IssueIdentifier, update: IssueUpdate) -> None: ...
+
+    def viewer(self) -> Assignee: ...
+
 
 class TrackedIssue(Model):
     issue: Issue
     title: IssueTitle
     description: IssueDescription | None
+    assignee: Assignee | None
+    milestone: MilestoneName | None
     creator: Creator
     created_on: CreatedOn
 
@@ -51,15 +64,25 @@ class TrackedIssue(Model):
             issue=Issue.fake(),
             title=IssueTitle.fake(),
             description=IssueDescription.fake(),
+            assignee=None,
+            milestone=MilestoneName.fake(),
             creator=Creator.fake(),
             created_on=CreatedOn.fake(),
         )
 
 
 class FakeIssueTracker(IssueTracker):
-    def __init__(self, labels: LabelNames, issues: tuple[TrackedIssue, ...]) -> None:
+    def __init__(
+        self,
+        labels: LabelNames,
+        issues: tuple[TrackedIssue, ...],
+        projects: Projects = Projects.fake(),
+        viewer: Assignee = Assignee.fake(),
+    ) -> None:
         self._labels = labels
         self._issues = {tracked.issue.identifier: tracked for tracked in issues}
+        self._projects = projects
+        self._viewer = viewer
 
     @override
     def workspace_labels(self) -> LabelNames:
@@ -83,7 +106,11 @@ class FakeIssueTracker(IssueTracker):
     def read_issue_detail(self, issue: IssueIdentifier) -> IssueDetail:
         tracked = self._tracked(issue)
         return IssueDetail(
-            issue=tracked.issue, title=tracked.title, description=tracked.description
+            issue=tracked.issue,
+            title=tracked.title,
+            description=tracked.description,
+            assignee=tracked.assignee,
+            milestone=tracked.milestone,
         )
 
     @override
@@ -92,13 +119,8 @@ class FakeIssueTracker(IssueTracker):
 
     @override
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
-        unknown = self._labels.unmatched(labels)
-        if len(unknown.root) > 0:
-            raise IssueTrackerError(
-                f"No label is named {', '.join(label.root for label in unknown.root)}."
-            )
+        spelled = self._spelled(labels)
         tracked = self._tracked(issue)
-        spelled = self._labels.spelled(labels)
         self._issues[issue] = tracked.model_copy(
             update={"issue": tracked.issue.model_copy(update={"labels": spelled})}
         )
@@ -107,8 +129,80 @@ class FakeIssueTracker(IssueTracker):
     def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None:
         tracked = self._tracked(issue)
         self._issues[issue] = tracked.model_copy(
-            update={"issue": tracked.issue.model_copy(update={"assigned": Assigned(True)})}
+            update={
+                "issue": tracked.issue.model_copy(update={"assigned": Assigned(True)}),
+                "assignee": assignee,
+            }
         )
+
+    @override
+    def update_issue(self, issue: IssueIdentifier, update: IssueUpdate) -> None:
+        tracked = self._tracked(issue)
+        labels = tracked.issue.labels if update.labels is None else self._spelled(update.labels)
+        project = self._moved(tracked.issue.project, update.project)
+        milestone = self._pinned(
+            None if update.project is not None else tracked.milestone, update.milestone
+        )
+        assignee = tracked.assignee if update.assignee is None else update.assignee
+        held = assignee if isinstance(assignee, Assignee) else None
+        self._issues[issue] = tracked.model_copy(
+            update={
+                "issue": tracked.issue.model_copy(
+                    update={
+                        "labels": labels,
+                        "project": project,
+                        "assigned": Assigned(held is not None),
+                    }
+                ),
+                "title": tracked.title if update.title is None else update.title,
+                "description": (
+                    tracked.description if update.description is None else update.description
+                ),
+                "assignee": held,
+                "milestone": milestone,
+            }
+        )
+
+    @override
+    def viewer(self) -> Assignee:
+        return self._viewer
+
+    def _spelled(self, labels: LabelNames) -> LabelNames:
+        unknown = self._labels.unmatched(labels)
+        if len(unknown.root) > 0:
+            raise IssueTrackerError(
+                f"No label is named {', '.join(label.root for label in unknown.root)}."
+            )
+        return self._labels.spelled(labels)
+
+    def _moved(
+        self, held: ProjectName | None, wanted: ProjectName | Cleared | None
+    ) -> ProjectName | None:
+        if wanted is None:
+            return held
+        if isinstance(wanted, Cleared):
+            return None
+        return self._project(wanted).name
+
+    def _pinned(
+        self, held: MilestoneName | None, wanted: Milestone | Cleared | None
+    ) -> MilestoneName | None:
+        if wanted is None:
+            return held
+        if isinstance(wanted, Cleared):
+            return None
+        found = self._project(wanted.project).milestones.matching(wanted.name)
+        if found is None:
+            raise IssueTrackerError(
+                f"{wanted.project.root} has no milestone named {wanted.name.root}."
+            )
+        return found
+
+    def _project(self, name: ProjectName) -> Project:
+        project = self._projects.matching(name)
+        if project is None:
+            raise IssueTrackerError(f"No project is named {name.root}.")
+        return project
 
     def _tracked(self, issue: IssueIdentifier) -> TrackedIssue:
         tracked = self._issues.get(issue)
