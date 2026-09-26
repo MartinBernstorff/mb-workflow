@@ -84,17 +84,19 @@ class Narrator(Protocol):
 
     def awaiting_review(self, prs: PullRequests) -> None: ...
 
-    def obsolete(self, worktrees: Worktrees) -> None: ...
+    def found_obsolete(self, worktrees: Worktrees) -> None: ...
 
     def removing(self, path: WorktreePath) -> None: ...
 
-    def uncovered(self, prs: PullRequests) -> None: ...
+    def found_uncovered(self, prs: PullRequests) -> None: ...
 
     def creating(self, pr: PrNumber) -> None: ...
 
     def checking_out(self, path: WorktreePath) -> None: ...
 
-    def failed(self, failure: Failure) -> None: ...
+    def removal_failed(self, failure: Failure) -> None: ...
+
+    def creation_failed(self, failure: Failure) -> None: ...
 
 
 def create_workspaces(
@@ -107,10 +109,10 @@ def create_workspaces(
     since: MergedSince,
 ) -> Outcome:
     with lock.held():
-        return reconcile(review, manager, narrator, status, since)
+        return reconcile_workspaces(review, manager, narrator, status, since)
 
 
-def reconcile(
+def reconcile_workspaces(
     review: CodeForge,
     manager: WorkspaceManager,
     narrator: Narrator,
@@ -137,7 +139,7 @@ def reconcile(
         status=status,
         here=here,
     )
-    narrator.obsolete(to_remove)
+    narrator.found_obsolete(to_remove)
 
     for worktree in to_remove.root:
         try:
@@ -147,13 +149,13 @@ def reconcile(
             failure = Failure(
                 subject=FailureSubject.of_path(worktree.path), reason=FailureReason(str(error))
             )
-            narrator.failed(failure)
+            narrator.removal_failed(failure)
             failed.append(failure)
         else:
             removed.append(worktree.path)
 
     missing = uncovered(requested, worktrees)
-    narrator.uncovered(missing)
+    narrator.found_uncovered(missing)
 
     for pr in missing.root:
         try:
@@ -165,7 +167,7 @@ def reconcile(
             failure = Failure(
                 subject=FailureSubject.of_pr(pr.number), reason=FailureReason(str(error))
             )
-            narrator.failed(failure)
+            narrator.creation_failed(failure)
             failed.append(failure)
         else:
             created.append(CreatedWorkspace(name=WorktreeName.of(pr.number), path=path))

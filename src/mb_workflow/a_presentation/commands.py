@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 
 from mb_workflow.a_presentation.autolabel_report import log_outcome
 from mb_workflow.a_presentation.console import ExitCode, Output, write
-from mb_workflow.a_presentation.review_workspaces_report import LoggingNarrator
 from mb_workflow.a_presentation.review_workspaces_report import (
-    log_outcome as log_review_outcome,
+    LoggingNarrator,
+    log_review_workspaces_outcome,
 )
 from mb_workflow.b_core.a_features.autolabel import (
     AutolabelRequest,
@@ -126,7 +126,7 @@ def review_workspaces(status: WorkspaceStatus, since: MergedSince, lock: LockNam
         status=status,
         since=since,
     )
-    log_review_outcome(outcome)
+    log_review_workspaces_outcome(outcome)
     return ExitCode.of(outcome.failed_any())
 
 

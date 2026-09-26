@@ -22,7 +22,7 @@ class LoggingNarrator(Narrator):
         logger.info("PRs awaiting your review: %s", len(prs.root))
 
     @override
-    def obsolete(self, worktrees: Worktrees) -> None:
+    def found_obsolete(self, worktrees: Worktrees) -> None:
         logger.info("Obsolete workspaces: %s", len(worktrees.root))
 
     @override
@@ -30,7 +30,7 @@ class LoggingNarrator(Narrator):
         logger.info("    Removing %s", path.root)
 
     @override
-    def uncovered(self, prs: PullRequests) -> None:
+    def found_uncovered(self, prs: PullRequests) -> None:
         logger.info("PRs without a workspace: %s", len(prs.root))
 
     @override
@@ -43,11 +43,15 @@ class LoggingNarrator(Narrator):
         logger.info("    Checking out into %s", path.root)
 
     @override
-    def failed(self, failure: Failure) -> None:
+    def removal_failed(self, failure: Failure) -> None:
+        logger.error("    %s could not be removed: %s", failure.subject.root, failure.reason.root)
+
+    @override
+    def creation_failed(self, failure: Failure) -> None:
         logger.error("    %s failed: %s", failure.subject.root, failure.reason.root)
 
 
-def log_outcome(outcome: Outcome) -> None:
+def log_review_workspaces_outcome(outcome: Outcome) -> None:
     if outcome.unchanged().root:
         logger.info("Review workspaces already match the PRs awaiting review")
     if len(outcome.removed) > 0:

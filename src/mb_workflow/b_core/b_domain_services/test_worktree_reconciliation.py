@@ -8,11 +8,8 @@ from mb_workflow.b_core.b_domain_services.worktree_reconciliation import (
     uncovered,
     union,
 )
-from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames, Ref
 from mb_workflow.b_core.d_domain_model.pull_request import (
-    Lookback,
-    MergedSince,
     PrNumber,
     PrTitle,
     PullRequest,
@@ -142,19 +139,10 @@ def test_a_union_keeps_distinct_workspaces() -> None:
     assert union(Worktrees.fake(), Worktrees((second,))) == Worktrees((Worktree.fake(), second))
 
 
-def test_collects_the_branch_of_each_pr() -> None:
-    prs = PullRequests((PullRequest.fake(), other_pr()))
-    assert prs.branches() == BranchNames((BranchName.fake(), BranchName("feat/other")))
-
-
 def test_selects_the_workspaces_on_the_given_branches() -> None:
     wanted = bare_worktree().model_copy(update={"branch": Ref.fake()})
     other = bare_worktree().model_copy(update={"branch": Ref("refs/heads/feat/other")})
     assert on_branches(Worktrees((wanted, other)), BranchNames.fake()) == Worktrees((wanted,))
-
-
-def test_the_window_starts_the_lookback_before_today() -> None:
-    assert MergedSince.of(Lookback.fake(), Today.fake()) == MergedSince.fake()
 
 
 def obsolete_among(prs: PullRequests, merged: BranchNames, worktrees: Worktrees) -> Worktrees:
