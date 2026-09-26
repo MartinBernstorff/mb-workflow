@@ -151,9 +151,9 @@ def linear_autolabel(
 
 
 @app.command("start")
-def start(
+def start_ticket(
     *,
-    issue: str = typer.Argument(..., help="Ticket to start, e.g. MB-33."),
+    ticket: str = typer.Argument(..., help="Ticket to start, e.g. MB-33."),
     submit: bool = typer.Option(
         False, "--submit", help="Submit the prompt instead of leaving it typed."
     ),
@@ -162,12 +162,12 @@ def start(
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     request = StartRequest(
-        issue=IssueIdentifier(issue),
+        ticket=IssueIdentifier(ticket),
         submit=Submit(submit),
         idle_timeout=TimeoutMs(idle_timeout_ms),
     )
     raise typer.Exit(
-        code=commands.start_ticket(
+        code=commands.ticket_start(
             request, WorkingDirectory(Path.cwd()), ConfigFileName.default()
         ).root
     )

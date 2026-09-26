@@ -37,14 +37,14 @@ class PromptUndeliveredError(Exception):
 
 
 class StartRequest(Model):
-    issue: IssueIdentifier
+    ticket: IssueIdentifier
     submit: Submit
     idle_timeout: TimeoutMs
 
     @staticmethod
     def fake() -> StartRequest:
         return StartRequest(
-            issue=IssueIdentifier.fake(),
+            ticket=IssueIdentifier.fake(),
             submit=Submit.fake(),
             idle_timeout=TimeoutMs.fake(),
         )
@@ -52,10 +52,10 @@ class StartRequest(Model):
     def prompt_for(self, action: Skill | AwaitingHuman) -> TerminalText | None:
         if isinstance(action, AwaitingHuman):
             return None
-        return TerminalText(f"{action.root} {self.issue.root}")
+        return TerminalText(f"{action.root} {self.ticket.root}")
 
 
-def start(
+def start_ticket(
     manager: WorkspaceManager,
     tracker: TicketTracker,
     board: WorkspaceStatusStore,
@@ -63,55 +63,59 @@ def start(
     request: StartRequest,
 ) -> None:
     # Resolve the state before touching anything, so a ticket with no work left is neither assigned nor opened.
-    state = state_of(WorkflowChart, tracker.read_issue(request.issue).status)
+    state = state_of(WorkflowChart, tracker.read_issue(request.ticket).status)
     prompt = request.prompt_for(action_in(state))
 
     # Assignment is a convenience, not the point of starting a ticket, so never fail the run over it.
     try:
-        tracker.assign(request.issue, workspace.assignee)
+        tracker.assign(request.ticket, workspace.assignee)
     except TicketTrackerError as error:
         logger.warning(
             "Could not assign %s to %s: %s",
-            request.issue.root,
+            request.ticket.root,
             workspace.assignee.root,
             error,
         )
 
-    name = WorktreeName.of_issue(request.issue)
+    name = WorktreeName.of_issue(request.ticket)
     logger.info("Creating worktree with name: %s", name.root)
     opened = manager.create_for_issue(
         workspace.orca_project,
         name,
-        request.issue,
+        request.ticket,
         None if prompt is None else AgentName.claude(),
         board.status_for(state),
     )
     logger.info("Created %s", opened.worktree.path.root)
 
     if prompt is not None:
-        send_prompt(manager, opened, prompt, request)
+        send_prompt(manager, opened, prompt, request.idle_timeout, request.submit)
 
 
 def action_in(state: StateName) -> Skill | AwaitingHuman:
     action = next_action(WorkflowChart, state)
     if isinstance(action, Finished):
-        raise FlowError(f"The issue is {state.root}, so there is no work left in it.")
+        raise FlowError(f"The ticket is {state.root}, so there is no work left in it.")
     if isinstance(action, AwaitingHuman):
         logger.warning(
-            "The issue is in %s, which waits for a human, so no prompt is typed.", state.root
+            "The ticket is in %s, which waits for a human, so no prompt is typed.", state.root
         )
     return action
 
 
 def send_prompt(
-    manager: WorkspaceManager, opened: OpenedWorktree, prompt: TerminalText, request: StartRequest
+    manager: WorkspaceManager,
+    opened: OpenedWorktree,
+    prompt: TerminalText,
+    idle_timeout: TimeoutMs,
+    submit: Submit,
 ) -> None:
     if opened.terminal is None:
         raise PromptUndeliveredError("No agent terminal handle returned; prompt not typed.")
 
     try:
-        manager.wait_for_idle(opened.terminal, request.idle_timeout)
+        manager.wait_for_idle(opened.terminal, idle_timeout)
     except WorkspaceManagerError:
         logger.warning("Agent terminal never went idle; typing the prompt anyway.")
 
-    manager.send_text(opened.terminal, prompt, request.submit)
+    manager.send_text(opened.terminal, prompt, submit)

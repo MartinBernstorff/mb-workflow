@@ -21,7 +21,11 @@ from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeEr
 from mb_workflow.b_core.a_features.review_workspaces import create_workspaces
 from mb_workflow.b_core.a_features.show_config import show_config
 from mb_workflow.b_core.a_features.show_flow import show_flow
-from mb_workflow.b_core.a_features.start import PromptUndeliveredError, StartRequest, start
+from mb_workflow.b_core.a_features.start import (
+    PromptUndeliveredError,
+    StartRequest,
+    start_ticket,
+)
 from mb_workflow.b_core.a_features.transition import transition
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
@@ -152,12 +156,12 @@ def linear_autolabel(request: AutolabelRequest, window: CreatedAfter) -> ExitCod
 
 
 @guarded
-def start_ticket(
+def ticket_start(
     request: StartRequest, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
     workspace = Configuration.resolved(directory, name).settings.workspace
     orca = Orca(here())
-    start(orca, linear(), workspace_board(orca), workspace, request)
+    start_ticket(orca, linear(), workspace_board(orca), workspace, request)
     return ExitCode(0)
 
 
