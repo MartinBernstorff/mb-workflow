@@ -1,7 +1,8 @@
 import pytest
 
 from mb_workflow.b_core.d_domain_model.flow import StateName, StateNames, WorkflowChart
-from mb_workflow.c_infrastructure.orca import ColumnLabel, ErrorMessage, WorkspaceStatus
+from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus
+from mb_workflow.c_infrastructure.orca import ColumnLabel, ErrorMessage
 from mb_workflow.c_infrastructure.workspace_board import BoardError, Column, Columns, StateColumns
 
 REFUSAL = ErrorMessage(
@@ -59,8 +60,8 @@ def test_a_column_the_board_no_longer_defines_reads_as_the_start_state() -> None
     assert state_of(WorkspaceStatus("status-404")) == StateNames.initial_state(WorkflowChart)
 
 
-def test_a_state_maps_to_the_board_column_its_label_names() -> None:
-    assert board().column_for(StateName("Review")) == ColumnLabel("Awaiting review")
+def test_a_state_maps_to_the_id_of_the_board_column_its_label_names() -> None:
+    assert board().column_for(StateName("Review")) == WorkspaceStatus("status-5")
 
 
 def test_a_state_the_board_has_no_column_for_is_a_clear_error() -> None:

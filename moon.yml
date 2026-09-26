@@ -30,6 +30,18 @@ tasks:
       runInCI: false
       outputStyle: "buffer-only-failure"
 
+  test-orca-live:
+    script: "uv run pytest -m orca_live --numprocesses=0 src/mb_workflow/c_infrastructure/test_workspace_manager.py"
+    inputs:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "pytest.toml"
+      - "@group(sources)"
+    options:
+      cache: false
+      runInCI: false
+      outputStyle: "buffer-only-failure"
+
   types:
     script: "uv run pyrefly check"
     inputs:

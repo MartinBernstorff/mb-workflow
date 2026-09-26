@@ -2,30 +2,28 @@ import pytest
 
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, reviewed_pr
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
+from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus, Worktree
 from mb_workflow.c_infrastructure.github import ReviewBody, ReviewDecision, ReviewRequest
-from mb_workflow.c_infrastructure.orca import Workspace, WorkspaceStatus
 
 
 def test_finalizes_a_worktree_in_the_reviewing_status() -> None:
-    assert reviewed_pr(Workspace.fake(), WorkspaceStatus.fake()) == PrNumber.fake()
+    assert reviewed_pr(Worktree.fake(), WorkspaceStatus.fake()) == PrNumber.fake()
 
 
 def test_rejects_a_worktree_in_another_status() -> None:
-    worktree = Workspace.fake().model_copy(
-        update={"workspace_status": WorkspaceStatus("in-progress")}
-    )
+    worktree = Worktree.fake().model_copy(update={"status": WorkspaceStatus("in-progress")})
     with pytest.raises(NotFinalizableError, match="expected status-8"):
         _ = reviewed_pr(worktree, WorkspaceStatus.fake())
 
 
 def test_rejects_a_worktree_without_a_status() -> None:
-    worktree = Workspace.fake().model_copy(update={"workspace_status": None})
+    worktree = Worktree.fake().model_copy(update={"status": None})
     with pytest.raises(NotFinalizableError, match="status none"):
         _ = reviewed_pr(worktree, WorkspaceStatus.fake())
 
 
 def test_rejects_a_worktree_with_no_linked_pull_request() -> None:
-    worktree = Workspace.fake().model_copy(update={"linked_issue": None})
+    worktree = Worktree.fake().model_copy(update={"pull_request": None})
     with pytest.raises(NotFinalizableError, match="no linked pull request"):
         _ = reviewed_pr(worktree, WorkspaceStatus.fake())
 
