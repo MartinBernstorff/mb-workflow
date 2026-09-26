@@ -2,7 +2,12 @@ import re
 import socket
 
 from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
-from mb_workflow.b_core.d_domain_model.issue import IssueStatusName, StatusNames
+from mb_workflow.b_core.d_domain_model.issue import (
+    IssueStatusName,
+    StatusNames,
+    StatusType,
+    StatusTypes,
+)
 from mb_workflow.b_core.d_domain_model.workspace import WorktreeName
 from mb_workflow.d_lib.models import Model, Value
 
@@ -96,6 +101,14 @@ class Released(Value[bool]):
     @staticmethod
     def of(status: IssueStatusName) -> Released:
         return Released(Released.statuses().matching(status) is not None)
+
+    @staticmethod
+    def of_type(status_type: StatusType) -> Released:
+        return Released(status_type in (StatusType.completed, StatusType.canceled))
+
+    @staticmethod
+    def types() -> StatusTypes:
+        return StatusTypes(tuple(kind for kind in StatusType if Released.of_type(kind).root))
 
 
 class TakeOver(Value[bool]):

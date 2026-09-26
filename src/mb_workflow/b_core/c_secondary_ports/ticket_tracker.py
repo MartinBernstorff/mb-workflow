@@ -13,6 +13,8 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueFilter,
     IssueIdentifier,
     Issues,
+    IssueStatus,
+    IssueStatuses,
     IssueStatusName,
     IssueTitle,
     IssueUpdate,
@@ -23,7 +25,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Project,
     ProjectName,
     Projects,
-    StatusNames,
+    StatusTypes,
 )
 from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority, ViewSlug
 from mb_workflow.d_lib.models import Model
@@ -40,7 +42,7 @@ class TicketTracker(Protocol):
 
     def unblocked_view_tickets(self, view: ViewSlug) -> PoolTickets: ...
 
-    def labelled_issues(self, label: LabelName, excluding: StatusNames) -> Issues: ...
+    def labelled_issues(self, label: LabelName, excluding: StatusTypes) -> Issues: ...
 
     def read_issue(self, issue: IssueIdentifier) -> Issue: ...
 
@@ -91,7 +93,7 @@ class FakeTicketTracker(TicketTracker):
         labels: LabelNames,
         issues: tuple[TrackedIssue, ...],
         projects: Projects = Projects.fake(),
-        statuses: StatusNames = StatusNames.fake(),
+        statuses: IssueStatuses = IssueStatuses.fake(),
         viewer: Assignee = Assignee.fake(),
         *,
         views: dict[ViewSlug, tuple[IssueIdentifier, ...]] | None = None,
@@ -131,13 +133,13 @@ class FakeTicketTracker(TicketTracker):
         )
 
     @override
-    def labelled_issues(self, label: LabelName, excluding: StatusNames) -> Issues:
+    def labelled_issues(self, label: LabelName, excluding: StatusTypes) -> Issues:
         return Issues(
             tuple(
                 tracked.issue
                 for tracked in self._issues.values()
                 if tracked.issue.labels.matching(label) is not None
-                and excluding.matching(tracked.issue.status) is None
+                and not excluding.has(self._status_named(tracked.issue.status).type).root
             )
         )
 
@@ -188,7 +190,11 @@ class FakeTicketTracker(TicketTracker):
         tracked = self._tracked(issue)
         labels = tracked.issue.labels if update.labels is None else self._spelled(update.labels)
         project = self._moved(tracked.issue.project, update.project)
-        status = tracked.issue.status if update.status is None else self._status(update.status)
+        status = (
+            tracked.issue.status
+            if update.status is None
+            else self._status_named(update.status).name
+        )
         milestone = self._pinned(
             None if update.project is not None else tracked.milestone, update.milestone
         )
@@ -248,7 +254,7 @@ class FakeTicketTracker(TicketTracker):
             )
         return found
 
-    def _status(self, name: IssueStatusName) -> IssueStatusName:
+    def _status_named(self, name: IssueStatusName) -> IssueStatus:
         status = self._statuses.matching(name)
         if status is None:
             raise TicketTrackerError(f"No status is named {name.root}.")
