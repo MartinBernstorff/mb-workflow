@@ -93,7 +93,7 @@ class ScriptedShell(Shell):
         self._log = log
 
     @override
-    def at(self, directory: ExistingDirectory) -> Shell:
+    def in_directory(self, directory: ExistingDirectory) -> Shell:
         return ScriptedShell(directory, self._answer, self._log)
 
     @override
@@ -201,7 +201,7 @@ def submitted_by(command: Command) -> Submission | None:
 pytestmark = pytest.mark.parametrize("host", [FakeHost, GitHubHost], ids=["fake", "github"])
 
 
-def other_pr() -> PrNumber:
+def other_pr_number() -> PrNumber:
     return PrNumber(7)
 
 
@@ -211,7 +211,11 @@ def test_lists_the_pull_requests_awaiting_review(host: Callable[[Seed], Host]) -
 
 def test_lists_the_branches_of_merged_pull_requests(host: Callable[[Seed], Host]) -> None:
     merged = PullRequests(
-        (PullRequest(number=other_pr(), title=PrTitle.fake(), branch=BranchName("feat/other")),)
+        (
+            PullRequest(
+                number=other_pr_number(), title=PrTitle.fake(), branch=BranchName("feat/other")
+            ),
+        )
     )
     code_review = host(Seed(merged=merged)).code_review()
     assert code_review.merged_branches(MergedSince.fake()) == BranchNames(
@@ -221,7 +225,7 @@ def test_lists_the_branches_of_merged_pull_requests(host: Callable[[Seed], Host]
 
 def test_without_a_pending_review_a_fresh_one_is_submitted(host: Callable[[Seed], Host]) -> None:
     subject = host(Seed())
-    subject.code_review().review(PrNumber.fake(), ReviewRequest.fake())
+    subject.code_review().submit_review(PrNumber.fake(), ReviewRequest.fake())
     assert subject.submitted() == Submissions.fake()
 
 
@@ -229,7 +233,7 @@ def test_a_pending_review_is_submitted_rather_than_a_fresh_one(
     host: Callable[[Seed], Host],
 ) -> None:
     subject = host(Seed(pending=PendingReview.fake()))
-    subject.code_review().review(PrNumber.fake(), ReviewRequest.fake())
+    subject.code_review().submit_review(PrNumber.fake(), ReviewRequest.fake())
     assert subject.submitted() == Submissions(
         (Submission.fake().model_copy(update={"pending": ReviewId.fake()}),)
     )
@@ -238,16 +242,18 @@ def test_a_pending_review_is_submitted_rather_than_a_fresh_one(
 def test_a_pending_review_on_another_pull_request_is_left_alone(
     host: Callable[[Seed], Host],
 ) -> None:
-    subject = host(Seed(pending=PendingReview(pr=other_pr(), id=ReviewId.fake())))
-    subject.code_review().review(PrNumber.fake(), ReviewRequest.fake())
+    subject = host(Seed(pending=PendingReview(pr=other_pr_number(), id=ReviewId.fake())))
+    subject.code_review().submit_review(PrNumber.fake(), ReviewRequest.fake())
     assert subject.submitted() == Submissions.fake()
 
 
 def test_a_submitted_pending_review_is_no_longer_pending(host: Callable[[Seed], Host]) -> None:
     subject = host(Seed(pending=PendingReview.fake()))
-    subject.code_review().review(PrNumber.fake(), ReviewRequest.fake())
-    subject.code_review().review(PrNumber.fake(), ReviewRequest.fake())
-    assert subject.submitted().root[-1] == Submission.fake()
+    subject.code_review().submit_review(PrNumber.fake(), ReviewRequest.fake())
+    subject.code_review().submit_review(PrNumber.fake(), ReviewRequest.fake())
+    assert subject.submitted() == Submissions(
+        (Submission.fake().model_copy(update={"pending": ReviewId.fake()}), Submission.fake())
+    )
 
 
 @pytest.mark.parametrize("decision", [ReviewDecision.reject, ReviewDecision.comment])
@@ -256,7 +262,7 @@ def test_a_decision_that_needs_a_body_is_refused_without_one(
 ) -> None:
     subject = host(Seed())
     with pytest.raises(MissingReviewBodyError, match=f"{decision} requires comment text"):
-        subject.code_review().review(
+        subject.code_review().submit_review(
             PrNumber.fake(), ReviewRequest(decision=decision, body=ReviewBody(""))
         )
     assert subject.submitted() == Submissions(())
@@ -265,7 +271,7 @@ def test_a_decision_that_needs_a_body_is_refused_without_one(
 def test_an_approval_needs_no_body(host: Callable[[Seed], Host]) -> None:
     subject = host(Seed())
     request = ReviewRequest(decision=ReviewDecision.approve, body=ReviewBody(""))
-    subject.code_review().review(PrNumber.fake(), request)
+    subject.code_review().submit_review(PrNumber.fake(), request)
     assert subject.submitted() == Submissions(
         (Submission.fake().model_copy(update={"request": request}),)
     )

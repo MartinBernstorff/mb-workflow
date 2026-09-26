@@ -32,14 +32,14 @@ def reviewed_pr(worktree: Worktree, status: WorkspaceStatus) -> PrNumber:
 def finalize(shell: Shell, request: ReviewRequest, status: WorkspaceStatus) -> None:
     orca = Orca(shell)
     worktree = orca.current()
-    finalized(GitHub(shell), worktree, request, status)
+    submit_linked_review(GitHub(shell), worktree, request, status)
     orca.remove_worktree(worktree.path)
     logger.info("Removed %s.", worktree.path.root)
 
 
-def finalized(
+def submit_linked_review(
     code_review: CodeReview, worktree: Worktree, request: ReviewRequest, status: WorkspaceStatus
 ) -> None:
     pr = reviewed_pr(worktree, status)
-    code_review.review(pr, request)
+    code_review.submit_review(pr, request)
     logger.info("Submitted %s on PR #%s.", request.decision, pr.root)

@@ -17,7 +17,7 @@ class CodeReview(Protocol):
 
     def checkout(self, pr: PrNumber, into: ExistingDirectory) -> None: ...
 
-    def review(self, pr: PrNumber, request: ReviewRequest) -> None: ...
+    def submit_review(self, pr: PrNumber, request: ReviewRequest) -> None: ...
 
 
 class Submission(Model):
@@ -74,7 +74,7 @@ class FakeCodeReview:
     def checkout(self, pr: PrNumber, into: ExistingDirectory) -> None:
         self._checked_out = Checkouts((*self._checked_out.root, Checkout(pr=pr, into=into)))
 
-    def review(self, pr: PrNumber, request: ReviewRequest) -> None:
+    def submit_review(self, pr: PrNumber, request: ReviewRequest) -> None:
         request.ensure_body()
         pending = self._pending.id if self._pending is not None and self._pending.pr == pr else None
         if pending is not None:

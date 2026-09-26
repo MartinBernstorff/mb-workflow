@@ -2,8 +2,8 @@ import pytest
 
 from mb_workflow.b_core.a_features.finalize_review import (
     NotFinalizableError,
-    finalized,
     reviewed_pr,
+    submit_linked_review,
 )
 from mb_workflow.b_core.c_secondary_ports.code_review import FakeCodeReview, Submissions
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
@@ -37,7 +37,7 @@ def test_rejects_a_worktree_with_no_linked_pull_request() -> None:
 
 def test_submits_the_review_on_the_linked_pull_request() -> None:
     code_review = FakeCodeReview()
-    finalized(code_review, Worktree.fake(), ReviewRequest.fake(), WorkspaceStatus.fake())
+    submit_linked_review(code_review, Worktree.fake(), ReviewRequest.fake(), WorkspaceStatus.fake())
     assert code_review.submitted() == Submissions.fake()
 
 
@@ -45,7 +45,7 @@ def test_submits_nothing_for_a_worktree_in_another_status() -> None:
     code_review = FakeCodeReview()
     worktree = Worktree.fake().model_copy(update={"workspace_status": None})
     with pytest.raises(NotFinalizableError):
-        finalized(code_review, worktree, ReviewRequest.fake(), WorkspaceStatus.fake())
+        submit_linked_review(code_review, worktree, ReviewRequest.fake(), WorkspaceStatus.fake())
     assert code_review.submitted() == Submissions(())
 
 

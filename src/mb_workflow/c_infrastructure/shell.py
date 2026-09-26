@@ -29,7 +29,7 @@ class Shell:
     def cwd(self) -> ExistingDirectory:
         return self._cwd
 
-    def at(self, directory: ExistingDirectory) -> Shell:
+    def in_directory(self, directory: ExistingDirectory) -> Shell:
         return Shell(directory)
 
     def run(self, command: Command) -> CommandOutput:

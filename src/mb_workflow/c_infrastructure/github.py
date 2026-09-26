@@ -220,7 +220,9 @@ class GitHub:
         ).branches()
 
     def checkout(self, pr: PrNumber, into: ExistingDirectory) -> None:
-        _ = self._shell.at(into).run(Command(("gh", "pr", "checkout", str(pr.root), "--force")))
+        _ = self._shell.in_directory(into).run(
+            Command(("gh", "pr", "checkout", str(pr.root), "--force"))
+        )
 
     def viewer(self) -> UserLogin:
         return UserLogin.parse(self._shell.run(Command(("gh", "api", "user", "--jq", ".login"))))
@@ -240,7 +242,7 @@ class GitHub:
             )
         )
 
-    def review(self, pr: PrNumber, request: ReviewRequest) -> None:
+    def submit_review(self, pr: PrNumber, request: ReviewRequest) -> None:
         request.ensure_body()
         pending = self.reviews(pr).pending_by(self.viewer())
         if pending is None:
