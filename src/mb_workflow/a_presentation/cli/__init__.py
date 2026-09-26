@@ -6,19 +6,13 @@ import typer
 from mb_workflow.a_presentation import commands
 from mb_workflow.a_presentation.cli.ticket import ticket_app
 from mb_workflow.a_presentation.diagram import DiagramPath, diagram
-from mb_workflow.b_core.a_features.autolabel import (
-    AutolabelRequest,
-    DryRun,
-    ExcludePattern,
-    Exclusions,
-    LedgerPath,
-)
+from mb_workflow.b_core.a_features.autolabel import AutolabelRequest, DryRun
 from mb_workflow.b_core.a_features.label import LabelChange, LabelRequest
 from mb_workflow.b_core.a_features.open_issue import OpenRequest
 from mb_workflow.b_core.b_domain_services.flow_report import AsJson
 from mb_workflow.b_core.b_domain_services.flow_transition import Force
 from mb_workflow.b_core.b_domain_services.lock import LockName
-from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
+from mb_workflow.b_core.d_domain_model.autolabel import ExcludePattern, Exclusions
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
 from mb_workflow.b_core.d_domain_model.flow import EventName
@@ -28,7 +22,6 @@ from mb_workflow.b_core.d_domain_model.issue import (
     CreatedAfter,
     CreatedWithin,
     Creator,
-    IssueFilter,
     IssueIdentifier,
     LabelName,
 )
@@ -142,21 +135,17 @@ def linear_autolabel(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    label = LabelName(name)
     request = AutolabelRequest(
-        label=label,
-        wanted=IssueFilter(
-            creator=Creator(creator),
-            created_after=CreatedAfter.of(CreatedWithin(created_within_days), Today.now()),
-        ),
+        label=LabelName(name),
+        creator=Creator(creator),
         exclusions=Exclusions(
             projects=ExcludePattern(exclude_projects) if exclude_projects else None,
             statuses=ExcludePattern(exclude_statuses) if exclude_statuses else None,
         ),
         dry_run=DryRun(not apply),
     )
-    ledger = LedgerPath.of(CacheDirectory.of_user(), label)
-    raise typer.Exit(code=commands.linear_autolabel(request, ledger).root)
+    window = CreatedAfter.of(CreatedWithin(created_within_days), Today.now())
+    raise typer.Exit(code=commands.linear_autolabel(request, window).root)
 
 
 @app.command("open-issue")

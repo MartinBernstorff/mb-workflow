@@ -4,13 +4,9 @@ from pathlib import Path
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
+from mb_workflow.a_presentation.autolabel_report import report
 from mb_workflow.a_presentation.console import ExitCode, Output, write
-from mb_workflow.b_core.a_features.autolabel import (
-    AutolabelRequest,
-    LedgerPath,
-    UnknownLabelError,
-    sweep,
-)
+from mb_workflow.b_core.a_features.autolabel import AutolabelRequest, UnknownLabelError, sweep
 from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
@@ -28,6 +24,7 @@ from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.b_domain_services.lock import AlreadyRunningError, LockName, LockPath
 from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
+from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.b_core.d_domain_model.config import (
     ConfigFileName,
     InvalidConfigError,
@@ -42,6 +39,7 @@ from mb_workflow.c_infrastructure.credentials import (
     RepositorySlug,
 )
 from mb_workflow.c_infrastructure.github import GitHub
+from mb_workflow.c_infrastructure.ledger_file import FileLedgerStore
 from mb_workflow.c_infrastructure.linear import Linear
 from mb_workflow.c_infrastructure.orca import Orca
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
@@ -52,7 +50,7 @@ if TYPE_CHECKING:
 
     from mb_workflow.b_core.b_domain_services.flow_report import AsJson
     from mb_workflow.b_core.b_domain_services.flow_transition import Force
-    from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
+    from mb_workflow.b_core.d_domain_model.issue import CreatedAfter, IssueIdentifier
     from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit
     from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus
     from mb_workflow.c_infrastructure.github import Lookback, ReviewRequest
@@ -127,8 +125,10 @@ def relabel(request: LabelRequest) -> ExitCode:
 
 
 @guarded
-def linear_autolabel(request: AutolabelRequest, ledger: LedgerPath) -> ExitCode:
-    return ExitCode.of(sweep(linear(), request, ledger).failed_any())
+def linear_autolabel(request: AutolabelRequest, window: CreatedAfter) -> ExitCode:
+    outcome = sweep(linear(), FileLedgerStore(CacheDirectory.of_user()), request, window)
+    report(outcome)
+    return ExitCode.of(outcome.failed_any())
 
 
 @guarded
