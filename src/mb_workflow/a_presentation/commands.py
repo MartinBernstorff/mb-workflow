@@ -27,6 +27,7 @@ from mb_workflow.b_core.a_features.start import (
     start_ticket,
 )
 from mb_workflow.b_core.a_features.transition import transition
+from mb_workflow.b_core.a_features.unclaim import unclaim_ticket
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRefusedError
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
@@ -180,6 +181,12 @@ def ticket_start(
         claim_settings=settings.claims,
         request=request,
     )
+    return ExitCode(0)
+
+
+@guarded
+def ticket_unclaim(ticket: IssueIdentifier) -> ExitCode:
+    unclaim_ticket(LinearClaims.connected(linear_key()), ticket)
     return ExitCode(0)
 
 
