@@ -9,7 +9,7 @@ from mb_workflow.b_core.a_features.autolabel import (
     AutolabelRequest,
     LedgerPath,
     UnknownLabelError,
-    autolabel,
+    sweep,
 )
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
@@ -17,13 +17,14 @@ from mb_workflow.b_core.a_features.open_issue import (
     OpenRequest,
     PromptUndeliveredError,
     UnprefixedStateError,
-    open_issue,
+    open_workspace,
 )
 from mb_workflow.b_core.a_features.review_workspaces import create_workspaces
 from mb_workflow.b_core.a_features.show_config import show_config
 from mb_workflow.b_core.a_features.show_flow import show_flow
 from mb_workflow.b_core.a_features.transition import transition
 from mb_workflow.b_core.b_domain_services.lock import AlreadyRunningError, LockName, LockPath
+from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
 from mb_workflow.b_core.d_domain_model.config import (
     ConfigFileName,
     InvalidConfigError,
@@ -31,9 +32,10 @@ from mb_workflow.b_core.d_domain_model.config import (
     WorkingDirectory,
 )
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError
-from mb_workflow.c_infrastructure.board import BoardError
-from mb_workflow.c_infrastructure.orca import OrcaError, WorkspaceStatus
+from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
+from mb_workflow.c_infrastructure.orca import Orca, OrcaError, WorkspaceStatus
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
+from mb_workflow.c_infrastructure.workspace_board import BoardError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -52,6 +54,7 @@ FAILURES = (
     CalledProcessError,
     FlowError,
     InvalidConfigError,
+    IssueTrackerError,
     MissingConfigError,
     NotFinalizableError,
     OSError,
@@ -83,6 +86,10 @@ def here() -> Shell:
     return Shell(ExistingDirectory(Path.cwd()))
 
 
+def linear() -> Linear:
+    return Linear.connected(LinearApiKey.from_environment())
+
+
 @guarded
 def review_workspaces(status: WorkspaceStatus, lookback: Lookback, lock: LockName) -> ExitCode:
     return ExitCode.of(create_workspaces(here(), status, lookback, LockPath.of(lock)).failed_any())
@@ -96,18 +103,18 @@ def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode
 
 @guarded
 def relabel(request: LabelRequest) -> ExitCode:
-    change_label(here(), request)
+    change_label(Orca(here()), linear(), request)
     return ExitCode(0)
 
 
 @guarded
 def linear_autolabel(request: AutolabelRequest, ledger: LedgerPath) -> ExitCode:
-    return ExitCode.of(autolabel(here(), request, ledger).failed_any())
+    return ExitCode.of(sweep(linear(), request, ledger).failed_any())
 
 
 @guarded
 def open_linear_issue(request: OpenRequest) -> ExitCode:
-    open_issue(here(), request)
+    open_workspace(Orca(here()), linear(), request)
     return ExitCode(0)
 
 

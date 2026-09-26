@@ -1,9 +1,12 @@
 import logging
 from typing import TYPE_CHECKING
 
+import pytest
+
 from mb_workflow.b_core.a_features.autolabel import (
-    Apply,
-    Criteria,
+    AutoLabelCriteria,
+    AutolabelRequest,
+    DryRun,
     ExcludePattern,
     Exclusions,
     Ledger,
@@ -14,71 +17,123 @@ from mb_workflow.b_core.a_features.autolabel import (
     Selection,
     SkipCount,
     SkipReason,
+    UnknownLabelError,
+    sweep,
 )
+from mb_workflow.b_core.c_secondary_ports.issue_tracker import FakeIssueTracker, TrackedIssue
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
-from mb_workflow.b_core.d_domain_model.outcome import Failed
-from mb_workflow.c_infrastructure.linear import (
-    IssuePage,
+from mb_workflow.b_core.d_domain_model.issue import (
+    Assigned,
+    CreatedOn,
+    Creator,
+    Issue,
+    IssueIdentifier,
+    Issues,
     LabelName,
-    ListedIssues,
+    LabelNames,
     ProjectName,
     StatusName,
 )
-from mb_workflow.c_infrastructure.shell import CommandOutput
+from mb_workflow.b_core.d_domain_model.outcome import Failed
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
 
-
-def swept() -> ListedIssues:
-    return IssuePage.parse(
-        CommandOutput(
-            """
-            {
-              "nodes": [
-                {"identifier": "E-1", "state": {"name": "Todo"},
-                 "project": {"name": "BE: Campaigns MVP"}},
-                {"identifier": "E-2", "state": {"name": "Todo"},
-                 "project": {"name": "BE Shop"}},
-                {"identifier": "E-3", "state": {"name": "Todo"},
-                 "project": {"name": "Sentry Backend"}},
-                {"identifier": "E-4", "state": {"name": "Todo"}, "project": null},
-                {"identifier": "E-5", "state": {"name": "Done"},
-                 "project": {"name": "Editor Bugs"}},
-                {"identifier": "E-6", "state": {"name": "Canceled"},
-                 "project": {"name": "Editor Bugs"}},
-                {"identifier": "E-7", "state": {"name": "Duplicate"},
-                 "project": {"name": "Editor Bugs"}},
-                {"identifier": "E-8", "state": {"name": "Triage"},
-                 "project": {"name": "Editor Bugs"}},
-                {"identifier": "E-9", "state": {"name": "Todo"},
-                 "project": {"name": "Editor Bugs"},
-                 "labels": {"nodes": [{"name": "d-implement"}]}},
-                {"identifier": "E-10", "state": {"name": "Todo"},
-                 "project": {"name": "Editor Bugs"}},
-                {"identifier": "E-11", "state": {"name": "Todo"},
-                 "project": {"name": "Editor Bugs"}}
-              ],
-              "pageInfo": {"hasNextPage": false, "endCursor": "last"}
-            }
-            """
+def default_issues() -> Issues:
+    return Issues(
+        (
+            Issue(
+                identifier=IssueIdentifier("E-1"),
+                status=StatusName("Todo"),
+                project=ProjectName("BE: Campaigns MVP"),
+                labels=LabelNames(()),
+                assigned=Assigned(False),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-2"),
+                status=StatusName("Todo"),
+                project=ProjectName("BE Shop"),
+                labels=LabelNames(()),
+                assigned=Assigned(False),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-3"),
+                status=StatusName("Todo"),
+                project=ProjectName("Sentry Backend"),
+                labels=LabelNames(()),
+                assigned=Assigned(False),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-4"),
+                status=StatusName("Todo"),
+                project=None,
+                labels=LabelNames(()),
+                assigned=Assigned(False),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-5"),
+                status=StatusName("Done"),
+                project=ProjectName("Editor Bugs"),
+                labels=LabelNames(()),
+                assigned=Assigned(False),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-6"),
+                status=StatusName("Canceled"),
+                project=ProjectName("Editor Bugs"),
+                labels=LabelNames(()),
+                assigned=Assigned(False),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-7"),
+                status=StatusName("Duplicate"),
+                project=ProjectName("Editor Bugs"),
+                labels=LabelNames(()),
+                assigned=Assigned(False),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-8"),
+                status=StatusName("Triage"),
+                project=ProjectName("Editor Bugs"),
+                labels=LabelNames(()),
+                assigned=Assigned(False),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-9"),
+                status=StatusName("Todo"),
+                project=ProjectName("Editor Bugs"),
+                labels=LabelNames.fake(),
+                assigned=Assigned(False),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-10"),
+                status=StatusName("Todo"),
+                project=ProjectName("Editor Bugs"),
+                labels=LabelNames(()),
+                assigned=Assigned(False),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-11"),
+                status=StatusName("Todo"),
+                project=ProjectName("Editor Bugs"),
+                labels=LabelNames(()),
+                assigned=Assigned(False),
+            ),
         )
-    ).issues()
+    )
 
 
 def ledger() -> Ledger:
     return Ledger((IssueIdentifier("E-10"),))
 
 
-def criteria() -> Criteria:
-    return Criteria(label=LabelName.fake(), exclusions=Exclusions.fake(), ledger=ledger())
+def criteria() -> AutoLabelCriteria:
+    return AutoLabelCriteria(label=LabelName.fake(), exclusions=Exclusions.fake(), ledger=ledger())
 
 
 def selection() -> Selection:
-    return Selection.of(swept(), criteria())
+    return Selection.of(default_issues(), criteria())
 
 
 def chosen() -> tuple[IssueIdentifier, ...]:
@@ -86,17 +141,17 @@ def chosen() -> tuple[IssueIdentifier, ...]:
 
 
 def outcome() -> Outcome:
-    return Outcome(selection=selection(), applied=Apply(True), labelled=chosen(), failed=())
+    return Outcome(selection=selection(), dry_run=DryRun(False), labelled=chosen(), failed=())
 
 
 def dry_outcome() -> Outcome:
-    return Outcome(selection=selection(), applied=Apply(False), labelled=(), failed=())
+    return Outcome(selection=selection(), dry_run=DryRun(True), labelled=(), failed=())
 
 
 def unexcluded() -> Selection:
     return Selection.of(
-        swept(),
-        Criteria(
+        default_issues(),
+        AutoLabelCriteria(
             label=LabelName("Backend"),
             exclusions=Exclusions(projects=None, statuses=None),
             ledger=Ledger(()),
@@ -105,7 +160,7 @@ def unexcluded() -> Selection:
 
 
 def test_an_absent_pattern_excludes_nothing() -> None:
-    assert unexcluded().labellable() == swept()
+    assert unexcluded().labellable() == default_issues()
 
 
 def test_a_project_matching_the_pattern_is_excluded() -> None:
@@ -139,19 +194,6 @@ def test_an_issue_in_the_ledger_is_skipped() -> None:
 
 def test_the_survivors_are_the_ones_nothing_excludes() -> None:
     assert chosen() == (IssueIdentifier("E-4"), IssueIdentifier("E-11"))
-
-
-def test_each_survivor_is_labelled_by_the_shared_command_builder() -> None:
-    assert LabelName.fake().addition(chosen()[0]).root == (
-        "linearis",
-        "issues",
-        "update",
-        "E-4",
-        "--labels",
-        "d-implement",
-        "--label-mode",
-        "add",
-    )
 
 
 def test_counts_the_issues_dropped_for_each_reason() -> None:
@@ -211,7 +253,7 @@ def test_the_summary_names_the_updates_that_failed() -> None:
 def test_a_sweep_that_skipped_nothing_summarises_only_the_labelling() -> None:
     every = unexcluded()
     labelled = tuple(issue.identifier for issue in every.labellable().root)
-    every_outcome = Outcome(selection=every, applied=Apply(True), labelled=labelled, failed=())
+    every_outcome = Outcome(selection=every, dry_run=DryRun(False), labelled=labelled, failed=())
     assert every_outcome.summary().root == "Labelled 11 of 11 issues"
 
 
@@ -281,3 +323,51 @@ def test_a_status_matching_the_pattern_is_excluded() -> None:
 
 def test_a_status_the_pattern_misses_is_kept() -> None:
     assert not Exclusions.fake().excludes_status(StatusName.fake()).root
+
+
+def request_with(dry_run: DryRun) -> AutolabelRequest:
+    return AutolabelRequest.fake().model_copy(update={"dry_run": dry_run})
+
+
+def test_an_applied_sweep_labels_the_survivors_on_the_tracker(tmp_path: Path) -> None:
+    tracker = FakeIssueTracker(
+        LabelNames.fake(),
+        tuple(
+            TrackedIssue(issue=issue, creator=Creator.fake(), created_on=CreatedOn.fake())
+            for issue in default_issues().root
+        ),
+    )
+    _ = sweep(tracker, request_with(DryRun(False)), LedgerPath(tmp_path / "ledger.txt"))
+    assert tracker.read_issue(IssueIdentifier("E-4")).labels == LabelNames.fake()
+
+
+def test_an_applied_sweep_records_what_it_labelled(tmp_path: Path) -> None:
+    tracker = FakeIssueTracker(
+        LabelNames.fake(),
+        tuple(
+            TrackedIssue(issue=issue, creator=Creator.fake(), created_on=CreatedOn.fake())
+            for issue in default_issues().root
+        ),
+    )
+    ledger_path = LedgerPath(tmp_path / "ledger.txt")
+    _ = sweep(tracker, request_with(DryRun(False)), ledger_path)
+    assert ledger_path.read() == Ledger(tuple(IssueIdentifier(f"E-{n}") for n in (4, 10, 11)))
+
+
+def test_a_dry_sweep_leaves_the_tracker_untouched(tmp_path: Path) -> None:
+    tracker = FakeIssueTracker(
+        LabelNames.fake(),
+        tuple(
+            TrackedIssue(issue=issue, creator=Creator.fake(), created_on=CreatedOn.fake())
+            for issue in default_issues().root
+        ),
+    )
+    _ = sweep(tracker, request_with(DryRun(True)), LedgerPath(tmp_path / "ledger.txt"))
+    assert tracker.read_issue(IssueIdentifier("E-4")).labels == LabelNames(())
+
+
+def test_sweeping_for_a_label_the_tracker_lacks_is_refused(tmp_path: Path) -> None:
+    tracker = FakeIssueTracker(LabelNames.fake(), ())
+    unknown = AutolabelRequest.fake().model_copy(update={"label": LabelName("Frontend")})
+    with pytest.raises(UnknownLabelError, match="Frontend"):
+        _ = sweep(tracker, unknown, LedgerPath(tmp_path / "ledger.txt"))

@@ -1,47 +1,54 @@
-import logging
-from datetime import date, timedelta
-from enum import StrEnum
-from subprocess import CalledProcessError
-from typing import TYPE_CHECKING
+import os
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, override
 
-from pydantic import AliasPath, Field, ValidationError
+from linear_python_client import (
+    FindLabelRequest,
+    FindUserRequest,
+    IssueAddLabelRequest,
+    IssueLabelsRequest,
+    IssueUpdateRequest,
+    LinearClient,
+    LinearError,
+)
+from pydantic import AliasPath, Field
 
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
-from mb_workflow.c_infrastructure.shell import Command, CommandOutput, Shell
-from mb_workflow.d_lib.models import Model, Payload, Value
+from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker, IssueTrackerError
+from mb_workflow.b_core.d_domain_model.issue import (
+    Assigned,
+    Issue,
+    IssueIdentifier,
+    Issues,
+    LabelName,
+    LabelNames,
+    ProjectName,
+    StatusName,
+)
+from mb_workflow.d_lib.models import Payload, Value
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.d_domain_model.clock import Today
+    from collections.abc import Generator
 
-logger = logging.getLogger(__name__)
+    from mb_workflow.b_core.d_domain_model.issue import Assignee, IssueFilter
 
 
-class LabelName(Value[str]):
+class LinearApiKey(Value[str]):
     @staticmethod
-    def fake() -> LabelName:
-        return LabelName("d-implement")
-
-    def addition(self, issue: IssueIdentifier) -> Command:
-        return Command(
-            (
-                "linearis",
-                "issues",
-                "update",
-                issue.root,
-                "--labels",
-                self.root,
-                "--label-mode",
-                "add",
-            )
-        )
-
-
-class Label(Payload):
-    name: LabelName
+    def fake() -> LinearApiKey:
+        return LinearApiKey("lin_api_0000000000000000000000000000000000000000")
 
     @staticmethod
-    def fake() -> Label:
-        return Label(name=LabelName.fake())
+    def from_environment() -> LinearApiKey:
+        key = os.environ.get("LINEAR_API_KEY")
+        if not key:
+            raise IssueTrackerError("Set LINEAR_API_KEY to a Linear personal API key.")
+        return LinearApiKey(key)
+
+
+class LabelId(Value[str]):
+    @staticmethod
+    def fake() -> LabelId:
+        return LabelId("8eeefaa9-c4f3-4ca4-af53-4b2aa2078d1e")
 
 
 class PageCursor(Value[str]):
@@ -64,276 +71,189 @@ class PageInfo(Payload):
     def fake() -> PageInfo:
         return PageInfo(has_next_page=MorePages.fake(), end_cursor=PageCursor.fake())
 
-    # linearis reports an end cursor on the last page too, so only the flag ends the walk.
     def next_cursor(self) -> PageCursor | None:
         return self.end_cursor if self.has_next_page.root else None
 
 
-class LabelKnown(Value[bool]):
-    @staticmethod
-    def fake() -> LabelKnown:
-        return LabelKnown(True)
-
-
-class LabelPage(Payload):
-    nodes: tuple[Label, ...]
-    page_info: PageInfo
+class LabelPayload(Payload):
+    name: LabelName
 
     @staticmethod
-    def fake() -> LabelPage:
-        return LabelPage(nodes=(Label.fake(),), page_info=PageInfo.fake())
-
-    @staticmethod
-    def parse(output: CommandOutput) -> LabelPage:
-        return LabelPage.model_validate_json(output.root)
-
-    def names(self) -> LabelNames:
-        return LabelNames(tuple(label.name for label in self.nodes))
-
-    def next_cursor(self) -> PageCursor | None:
-        return self.page_info.next_cursor()
+    def fake() -> LabelPayload:
+        return LabelPayload(name=LabelName.fake())
 
 
-class LabelNames(Value[tuple[LabelName, ...]]):
-    @staticmethod
-    def fake() -> LabelNames:
-        return LabelNames((LabelName.fake(),))
-
-    @staticmethod
-    def lookup(cursor: PageCursor | None) -> Command:
-        page = ("linearis", "labels", "list", "--limit", "250")
-        if cursor is None:
-            return Command(page)
-        return Command((*page, "--after", cursor.root))
-
-    def has(self, label: LabelName) -> LabelKnown:
-        return LabelKnown(label in self.root)
-
-    def without(self, label: LabelName) -> LabelNames:
-        return LabelNames(tuple(name for name in self.root if name != label))
-
-    def overwrite(self, issue: IssueIdentifier) -> Command:
-        update = ("linearis", "issues", "update", issue.root)
-        if len(self.root) == 0:
-            return Command((*update, "--clear-labels"))
-        return Command(
-            (
-                *update,
-                "--labels",
-                ",".join(name.root for name in self.root),
-                "--label-mode",
-                "overwrite",
-            )
-        )
-
-
-class Assignee(Value[str]):
-    @staticmethod
-    def fake() -> Assignee:
-        return Assignee("mab@flowbase.io")
-
-
-class AssignmentFailure(Value[str]):
-    @staticmethod
-    def fake() -> AssignmentFailure:
-        return AssignmentFailure("linearis is not installed or not on PATH")
-
-
-class IssueState(StrEnum):
-    backlog = "Backlog"
-    maturing = "Maturing"
-    todo = "Todo"
-    in_progress = "In Progress"
-    in_review = "In Review"
-    ready_for_release = "Ready For Release"
-    done = "Done"
-    canceled = "Canceled"
-    duplicate = "Duplicate"
-    triage = "Triage"
-
-
-class LabelledIssue(Payload):
-    labels: tuple[Label, ...] = Field(default=(), validation_alias=AliasPath("labels", "nodes"))
-
-    def label_names(self) -> LabelNames:
-        return LabelNames(tuple(label.name for label in self.labels))
-
-
-class Issue(LabelledIssue):
-    identifier: IssueIdentifier
-    state: IssueState = Field(validation_alias=AliasPath("state", "name"))
-
-    @staticmethod
-    def fake() -> Issue:
-        return Issue(
-            identifier=IssueIdentifier.fake(), state=IssueState.todo, labels=(Label.fake(),)
-        )
-
-    @staticmethod
-    def parse(output: CommandOutput) -> Issue:
-        return Issue.model_validate_json(output.root)
-
-
-# ProjectName and StatusName share a base so one exclusion pattern can match either.
-class IssueText(Value[str]): ...
-
-
-class ProjectName(IssueText):
-    @staticmethod
-    def fake() -> ProjectName:
-        return ProjectName("BE: Campaigns MVP")
-
-
-class Project(Payload):
+class ProjectPayload(Payload):
     name: ProjectName
 
     @staticmethod
-    def fake() -> Project:
-        return Project(name=ProjectName.fake())
+    def fake() -> ProjectPayload:
+        return ProjectPayload(name=ProjectName.fake())
 
 
-class StatusName(IssueText):
+# Only whether someone is assigned matters, so none of the assignee's fields are read.
+class AssigneePayload(Payload):
     @staticmethod
-    def fake() -> StatusName:
-        return StatusName("Todo")
+    def fake() -> AssigneePayload:
+        return AssigneePayload()
 
 
-class ListedIssue(LabelledIssue):
+class IssuePayload(Payload):
     identifier: IssueIdentifier
     status: StatusName = Field(validation_alias=AliasPath("state", "name"))
-    project: Project | None = None
+    project: ProjectPayload | None = None
+    labels: tuple[LabelPayload, ...] = Field(
+        default=(), validation_alias=AliasPath("labels", "nodes")
+    )
+    assignee: AssigneePayload | None = None
 
     @staticmethod
-    def fake() -> ListedIssue:
-        return ListedIssue(
+    def fake() -> IssuePayload:
+        return IssuePayload(
             identifier=IssueIdentifier.fake(),
             status=StatusName.fake(),
-            project=Project.fake(),
-            labels=(),
+            project=ProjectPayload.fake(),
+            labels=(LabelPayload.fake(),),
+        )
+
+    def issue(self) -> Issue:
+        return Issue(
+            identifier=self.identifier,
+            status=self.status,
+            project=self.project.name if self.project is not None else None,
+            labels=LabelNames(tuple(label.name for label in self.labels)),
+            assigned=Assigned(self.assignee is not None),
         )
 
 
-class ListedIssues(Value[tuple[ListedIssue, ...]]):
+class IssueRead(Payload):
+    issue: IssuePayload
+
     @staticmethod
-    def fake() -> ListedIssues:
-        return ListedIssues((ListedIssue.fake(),))
+    def fake() -> IssueRead:
+        return IssueRead(issue=IssuePayload.fake())
 
 
 class IssuePage(Payload):
-    nodes: tuple[ListedIssue, ...]
+    nodes: tuple[IssuePayload, ...]
     page_info: PageInfo
 
     @staticmethod
     def fake() -> IssuePage:
-        return IssuePage(nodes=(ListedIssue.fake(),), page_info=PageInfo.fake())
+        return IssuePage(nodes=(IssuePayload.fake(),), page_info=PageInfo.fake())
+
+    def issues(self) -> Issues:
+        return Issues(tuple(node.issue() for node in self.nodes))
+
+
+class IssueSweep(Payload):
+    issues: IssuePage
 
     @staticmethod
-    def parse(output: CommandOutput) -> IssuePage:
-        return IssuePage.model_validate_json(output.root)
-
-    def issues(self) -> ListedIssues:
-        return ListedIssues(self.nodes)
-
-    def next_cursor(self) -> PageCursor | None:
-        return self.page_info.next_cursor()
+    def fake() -> IssueSweep:
+        return IssueSweep(issues=IssuePage.fake())
 
 
-class Creator(Value[str]):
-    @staticmethod
-    def fake() -> Creator:
-        return Creator("mab@flowbase.io")
+@contextmanager
+def translated_errors() -> Generator[None]:
+    try:
+        yield
+    except LinearError as error:
+        raise IssueTrackerError(str(error)) from error
 
 
-class CreatedWithin(Value[int]):
-    @staticmethod
-    def fake() -> CreatedWithin:
-        return CreatedWithin(30)
-
-
-class CreatedAfter(Value[date]):
-    @staticmethod
-    def fake() -> CreatedAfter:
-        return CreatedAfter(date(2026, 8, 9))
+# The client's own issue queries leave out the project, which the sweep's exclusions read.
+class Linear(IssueTracker):
+    def __init__(self, client: LinearClient) -> None:
+        self._client = client
 
     @staticmethod
-    def of(window: CreatedWithin, today: Today) -> CreatedAfter:
-        return CreatedAfter(today.root - timedelta(days=window.root))
+    def connected(key: LinearApiKey) -> Linear:
+        return Linear(LinearClient(api_key=key.root))
 
-
-class IssueQuery(Model):
-    creator: Creator
-    created_after: CreatedAfter
-
-    @staticmethod
-    def fake() -> IssueQuery:
-        return IssueQuery(creator=Creator.fake(), created_after=CreatedAfter.fake())
-
-    def command(self, cursor: PageCursor | None) -> Command:
-        page = (
-            "linearis",
-            "issues",
-            "list",
-            "--creator",
-            self.creator.root,
-            "--created-after",
-            self.created_after.root.isoformat(),
-            "--limit",
-            "250",
-        )
-        if cursor is None:
-            return Command(page)
-        return Command((*page, "--after", cursor.root))
-
-
-class Linear:
-    def __init__(self, shell: Shell) -> None:
-        self._shell = shell
-
-    def assign(self, issue: IssueIdentifier, assignee: Assignee) -> AssignmentFailure | None:
-        try:
-            _ = self._shell.run(
-                Command(("linearis", "issues", "update", issue.root, "--assignee", assignee.root))
-            )
-        except (CalledProcessError, FileNotFoundError) as error:
-            return AssignmentFailure(str(error))
-        return None
-
-    def labels(self, issue: IssueIdentifier) -> LabelNames:
-        return self.read(issue).label_names()
-
-    def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
-        _ = self._shell.run(label.addition(issue))
-
+    @override
     def workspace_labels(self) -> LabelNames:
-        found: list[LabelName] = []
-        cursor: PageCursor | None = None
-        while True:
-            page = LabelPage.parse(self._shell.run(LabelNames.lookup(cursor)))
-            found.extend(page.names().root)
-            cursor = page.next_cursor()
-            if cursor is None:
-                return LabelNames(tuple(found))
+        with translated_errors():
+            labels = self._client.paginate(self._client.issue_labels, IssueLabelsRequest(first=250))
+            return LabelNames(tuple(LabelName(label.name) for label in labels if label.name))
 
-    def issues(self, query: IssueQuery) -> ListedIssues:
-        found: list[ListedIssue] = []
+    @override
+    def list_issues(self, wanted: IssueFilter) -> Issues:
+        found: list[Issue] = []
         cursor: PageCursor | None = None
         while True:
-            page = IssuePage.parse(self._shell.run(query.command(cursor)))
+            with translated_errors():
+                data = self._client.execute(
+                    """
+                    query($filter: IssueFilter, $after: String) {
+                      issues(first: 250, after: $after, filter: $filter) {
+                        nodes {
+                          identifier
+                          state { name }
+                          project { name }
+                          labels { nodes { name } }
+                          assignee { id }
+                        }
+                        pageInfo { hasNextPage endCursor }
+                      }
+                    }
+                    """,
+                    {
+                        "filter": {
+                            "creator": {"email": {"eq": wanted.creator.root}},
+                            "createdAt": {"gte": wanted.created_after.root.isoformat()},
+                        },
+                        "after": cursor.root if cursor is not None else None,
+                    },
+                )
+            page = IssueSweep.model_validate(data).issues
             found.extend(page.issues().root)
-            cursor = page.next_cursor()
+            cursor = page.page_info.next_cursor()
             if cursor is None:
-                return ListedIssues(tuple(found))
+                return Issues(tuple(found))
 
-    # linearis can add or overwrite labels but never remove one, so removal overwrites what is left.
+    @override
+    def read_issue(self, issue: IssueIdentifier) -> Issue:
+        with translated_errors():
+            data = self._client.execute(
+                """
+                query($id: String!) {
+                  issue(id: $id) {
+                    identifier
+                    state { name }
+                    project { name }
+                    labels { nodes { name } }
+                    assignee { id }
+                  }
+                }
+                """,
+                {"id": issue.root},
+            )
+        return IssueRead.model_validate(data).issue.issue()
+
+    @override
+    def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
+        label_id = self._label_id(label)
+        with translated_errors():
+            _ = self._client.add_label(IssueAddLabelRequest(id=issue.root, label_id=label_id.root))
+
+    @override
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
-        _ = self._shell.run(labels.overwrite(issue))
+        label_ids = [self._label_id(label).root for label in labels.root]
+        with translated_errors():
+            _ = self._client.update_issue(IssueUpdateRequest(id=issue.root, label_ids=label_ids))
 
-    def read(self, issue: IssueIdentifier) -> Issue:
-        return Issue.parse(self._shell.run(Command(("linearis", "issues", "read", issue.root))))
+    @override
+    def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None:
+        with translated_errors():
+            user = self._client.find_user(FindUserRequest(email=assignee.root)).user
+            if user is None or user.id is None:
+                raise IssueTrackerError(f"No Linear user has the email {assignee.root}.")
+            _ = self._client.update_issue(IssueUpdateRequest(id=issue.root, assignee_id=user.id))
 
-    def state(self, issue: IssueIdentifier) -> IssueState | None:
-        try:
-            return self.read(issue).state
-        except (CalledProcessError, FileNotFoundError, ValidationError) as error:
-            logger.warning("Could not read the state of %s: %s", issue.root, error)
-            return None
+    def _label_id(self, label: LabelName) -> LabelId:
+        with translated_errors():
+            found = self._client.find_label(FindLabelRequest(name=label.root)).label
+        if found is None or found.id is None:
+            raise IssueTrackerError(f"No label is named {label.root}.")
+        return LabelId(found.id)

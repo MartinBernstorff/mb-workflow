@@ -2,26 +2,25 @@ import logging
 import re
 from enum import StrEnum
 from pathlib import Path
-from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
+from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
-from mb_workflow.b_core.d_domain_model.outcome import Failed
-from mb_workflow.c_infrastructure.linear import (
-    IssueQuery,
+from mb_workflow.b_core.d_domain_model.issue import (
+    Issue,
+    IssueFilter,
+    IssueIdentifier,
+    Issues,
     IssueText,
     LabelName,
-    Linear,
-    ListedIssue,
-    ListedIssues,
-    Project,
+    ProjectName,
     StatusName,
 )
+from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
-    from mb_workflow.c_infrastructure.shell import Shell
+    from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
 
 logger = logging.getLogger(__name__)
 
@@ -84,10 +83,10 @@ class Exclusions(Model):
             statuses=ExcludePattern("done|canceled|duplicate|triage"),
         )
 
-    def excludes_project(self, project: Project | None) -> Excluded:
+    def excludes_project(self, project: ProjectName | None) -> Excluded:
         if project is None or self.projects is None:
             return Excluded(False)
-        return self.projects.matches(project.name)
+        return self.projects.matches(project)
 
     def excludes_status(self, status: StatusName) -> Excluded:
         if self.statuses is None:
@@ -158,34 +157,36 @@ class LedgerPath(Value[Path]):
         _ = self.root.write_text(ledger.encode().root)
 
 
-class Criteria(Model):
+class AutoLabelCriteria(Model):
     label: LabelName
     exclusions: Exclusions
     ledger: Ledger
 
     @staticmethod
-    def fake() -> Criteria:
-        return Criteria(label=LabelName.fake(), exclusions=Exclusions.fake(), ledger=Ledger.fake())
+    def fake() -> AutoLabelCriteria:
+        return AutoLabelCriteria(
+            label=LabelName.fake(), exclusions=Exclusions.fake(), ledger=Ledger.fake()
+        )
 
-    def skipped(self, issue: ListedIssue) -> SkipReason | None:
+    def skipped(self, issue: Issue) -> SkipReason | None:
         if self.exclusions.excludes_status(issue.status).root:
             return SkipReason.excluded_status
         if self.exclusions.excludes_project(issue.project).root:
             return SkipReason.excluded_project
         if self.ledger.records(issue.identifier).root:
             return SkipReason.already_recorded
-        if self.label in issue.label_names().root:
+        if issue.labels.has(self.label).root:
             return SkipReason.already_labelled
         return None
 
 
 class Decision(Model):
-    issue: ListedIssue
+    issue: Issue
     skipped: SkipReason | None
 
     @staticmethod
     def fake() -> Decision:
-        return Decision(issue=ListedIssue.fake(), skipped=None)
+        return Decision(issue=Issue.fake(), skipped=None)
 
 
 class SkipTally(Model):
@@ -203,15 +204,13 @@ class Selection(Value[tuple[Decision, ...]]):
         return Selection((Decision.fake(),))
 
     @staticmethod
-    def of(issues: ListedIssues, criteria: Criteria) -> Selection:
+    def of(issues: Issues, criteria: AutoLabelCriteria) -> Selection:
         return Selection(
             tuple(Decision(issue=issue, skipped=criteria.skipped(issue)) for issue in issues.root)
         )
 
-    def labellable(self) -> ListedIssues:
-        return ListedIssues(
-            tuple(decision.issue for decision in self.root if decision.skipped is None)
-        )
+    def labellable(self) -> Issues:
+        return Issues(tuple(decision.issue for decision in self.root if decision.skipped is None))
 
     def skips(self) -> tuple[SkipTally, ...]:
         counts = {
@@ -225,10 +224,10 @@ class Selection(Value[tuple[Decision, ...]]):
         )
 
 
-class Apply(Value[bool]):
+class DryRun(Value[bool]):
     @staticmethod
-    def fake() -> Apply:
-        return Apply(False)
+    def fake() -> DryRun:
+        return DryRun(True)
 
 
 class SummaryLine(Value[str]):
@@ -239,23 +238,23 @@ class SummaryLine(Value[str]):
 
 class AutolabelRequest(Model):
     label: LabelName
-    query: IssueQuery
+    wanted: IssueFilter
     exclusions: Exclusions
-    apply: Apply
+    dry_run: DryRun
 
     @staticmethod
     def fake() -> AutolabelRequest:
         return AutolabelRequest(
             label=LabelName.fake(),
-            query=IssueQuery.fake(),
+            wanted=IssueFilter.fake(),
             exclusions=Exclusions.fake(),
-            apply=Apply.fake(),
+            dry_run=DryRun.fake(),
         )
 
 
 class Outcome(Model):
     selection: Selection
-    applied: Apply
+    dry_run: DryRun
     labelled: tuple[IssueIdentifier, ...]
     failed: tuple[IssueIdentifier, ...]
 
@@ -263,7 +262,7 @@ class Outcome(Model):
     def fake() -> Outcome:
         return Outcome(
             selection=Selection.fake(),
-            applied=Apply(True),
+            dry_run=DryRun(False),
             labelled=(IssueIdentifier.fake(),),
             failed=(),
         )
@@ -272,13 +271,13 @@ class Outcome(Model):
         return Failed(len(self.failed) > 0)
 
     def chosen(self) -> tuple[IssueIdentifier, ...]:
-        if self.applied.root:
-            return self.labelled
-        return tuple(issue.identifier for issue in self.selection.labellable().root)
+        if self.dry_run.root:
+            return self.selection.labellable().identifiers()
+        return self.labelled
 
     def summary(self) -> SummaryLine:
         chosen = self.chosen()
-        verb = "Labelled" if self.applied.root else "Would label"
+        verb = "Would label" if self.dry_run.root else "Labelled"
         total = len(self.selection.root)
         parts = [f"{verb} {len(chosen)} of {total} issue{'' if total == 1 else 's'}"]
         skips = self.selection.skips()
@@ -291,55 +290,57 @@ class Outcome(Model):
         return SummaryLine("; ".join(parts))
 
     def report(self) -> None:
-        verb = "labelled" if self.applied.root else "would label"
+        verb = "would label" if self.dry_run.root else "labelled"
         for issue in self.chosen():
             logger.info("%s %s", verb, issue.root)
         logger.info("%s", self.summary().root)
-        if not self.applied.root:
+        if self.dry_run.root:
             logger.info("Re-run with --apply to label them.")
 
 
-def autolabel(shell: Shell, request: AutolabelRequest, ledger: LedgerPath) -> Outcome:
-    return swept(Linear(shell), request, ledger)
-
-
-def swept(linear: Linear, request: AutolabelRequest, ledger: LedgerPath) -> Outcome:
-    if not linear.workspace_labels().has(request.label).root:
-        raise UnknownLabelError(f"No Linear label is named {request.label.root}.")
+def sweep(tracker: IssueTracker, request: AutolabelRequest, ledger: LedgerPath) -> Outcome:
+    if not tracker.workspace_labels().has(request.label).root:
+        raise UnknownLabelError(f"No label is named {request.label.root}.")
 
     recorded = ledger.read()
-    issues = linear.issues(request.query)
+    issues = tracker.list_issues(request.wanted)
     logger.info(
         "Sweeping %s issues created since %s",
         len(issues.root),
-        request.query.created_after.root.isoformat(),
+        request.wanted.created_after.root.isoformat(),
     )
 
-    criteria = Criteria(label=request.label, exclusions=request.exclusions, ledger=recorded)
-    outcome = updated(linear, Selection.of(issues, criteria), request)
+    criteria = AutoLabelCriteria(
+        label=request.label, exclusions=request.exclusions, ledger=recorded
+    )
+    outcome = update_labels(tracker, Selection.of(issues, criteria), request)
     outcome.report()
-    if request.apply.root and len(outcome.labelled) > 0:
+
+    if not request.dry_run.root and len(outcome.labelled) > 0:
         ledger.write(recorded.extended(outcome.labelled))
+
     return outcome
 
 
-def updated(linear: Linear, selection: Selection, request: AutolabelRequest) -> Outcome:
-    if not request.apply.root:
-        return Outcome(selection=selection, applied=request.apply, labelled=(), failed=())
+def update_labels(
+    tracker: IssueTracker, selection: Selection, request: AutolabelRequest
+) -> Outcome:
+    if request.dry_run.root:
+        return Outcome(selection=selection, dry_run=request.dry_run, labelled=(), failed=())
 
     added: list[IssueIdentifier] = []
     failed: list[IssueIdentifier] = []
     for issue in selection.labellable().root:
         try:
-            linear.add_label(issue.identifier, request.label)
-        except CalledProcessError as error:
+            tracker.add_label(issue.identifier, request.label)
+        except IssueTrackerError as error:
             logger.error("%s could not be labelled: %s", issue.identifier.root, error)
             failed.append(issue.identifier)
         else:
             added.append(issue.identifier)
     return Outcome(
         selection=selection,
-        applied=request.apply,
+        dry_run=request.dry_run,
         labelled=tuple(added),
         failed=tuple(failed),
     )

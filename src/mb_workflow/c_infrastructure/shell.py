@@ -1,6 +1,7 @@
 import logging
 import subprocess
 from pathlib import Path
+from typing import Protocol, override
 
 from pydantic import model_validator
 
@@ -33,13 +34,18 @@ class CommandOutput(Value[str]):
         return CommandOutput("[]")
 
 
-class Shell:
+class CommandRunner(Protocol):
+    def run(self, command: Command) -> CommandOutput: ...
+
+
+class Shell(CommandRunner):
     def __init__(self, cwd: ExistingDirectory) -> None:
         self._cwd = cwd
 
     def cwd(self) -> ExistingDirectory:
         return self._cwd
 
+    @override
     def run(self, command: Command) -> CommandOutput:
         logger.debug("Running %s", " ".join(command.root))
         result = subprocess.run(

@@ -1,5 +1,7 @@
 import re
+from typing import override
 
+from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
 from mb_workflow.b_core.d_domain_model.flow import StateName
 from mb_workflow.c_infrastructure.orca import (
     ColumnLabel,
@@ -24,32 +26,36 @@ class Column(Payload):
         return Column(id=WorkspaceStatus("status-5-2"), label=ColumnLabel.fake())
 
 
-class StateColumn(Model):
+class WorkspaceStateColumn(Model):
     state: StateName
     label: ColumnLabel
 
     @staticmethod
-    def fake() -> StateColumn:
-        return StateColumn(state=StateName("Implementing"), label=ColumnLabel.fake())
+    def fake() -> WorkspaceStateColumn:
+        return WorkspaceStateColumn(state=StateName("Implementing"), label=ColumnLabel.fake())
 
 
-class StateColumns(Value[tuple[StateColumn, ...]]):
+class StateColumns(Value[tuple[WorkspaceStateColumn, ...]]):
     @staticmethod
     def fake() -> StateColumns:
-        return StateColumns((StateColumn.fake(),))
+        return StateColumns((WorkspaceStateColumn.fake(),))
 
     @staticmethod
     def of_chart() -> StateColumns:
         return StateColumns(
             (
-                StateColumn(state=StateName("Grilling"), label=ColumnLabel("Grilling")),
-                StateColumn(state=StateName("Speccing"), label=ColumnLabel("Speccing")),
-                StateColumn(state=StateName("Specced"), label=ColumnLabel("Tomorrow")),
-                StateColumn(state=StateName("Implementing"), label=ColumnLabel("Implementing")),
-                StateColumn(state=StateName("QA"), label=ColumnLabel("My QA")),
-                StateColumn(state=StateName("Review"), label=ColumnLabel("Awaiting review")),
-                StateColumn(state=StateName("Merging"), label=ColumnLabel("Merging")),
-                StateColumn(state=StateName("Merged"), label=ColumnLabel("Merged")),
+                WorkspaceStateColumn(state=StateName("Grilling"), label=ColumnLabel("Grilling")),
+                WorkspaceStateColumn(state=StateName("Speccing"), label=ColumnLabel("Speccing")),
+                WorkspaceStateColumn(state=StateName("Specced"), label=ColumnLabel("Tomorrow")),
+                WorkspaceStateColumn(
+                    state=StateName("Implementing"), label=ColumnLabel("Implementing")
+                ),
+                WorkspaceStateColumn(state=StateName("QA"), label=ColumnLabel("My QA")),
+                WorkspaceStateColumn(
+                    state=StateName("Review"), label=ColumnLabel("Awaiting review")
+                ),
+                WorkspaceStateColumn(state=StateName("Merging"), label=ColumnLabel("Merging")),
+                WorkspaceStateColumn(state=StateName("Merged"), label=ColumnLabel("Merged")),
             )
         )
 
@@ -113,18 +119,20 @@ class Columns(Value[tuple[Column, ...]]):
         return state if state is not None else start
 
 
-class Board:
+class WorkspaceBoard(WorkspaceStatusStore):
     def __init__(self, orca: Orca, columns: Columns, start: StateName) -> None:
         self._orca = orca
         self._columns = columns
         self._start = start
 
     @staticmethod
-    def of_orca(orca: Orca, start: StateName) -> Board:
-        return Board(orca, Columns.parse(orca.columns(ColumnLabel.unknown())), start)
+    def of_orca(orca: Orca, start: StateName) -> WorkspaceBoard:
+        return WorkspaceBoard(orca, Columns.parse(orca.columns(ColumnLabel.unknown())), start)
 
+    @override
     def read(self) -> StateName:
         return self._columns.state_of(self._orca.current().workspace_status, self._start)
 
+    @override
     def write(self, state: StateName) -> None:
         self._orca.set_status(WorktreeSelector.current(), self._columns.column_for(state))

@@ -2,7 +2,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from mb_workflow.c_infrastructure.github import GitHub, ReviewRequest
-from mb_workflow.c_infrastructure.orca import Orca, WorkspaceStatus, Worktree
+from mb_workflow.c_infrastructure.orca import Orca, Workspace, WorkspaceStatus
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
@@ -15,7 +15,7 @@ class NotFinalizableError(Exception):
     pass
 
 
-def reviewed_pr(worktree: Worktree, status: WorkspaceStatus) -> PrNumber:
+def reviewed_pr(worktree: Workspace, status: WorkspaceStatus) -> PrNumber:
     found = worktree.workspace_status
     if found is None or found != status:
         raise NotFinalizableError(

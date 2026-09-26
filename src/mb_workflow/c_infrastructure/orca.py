@@ -189,7 +189,7 @@ class Envelope[T](Payload):
         return self.result
 
 
-class Worktree(Payload):
+class Workspace(Payload):
     repo_id: RepoId
     path: WorktreePath
     branch: Ref | None = None
@@ -198,8 +198,8 @@ class Worktree(Payload):
     workspace_status: WorkspaceStatus | None = None
 
     @staticmethod
-    def fake() -> Worktree:
-        return Worktree(
+    def fake() -> Workspace:
+        return Workspace(
             repo_id=RepoId.fake(),
             path=WorktreePath.fake(),
             branch=Ref.fake(),
@@ -210,11 +210,11 @@ class Worktree(Payload):
 
 
 class WorktreeList(Payload):
-    worktrees: tuple[Worktree, ...]
+    worktrees: tuple[Workspace, ...]
 
     @staticmethod
     def fake() -> WorktreeList:
-        return WorktreeList(worktrees=(Worktree.fake(),))
+        return WorktreeList(worktrees=(Workspace.fake(),))
 
 
 class Acknowledgement(Payload):
@@ -232,14 +232,14 @@ class StartupTerminal(Payload):
 
 
 class SingleWorktree(Payload):
-    worktree: Worktree
+    worktree: Workspace
     agent_terminal_handle: TerminalHandle | None = None
     startup_terminal: StartupTerminal | None = None
 
     @staticmethod
     def fake() -> SingleWorktree:
         return SingleWorktree(
-            worktree=Worktree.fake(),
+            worktree=Workspace.fake(),
             agent_terminal_handle=TerminalHandle.fake(),
             startup_terminal=StartupTerminal.fake(),
         )
@@ -254,10 +254,10 @@ class SingleWorktree(Payload):
         return self.startup_terminal.handle if self.startup_terminal is not None else None
 
 
-class Worktrees(Value[tuple[Worktree, ...]]):
+class Worktrees(Value[tuple[Workspace, ...]]):
     @staticmethod
     def fake() -> Worktrees:
-        return Worktrees((Worktree.fake(),))
+        return Worktrees((Workspace.fake(),))
 
     @staticmethod
     def parse(output: CommandOutput) -> Worktrees:
@@ -276,7 +276,7 @@ def created_path(output: CommandOutput) -> ExistingDirectory:
     return SingleWorktree.parse(output).worktree.path.existing()
 
 
-def single_worktree(output: CommandOutput) -> Worktree:
+def single_worktree(output: CommandOutput) -> Workspace:
     return SingleWorktree.parse(output).worktree
 
 
@@ -292,7 +292,7 @@ class Orca:
     def where(self) -> ExistingDirectory:
         return self._shell.cwd()
 
-    def current(self) -> Worktree:
+    def current(self) -> Workspace:
         return single_worktree(self._shell.run(Command(("orca", "worktree", "current", "--json"))))
 
     def worktrees(self) -> Worktrees:

@@ -6,6 +6,9 @@ addopts = [
     "--numprocesses=auto",
     "--quiet",
     "--tb=short",
+    "-m",
+    "not linear_live",
 ]
+markers = ["linear_live: runs against the live Linear integration-test workspace"]
 testpaths = ["src"]
 python_files = ["test_*.py"]

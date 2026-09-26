@@ -1,8 +1,8 @@
 import pytest
 
 from mb_workflow.b_core.d_domain_model.flow import StateName, StateNames, WorkflowChart
-from mb_workflow.c_infrastructure.board import BoardError, Column, Columns, StateColumns
 from mb_workflow.c_infrastructure.orca import ColumnLabel, ErrorMessage, WorkspaceStatus
+from mb_workflow.c_infrastructure.workspace_board import BoardError, Column, Columns, StateColumns
 
 REFUSAL = ErrorMessage(
     'Unknown workspace status "zzz". Available: status-8-2 (Tomorrow), in-progress (Grilling), '
@@ -16,7 +16,7 @@ def board() -> Columns:
 
 
 def state_of(status: WorkspaceStatus | None) -> StateName:
-    return board().state_of(status, StateNames.start(WorkflowChart))
+    return board().state_of(status, StateNames.initial_state(WorkflowChart))
 
 
 def test_reads_the_id_to_label_table_from_the_columns_orca_names() -> None:
@@ -48,15 +48,15 @@ def test_a_column_id_resolves_to_the_state_its_label_stands_for() -> None:
 
 
 def test_a_column_outside_the_chart_reads_as_the_start_state() -> None:
-    assert state_of(WorkspaceStatus("status-8")) == StateNames.start(WorkflowChart)
+    assert state_of(WorkspaceStatus("status-8")) == StateNames.initial_state(WorkflowChart)
 
 
 def test_a_workspace_with_no_column_reads_as_the_start_state() -> None:
-    assert state_of(None) == StateNames.start(WorkflowChart)
+    assert state_of(None) == StateNames.initial_state(WorkflowChart)
 
 
 def test_a_column_the_board_no_longer_defines_reads_as_the_start_state() -> None:
-    assert state_of(WorkspaceStatus("status-404")) == StateNames.start(WorkflowChart)
+    assert state_of(WorkspaceStatus("status-404")) == StateNames.initial_state(WorkflowChart)
 
 
 def test_a_state_maps_to_the_board_column_its_label_names() -> None:
