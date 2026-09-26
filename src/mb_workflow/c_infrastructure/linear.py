@@ -6,6 +6,7 @@ from linear_python_client import (
     FindUserRequest,
     IssueAddLabelRequest,
     IssueLabelsRequest,
+    IssueRemoveLabelRequest,
     IssueUpdateRequest,
     LinearClient,
     LinearError,
@@ -439,6 +440,14 @@ class Linear(TicketTracker):
         label_id = self._label_id(label)
         with translated_errors():
             _ = self._client.add_label(IssueAddLabelRequest(id=issue.root, label_id=label_id.root))
+
+    @override
+    def remove_label(self, issue: IssueIdentifier, label: LabelName) -> None:
+        label_id = self._label_id(label)
+        with translated_errors():
+            _ = self._client.remove_label(
+                IssueRemoveLabelRequest(id=issue.root, label_id=label_id.root)
+            )
 
     @override
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:

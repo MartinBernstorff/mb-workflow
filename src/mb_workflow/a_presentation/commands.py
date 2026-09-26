@@ -28,6 +28,7 @@ from mb_workflow.b_core.a_features.start import (
 )
 from mb_workflow.b_core.a_features.teardown import TeardownRequest, teardown_worktree
 from mb_workflow.b_core.a_features.transition import transition
+from mb_workflow.b_core.a_features.unclaim import unclaim_ticket
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRefusedError
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
@@ -36,6 +37,7 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerErr
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.b_core.d_domain_model.config import (
+    ClaimSettings,
     ConfigFileName,
     Configuration,
     InvalidConfigError,
@@ -51,9 +53,10 @@ from mb_workflow.c_infrastructure.credentials import (
 )
 from mb_workflow.c_infrastructure.flock import FlockRunLock, LockName, LockPath
 from mb_workflow.c_infrastructure.github import GitHub
+from mb_workflow.c_infrastructure.lazy_linear import LazyLinear, LazyLinearClaims
 from mb_workflow.c_infrastructure.ledger_file import FileLedgerStore
 from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
-from mb_workflow.c_infrastructure.linear_claims import LazyLinearClaims, LinearClaims
+from mb_workflow.c_infrastructure.linear_claims import LinearClaims
 from mb_workflow.c_infrastructure.orca import Orca
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.c_infrastructure.sleep import SleepingPause
@@ -132,11 +135,20 @@ def workspace_board(orca: Orca) -> WorkspaceBoard:
 def review_workspaces(
     status: WorkspaceStatus, since: MergedSince, lock: LockName, host: HostName
 ) -> ExitCode:
+    # Review-workspaces predates the config file, so a repo without one still has its worktrees reconciled.
+    try:
+        claim_settings = Configuration.resolved(
+            WorkingDirectory(Path.cwd()), ConfigFileName.default()
+        ).settings.claims
+    except MissingConfigError:
+        claim_settings = ClaimSettings()
     shell = here()
     outcome = create_workspaces(
         review=GitHub(shell),
         manager=Orca(shell),
         claims=LazyLinearClaims(linear_key),
+        tracker=LazyLinear(linear_key),
+        claim_settings=claim_settings,
         host=host,
         lock=FlockRunLock(LockPath.of(lock)),
         narrator=LoggingNarrator(),
@@ -173,7 +185,7 @@ def linear_autolabel(request: AutolabelRequest, window: CreatedAfter) -> ExitCod
 def ticket_start(
     request: StartRequest, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
-    workspace = Configuration.resolved(directory, name).settings.workspace
+    settings = Configuration.resolved(directory, name).settings
     orca = Orca(here())
     key = linear_key()
     start_ticket(
@@ -182,15 +194,30 @@ def ticket_start(
         claims=LinearClaims.connected(key),
         pause=SleepingPause(),
         board=workspace_board(orca),
-        workspace=workspace,
+        workspace=settings.workspace,
+        claim_settings=settings.claims,
         request=request,
     )
     return ExitCode(0)
 
 
 @guarded
-def teardown(request: TeardownRequest) -> ExitCode:
-    teardown_worktree(manager=Orca(here()), claims=LazyLinearClaims(linear_key), request=request)
+def teardown(
+    request: TeardownRequest, directory: WorkingDirectory, name: ConfigFileName
+) -> ExitCode:
+    teardown_worktree(
+        manager=Orca(here()),
+        claims=LazyLinearClaims(linear_key),
+        tracker=LazyLinear(linear_key),
+        claim_settings=Configuration.resolved(directory, name).settings.claims,
+        request=request,
+    )
+    return ExitCode(0)
+
+
+@guarded
+def ticket_unclaim(ticket: IssueIdentifier) -> ExitCode:
+    unclaim_ticket(LinearClaims.connected(linear_key()), ticket)
     return ExitCode(0)
 
 

@@ -198,7 +198,18 @@ def teardown(
     """Release the worktree's claim on its ticket, then remove the worktree."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     request = TeardownRequest(worktree=WorktreeName(worktree), host=HostName.of_machine())
-    raise typer.Exit(code=commands.teardown(request).root)
+    raise typer.Exit(
+        code=commands.teardown(request, WorkingDirectory(Path.cwd()), ConfigFileName.default()).root
+    )
+
+
+@app.command("unclaim")
+def unclaim_ticket(
+    ticket: str = typer.Argument(..., help="Ticket whose stuck claim to release, e.g. MB-36."),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    raise typer.Exit(code=commands.ticket_unclaim(IssueIdentifier(ticket)).root)
 
 
 @flow_app.command("config")

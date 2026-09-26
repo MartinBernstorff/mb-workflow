@@ -13,16 +13,10 @@ from mb_workflow.b_core.d_domain_model.claim import (
     Claims,
     CommentBody,
 )
-from mb_workflow.c_infrastructure.credentials import (
-    InvalidCredentialsError,
-    MissingCredentialsError,
-)
 from mb_workflow.c_infrastructure.linear import LinearApiKey, translated_errors
 from mb_workflow.d_lib.models import Payload, Value
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 
 
@@ -159,30 +153,3 @@ class LinearClaims(ClaimRegistry):
                 {"id": ticket.root, "prefix": ClaimHolder.claim_comment_prefix().root},
             )
         return CommentThreadRead.model_validate(data).issue
-
-
-# Reads the key on first use, so a run that releases no claim needs no Linear credentials.
-class LazyLinearClaims(ClaimRegistry):
-    def __init__(self, key: Callable[[], LinearApiKey]) -> None:
-        self._key = key
-        self._connected: LinearClaims | None = None
-
-    @override
-    def claims(self, ticket: IssueIdentifier) -> Claims:
-        return self._registry().claims(ticket)
-
-    @override
-    def post(self, ticket: IssueIdentifier, holder: ClaimHolder) -> ClaimId:
-        return self._registry().post(ticket, holder)
-
-    @override
-    def withdraw(self, ticket: IssueIdentifier, claim: ClaimId) -> None:
-        self._registry().withdraw(ticket, claim)
-
-    def _registry(self) -> LinearClaims:
-        if self._connected is None:
-            try:
-                self._connected = LinearClaims.connected(self._key())
-            except (InvalidCredentialsError, MissingCredentialsError) as error:
-                raise TicketTrackerError(str(error)) from error
-        return self._connected

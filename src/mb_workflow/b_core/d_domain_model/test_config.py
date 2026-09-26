@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from mb_workflow.b_core.d_domain_model.config import (
+    ClaimSettings,
     ConfigFileName,
     Configuration,
     InvalidConfigError,
@@ -19,7 +20,7 @@ from mb_workflow.b_core.d_domain_model.config import (
     WorkingDirectory,
     WorkspaceSettings,
 )
-from mb_workflow.b_core.d_domain_model.issue import Assignee
+from mb_workflow.b_core.d_domain_model.issue import Assignee, LabelName
 from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
 
 if TYPE_CHECKING:
@@ -198,3 +199,15 @@ def test_a_workspace_table_without_an_orca_project_is_refused() -> None:
         _ = settings_with_fake_workspace(
             issues={"tracker": "linear"}, workspace={"assignee": "other@flowbase.io"}
         )
+
+
+def test_claims_are_unlabelled_unless_configured() -> None:
+    settings = settings_with_fake_workspace(issues={"tracker": "linear"})
+    assert settings.claims == ClaimSettings(label=None)
+
+
+def test_a_configured_claim_label_is_read() -> None:
+    settings = settings_with_fake_workspace(
+        issues={"tracker": "linear"}, claims={"label": "claimed"}
+    )
+    assert settings.claims.label == LabelName("claimed")

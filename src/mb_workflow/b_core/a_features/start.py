@@ -2,7 +2,11 @@ import logging
 from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.b_domain_services.next_action import next_action, state_of
-from mb_workflow.b_core.c_secondary_ports.claims import ClaimRequest, claim_ticket
+from mb_workflow.b_core.c_secondary_ports.claims import (
+    ClaimRequest,
+    add_claim_label,
+    claim_ticket,
+)
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, SettleTime, TakeOver
@@ -28,7 +32,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
-    from mb_workflow.b_core.d_domain_model.config import WorkspaceSettings
+    from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow import StateName
     from mb_workflow.b_core.d_domain_model.workspace import OpenedWorktree
 
@@ -72,6 +76,7 @@ def start_ticket(
     pause: Pause,
     board: WorkspaceStatusStore,
     workspace: WorkspaceSettings,
+    claim_settings: ClaimSettings,
     request: StartRequest,
 ) -> None:
     # Resolve the state before touching anything, so a ticket with no work left is neither claimed, assigned nor opened.
@@ -91,6 +96,7 @@ def start_ticket(
             settle=request.settle,
         ),
     )
+    add_claim_label(tracker, request.ticket, claim_settings.label)
 
     # Assignment is a convenience, not the point of starting a ticket, so never fail the run over it.
     try:

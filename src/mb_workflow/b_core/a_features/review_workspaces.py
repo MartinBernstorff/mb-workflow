@@ -15,8 +15,10 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
     from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
     from mb_workflow.b_core.c_secondary_ports.run_lock import RunLock
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.claim import HostName
+    from mb_workflow.b_core.d_domain_model.config import ClaimSettings
     from mb_workflow.b_core.d_domain_model.pull_request import MergedSince, PullRequests
     from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus, Worktrees
 
@@ -108,6 +110,8 @@ def create_workspaces(
     review: CodeForge,
     manager: WorkspaceManager,
     claims: ClaimRegistry,
+    tracker: TicketTracker,
+    claim_settings: ClaimSettings,
     host: HostName,
     lock: RunLock,
     narrator: Narrator,
@@ -119,6 +123,8 @@ def create_workspaces(
             review=review,
             manager=manager,
             claims=claims,
+            tracker=tracker,
+            claim_settings=claim_settings,
             host=host,
             narrator=narrator,
             status=status,
@@ -131,6 +137,8 @@ def reconcile_workspaces(
     review: CodeForge,
     manager: WorkspaceManager,
     claims: ClaimRegistry,
+    tracker: TicketTracker,
+    claim_settings: ClaimSettings,
     host: HostName,
     narrator: Narrator,
     status: WorkspaceStatus,
@@ -161,7 +169,14 @@ def reconcile_workspaces(
     for worktree in to_remove.root:
         try:
             narrator.removing(worktree.path)
-            release_and_remove(manager, claims, worktree, host)
+            release_and_remove(
+                manager=manager,
+                claims=claims,
+                tracker=tracker,
+                claim_settings=claim_settings,
+                worktree=worktree,
+                host=host,
+            )
         except (TicketTrackerError, WorkspaceManagerError) as error:
             failure = Failure(
                 subject=FailureSubject.of_path(worktree.path), reason=FailureReason(str(error))
