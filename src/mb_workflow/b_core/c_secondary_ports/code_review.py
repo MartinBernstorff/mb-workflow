@@ -17,7 +17,7 @@ class CodeReviewError(Exception):
     pass
 
 
-class CodeReview(Protocol):
+class CodeForge(Protocol):
     def review_requested(self) -> PullRequests: ...
 
     def merged_branches(self, since: MergedSince) -> BranchNames: ...
@@ -70,7 +70,7 @@ class SubmittedReview(Model):
         )
 
 
-class FakeCodeReview(CodeReview):
+class FakeCodeReview(CodeForge):
     def __init__(
         self,
         requested: PullRequests,

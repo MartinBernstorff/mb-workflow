@@ -26,7 +26,7 @@ from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.lock import LockPath
-    from mb_workflow.b_core.c_secondary_ports.code_review import CodeReview
+    from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
     from mb_workflow.b_core.d_domain_model.git import BranchNames
 
 logger = logging.getLogger(__name__)
@@ -171,7 +171,11 @@ def union(first: Worktrees, second: Worktrees) -> Worktrees:
 
 
 def create_workspaces(
-    review: CodeReview, orca: Orca, status: WorkspaceStatus, lookback: Lookback, lock: LockPath
+    review: CodeForge,
+    orca: Orca,
+    status: WorkspaceStatus,
+    lookback: Lookback,
+    lock: LockPath,
 ) -> Outcome:
     with lock.held():
         since = MergedSince.of(lookback, Today.now())
@@ -179,7 +183,7 @@ def create_workspaces(
 
 
 def workspaces_for_review(
-    review: CodeReview, orca: Orca, status: WorkspaceStatus, since: MergedSince
+    review: CodeForge, orca: Orca, status: WorkspaceStatus, since: MergedSince
 ) -> Outcome:
     worktrees = orca.worktrees()
     here = orca.where()

@@ -45,7 +45,7 @@ from mb_workflow.d_lib.models import Model, Payload, Value
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from mb_workflow.b_core.c_secondary_ports.code_review import CodeReview
+    from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
 
 
 class ReviewKind(StrEnum):
@@ -504,7 +504,7 @@ def ledger(
 def review(
     ledger: FakeCodeReview | ScriptedGh | LiveGitHub,
     request: pytest.FixtureRequest,
-) -> CodeReview:
+) -> CodeForge:
     if isinstance(ledger, FakeCodeReview):
         return ledger
     if isinstance(ledger, ScriptedGh):
@@ -538,38 +538,41 @@ def remark() -> ReviewRequest:
     return ReviewRequest(decision=ReviewDecision.comment, body=ReviewBody.fake())
 
 
-def test_lists_the_pull_requests_awaiting_review(review: CodeReview, kind: ReviewKind) -> None:
+def test_lists_the_pull_requests_awaiting_review(review: CodeForge, kind: ReviewKind) -> None:
     skip_on_own_pull_requests(kind)
     assert review.review_requested() == requested()
 
 
 def test_a_branch_merged_on_the_day_counts_as_merged_since_then(
-    review: CodeReview, stage: Stage
+    review: CodeForge, stage: Stage
 ) -> None:
     assert stage.merged in review.merged_branches(MergedSince(stage.merged_on.root)).root
 
 
-def test_a_branch_merged_the_day_before_does_not(review: CodeReview, stage: Stage) -> None:
+def test_a_branch_merged_the_day_before_does_not(review: CodeForge, stage: Stage) -> None:
     since = MergedSince(stage.merged_on.root + timedelta(days=1))
     assert stage.merged not in review.merged_branches(since).root
 
 
 def test_a_checkout_lands_in_the_directory_it_was_given(
-    review: CodeReview, ledger: ReviewLedger, stage: Stage, checkout_directory: CheckoutDirectory
+    review: CodeForge,
+    ledger: ReviewLedger,
+    stage: Stage,
+    checkout_directory: CheckoutDirectory,
 ) -> None:
     review.checkout(stage.fresh, checkout_directory)
     assert ledger.checked_out(checkout_directory) == stage.fresh
 
 
 def test_checking_out_into_a_missing_directory_is_refused(
-    review: CodeReview, stage: Stage, tmp_path: Path
+    review: CodeForge, stage: Stage, tmp_path: Path
 ) -> None:
     with pytest.raises(CodeReviewError):
         review.checkout(stage.fresh, CheckoutDirectory(tmp_path / "missing"))
 
 
 def test_submitting_completes_my_pending_review(
-    review: CodeReview, ledger: ReviewLedger, stage: Stage
+    review: CodeForge, ledger: ReviewLedger, stage: Stage
 ) -> None:
     review.submit(stage.pending, remark())
     assert ledger.submitted() == (
@@ -578,7 +581,7 @@ def test_submitting_completes_my_pending_review(
 
 
 def test_a_pending_review_is_completed_only_once(
-    review: CodeReview, ledger: ReviewLedger, stage: Stage
+    review: CodeForge, ledger: ReviewLedger, stage: Stage
 ) -> None:
     review.submit(stage.pending, remark())
     review.submit(stage.pending, remark())
@@ -589,7 +592,7 @@ def test_a_pending_review_is_completed_only_once(
 
 
 def test_submitting_without_a_pending_review_opens_a_new_one(
-    review: CodeReview, ledger: ReviewLedger, stage: Stage
+    review: CodeForge, ledger: ReviewLedger, stage: Stage
 ) -> None:
     review.submit(stage.fresh, remark())
     assert ledger.submitted() == (
@@ -598,7 +601,7 @@ def test_submitting_without_a_pending_review_opens_a_new_one(
 
 
 def test_an_approval_may_go_without_a_body(
-    review: CodeReview, ledger: ReviewLedger, stage: Stage, kind: ReviewKind
+    review: CodeForge, ledger: ReviewLedger, stage: Stage, kind: ReviewKind
 ) -> None:
     skip_on_own_pull_requests(kind)
     bare = ReviewRequest(decision=ReviewDecision.approve, body=ReviewBody(""))
@@ -609,7 +612,7 @@ def test_an_approval_may_go_without_a_body(
 
 
 def test_requesting_changes_carries_its_body(
-    review: CodeReview, ledger: ReviewLedger, stage: Stage, kind: ReviewKind
+    review: CodeForge, ledger: ReviewLedger, stage: Stage, kind: ReviewKind
 ) -> None:
     skip_on_own_pull_requests(kind)
     rejection = ReviewRequest(
@@ -623,7 +626,7 @@ def test_requesting_changes_carries_its_body(
 
 @pytest.mark.parametrize("decision", [ReviewDecision.request_changes, ReviewDecision.comment])
 def test_a_decision_that_needs_a_body_is_refused_without_one(
-    review: CodeReview, ledger: ReviewLedger, stage: Stage, decision: ReviewDecision
+    review: CodeForge, ledger: ReviewLedger, stage: Stage, decision: ReviewDecision
 ) -> None:
     with pytest.raises(CodeReviewError, match="requires comment text"):
         review.submit(stage.pending, ReviewRequest(decision=decision, body=ReviewBody("")))

@@ -3,7 +3,7 @@ from itertools import chain
 from typing import override
 
 from mb_workflow.b_core.c_secondary_ports.code_review import (
-    CodeReview,
+    CodeForge,
     refuse_incomplete,
     refuse_missing,
 )
@@ -189,7 +189,7 @@ def pending_submission(pr: PrNumber, pending: ReviewId, request: ReviewRequest) 
     return Command((*submit, "-f", f"body={request.body.root}"))
 
 
-class GitHub(CodeReview):
+class GitHub(CodeForge):
     def __init__(self, shell: CommandRunner) -> None:
         self._shell = shell
         _ = shell.run(Command(("gh", "--version")))

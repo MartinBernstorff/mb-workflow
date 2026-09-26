@@ -30,7 +30,6 @@ tasks:
       runInCI: false
       outputStyle: "buffer-only-failure"
 
-  # Serial, because every test resets the same seeded pull requests in the integration-test repository.
   test-github-live:
     script: "uv run pytest -m github_live --numprocesses=0 src/mb_workflow/c_infrastructure/test_code_review.py"
     inputs:

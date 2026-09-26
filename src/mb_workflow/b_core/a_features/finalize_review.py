@@ -2,7 +2,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.code_review import CodeReview
+    from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
     from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, ReviewRequest
     from mb_workflow.c_infrastructure.orca import Orca, Workspace, WorkspaceStatus
 
@@ -26,7 +26,7 @@ def reviewed_pr(worktree: Workspace, status: WorkspaceStatus) -> PrNumber:
 
 
 def finalize(
-    review: CodeReview, orca: Orca, request: ReviewRequest, status: WorkspaceStatus
+    review: CodeForge, orca: Orca, request: ReviewRequest, status: WorkspaceStatus
 ) -> None:
     worktree = orca.current()
     pr = reviewed_pr(worktree, status)
