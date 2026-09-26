@@ -1,3 +1,4 @@
+import re
 from datetime import date, timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -12,6 +13,45 @@ class IssueIdentifier(Value[str]):
     @staticmethod
     def fake() -> IssueIdentifier:
         return IssueIdentifier("E-4289")
+
+
+class UnreadableReferenceError(ValueError):
+    pass
+
+
+# An identifier or the issue's URL, as `gh pr edit` takes a number or a URL.
+class IssueReference(Value[str]):
+    @staticmethod
+    def fake() -> IssueReference:
+        return IssueReference(
+            f"https://linear.app/flowbase/issue/{IssueIdentifier.fake().root}/add-widget"
+        )
+
+    def identifier(self) -> IssueIdentifier:
+        found = re.fullmatch(r"(?:.*/issue/)?([A-Za-z][A-Za-z0-9]*-\d+)(?:/.*)?", self.root.strip())
+        if found is None:
+            raise UnreadableReferenceError(
+                f"{self.root} is neither an issue identifier nor its URL."
+            )
+        return IssueIdentifier(found.group(1).upper())
+
+
+class IssueUrl(Value[str]):
+    @staticmethod
+    def fake() -> IssueUrl:
+        return IssueUrl(IssueReference.fake().root)
+
+
+class IssueTitle(Value[str]):
+    @staticmethod
+    def fake() -> IssueTitle:
+        return IssueTitle("Add a widget")
+
+
+class IssueBody(Value[str]):
+    @staticmethod
+    def fake() -> IssueBody:
+        return IssueBody("The widget goes on the dashboard.")
 
 
 class BranchSlug(Value[str]):
@@ -43,6 +83,17 @@ class LabelNames(Value[tuple[LabelName, ...]]):
     def without(self, label: LabelName) -> LabelNames:
         return LabelNames(tuple(name for name in self.root if name != label))
 
+    # gh takes a label flag as one name or several separated by commas.
+    def split(self) -> LabelNames:
+        return LabelNames(
+            tuple(
+                LabelName(part.strip())
+                for label in self.root
+                for part in label.root.split(",")
+                if part.strip()
+            )
+        )
+
     # Linear resolves a label name ignoring case, so these three take a workspace's labels as self.
     def matching(self, label: LabelName) -> LabelName | None:
         wanted = label.root.casefold()
@@ -66,6 +117,12 @@ class ProjectName(IssueText):
         return ProjectName("BE: Campaigns MVP")
 
 
+class MilestoneName(Value[str]):
+    @staticmethod
+    def fake() -> MilestoneName:
+        return MilestoneName("Beta")
+
+
 class StatusName(IssueText):
     @staticmethod
     def fake() -> StatusName:
@@ -85,27 +142,38 @@ class IssueState(StrEnum):
     triage = "Triage"
 
 
-class Assigned(Value[bool]):
+class Assignee(Value[str]):
     @staticmethod
-    def fake() -> Assigned:
-        return Assigned(False)
+    def fake() -> Assignee:
+        return Assignee("mab@flowbase.io")
+
+    # gh's shorthand for whoever is signed in.
+    @staticmethod
+    def me() -> Assignee:
+        return Assignee("@me")
 
 
 class Issue(Model):
     identifier: IssueIdentifier
+    title: IssueTitle
+    body: IssueBody
     status: StatusName
     project: ProjectName | None
+    milestone: MilestoneName | None
     labels: LabelNames
-    assigned: Assigned
+    assignee: Assignee | None
 
     @staticmethod
     def fake() -> Issue:
         return Issue(
             identifier=IssueIdentifier.fake(),
+            title=IssueTitle.fake(),
+            body=IssueBody.fake(),
             status=StatusName.fake(),
             project=ProjectName.fake(),
+            milestone=None,
             labels=LabelNames.fake(),
-            assigned=Assigned.fake(),
+            assignee=None,
         )
 
     def state(self) -> IssueState | None:
@@ -122,12 +190,6 @@ class Issues(Value[tuple[Issue, ...]]):
 
     def identifiers(self) -> tuple[IssueIdentifier, ...]:
         return tuple(issue.identifier for issue in self.root)
-
-
-class Assignee(Value[str]):
-    @staticmethod
-    def fake() -> Assignee:
-        return Assignee("mab@flowbase.io")
 
 
 class Creator(Value[str]):
@@ -175,3 +237,36 @@ class IssueFilter(Model):
     # Linear compares the creation time against midnight of the date, so the day itself is included.
     def matches(self, creator: Creator, created: CreatedOn) -> Matches:
         return Matches(creator == self.creator and created.root >= self.created_after.root)
+
+
+class Clear(Model):
+    @staticmethod
+    def fake() -> Clear:
+        return Clear()
+
+
+# A None field is left as it is; Clear empties it.
+class IssueEdit(Model):
+    title: IssueTitle | None
+    body: IssueBody | None
+    added_labels: LabelNames
+    removed_labels: LabelNames
+    assignee: Assignee | Clear | None
+    project: ProjectName | Clear | None
+    milestone: MilestoneName | Clear | None
+
+    @staticmethod
+    def fake() -> IssueEdit:
+        return IssueEdit.unchanged().model_copy(update={"title": IssueTitle.fake()})
+
+    @staticmethod
+    def unchanged() -> IssueEdit:
+        return IssueEdit(
+            title=None,
+            body=None,
+            added_labels=LabelNames(()),
+            removed_labels=LabelNames(()),
+            assignee=None,
+            project=None,
+            milestone=None,
+        )

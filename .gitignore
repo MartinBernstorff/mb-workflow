@@ -223,6 +223,5 @@ __marimo__/
 .moon/cache
 .moon/docker
 
-# moon
-.moon/cache
-.moon/docker
+# docs
+docs

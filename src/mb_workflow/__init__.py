@@ -1,4 +1,4 @@
-from mb_workflow.a_presentation.cli import app
+from mb_workflow.a_presentation.cli.app import app
 
 
 def main() -> None:

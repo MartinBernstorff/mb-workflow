@@ -11,8 +11,13 @@ from mb_workflow.b_core.a_features.autolabel import (
     UnknownLabelError,
     sweep,
 )
+from mb_workflow.b_core.a_features.edit_issue import (
+    EditRequest,
+    InvalidEditError,
+    UnlinkedWorktreeError,
+    edit_issue,
+)
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
-from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
 from mb_workflow.b_core.a_features.open_issue import (
     OpenRequest,
     PromptUndeliveredError,
@@ -32,6 +37,7 @@ from mb_workflow.b_core.d_domain_model.config import (
     WorkingDirectory,
 )
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError
+from mb_workflow.b_core.d_domain_model.issue import UnreadableReferenceError
 from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
 from mb_workflow.c_infrastructure.orca import Orca, OrcaError, WorkspaceStatus
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
@@ -54,6 +60,7 @@ FAILURES = (
     CalledProcessError,
     FlowError,
     InvalidConfigError,
+    InvalidEditError,
     IssueTrackerError,
     MissingConfigError,
     NotFinalizableError,
@@ -63,6 +70,7 @@ FAILURES = (
     UnknownLabelError,
     UnlinkedWorktreeError,
     UnprefixedStateError,
+    UnreadableReferenceError,
     ValueError,
     re.error,
 )
@@ -102,13 +110,13 @@ def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode
 
 
 @guarded
-def relabel(request: LabelRequest) -> ExitCode:
-    change_label(Orca(here()), linear(), request)
+def ticket_edit(request: EditRequest) -> ExitCode:
+    write(Output(f"{edit_issue(Orca(here()), linear(), request).root}\n"))
     return ExitCode(0)
 
 
 @guarded
-def linear_autolabel(request: AutolabelRequest, ledger: LedgerPath) -> ExitCode:
+def ticket_autolabel(request: AutolabelRequest, ledger: LedgerPath) -> ExitCode:
     return ExitCode.of(sweep(linear(), request, ledger).failed_any())
 
 

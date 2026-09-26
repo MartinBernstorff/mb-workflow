@@ -1,14 +1,16 @@
 from typing import Protocol, override
 
 from mb_workflow.b_core.d_domain_model.issue import (
-    Assigned,
     Assignee,
+    Clear,
     CreatedOn,
     Creator,
     Issue,
+    IssueEdit,
     IssueFilter,
     IssueIdentifier,
     Issues,
+    IssueUrl,
     LabelName,
     LabelNames,
 )
@@ -31,6 +33,10 @@ class IssueTracker(Protocol):
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None: ...
 
     def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None: ...
+
+    def viewer(self) -> Assignee: ...
+
+    def edit(self, issue: IssueIdentifier, change: IssueEdit) -> IssueUrl: ...
 
 
 class TrackedIssue(Model):
@@ -87,11 +93,49 @@ class FakeIssueTracker(IssueTracker):
     def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None:
         tracked = self._tracked(issue)
         self._issues[issue] = tracked.model_copy(
-            update={"issue": tracked.issue.model_copy(update={"assigned": Assigned(True)})}
+            update={"issue": tracked.issue.model_copy(update={"assignee": assignee})}
         )
+
+    @override
+    def viewer(self) -> Assignee:
+        return Assignee.fake()
+
+    @override
+    def edit(self, issue: IssueIdentifier, change: IssueEdit) -> IssueUrl:
+        current = self.read_issue(issue)
+        unknown = self._labels.unmatched(change.removed_labels)
+        if len(unknown.root) > 0:
+            raise IssueTrackerError(
+                f"No label is named {', '.join(label.root for label in unknown.root)}."
+            )
+        removed = self._labels.spelled(change.removed_labels)
+        kept = LabelNames(
+            tuple(label for label in current.labels.root if label not in removed.root)
+        )
+        self.set_labels(issue, LabelNames((*kept.root, *change.added_labels.root)))
+        tracked = self._tracked(issue)
+        edited = tracked.issue.model_copy(
+            update={
+                "title": cleared(change.title, tracked.issue.title),
+                "body": cleared(change.body, tracked.issue.body),
+                "assignee": cleared(change.assignee, tracked.issue.assignee),
+                "project": cleared(change.project, tracked.issue.project),
+                "milestone": cleared(change.milestone, tracked.issue.milestone),
+            }
+        )
+        self._issues[issue] = tracked.model_copy(update={"issue": edited})
+        return IssueUrl(f"https://linear.app/fake/issue/{issue.root}")
 
     def _tracked(self, issue: IssueIdentifier) -> TrackedIssue:
         tracked = self._issues.get(issue)
         if tracked is None:
             raise IssueTrackerError(f"No issue is identified as {issue.root}.")
         return tracked
+
+
+def cleared[T](change: T | Clear | None, current: T | None) -> T | None:
+    if change is None:
+        return current
+    if isinstance(change, Clear):
+        return None
+    return change
