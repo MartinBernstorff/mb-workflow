@@ -27,13 +27,13 @@ class TicketStatuses(Value[dict[StateName, IssueStatusName]]):
         )
 
     @model_validator(mode="after")
-    def maps_every_flow_state(self) -> Self:
+    def maps_exactly_the_chart_states(self) -> Self:
         chart = tuple(StateName(state.name) for state in WorkflowChart.states)
         unknown = [state.root for state in self.root if state not in chart]
         if unknown:
             listed = ", ".join(state.root for state in chart)
             raise ValueError(
-                f"{', '.join(unknown)} is not a state in the chart. Map each of {listed}."
+                f"The chart has no state named {', '.join(unknown)}. Map each of {listed}."
             )
         missing = [state.root for state in chart if state not in self.root]
         if missing:

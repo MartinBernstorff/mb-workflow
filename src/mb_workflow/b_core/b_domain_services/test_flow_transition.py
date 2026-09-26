@@ -101,7 +101,7 @@ def test_forcing_writes_the_target_state_without_validating() -> None:
 def test_a_refused_ticket_write_leaves_the_board_where_it_was() -> None:
     wanted = FlowLabels.fake()
     store = FakeStatusStore(StateName("Implementing"))
-    # The group lists the flow labels, but the workspace does not know them, so set_labels refuses.
+    # The group lists the flow labels, but the workspace does not know them, so the write refuses.
     tracker = FakeTicketTracker(
         LabelNames.fake(),
         (TrackedIssue.fake(),),
@@ -120,6 +120,7 @@ def test_a_status_the_tracker_lacks_leaves_the_ticket_and_the_board_where_they_w
     tracker = FakeTicketTracker(
         LabelNames((*wanted.labels.root, LabelName.fake())),
         (TrackedIssue.fake(),),
+        statuses=IssueStatuses((IssueStatus.fake(),)),
         groups={wanted.group: wanted.labels},
     )
     with pytest.raises(TicketTrackerError, match="No status is named In Review"):

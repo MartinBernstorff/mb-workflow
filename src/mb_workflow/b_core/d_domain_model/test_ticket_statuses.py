@@ -21,5 +21,5 @@ def test_a_mapping_with_a_gap_is_refused_naming_the_missing_flow_states() -> Non
 
 def test_a_mapping_naming_a_state_outside_the_chart_is_refused() -> None:
     table = {state.root: status.root for state, status in TicketStatuses.fake().root.items()}
-    with pytest.raises(ValueError, match="Todo is not a state in the chart"):
+    with pytest.raises(ValueError, match="The chart has no state named Todo"):
         _ = TicketStatuses.model_validate({**table, "Todo": "Todo"})
