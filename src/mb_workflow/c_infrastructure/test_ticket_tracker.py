@@ -375,19 +375,28 @@ class RelatedIssue(Payload):
         return RelatedIssue(identifier=IssueIdentifier.fake())
 
 
+class RelationKind(StrEnum):
+    blocks = "blocks"
+    related = "related"
+
+
+class HeldRelation(Payload):
+    type: RelationKind
+    related_issue: RelatedIssue
+
+    @staticmethod
+    def fake() -> HeldRelation:
+        return HeldRelation(type=RelationKind.blocks, related_issue=RelatedIssue.fake())
+
+
 class HeldRelations(Payload):
-    related: tuple[RelatedIssue, ...] = Field(
+    relations: tuple[HeldRelation, ...] = Field(
         validation_alias=AliasPath("issue", "relations", "nodes")
     )
 
     @staticmethod
     def fake() -> HeldRelations:
-        return HeldRelations(related=(RelatedIssue.fake(),))
-
-
-class RelationKind(StrEnum):
-    blocks = "blocks"
-    related = "related"
+        return HeldRelations(relations=(HeldRelation.fake(),))
 
 
 def ensure_relation(
@@ -396,11 +405,11 @@ def ensure_relation(
     held = HeldRelations.model_validate(
         client.execute(
             "query($id: String!) {"
-            " issue(id: $id) { relations { nodes { relatedIssue { identifier } } } } }",
+            " issue(id: $id) { relations { nodes { type relatedIssue { identifier } } } } }",
             {"id": issue.root},
         )
     )
-    if RelatedIssue(identifier=related) in held.related:
+    if HeldRelation(type=kind, related_issue=RelatedIssue(identifier=related)) in held.relations:
         return
     _ = client.execute(
         "mutation($input: IssueRelationCreateInput!) {"
@@ -586,7 +595,7 @@ def test_a_view_lists_a_tickets_blockers_with_their_status(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
     assert backlog.blockers(Seed.recent, tracker) == Blockers(
-        (Blocker(issue=backlog.identifier(Seed.old), status=IssueStatusName.fake()),)
+        (Blocker(issue=backlog.identifier(Seed.old), status=backlog.issue(Seed.old).status),)
     )
 
 

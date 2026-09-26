@@ -90,7 +90,7 @@ class PoolTicket(Model):
         return Ready(
             PoolTicket.ready_statuses().matching(self.issue.status) is not None
             and self.issue.labels.matching(claim_label) is None
-            and self.blockers.unresolved() == Blockers(())
+            and not self.blockers.unresolved().root
         )
 
 

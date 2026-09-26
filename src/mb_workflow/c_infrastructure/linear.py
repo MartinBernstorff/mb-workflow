@@ -292,6 +292,10 @@ class IssuePayload(Payload):
 class RelationType(Value[str]):
     @staticmethod
     def fake() -> RelationType:
+        return RelationType.blocks()
+
+    @staticmethod
+    def blocks() -> RelationType:
         return RelationType("blocks")
 
 
@@ -319,6 +323,10 @@ class PoolTicketPayload(IssuePayload):
     inverse_relations: tuple[InverseRelationPayload, ...] = Field(
         default=(), validation_alias=AliasPath("inverseRelations", "nodes")
     )
+    more_relations: MorePages = Field(
+        default=MorePages(False),
+        validation_alias=AliasPath("inverseRelations", "pageInfo", "hasNextPage"),
+    )
 
     @override
     @staticmethod
@@ -332,7 +340,12 @@ class PoolTicketPayload(IssuePayload):
             inverse_relations=(InverseRelationPayload.fake(),),
         )
 
+    # A blocker left off the read would pass the ticket as ready, so a partial read is refused.
     def ticket(self) -> PoolTicket:
+        if self.more_relations.root:
+            raise TicketTrackerError(
+                f"{self.identifier.root} has more relations than one read of the view lists."
+            )
         return PoolTicket(
             issue=self.issue(),
             priority=self.priority,
@@ -340,7 +353,7 @@ class PoolTicketPayload(IssuePayload):
                 tuple(
                     Blocker(issue=relation.issue.identifier, status=relation.issue.status)
                     for relation in self.inverse_relations
-                    if relation.type == RelationType("blocks")
+                    if relation.type == RelationType.blocks()
                 )
             ),
         )
@@ -502,7 +515,7 @@ class Linear(TicketTracker):
                     """
                     query($view: String!, $after: String) {
                       customView(id: $view) {
-                        issues(first: 50, after: $after) {
+                        issues(first: 40, after: $after) {
                           nodes {
                             identifier
                             priority
@@ -512,6 +525,7 @@ class Linear(TicketTracker):
                             assignee { id }
                             inverseRelations(first: 50) {
                               nodes { type issue { identifier state { name } } }
+                              pageInfo { hasNextPage }
                             }
                           }
                           pageInfo { hasNextPage endCursor }
