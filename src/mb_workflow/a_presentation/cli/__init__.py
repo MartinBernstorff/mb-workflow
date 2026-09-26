@@ -195,7 +195,9 @@ def start_ticket(
 def drain(
     *,
     dry_run: bool = typer.Option(
-        False, "--dry-run", help="Print the ready tickets in pick order and start none."
+        False,
+        "--dry-run",
+        help="Print the tickets the limits allow, in pick order, and start none.",
     ),
     idle_timeout_ms: int = typer.Option(60000, "--idle-timeout-ms"),
     claim_settle_ms: int = typer.Option(
@@ -208,7 +210,7 @@ def drain(
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    """Start the top ready ticket in the pool."""
+    """Start ready tickets in pick order until a pool limit is reached."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     request = DrainRequest(
         dry_run=DryRun(dry_run),

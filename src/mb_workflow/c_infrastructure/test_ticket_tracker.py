@@ -503,6 +503,35 @@ def test_reading_an_unknown_view_is_refused(tracker: TicketTracker) -> None:
         _ = tracker.view_tickets(ViewSlug("000000000000"))
 
 
+def labelled_seeds(
+    tracker: TicketTracker, backlog: Backlog, label: LabelName, excluding: StatusNames
+) -> set[Seed]:
+    listed = tracker.labelled_issues(label, excluding).identifiers()
+    return {seed for seed in Seed if backlog.identifier(seed) in listed}
+
+
+def test_the_issues_carrying_a_label_are_listed(tracker: TicketTracker, backlog: Backlog) -> None:
+    tracker.add_label(backlog.identifier(Seed.recent), LabelName("d-grill"))
+    assert labelled_seeds(tracker, backlog, LabelName("d-grill"), StatusNames(())) == {
+        Seed.recent,
+        Seed.done,
+    }
+
+
+def test_labelled_issues_in_an_excluded_status_are_left_out(
+    tracker: TicketTracker, backlog: Backlog
+) -> None:
+    tracker.add_label(backlog.identifier(Seed.recent), LabelName("d-grill"))
+    excluding = StatusNames((IssueStatusName("Done"), IssueStatusName("Canceled")))
+    assert labelled_seeds(tracker, backlog, LabelName("d-grill"), excluding) == {Seed.recent}
+
+
+def test_a_labelled_issue_is_found_whatever_the_label_case(
+    tracker: TicketTracker, backlog: Backlog
+) -> None:
+    assert labelled_seeds(tracker, backlog, LabelName("D-Grill"), StatusNames(())) == {Seed.done}
+
+
 def test_reads_an_issue_back_as_it_was_given(tracker: TicketTracker, backlog: Backlog) -> None:
     assert tracker.read_issue(backlog.identifier(Seed.done)) == backlog.issue(Seed.done)
 

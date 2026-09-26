@@ -41,3 +41,15 @@ def test_a_configured_pool_reports_its_view() -> None:
         origin=ConfigPath.fake(),
     )
     assert f"pool view: {PoolSettings.fake().view.root}" in ConfigReport.of(config).root
+
+
+def test_a_configured_pool_reports_its_limits() -> None:
+    config = Configuration(
+        settings=Settings(
+            issues=LinearTracker.fake(),
+            workspace=WorkspaceSettings.fake(),
+            pool=PoolSettings.fake(),
+        ),
+        origin=ConfigPath.fake(),
+    )
+    assert "pool limits: total 4, Grilling 1" in ConfigReport.of(config).root

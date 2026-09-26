@@ -11,7 +11,7 @@ from linear_python_client import (
     LinearClient,
     LinearError,
 )
-from pydantic import AliasPath, Field
+from pydantic import AliasPath, Field, JsonValue
 
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker, TicketTrackerError
 from mb_workflow.b_core.d_domain_model.issue import (
@@ -37,7 +37,7 @@ from mb_workflow.d_lib.models import Payload, Value
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from mb_workflow.b_core.d_domain_model.issue import IssueFilter, IssueUpdate
+    from mb_workflow.b_core.d_domain_model.issue import IssueFilter, IssueUpdate, StatusNames
     from mb_workflow.b_core.d_domain_model.pool import ViewSlug
 
 
@@ -413,6 +413,25 @@ class Linear(TicketTracker):
 
     @override
     def list_issues(self, wanted: IssueFilter) -> Issues:
+        return self._swept(
+            {
+                "creator": {"email": {"eq": wanted.creator.root}},
+                "createdAt": {"gte": wanted.created_after.root.isoformat()},
+            }
+        )
+
+    @override
+    def labelled_issues(self, label: LabelName, excluding: StatusNames) -> Issues:
+        return self._swept(
+            {
+                "labels": {"some": {"name": {"eqIgnoreCase": label.root}}},
+                "and": [
+                    {"state": {"name": {"neqIgnoreCase": status.root}}} for status in excluding.root
+                ],
+            }
+        )
+
+    def _swept(self, issue_filter: JsonValue) -> Issues:
         found: list[Issue] = []
         cursor: PageCursor | None = None
         while True:
@@ -433,10 +452,7 @@ class Linear(TicketTracker):
                     }
                     """,
                     {
-                        "filter": {
-                            "creator": {"email": {"eq": wanted.creator.root}},
-                            "createdAt": {"gte": wanted.created_after.root.isoformat()},
-                        },
+                        "filter": issue_filter,
                         "after": cursor.root if cursor is not None else None,
                     },
                 )

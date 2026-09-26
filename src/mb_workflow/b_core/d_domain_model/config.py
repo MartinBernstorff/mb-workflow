@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from pydantic import Field, model_validator
 
 from mb_workflow.b_core.d_domain_model.issue import Assignee, LabelName
-from mb_workflow.b_core.d_domain_model.pool import ViewSlug
+from mb_workflow.b_core.d_domain_model.pool import PoolLimits, ViewSlug
 from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
 from mb_workflow.d_lib.models import Model, Value
 
@@ -88,10 +88,11 @@ class ClaimSettings(Model):
 
 class PoolSettings(Model):
     view: ViewSlug
+    limits: PoolLimits = PoolLimits()
 
     @staticmethod
     def fake() -> PoolSettings:
-        return PoolSettings(view=ViewSlug.fake())
+        return PoolSettings(view=ViewSlug.fake(), limits=PoolLimits.fake())
 
 
 type TrackerSettings = Annotated[LinearTracker | TodoistTracker, Field(discriminator="tracker")]

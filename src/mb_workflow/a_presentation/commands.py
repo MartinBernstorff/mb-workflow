@@ -226,7 +226,7 @@ def drain(
         request=request,
     )
     if request.dry_run.root:
-        write(pick_listing(outcome.ready))
+        write(pick_listing(outcome.picked))
     else:
         log_drain_outcome(outcome)
     return ExitCode(0)

@@ -10,11 +10,16 @@ from mb_workflow.b_core.c_secondary_ports.claims import (
     release_claim,
     require_claim_label,
 )
-from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, SettleTime, TakeOver
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
-from mb_workflow.b_core.d_domain_model.pool import PoolTickets
+from mb_workflow.b_core.d_domain_model.claim import (
+    ClaimHolder,
+    HostName,
+    Released,
+    SettleTime,
+    TakeOver,
+)
+from mb_workflow.b_core.d_domain_model.pool import Occupancy, PoolTicket, PoolTickets
 from mb_workflow.b_core.d_domain_model.workspace import Submit, TimeoutMs, WorktreeName
-from mb_workflow.d_lib.models import Model
+from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry, Pause
@@ -28,6 +33,7 @@ if TYPE_CHECKING:
         PoolSettings,
         WorkspaceSettings,
     )
+    from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +66,11 @@ class DrainRequest(Model):
 
 class DrainOutcome(Model):
     ready: PoolTickets
-    started: IssueIdentifier | None
+    picked: PoolTickets
 
     @staticmethod
     def fake() -> DrainOutcome:
-        return DrainOutcome(ready=PoolTickets.fake(), started=IssueIdentifier.fake())
+        return DrainOutcome(ready=PoolTickets.fake(), picked=PoolTickets.fake())
 
 
 def drain_pool(
@@ -86,35 +92,73 @@ def drain_pool(
         ready = in_pick_order(
             tracker.view_tickets(pool.view).ready(claim_settings.label), tie_break
         )
-        if request.dry_run.root:
-            return DrainOutcome(ready=ready, started=None)
-        for ticket in ready.identifiers():
-            try:
-                start_ticket(
-                    manager=manager,
+        occupancy = Occupancy.of(tracker.labelled_issues(claim_settings.label, Released.statuses()))
+        picked: list[PoolTicket] = []
+        for ticket in ready.root:
+            if pool.limits.filled(occupancy).root:
+                break
+            if not pool.limits.admits(occupancy, ticket.issue.status).root:
+                continue
+            if (
+                request.dry_run.root
+                or started(
                     tracker=tracker,
                     claims=claims,
                     pause=pause,
+                    manager=manager,
                     board=board,
                     workspace=workspace,
                     claim_settings=claim_settings,
-                    request=request.start_request(ticket),
-                )
-            except ClaimLostError:
-                logger.info("Another host holds %s; trying the next ticket.", ticket.root)
-                continue
-            except Exception:
-                release_claim(
-                    claims,
-                    tracker,
-                    LabelledClaim(
-                        ticket=ticket,
-                        holder=ClaimHolder(
-                            host=request.host, worktree=WorktreeName.of_issue(ticket)
-                        ),
-                        label=claim_settings.label,
-                    ),
-                )
-                raise
-            return DrainOutcome(ready=ready, started=ticket)
-        return DrainOutcome(ready=ready, started=None)
+                    request=request.start_request(ticket.issue.identifier),
+                ).root
+            ):
+                picked.append(ticket)
+                occupancy = occupancy.plus(ticket.issue.status)
+        return DrainOutcome(ready=ready, picked=PoolTickets(tuple(picked)))
+
+
+class Started(Value[bool]):
+    @staticmethod
+    def fake() -> Started:
+        return Started(True)
+
+
+def started(
+    *,
+    tracker: TicketTracker,
+    claims: ClaimRegistry,
+    pause: Pause,
+    manager: WorkspaceManager,
+    board: WorkspaceStatusStore,
+    workspace: WorkspaceSettings,
+    claim_settings: ClaimSettings,
+    request: StartRequest,
+) -> Started:
+    try:
+        start_ticket(
+            manager=manager,
+            tracker=tracker,
+            claims=claims,
+            pause=pause,
+            board=board,
+            workspace=workspace,
+            claim_settings=claim_settings,
+            request=request,
+        )
+    except ClaimLostError:
+        logger.info("Another host holds %s; trying the next ticket.", request.ticket.root)
+        return Started(False)
+    except Exception:
+        release_claim(
+            claims,
+            tracker,
+            LabelledClaim(
+                ticket=request.ticket,
+                holder=ClaimHolder(
+                    host=request.host, worktree=WorktreeName.of_issue(request.ticket)
+                ),
+                label=claim_settings.label,
+            ),
+        )
+        raise
+    return Started(True)
