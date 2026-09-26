@@ -1,8 +1,7 @@
 import logging
 
 from mb_workflow.b_core.a_features.autolabel import Outcome
-from mb_workflow.b_core.b_domain_services.label_selection import SkipCount
-from mb_workflow.b_core.d_domain_model.autolabel import SkipReason
+from mb_workflow.b_core.d_domain_model.autolabel import SkipCount, SkipReason
 from mb_workflow.d_lib.models import Value
 
 logger = logging.getLogger(__name__)

@@ -1,4 +1,5 @@
 from datetime import timedelta
+from typing import override
 
 import pytest
 
@@ -9,9 +10,13 @@ from mb_workflow.b_core.a_features.autolabel import (
     UnknownLabelError,
     sweep,
 )
-from mb_workflow.b_core.c_secondary_ports.issue_tracker import FakeIssueTracker, TrackedIssue
+from mb_workflow.b_core.c_secondary_ports.issue_tracker import (
+    FakeIssueTracker,
+    IssueTrackerError,
+    TrackedIssue,
+)
 from mb_workflow.b_core.c_secondary_ports.ledger_store import FakeLedgerStore
-from mb_workflow.b_core.d_domain_model.autolabel import Ledger
+from mb_workflow.b_core.d_domain_model.autolabel import Ledger, Recorded
 from mb_workflow.b_core.d_domain_model.issue import (
     CreatedAfter,
     CreatedOn,
@@ -37,17 +42,30 @@ def tracked(identifier: IssueIdentifier, project: ProjectName) -> TrackedIssue:
     return TrackedIssue.fake().model_copy(update={"issue": issue})
 
 
-def tracker() -> FakeIssueTracker:
+def tracked_issues() -> tuple[TrackedIssue, ...]:
     editor = ProjectName("Editor Bugs")
-    return FakeIssueTracker(
-        LabelNames.fake(),
-        (
-            tracked(IssueIdentifier("E-1"), ProjectName("BE Shop")),
-            tracked(IssueIdentifier("E-4"), editor),
-            tracked(IssueIdentifier("E-10"), editor),
-            tracked(IssueIdentifier("E-11"), editor),
-        ),
+    return (
+        tracked(IssueIdentifier("E-1"), ProjectName("BE Shop")),
+        tracked(IssueIdentifier("E-4"), editor),
+        tracked(IssueIdentifier("E-10"), editor),
+        tracked(IssueIdentifier("E-11"), editor),
     )
+
+
+def tracker() -> FakeIssueTracker:
+    return FakeIssueTracker(LabelNames.fake(), tracked_issues())
+
+
+class RefusingTracker(FakeIssueTracker):
+    def __init__(self, refused: IssueIdentifier) -> None:
+        super().__init__(LabelNames.fake(), tracked_issues())
+        self._refused = refused
+
+    @override
+    def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
+        if issue == self._refused:
+            raise IssueTrackerError(f"{issue.root} refused the label.")
+        super().add_label(issue, label)
 
 
 def ledgers() -> FakeLedgerStore:
@@ -86,6 +104,16 @@ def test_an_applied_sweep_records_what_it_labelled() -> None:
 
 def test_an_applied_sweep_that_labelled_everything_has_not_failed() -> None:
     assert applied(tracker(), ledgers()).failed_any() == Failed(False)
+
+
+def test_a_sweep_with_a_refused_update_has_failed() -> None:
+    assert applied(RefusingTracker(IssueIdentifier("E-4")), ledgers()).failed_any() == Failed(True)
+
+
+def test_a_refused_update_is_left_out_of_the_ledger() -> None:
+    store = ledgers()
+    _ = applied(RefusingTracker(IssueIdentifier("E-4")), store)
+    assert store.read(LabelName.fake()).records(IssueIdentifier("E-4")) == Recorded(False)
 
 
 def test_a_dry_sweep_leaves_the_tracker_untouched() -> None:

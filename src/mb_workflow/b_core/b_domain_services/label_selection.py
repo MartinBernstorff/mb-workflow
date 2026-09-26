@@ -1,12 +1,6 @@
-from mb_workflow.b_core.d_domain_model.autolabel import AutoLabelCriteria, SkipReason
+from mb_workflow.b_core.d_domain_model.autolabel import AutoLabelCriteria, SkipCount, SkipReason
 from mb_workflow.b_core.d_domain_model.issue import Issue, Issues
 from mb_workflow.d_lib.models import Model, Value
-
-
-class SkipCount(Value[int]):
-    @staticmethod
-    def fake() -> SkipCount:
-        return SkipCount(1)
 
 
 class Decision(Model):

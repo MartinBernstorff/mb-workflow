@@ -19,6 +19,12 @@ class SkipReason(StrEnum):
     already_labelled = "already labelled"
 
 
+class SkipCount(Value[int]):
+    @staticmethod
+    def fake() -> SkipCount:
+        return SkipCount(1)
+
+
 class Excluded(Value[bool]):
     @staticmethod
     def fake() -> Excluded:

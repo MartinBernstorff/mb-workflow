@@ -3,12 +3,8 @@ from typing import TYPE_CHECKING
 
 from mb_workflow.a_presentation.autolabel_report import counted, report, summary
 from mb_workflow.b_core.a_features.autolabel import DryRun, Outcome
-from mb_workflow.b_core.b_domain_services.label_selection import (
-    Decision,
-    Selection,
-    SkipCount,
-)
-from mb_workflow.b_core.d_domain_model.autolabel import SkipReason
+from mb_workflow.b_core.b_domain_services.label_selection import Decision, Selection
+from mb_workflow.b_core.d_domain_model.autolabel import SkipCount, SkipReason
 from mb_workflow.b_core.d_domain_model.issue import Issue, IssueIdentifier
 
 if TYPE_CHECKING:
