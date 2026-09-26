@@ -1,6 +1,8 @@
+import logging
 from typing import TYPE_CHECKING, Protocol, override
 
 from mb_workflow.b_core.d_domain_model.workspace import (
+    DisplayName,
     OpenedWorktree,
     ProjectSelector,
     RepoId,
@@ -14,7 +16,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
-    from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
+    from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
     from mb_workflow.b_core.d_domain_model.workspace import (
         AgentName,
         Submit,
@@ -22,6 +24,8 @@ if TYPE_CHECKING:
         TimeoutMs,
         WorkspaceStatus,
     )
+
+logger = logging.getLogger(__name__)
 
 
 class WorkspaceManagerError(Exception):
@@ -34,7 +38,7 @@ class WorkspaceManager(Protocol):
     def worktrees(self) -> Worktrees: ...
 
     def create_for_review(
-        self, repo: RepoId, pr: PrNumber, title: PrTitle, status: WorkspaceStatus
+        self, repo: RepoId, pr: PrNumber, status: WorkspaceStatus
     ) -> Worktree: ...
 
     def create_for_issue(
@@ -49,6 +53,8 @@ class WorkspaceManager(Protocol):
     def remove(self, path: WorktreePath) -> None: ...
 
     def set_status(self, path: WorktreePath, status: WorkspaceStatus) -> None: ...
+
+    def set_display_name(self, path: WorktreePath, name: DisplayName) -> None: ...
 
     def wait_for_idle(self, terminal: TerminalHandle, timeout: TimeoutMs) -> None: ...
 
@@ -80,9 +86,7 @@ class FakeWorkspaceManager(WorkspaceManager):
         return self._worktrees
 
     @override
-    def create_for_review(
-        self, repo: RepoId, pr: PrNumber, title: PrTitle, status: WorkspaceStatus
-    ) -> Worktree:
+    def create_for_review(self, repo: RepoId, pr: PrNumber, status: WorkspaceStatus) -> Worktree:
         return self._add(
             Worktree.bare(repo, self._unused_path(WorktreeName.of(pr))).model_copy(
                 update={"pull_request": pr, "status": self._column(status)}
@@ -119,10 +123,11 @@ class FakeWorkspaceManager(WorkspaceManager):
 
     @override
     def set_status(self, path: WorktreePath, status: WorkspaceStatus) -> None:
-        moved = self._at(path).model_copy(update={"status": self._column(status)})
-        self._worktrees = Worktrees(
-            tuple(moved if w.path.same_as(path).root else w for w in self._worktrees.root)
-        )
+        self._replace(self._at(path).model_copy(update={"status": self._column(status)}))
+
+    @override
+    def set_display_name(self, path: WorktreePath, name: DisplayName) -> None:
+        self._replace(self._at(path).model_copy(update={"display_name": name}))
 
     @override
     def wait_for_idle(self, terminal: TerminalHandle, timeout: TimeoutMs) -> None:
@@ -145,6 +150,11 @@ class FakeWorkspaceManager(WorkspaceManager):
         if typed is None:
             raise WorkspaceManagerError(f"No terminal is handled as {terminal.root}.")
         return typed
+
+    def _replace(self, changed: Worktree) -> None:
+        self._worktrees = Worktrees(
+            tuple(changed if w.path.same_as(changed.path).root else w for w in self._worktrees.root)
+        )
 
     def _add(self, worktree: Worktree) -> Worktree:
         self._worktrees = Worktrees((*self._worktrees.root, worktree))
@@ -169,3 +179,17 @@ class FakeWorkspaceManager(WorkspaceManager):
         if worktree is None:
             raise WorkspaceManagerError(f"No worktree is at {path.root}.")
         return worktree
+
+
+class DisplayNameRefusingWorkspaceManager(FakeWorkspaceManager):
+    @override
+    def set_display_name(self, path: WorktreePath, name: DisplayName) -> None:
+        raise WorkspaceManagerError(f"Orca refused the display name {name.root}.")
+
+
+# The display name is cosmetic, so a refusal leaves the worktree under its directory name.
+def name_or_warn(manager: WorkspaceManager, path: WorktreePath, name: DisplayName) -> None:
+    try:
+        manager.set_display_name(path, name)
+    except WorkspaceManagerError as error:
+        logger.warning("Could not name %s %s: %s", path.root, name.root, error)

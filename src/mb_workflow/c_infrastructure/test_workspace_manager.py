@@ -8,9 +8,10 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     FakeWorkspaceManager,
     WorkspaceManagerError,
 )
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueTitle
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
 from mb_workflow.b_core.d_domain_model.workspace import (
+    DisplayName,
     ProjectSelector,
     RepoId,
     WorkspaceStatus,
@@ -110,9 +111,7 @@ def manager(kind: ManagerKind, board: Board) -> Generator[WorkspaceManager]:
 
 
 def for_review(manager: WorkspaceManager, board: Board) -> Worktree:
-    return manager.create_for_review(
-        board.repo, contract_pr(), PrTitle.fake(), WorkspaceStatus.fake()
-    )
+    return manager.create_for_review(board.repo, contract_pr(), WorkspaceStatus.fake())
 
 
 def test_the_current_worktree_is_among_those_listed(
@@ -145,7 +144,7 @@ def test_creating_in_a_column_the_board_lacks_is_refused(
     manager: WorkspaceManager, board: Board
 ) -> None:
     with pytest.raises(WorkspaceManagerError):
-        _ = manager.create_for_review(board.repo, contract_pr(), PrTitle.fake(), board.unlisted())
+        _ = manager.create_for_review(board.repo, contract_pr(), board.unlisted())
 
 
 def test_an_issue_worktree_is_linked_to_its_issue(manager: WorkspaceManager, board: Board) -> None:
@@ -233,3 +232,32 @@ def test_setting_a_status_the_board_has_no_column_for_is_refused(
     created = for_review(manager, board)
     with pytest.raises(WorkspaceManagerError):
         manager.set_status(created.path, board.unlisted())
+
+
+def test_a_display_name_set_on_a_worktree_is_listed_back(
+    manager: WorkspaceManager, board: Board
+) -> None:
+    opened = manager.create_for_issue(board.project, contract_name(), None, None, None)
+    manager.set_display_name(opened.worktree.path, DisplayName.of_issue(IssueTitle.fake()))
+    listed = manager.worktrees().at(opened.worktree.path)
+    assert listed is not None
+    assert listed.display_name == DisplayName.of_issue(IssueTitle.fake())
+
+
+def test_setting_a_display_name_on_an_unknown_worktree_is_refused(
+    manager: WorkspaceManager, board: Board
+) -> None:
+    with pytest.raises(WorkspaceManagerError):
+        manager.set_display_name(
+            board.here.sibling(WorktreeName("mw-contract-never-created")), DisplayName.fake()
+        )
+
+
+def test_a_review_worktree_is_listed_with_the_pr_title_as_its_display_name(
+    manager: WorkspaceManager, board: Board
+) -> None:
+    created = for_review(manager, board)
+    manager.set_display_name(created.path, DisplayName.of_pr(PrTitle.fake()))
+    listed = manager.worktrees().at(created.path)
+    assert listed is not None
+    assert listed.display_name == DisplayName.of_pr(PrTitle.fake())

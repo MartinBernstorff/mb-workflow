@@ -11,8 +11,9 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
 )
 from mb_workflow.b_core.d_domain_model.git import Ref
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
-from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
+from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
 from mb_workflow.b_core.d_domain_model.workspace import (
+    DisplayName,
     OpenedWorktree,
     RepoId,
     TerminalHandle,
@@ -42,11 +43,11 @@ logger = logging.getLogger(__name__)
 class WorktreeComment(Value[str]):
     @staticmethod
     def fake() -> WorktreeComment:
-        return WorktreeComment.of(PrNumber.fake(), PrTitle.fake())
+        return WorktreeComment.of(PrNumber.fake())
 
     @staticmethod
-    def of(pr: PrNumber, title: PrTitle) -> WorktreeComment:
-        return WorktreeComment(f"PR #{pr.root} — {title.root}")
+    def of(pr: PrNumber) -> WorktreeComment:
+        return WorktreeComment(f"PR #{pr.root}")
 
 
 class ColumnLabel(Value[str]):
@@ -133,6 +134,7 @@ class WorktreePayload(Payload):
     linked_issue: PrNumber | None = None
     linked_linear_issue: IssueIdentifier | None = None
     workspace_status: WorkspaceStatus | None = None
+    display_name: DisplayName | None = None
 
     @staticmethod
     def fake() -> WorktreePayload:
@@ -143,6 +145,7 @@ class WorktreePayload(Payload):
             linked_issue=PrNumber.fake(),
             linked_linear_issue=IssueIdentifier.fake(),
             workspace_status=WorkspaceStatus.fake(),
+            display_name=DisplayName.fake(),
         )
 
     def worktree(self) -> Worktree:
@@ -153,6 +156,7 @@ class WorktreePayload(Payload):
             pull_request=self.linked_issue,
             issue=self.linked_linear_issue,
             status=self.workspace_status,
+            display_name=self.display_name,
         )
 
 
@@ -245,9 +249,7 @@ class Orca(WorkspaceManager):
         return self._parsed(Command(("orca", "worktree", "list", "--json")), WorktreeList.parse)
 
     @override
-    def create_for_review(
-        self, repo: RepoId, pr: PrNumber, title: PrTitle, status: WorkspaceStatus
-    ) -> Worktree:
+    def create_for_review(self, repo: RepoId, pr: PrNumber, status: WorkspaceStatus) -> Worktree:
         return self._single(
             Command(
                 (
@@ -262,7 +264,7 @@ class Orca(WorkspaceManager):
                     "--issue",
                     str(pr.root),
                     "--comment",
-                    WorktreeComment.of(pr, title).root,
+                    WorktreeComment.of(pr).root,
                     "--workspace-status",
                     status.root,
                     "--json",
@@ -319,6 +321,23 @@ class Orca(WorkspaceManager):
     @override
     def set_status(self, path: WorktreePath, status: WorkspaceStatus) -> None:
         _ = self._single(status_assignment(WorktreeSelector.of(path), status))
+
+    @override
+    def set_display_name(self, path: WorktreePath, name: DisplayName) -> None:
+        _ = self._single(
+            Command(
+                (
+                    "orca",
+                    "worktree",
+                    "set",
+                    "--worktree",
+                    WorktreeSelector.of(path).root,
+                    "--display-name",
+                    name.root,
+                    "--json",
+                )
+            )
+        )
 
     @override
     def wait_for_idle(self, terminal: TerminalHandle, timeout: TimeoutMs) -> None:

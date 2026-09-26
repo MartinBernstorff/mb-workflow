@@ -7,6 +7,7 @@ from mb_workflow.b_core.d_domain_model.git import BranchName
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
 from mb_workflow.b_core.d_domain_model.workspace import (
+    DisplayName,
     RepoId,
     TerminalHandle,
     WorkspaceStatus,
@@ -87,7 +88,15 @@ def test_acknowledges_a_removal() -> None:
 
 def test_worktree_name_and_comment_describe_the_pr() -> None:
     assert WorktreeName.of(PrNumber.fake()) == WorktreeName.fake()
-    assert WorktreeComment.fake().root == "PR #1234 — Add review workspaces"
+    assert WorktreeComment.of(PrNumber.fake()).root == "PR #1234"
+
+
+def test_parses_the_display_name() -> None:
+    output = CommandOutput(
+        '{"ok":true,"result":{"worktrees":[{"repoId":"r","path":"/tmp/x",'
+        '"displayName":"Add widget"}]}}'
+    )
+    assert WorktreeList.parse(output).root[0].display_name == DisplayName.fake()
 
 
 def test_prefers_the_agent_terminal_handle() -> None:
