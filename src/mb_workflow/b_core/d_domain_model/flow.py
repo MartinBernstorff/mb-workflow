@@ -61,7 +61,7 @@ class WorkflowChart(StateChart[ChartModel]):
     merging = WorkState(StateName("Merging"), Skill("/merge"))
     merged = WorkState(StateName("Merged"), Finished())
 
-    grill = Event(implementing.to(grilling), id="grill", name="grill")
+    grill = Event(grilling.to.itself() | implementing.to(grilling), id="grill", name="grill")
     to_ticket = Event(
         grilling.to(speccing) | implementing.to(speccing), id="to-ticket", name="to-ticket"
     )
@@ -69,7 +69,7 @@ class WorkflowChart(StateChart[ChartModel]):
     implement = Event(
         specced.to(implementing) | qa.to(implementing), id="implement", name="implement"
     )
-    to_qa = Event(implementing.to(qa) | review.to(qa), id="qa", name="qa")
+    to_qa = Event(implementing.to(qa) | review.to(qa) | merging.to(qa), id="qa", name="qa")
     ready = Event(qa.to(review), id="ready", name="ready")
     merge = Event(qa.to(merging) | review.to(merging), id="merge", name="merge")
     to_merged = Event(review.to(merged) | merging.to(merged), id="merged", name="merged")
