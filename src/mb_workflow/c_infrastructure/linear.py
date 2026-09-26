@@ -17,8 +17,11 @@ from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker, Iss
 from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Issue,
+    IssueDescription,
+    IssueDetail,
     IssueIdentifier,
     Issues,
+    IssueTitle,
     LabelName,
     LabelNames,
     ProjectName,
@@ -134,6 +137,34 @@ class IssueRead(Payload):
         return IssueRead(issue=IssuePayload.fake())
 
 
+class IssueDetailPayload(IssuePayload):
+    title: IssueTitle
+    description: IssueDescription | None = None
+
+    @override
+    @staticmethod
+    def fake() -> IssueDetailPayload:
+        return IssueDetailPayload(
+            identifier=IssueIdentifier.fake(),
+            status=StatusName.fake(),
+            project=ProjectPayload.fake(),
+            labels=(LabelPayload.fake(),),
+            title=IssueTitle.fake(),
+            description=IssueDescription.fake(),
+        )
+
+    def detail(self) -> IssueDetail:
+        return IssueDetail(issue=self.issue(), title=self.title, description=self.description)
+
+
+class IssueDetailRead(Payload):
+    issue: IssueDetailPayload
+
+    @staticmethod
+    def fake() -> IssueDetailRead:
+        return IssueDetailRead(issue=IssueDetailPayload.fake())
+
+
 class IssuePage(Payload):
     nodes: tuple[IssuePayload, ...]
     page_info: PageInfo
@@ -230,6 +261,27 @@ class Linear(IssueTracker):
                 {"id": issue.root},
             )
         return IssueRead.model_validate(data).issue.issue()
+
+    @override
+    def view_issue(self, issue: IssueIdentifier) -> IssueDetail:
+        with translated_errors():
+            data = self._client.execute(
+                """
+                query($id: String!) {
+                  issue(id: $id) {
+                    identifier
+                    title
+                    description
+                    state { name }
+                    project { name }
+                    labels { nodes { name } }
+                    assignee { id }
+                  }
+                }
+                """,
+                {"id": issue.root},
+            )
+        return IssueDetailRead.model_validate(data).issue.detail()
 
     @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:

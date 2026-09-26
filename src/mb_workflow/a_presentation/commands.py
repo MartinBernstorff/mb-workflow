@@ -23,6 +23,7 @@ from mb_workflow.b_core.a_features.review_workspaces import create_workspaces
 from mb_workflow.b_core.a_features.show_config import show_config
 from mb_workflow.b_core.a_features.show_flow import show_flow
 from mb_workflow.b_core.a_features.transition import transition
+from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.b_domain_services.lock import AlreadyRunningError, LockName, LockPath
 from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
 from mb_workflow.b_core.d_domain_model.config import (
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
 
     from mb_workflow.b_core.b_domain_services.flow_report import AsJson
     from mb_workflow.b_core.b_domain_services.flow_transition import Force
+    from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
     from mb_workflow.c_infrastructure.github import Lookback, ReviewRequest
 
 logger = logging.getLogger(__name__)
@@ -115,6 +117,12 @@ def linear_autolabel(request: AutolabelRequest, ledger: LedgerPath) -> ExitCode:
 @guarded
 def open_linear_issue(request: OpenRequest) -> ExitCode:
     open_workspace(Orca(here()), linear(), request)
+    return ExitCode(0)
+
+
+@guarded
+def ticket_view(issue: IssueIdentifier) -> ExitCode:
+    write(Output(view_ticket(linear(), issue).root))
     return ExitCode(0)
 
 

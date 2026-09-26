@@ -115,6 +115,30 @@ class Issue(Model):
             return None
 
 
+class IssueTitle(Value[str]):
+    @staticmethod
+    def fake() -> IssueTitle:
+        return IssueTitle("Add widget")
+
+
+class IssueDescription(Value[str]):
+    @staticmethod
+    def fake() -> IssueDescription:
+        return IssueDescription("The dashboard needs a widget.")
+
+
+class IssueDetail(Model):
+    issue: Issue
+    title: IssueTitle
+    description: IssueDescription | None
+
+    @staticmethod
+    def fake() -> IssueDetail:
+        return IssueDetail(
+            issue=Issue.fake(), title=IssueTitle.fake(), description=IssueDescription.fake()
+        )
+
+
 class Issues(Value[tuple[Issue, ...]]):
     @staticmethod
     def fake() -> Issues:

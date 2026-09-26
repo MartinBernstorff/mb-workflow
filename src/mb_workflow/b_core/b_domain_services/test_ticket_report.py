@@ -1,0 +1,34 @@
+from mb_workflow.b_core.b_domain_services.ticket_report import TicketReport
+from mb_workflow.b_core.d_domain_model.issue import Issue, IssueDetail, LabelName, LabelNames
+
+
+def test_reports_the_heading_the_fields_and_the_description() -> None:
+    assert TicketReport.of(IssueDetail.fake()).root == (
+        "E-4289 Add widget\n"
+        "status: Todo\n"
+        "project: BE: Campaigns MVP\n"
+        "labels: d-implement\n"
+        "\n"
+        "The dashboard needs a widget.\n"
+    )
+
+
+def test_an_issue_without_a_project_labels_or_description_reports_none_of_them() -> None:
+    bare = IssueDetail.fake().model_copy(
+        update={
+            "issue": Issue.fake().model_copy(update={"project": None, "labels": LabelNames(())}),
+            "description": None,
+        }
+    )
+    assert TicketReport.of(bare).root == "E-4289 Add widget\nstatus: Todo\n"
+
+
+def test_labels_are_joined_by_commas() -> None:
+    labelled = IssueDetail.fake().model_copy(
+        update={
+            "issue": Issue.fake().model_copy(
+                update={"labels": LabelNames((LabelName("Backend"), LabelName("d-grill")))}
+            )
+        }
+    )
+    assert "labels: Backend, d-grill\n" in TicketReport.of(labelled).root

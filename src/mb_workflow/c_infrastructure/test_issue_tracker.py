@@ -25,8 +25,11 @@ from mb_workflow.b_core.d_domain_model.issue import (
     CreatedOn,
     Creator,
     Issue,
+    IssueDescription,
+    IssueDetail,
     IssueFilter,
     IssueIdentifier,
+    IssueTitle,
     LabelName,
     LabelNames,
     ProjectName,
@@ -52,6 +55,7 @@ class SeededIssue(Model):
     status: StatusName
     project: ProjectName | None
     labels: LabelNames
+    description: IssueDescription | None
 
     def issue(self, identifier: IssueIdentifier) -> Issue:
         return Issue(
@@ -60,6 +64,14 @@ class SeededIssue(Model):
             project=self.project,
             labels=self.labels,
             assigned=Assigned(False),
+        )
+
+    def title(self) -> IssueTitle:
+        return IssueTitle(f"contract: {self.seed.value}")
+
+    def detail(self, identifier: IssueIdentifier) -> IssueDetail:
+        return IssueDetail(
+            issue=self.issue(identifier), title=self.title(), description=self.description
         )
 
 
@@ -74,6 +86,7 @@ def seeded(seed: Seed, created: CreatedOn) -> SeededIssue:
         status=StatusName.fake(),
         project=ProjectName.fake(),
         labels=LabelNames(()),
+        description=IssueDescription.fake(),
     )
 
 
@@ -88,6 +101,7 @@ def seeds() -> tuple[SeededIssue, ...]:
             status=StatusName("Done"),
             project=None,
             labels=LabelNames((LabelName("d-grill"),)),
+            description=None,
         ),
     )
 
@@ -101,8 +115,11 @@ class Backlog(Model):
         return self.identifiers[seed]
 
     def issue(self, seed: Seed) -> Issue:
+        return self.detail(seed).issue
+
+    def detail(self, seed: Seed) -> IssueDetail:
         planted = next(planted for planted in seeds() if planted.seed == seed)
-        return planted.issue(self.identifier(seed))
+        return planted.detail(self.identifier(seed))
 
     def picked(self, wanted: IssueFilter, tracker: IssueTracker) -> tuple[Seed, ...]:
         swept = tracker.list_issues(wanted).identifiers()
@@ -206,7 +223,7 @@ def ensure_project(client: LinearClient, team: TeamId, project: ProjectName) -> 
 
 
 def ensure_issue(client: LinearClient, team: TeamId, planted: SeededIssue) -> IssueIdentifier:
-    title = f"contract: {planted.seed.value}"
+    title = planted.title().root
     found = client.issues(IssuesRequest(filter={"title": {"eq": title}})).nodes
     if found and found[0].identifier:
         return IssueIdentifier(found[0].identifier)
@@ -248,8 +265,13 @@ def reset(client: LinearClient, backlog: Backlog) -> None:
         identifier = backlog.identifier(planted.seed)
         tracker.set_labels(identifier, planted.labels)
         _ = client.execute(
-            "mutation($id: String!) { issueUpdate(id: $id, input: { assigneeId: null }) { success } }",
-            {"id": identifier.root},
+            "mutation($id: String!, $description: String) {"
+            " issueUpdate(id: $id, input: { assigneeId: null, description: $description })"
+            " { success } }",
+            {
+                "id": identifier.root,
+                "description": planted.description.root if planted.description else None,
+            },
         )
 
 
@@ -279,6 +301,8 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
         tuple(
             TrackedIssue(
                 issue=planted.issue(backlog.identifier(planted.seed)),
+                title=planted.title(),
+                description=planted.description,
                 creator=backlog.creator,
                 created_on=planted.created_on,
             )
@@ -327,6 +351,23 @@ def test_a_project_survives_the_round_trip(tracker: IssueTracker, backlog: Backl
 def test_reading_an_unknown_issue_is_refused(tracker: IssueTracker) -> None:
     with pytest.raises(IssueTrackerError):
         _ = tracker.read_issue(IssueIdentifier("E-404"))
+
+
+def test_viewing_an_issue_carries_its_title_and_description(
+    tracker: IssueTracker, backlog: Backlog
+) -> None:
+    assert tracker.view_issue(backlog.identifier(Seed.recent)) == backlog.detail(Seed.recent)
+
+
+def test_an_issue_without_a_description_carries_none(
+    tracker: IssueTracker, backlog: Backlog
+) -> None:
+    assert tracker.view_issue(backlog.identifier(Seed.done)).description is None
+
+
+def test_viewing_an_unknown_issue_is_refused(tracker: IssueTracker) -> None:
+    with pytest.raises(IssueTrackerError):
+        _ = tracker.view_issue(IssueIdentifier("E-404"))
 
 
 def test_an_added_label_joins_the_ones_already_there(

@@ -45,6 +45,8 @@ linear_app = typer.Typer(no_args_is_help=True)
 app.add_typer(linear_app, name="linear")
 flow_app = typer.Typer(no_args_is_help=True)
 app.add_typer(flow_app, name="flow")
+ticket_app = typer.Typer(no_args_is_help=True)
+app.add_typer(ticket_app, name="ticket")
 
 REVIEWING = "status-8"
 FORCING = "Write the target state without checking the event is legal from the current one."
@@ -155,6 +157,15 @@ def linear_autolabel(
     )
     ledger = LedgerPath.of(CacheDirectory.of_user(), label)
     raise typer.Exit(code=commands.linear_autolabel(request, ledger).root)
+
+
+@ticket_app.command("view")
+def ticket_view(
+    issue: str = typer.Argument(..., help="Identifier of the issue to show, e.g. MB-28."),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    raise typer.Exit(code=commands.ticket_view(IssueIdentifier(issue)).root)
 
 
 @app.command("open-issue")

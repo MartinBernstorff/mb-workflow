@@ -6,9 +6,12 @@ from mb_workflow.b_core.d_domain_model.issue import (
     CreatedOn,
     Creator,
     Issue,
+    IssueDescription,
+    IssueDetail,
     IssueFilter,
     IssueIdentifier,
     Issues,
+    IssueTitle,
     LabelName,
     LabelNames,
 )
@@ -26,6 +29,8 @@ class IssueTracker(Protocol):
 
     def read_issue(self, issue: IssueIdentifier) -> Issue: ...
 
+    def view_issue(self, issue: IssueIdentifier) -> IssueDetail: ...
+
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None: ...
 
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None: ...
@@ -35,12 +40,20 @@ class IssueTracker(Protocol):
 
 class TrackedIssue(Model):
     issue: Issue
+    title: IssueTitle
+    description: IssueDescription | None
     creator: Creator
     created_on: CreatedOn
 
     @staticmethod
     def fake() -> TrackedIssue:
-        return TrackedIssue(issue=Issue.fake(), creator=Creator.fake(), created_on=CreatedOn.fake())
+        return TrackedIssue(
+            issue=Issue.fake(),
+            title=IssueTitle.fake(),
+            description=IssueDescription.fake(),
+            creator=Creator.fake(),
+            created_on=CreatedOn.fake(),
+        )
 
 
 class FakeIssueTracker(IssueTracker):
@@ -65,6 +78,13 @@ class FakeIssueTracker(IssueTracker):
     @override
     def read_issue(self, issue: IssueIdentifier) -> Issue:
         return self._tracked(issue).issue
+
+    @override
+    def view_issue(self, issue: IssueIdentifier) -> IssueDetail:
+        tracked = self._tracked(issue)
+        return IssueDetail(
+            issue=tracked.issue, title=tracked.title, description=tracked.description
+        )
 
     @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
