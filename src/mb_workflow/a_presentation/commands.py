@@ -59,7 +59,6 @@ from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
 from mb_workflow.c_infrastructure.linear_claims import LinearClaims
 from mb_workflow.c_infrastructure.orca import Orca
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
-from mb_workflow.c_infrastructure.sleep import SleepingPause
 from mb_workflow.c_infrastructure.workspace_board import BoardError, WorkspaceBoard
 
 if TYPE_CHECKING:
@@ -192,7 +191,6 @@ def ticket_start(
         manager=orca,
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
-        pause=SleepingPause(),
         board=workspace_board(orca),
         workspace=settings.workspace,
         claim_settings=settings.claims,

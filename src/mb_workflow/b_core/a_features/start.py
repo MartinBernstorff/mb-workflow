@@ -9,7 +9,7 @@ from mb_workflow.b_core.c_secondary_ports.claims import (
 )
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
-from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, SettleTime, TakeOver
+from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, TakeOver
 from mb_workflow.b_core.d_domain_model.flow import (
     AwaitingHuman,
     Finished,
@@ -28,7 +28,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry, Pause
+    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
@@ -49,7 +49,6 @@ class StartRequest(Model):
     idle_timeout: TimeoutMs
     host: HostName
     take_over: TakeOver
-    settle: SettleTime
 
     @staticmethod
     def fake() -> StartRequest:
@@ -59,7 +58,6 @@ class StartRequest(Model):
             idle_timeout=TimeoutMs.fake(),
             host=HostName.fake(),
             take_over=TakeOver.fake(),
-            settle=SettleTime.fake(),
         )
 
     def prompt_for(self, action: Skill | AwaitingHuman) -> TerminalText | None:
@@ -73,7 +71,6 @@ def start_ticket(
     manager: WorkspaceManager,
     tracker: TicketTracker,
     claims: ClaimRegistry,
-    pause: Pause,
     board: WorkspaceStatusStore,
     workspace: WorkspaceSettings,
     claim_settings: ClaimSettings,
@@ -87,13 +84,11 @@ def start_ticket(
     name = WorktreeName.of_issue(request.ticket)
     claim_ticket(
         claims,
-        pause,
         ClaimRequest(
             ticket=request.ticket,
             status=status,
             holder=ClaimHolder(host=request.host, worktree=name),
             take_over=request.take_over,
-            settle=request.settle,
         ),
     )
     add_claim_label(tracker, request.ticket, claim_settings.label)

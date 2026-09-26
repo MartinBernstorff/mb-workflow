@@ -4,7 +4,6 @@ from mb_workflow.b_core.a_features.start import StartRequest, start_ticket
 from mb_workflow.b_core.c_secondary_ports.claims import (
     ClaimRefusedError,
     FakeClaimRegistry,
-    FakePause,
 )
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
@@ -90,7 +89,6 @@ def starting(
         manager=manager,
         tracker=tracker,
         claims=claims or FakeClaimRegistry(),
-        pause=FakePause(),
         board=fake_board(),
         workspace=workspace or WorkspaceSettings.fake(),
         claim_settings=claim_settings or ClaimSettings.fake(),
@@ -214,21 +212,6 @@ def test_claims_the_ticket_for_this_host_and_worktree() -> None:
     claims = FakeClaimRegistry()
     starting(fake_manager(), tracking(IssueStatusName("Specced")), StartRequest.fake(), claims)
     assert holders(claims) == (ours(),)
-
-
-def test_the_claim_settles_before_it_is_verified() -> None:
-    pause = FakePause()
-    start_ticket(
-        manager=fake_manager(),
-        tracker=tracking(IssueStatusName("Specced")),
-        claims=FakeClaimRegistry(),
-        pause=pause,
-        board=fake_board(),
-        workspace=WorkspaceSettings.fake(),
-        claim_settings=ClaimSettings.fake(),
-        request=StartRequest.fake(),
-    )
-    assert pause.waited() == (StartRequest.fake().settle,)
 
 
 def test_a_ticket_claimed_by_another_holder_is_neither_opened_nor_assigned() -> None:

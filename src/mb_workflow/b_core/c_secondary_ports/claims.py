@@ -8,7 +8,6 @@ from mb_workflow.b_core.d_domain_model.claim import (
     ClaimHolder,
     ClaimId,
     Claims,
-    SettleTime,
     TakeOver,
 )
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName, LabelName
@@ -29,16 +28,11 @@ class ClaimRegistry(Protocol):
     def withdraw(self, ticket: IssueIdentifier, claim: ClaimId) -> None: ...
 
 
-class Pause(Protocol):
-    def wait(self, duration: SettleTime) -> None: ...
-
-
 class ClaimRequest(Model):
     ticket: IssueIdentifier
     status: IssueStatusName
     holder: ClaimHolder
     take_over: TakeOver
-    settle: SettleTime
 
     @staticmethod
     def fake() -> ClaimRequest:
@@ -47,11 +41,10 @@ class ClaimRequest(Model):
             status=IssueStatusName("Specced"),
             holder=ClaimHolder.fake(),
             take_over=TakeOver.fake(),
-            settle=SettleTime.fake(),
         )
 
 
-def claim_ticket(registry: ClaimRegistry, pause: Pause, request: ClaimRequest) -> None:
+def claim_ticket(registry: ClaimRegistry, request: ClaimRequest) -> None:
     held = registry.claims(request.ticket)
     current = held.holding(request.status)
     if current is not None and current.holder == request.holder:
@@ -60,14 +53,13 @@ def claim_ticket(registry: ClaimRegistry, pause: Pause, request: ClaimRequest) -
         raise claimed_error(request.ticket, current)
     withdraw_claims(registry, request.ticket, held)
 
-    # Every claimer posts before reading, so whoever reads after the pause sees the same earliest claim.
+    # Every claimer posts before reading, so each reads back the same earliest claim.
     posted = registry.post(request.ticket, request.holder)
-    pause.wait(request.settle)
-    settled = registry.claims(request.ticket)
-    winner = settled.holding(request.status)
+    read_back = registry.claims(request.ticket)
+    winner = read_back.holding(request.status)
     if winner is not None and winner.id == posted:
         return
-    if posted in settled.ids():
+    if posted in read_back.ids():
         registry.withdraw(request.ticket, posted)
     if winner is None:
         raise ClaimRefusedError(f"Our claim on {request.ticket.root} was withdrawn by another.")
@@ -152,15 +144,3 @@ class FakeClaimRegistry(ClaimRegistry):
         self._claims[ticket] = Claims(
             tuple(held for held in self.claims(ticket).root if held.id != claim)
         )
-
-
-class FakePause(Pause):
-    def __init__(self) -> None:
-        self._waited: list[SettleTime] = []
-
-    @override
-    def wait(self, duration: SettleTime) -> None:
-        self._waited.append(duration)
-
-    def waited(self) -> tuple[SettleTime, ...]:
-        return tuple(self._waited)
