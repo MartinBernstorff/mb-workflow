@@ -26,7 +26,7 @@ from mb_workflow.c_infrastructure.shell import Command, CommandOutput, Shell
 from mb_workflow.d_lib.models import Payload, Value
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Callable, Generator
 
     from mb_workflow.b_core.d_domain_model.workspace import (
         AgentName,
@@ -226,6 +226,8 @@ def translated_errors() -> Generator[None]:
         yield
     except CalledProcessError as error:
         raise WorkspaceManagerError(refusal_of(error).root) from error
+    except ValidationError as error:
+        raise WorkspaceManagerError(f"orca printed an unreadable reply: {error}") from error
 
 
 class Orca(WorkspaceManager):
@@ -239,7 +241,7 @@ class Orca(WorkspaceManager):
 
     @override
     def worktrees(self) -> Worktrees:
-        return WorktreeList.parse(self._run(Command(("orca", "worktree", "list", "--json"))))
+        return self._parsed(Command(("orca", "worktree", "list", "--json")), WorktreeList.parse)
 
     @override
     def create_for_review(
@@ -295,20 +297,19 @@ class Orca(WorkspaceManager):
 
     @override
     def remove(self, path: WorktreePath) -> None:
-        _ = Acknowledgement.parse(
-            self._run(
-                Command(
-                    (
-                        "orca",
-                        "worktree",
-                        "rm",
-                        "--worktree",
-                        WorktreeSelector.of(path).root,
-                        "--force",
-                        "--json",
-                    )
+        _ = self._parsed(
+            Command(
+                (
+                    "orca",
+                    "worktree",
+                    "rm",
+                    "--worktree",
+                    WorktreeSelector.of(path).root,
+                    "--force",
+                    "--json",
                 )
-            )
+            ),
+            Acknowledgement.parse,
         )
 
     @override
@@ -349,7 +350,11 @@ class Orca(WorkspaceManager):
         return Envelope[Acknowledgement].model_validate_json(output.root).refusal()
 
     def _single(self, command: Command) -> SingleWorktree:
-        return SingleWorktree.parse(self._run(command))
+        return self._parsed(command, SingleWorktree.parse)
+
+    def _parsed[T](self, command: Command, parse: Callable[[CommandOutput], T]) -> T:
+        with translated_errors():
+            return parse(self._shell.run(command))
 
     def _run(self, command: Command) -> CommandOutput:
         with translated_errors():

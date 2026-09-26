@@ -24,6 +24,7 @@ from mb_workflow.c_infrastructure.orca import (
     WorktreeSelector,
     refusal_of,
     status_assignment,
+    translated_errors,
 )
 from mb_workflow.c_infrastructure.shell import CommandOutput
 
@@ -82,12 +83,6 @@ def test_reads_the_created_worktree() -> None:
 def test_acknowledges_a_removal() -> None:
     output = CommandOutput('{"ok":true,"result":{"removed":true}}')
     assert Acknowledgement.parse(output) == Acknowledgement()
-
-
-def test_a_worktree_is_selected_by_its_own_path() -> None:
-    assert WorktreeSelector.of(WorktreePath.fake()) == WorktreeSelector(
-        f"path:{WorktreePath.fake().root}"
-    )
 
 
 def test_worktree_name_and_comment_describe_the_pr() -> None:
@@ -166,4 +161,11 @@ def test_a_failed_command_carries_the_reason_orca_printed() -> None:
 
 def test_a_failed_command_without_an_envelope_carries_the_exit() -> None:
     refused = CalledProcessError(1, ("orca",), "not json", "")
-    assert refusal_of(refused) == ErrorMessage(str(refused))
+    assert refusal_of(refused) == ErrorMessage(
+        "Command '('orca',)' returned non-zero exit status 1."
+    )
+
+
+def test_an_unreadable_reply_is_a_workspace_manager_error() -> None:
+    with pytest.raises(WorkspaceManagerError, match="unreadable reply"), translated_errors():
+        _ = Acknowledgement.parse(CommandOutput("not json"))

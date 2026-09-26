@@ -81,11 +81,11 @@ class FakeWorkspaceManager(WorkspaceManager):
     def create_for_review(
         self, repo: RepoId, pr: PrNumber, title: PrTitle, status: WorkspaceStatus
     ) -> Worktree:
-        worktree = Worktree.bare(repo, self._free(repo, WorktreeName.of(pr))).model_copy(
-            update={"pull_request": pr, "status": self._column(status)}
+        return self._add(
+            Worktree.bare(repo, self._unused_path(WorktreeName.of(pr))).model_copy(
+                update={"pull_request": pr, "status": self._column(status)}
+            )
         )
-        self._worktrees = Worktrees((*self._worktrees.root, worktree))
-        return worktree
 
     @override
     def create_for_issue(
@@ -97,10 +97,9 @@ class FakeWorkspaceManager(WorkspaceManager):
     ) -> OpenedWorktree:
         if project != self._project:
             raise WorkspaceManagerError(f"No project is selected by {project.root}.")
-        worktree = Worktree.bare(self._repo, self._free(self._repo, name)).model_copy(
-            update={"issue": issue}
+        worktree = self._add(
+            Worktree.bare(self._repo, self._unused_path(name)).model_copy(update={"issue": issue})
         )
-        self._worktrees = Worktrees((*self._worktrees.root, worktree))
         if agent is None:
             return OpenedWorktree(worktree=worktree, terminal=None)
         terminal = TerminalHandle(f"terminal-{len(self._terminals) + 1}")
@@ -121,23 +120,30 @@ class FakeWorkspaceManager(WorkspaceManager):
 
     @override
     def wait_for_idle(self, terminal: TerminalHandle, timeout: TimeoutMs) -> None:
-        _ = self.typed(terminal)
+        _ = self._typed_into(terminal)
 
     @override
     def send_text(self, terminal: TerminalHandle, text: TerminalText) -> None:
-        self._terminals[terminal] = (*self.typed(terminal), text)
+        self._terminals[terminal] = (*self._typed_into(terminal), text)
 
-    def typed(self, terminal: TerminalHandle) -> tuple[TerminalText, ...]:
+    def typed_texts(self) -> tuple[TerminalText, ...]:
+        return tuple(text for typed in self._terminals.values() for text in typed)
+
+    def _typed_into(self, terminal: TerminalHandle) -> tuple[TerminalText, ...]:
         typed = self._terminals.get(terminal)
         if typed is None:
             raise WorkspaceManagerError(f"No terminal is handled as {terminal.root}.")
         return typed
 
-    def _free(self, repo: RepoId, name: WorktreeName) -> WorktreePath:
-        taken = Worktrees(tuple(w for w in self._worktrees.root if w.repo == repo))
+    def _add(self, worktree: Worktree) -> Worktree:
+        self._worktrees = Worktrees((*self._worktrees.root, worktree))
+        return worktree
+
+    # Orca keeps a taken name by suffixing the directory rather than refusing it.
+    def _unused_path(self, name: WorktreeName) -> WorktreePath:
         path = self._here.sibling(name)
         suffix = 2
-        while taken.at(path) is not None:
+        while self._worktrees.at(path) is not None:
             path = self._here.sibling(WorktreeName(f"{name.root}-{suffix}"))
             suffix += 1
         return path
