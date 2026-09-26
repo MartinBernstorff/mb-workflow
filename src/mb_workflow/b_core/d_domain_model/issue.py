@@ -88,6 +88,12 @@ class StatusNames(Value[tuple[IssueStatusName, ...]]):
     def closed() -> StatusNames:
         return StatusNames((IssueStatusName("Canceled"), IssueStatusName("Duplicate")))
 
+    @staticmethod
+    def finished() -> StatusNames:
+        return StatusNames(
+            (IssueStatusName("Merged"), IssueStatusName("Done"), *StatusNames.closed().root)
+        )
+
     def matching(self, status: IssueStatusName) -> IssueStatusName | None:
         return next((known for known in self.root if known.names(status).root), None)
 

@@ -42,7 +42,6 @@ def pooled(
     priority: Priority,
     status: IssueStatusName = IssueStatusName("Specced"),
     labels: LabelNames = LabelNames(()),
-    blocked_by: tuple[IssueIdentifier, ...] = (),
 ) -> TrackedIssue:
     return TrackedIssue.fake().model_copy(
         update={
@@ -54,7 +53,6 @@ def pooled(
                 }
             ),
             "priority": priority,
-            "blocked_by": blocked_by,
         }
     )
 
@@ -241,15 +239,6 @@ def test_a_ticket_carrying_the_claim_label_is_passed_over() -> None:
         pooled(
             IssueIdentifier("MB-2"), Priority.urgent, labels=LabelNames((LabelName("claimed"),))
         ),
-    )
-    assert picked(draining(tracker)) == (IssueIdentifier("MB-1"),)
-
-
-def test_a_ticket_with_an_unresolved_blocker_is_passed_over() -> None:
-    tracker = pool_of(
-        pooled(IssueIdentifier("MB-1"), Priority.low),
-        pooled(IssueIdentifier("MB-2"), Priority.urgent, blocked_by=(IssueIdentifier("MB-3"),)),
-        pooled(IssueIdentifier("MB-3"), Priority.urgent, status=IssueStatusName("QA")),
     )
     assert picked(draining(tracker)) == (IssueIdentifier("MB-1"),)
 

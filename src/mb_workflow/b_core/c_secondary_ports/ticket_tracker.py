@@ -24,14 +24,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Projects,
     StatusNames,
 )
-from mb_workflow.b_core.d_domain_model.pool import (
-    Blocker,
-    Blockers,
-    PoolTicket,
-    PoolTickets,
-    Priority,
-    ViewSlug,
-)
+from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority, ViewSlug
 from mb_workflow.d_lib.models import Model
 
 
@@ -130,12 +123,9 @@ class FakeTicketTracker(TicketTracker):
             raise TicketTrackerError(f"No view has the slug {view.root}.")
         return PoolTickets(
             tuple(
-                PoolTicket(
-                    issue=tracked.issue,
-                    priority=tracked.priority,
-                    blockers=self._blockers(tracked),
-                )
+                PoolTicket(issue=tracked.issue, priority=tracked.priority)
                 for tracked in (self._tracked(identifier) for identifier in listed)
+                if not self._open_blockers(tracked)
             )
         )
 
@@ -269,12 +259,12 @@ class FakeTicketTracker(TicketTracker):
             raise TicketTrackerError(f"No project is named {name.root}.")
         return project
 
-    def _blockers(self, tracked: TrackedIssue) -> Blockers:
-        return Blockers(
-            tuple(
-                Blocker(issue=blocker, status=self._tracked(blocker).issue.status)
-                for blocker in tracked.blocked_by
-            )
+    # Linear counts a blocker as open until it reaches a completed or canceled state.
+    def _open_blockers(self, tracked: TrackedIssue) -> tuple[IssueIdentifier, ...]:
+        return tuple(
+            blocker
+            for blocker in tracked.blocked_by
+            if StatusNames.finished().matching(self._tracked(blocker).issue.status) is None
         )
 
     def _tracked(self, issue: IssueIdentifier) -> TrackedIssue:
