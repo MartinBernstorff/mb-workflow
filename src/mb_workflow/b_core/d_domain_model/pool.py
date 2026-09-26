@@ -86,7 +86,8 @@ class PoolTicket(Model):
     def ready_statuses() -> StatusNames:
         return StatusNames(
             tuple(
-                IssueStatusName(name) for name in ("Grilling", "Specced", "Implementing", "Merging")
+                IssueStatusName(name)
+                for name in ("Grilling", "Speccing", "Specced", "Implementing", "Merging")
             )
         )
 
