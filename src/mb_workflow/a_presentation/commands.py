@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from mb_workflow.a_presentation.autolabel_report import log_outcome
 from mb_workflow.a_presentation.console import ExitCode, Output, write
+from mb_workflow.a_presentation.drain_report import log_drain_outcome, pick_listing
 from mb_workflow.a_presentation.review_workspaces_report import (
     LoggingNarrator,
     log_review_workspaces_outcome,
@@ -15,6 +16,7 @@ from mb_workflow.b_core.a_features.autolabel import (
     UnknownLabelError,
     label_eligible_issues,
 )
+from mb_workflow.b_core.a_features.drain import DrainRequest, drain_pool
 from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
@@ -58,6 +60,7 @@ from mb_workflow.c_infrastructure.ledger_file import FileLedgerStore
 from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
 from mb_workflow.c_infrastructure.linear_claims import LinearClaims
 from mb_workflow.c_infrastructure.orca import Orca
+from mb_workflow.c_infrastructure.random_tie_break import RandomTieBreak
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.c_infrastructure.sleep import SleepingPause
 from mb_workflow.c_infrastructure.workspace_board import BoardError, WorkspaceBoard
@@ -198,6 +201,34 @@ def ticket_start(
         claim_settings=settings.claims,
         request=request,
     )
+    return ExitCode(0)
+
+
+@guarded
+def drain(
+    request: DrainRequest, lock: LockName, directory: WorkingDirectory, name: ConfigFileName
+) -> ExitCode:
+    settings = Configuration.resolved(directory, name).settings
+    pool = settings.required_pool()
+    orca = Orca(here())
+    key = linear_key()
+    outcome = drain_pool(
+        tracker=Linear.connected(key),
+        claims=LinearClaims.connected(key),
+        pause=SleepingPause(),
+        manager=orca,
+        board=workspace_board(orca),
+        lock=FlockRunLock(LockPath.of(lock)),
+        tie_break=RandomTieBreak(),
+        workspace=settings.workspace,
+        claim_settings=settings.claims,
+        pool=pool,
+        request=request,
+    )
+    if request.dry_run.root:
+        write(pick_listing(outcome.ready))
+    else:
+        log_drain_outcome(outcome)
     return ExitCode(0)
 
 

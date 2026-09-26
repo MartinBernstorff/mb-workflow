@@ -3,9 +3,10 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from mb_workflow.b_core.d_domain_model.issue import Assignee, LabelName
+from mb_workflow.b_core.d_domain_model.pool import ViewSlug
 from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
 from mb_workflow.d_lib.models import Model, Value
 
@@ -85,6 +86,14 @@ class ClaimSettings(Model):
         return ClaimSettings(label=LabelName("claimed"))
 
 
+class PoolSettings(Model):
+    view: ViewSlug
+
+    @staticmethod
+    def fake() -> PoolSettings:
+        return PoolSettings(view=ViewSlug.fake())
+
+
 type TrackerSettings = Annotated[LinearTracker | TodoistTracker, Field(discriminator="tracker")]
 type StatusSettings = OrcaStatus
 
@@ -94,6 +103,7 @@ class Settings(Model):
     status: StatusSettings = OrcaStatus()
     workspace: WorkspaceSettings
     claims: ClaimSettings = ClaimSettings()
+    pool: PoolSettings | None = None
 
     @staticmethod
     def fake() -> Settings:
@@ -102,7 +112,20 @@ class Settings(Model):
             status=OrcaStatus.fake(),
             workspace=WorkspaceSettings.fake(),
             claims=ClaimSettings.fake(),
+            pool=None,
         )
+
+    # The pool is a Linear view, so no other tracker can supply its tickets.
+    @model_validator(mode="after")
+    def pool_is_a_linear_view(self) -> Settings:
+        if self.pool is not None and not isinstance(self.issues, LinearTracker):
+            raise ValueError("[pool] needs the linear tracker.")
+        return self
+
+    def required_pool(self) -> PoolSettings:
+        if self.pool is None:
+            raise InvalidConfigError('Set [pool] view = "<slug>" to name the Linear view to drain.')
+        return self.pool
 
 
 class ConfigPath(Value[Path]):
