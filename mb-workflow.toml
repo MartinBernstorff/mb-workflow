@@ -1,6 +1,5 @@
 [issues]
-tracker = "todoist"
-project_tag = "it-mb-workflow"
+tracker = "linear"
 
 [workspace]
 orca_project = "github:martinbernstorff/mb-workflow"
