@@ -1,4 +1,4 @@
-from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import StateName, WorkflowChart
 from mb_workflow.b_core.d_domain_model.issue import LabelName, LabelNames
 from mb_workflow.d_lib.models import Model, Value
 
@@ -25,3 +25,7 @@ class FlowLabels(Model):
 
     def missing(self, held: LabelNames) -> LabelNames:
         return held.unmatched(self.labels)
+
+    def relabelled(self, held: LabelNames, state: StateName) -> LabelNames:
+        kept = tuple(label for label in held.root if self.labels.matching(label) is None)
+        return LabelNames((*kept, LabelName(state.root)))

@@ -1,4 +1,4 @@
-from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import StateName, WorkflowChart
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, LabelGroupName
 from mb_workflow.b_core.d_domain_model.issue import LabelName, LabelNames
 
@@ -51,3 +51,17 @@ def test_a_label_held_in_another_case_is_not_missing() -> None:
 
 def test_labels_outside_the_flow_do_not_count() -> None:
     assert flow_labels_of(QA).missing(LabelNames((LabelName("Blocked"), QA))) == LabelNames(())
+
+
+def test_relabelling_adds_the_label_of_the_state() -> None:
+    assert flow_labels_of(GRILLING, QA).relabelled(LabelNames(()), StateName("QA")) == LabelNames(
+        (QA,)
+    )
+
+
+def test_relabelling_replaces_any_other_flow_label_and_keeps_the_rest() -> None:
+    blocked = LabelName("Blocked")
+    held = LabelNames((LabelName("grilling"), blocked))
+    assert flow_labels_of(GRILLING, QA).relabelled(held, StateName("QA")) == LabelNames(
+        (blocked, QA)
+    )
