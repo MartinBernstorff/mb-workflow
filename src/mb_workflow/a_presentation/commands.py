@@ -284,7 +284,16 @@ def flow_show(as_json: AsJson) -> ExitCode:
 
 @guarded
 def flow_event(event: EventName, force: Force) -> ExitCode:
-    logger.info("Moved to %s.", transition(workspace_board(Orca(here())), event, force).root)
+    orca = Orca(here())
+    moved_to = transition(
+        store=workspace_board(orca),
+        tracker=linear(),
+        manager=orca,
+        wanted=flow_labels_of_chart(),
+        event=event,
+        force=force,
+    )
+    logger.info("Moved to %s.", moved_to.root)
     return ExitCode(0)
 
 
