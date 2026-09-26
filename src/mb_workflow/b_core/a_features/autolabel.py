@@ -303,7 +303,7 @@ def autolabel(shell: Shell, request: AutolabelRequest, ledger: LedgerPath) -> Ou
 
 
 def sweep(tracker: IssueTracker, request: AutolabelRequest, ledger: LedgerPath) -> Outcome:
-    if not tracker.labels().has(request.label).root:
+    if not tracker.workspace_labels().has(request.label).root:
         raise UnknownLabelError(f"No label is named {request.label.root}.")
 
     recorded = ledger.read()

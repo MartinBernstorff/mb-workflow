@@ -19,7 +19,7 @@ class IssueTrackerError(Exception):
 
 
 class IssueTracker(Protocol):
-    def labels(self) -> LabelNames: ...
+    def workspace_labels(self) -> LabelNames: ...
 
     def issues(self, wanted: IssueFilter) -> Issues: ...
 
@@ -47,7 +47,7 @@ class FakeIssueTracker:
         self._labels = labels
         self._issues = {tracked.issue.identifier: tracked for tracked in issues}
 
-    def labels(self) -> LabelNames:
+    def workspace_labels(self) -> LabelNames:
         return self._labels
 
     def issues(self, wanted: IssueFilter) -> Issues:

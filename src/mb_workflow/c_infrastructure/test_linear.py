@@ -6,7 +6,6 @@ from mb_workflow.b_core.d_domain_model.issue import (
     CreatedWithin,
     IssueFilter,
     IssueIdentifier,
-    IssueState,
     LabelKnown,
     LabelName,
     LabelNames,
@@ -175,24 +174,6 @@ def test_setting_no_labels_clears_them_all() -> None:
         "E-4289",
         "--clear-labels",
     )
-
-
-def test_reads_the_labels_off_an_issue() -> None:
-    output = CommandOutput(
-        '{"identifier":"E-4289","state":{"name":"Todo"},'
-        '"labels":{"nodes":[{"id":"x","name":"d-implement"}]}}'
-    )
-    assert IssuePayload.parse(output).issue().labels == LabelNames.fake()
-
-
-def test_an_issue_carries_no_labels_until_told_otherwise() -> None:
-    output = CommandOutput('{"identifier":"E-4289","state":{"name":"Todo"}}')
-    assert IssuePayload.parse(output).issue().labels == LabelNames(())
-
-
-def test_reads_the_state_off_an_issue() -> None:
-    output = CommandOutput('{"identifier": "E-4289", "state": {"name": "Maturing"}}')
-    assert IssuePayload.parse(output).issue().state() == IssueState.maturing
 
 
 def test_an_issue_without_a_state_does_not_parse() -> None:

@@ -111,17 +111,15 @@ class Arguments(Model):
 
 
 class LinearisSimulator:
-    """Answers linearis from memory, paging small so every walk crosses a page."""
-
     def __init__(
         self,
         labels: LabelNames,
         issues: tuple[TrackedIssue, ...],
-        page_size: PageSize | None = None,
+        page_size: PageSize,
     ) -> None:
         self._labels = labels
         self._issues = {tracked.issue.identifier: tracked for tracked in issues}
-        self._page_size = page_size or PageSize.fake()
+        self._page_size = page_size
 
     def run(self, command: Command) -> CommandOutput:
         match command.root:

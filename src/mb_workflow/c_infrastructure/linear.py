@@ -190,7 +190,7 @@ class Linear:
     def __init__(self, runner: CommandRunner) -> None:
         self._runner = runner
 
-    def labels(self) -> LabelNames:
+    def workspace_labels(self) -> LabelNames:
         found: list[LabelName] = []
         cursor: PageCursor | None = None
         while True:

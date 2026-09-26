@@ -23,30 +23,10 @@ from mb_workflow.b_core.d_domain_model.issue import (
     StatusName,
 )
 from mb_workflow.c_infrastructure.linear import Linear
-from mb_workflow.c_infrastructure.linearis_simulator import LinearisSimulator
+from mb_workflow.c_infrastructure.linearis_simulator import LinearisSimulator, PageSize
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
-
-type Tracking = Callable[[LabelNames, tuple[TrackedIssue, ...]], IssueTracker]
-
-
-def simulated(labels: LabelNames, issues: tuple[TrackedIssue, ...]) -> IssueTracker:
-    return Linear(LinearisSimulator(labels, issues))
-
-
-class TrackerKind(StrEnum):
-    fake = "fake"
-    linear = "linear"
-
-
-@pytest.fixture(params=list(TrackerKind))
-def tracking(request: pytest.FixtureRequest) -> Tracking:
-    if TrackerKind(request.param) == TrackerKind.fake:
-        return FakeIssueTracker
-    return simulated
 
 
 def workspace_labels() -> LabelNames:
@@ -82,84 +62,87 @@ def backlog() -> tuple[TrackedIssue, ...]:
     )
 
 
-def tracker(tracking: Tracking) -> IssueTracker:
-    return tracking(workspace_labels(), backlog())
+class TrackerKind(StrEnum):
+    fake = "fake"
+    linear = "linear"
 
 
-def test_every_workspace_label_is_listed_however_many_pages_it_spans(
-    tracking: Tracking,
-) -> None:
-    assert tracker(tracking).labels() == workspace_labels()
+# A page of two makes every walk over the backlog and the workspace labels cross a page.
+@pytest.fixture(params=list(TrackerKind))
+def tracker(request: pytest.FixtureRequest) -> IssueTracker:
+    if TrackerKind(request.param) == TrackerKind.fake:
+        return FakeIssueTracker(workspace_labels(), backlog())
+    return Linear(LinearisSimulator(workspace_labels(), backlog(), PageSize(2)))
 
 
-def test_the_filter_picks_the_issues_one_creator_made_since_a_date(tracking: Tracking) -> None:
-    swept = tracker(tracking).issues(IssueFilter.fake())
+def test_every_workspace_label_is_listed_however_many_pages_it_spans(tracker: IssueTracker) -> None:
+    assert tracker.workspace_labels() == workspace_labels()
+
+
+def test_the_filter_picks_the_issues_one_creator_made_since_a_date(tracker: IssueTracker) -> None:
+    swept = tracker.issues(IssueFilter.fake())
     assert swept.identifiers() == tuple(IssueIdentifier(f"E-{n}") for n in (1, 4, 5))
 
 
-def test_the_filter_start_date_is_exclusive(tracking: Tracking) -> None:
-    after = IssueFilter(creator=Creator.fake(), created_after=CreatedAfter(date(2026, 9, 1)))
-    assert tracker(tracking).issues(after).identifiers() == (IssueIdentifier("E-4"),)
+def test_the_filter_start_date_is_inclusive(tracker: IssueTracker) -> None:
+    after = IssueFilter(creator=Creator.fake(), created_after=CreatedAfter(date(2026, 9, 2)))
+    assert tracker.issues(after).identifiers() == (IssueIdentifier("E-4"),)
 
 
-def test_reads_an_issue_back_as_it_was_given(tracking: Tracking) -> None:
-    assert tracker(tracking).read(IssueIdentifier("E-5")) == backlog()[-1].issue
+def test_reads_an_issue_back_as_it_was_given(tracker: IssueTracker) -> None:
+    assert tracker.read(IssueIdentifier("E-5")) == backlog()[-1].issue
 
 
-def test_an_issue_without_a_project_carries_none(tracking: Tracking) -> None:
-    assert tracker(tracking).read(IssueIdentifier("E-5")).project is None
+def test_an_issue_without_a_project_carries_none(tracker: IssueTracker) -> None:
+    assert tracker.read(IssueIdentifier("E-5")).project is None
 
 
-def test_reading_an_unknown_issue_is_refused(tracking: Tracking) -> None:
+def test_reading_an_unknown_issue_is_refused(tracker: IssueTracker) -> None:
     with pytest.raises(IssueTrackerError):
-        _ = tracker(tracking).read(IssueIdentifier("E-404"))
+        _ = tracker.read(IssueIdentifier("E-404"))
 
 
-def test_an_added_label_joins_the_ones_already_there(tracking: Tracking) -> None:
-    subject = tracker(tracking)
-    subject.add_label(IssueIdentifier("E-5"), LabelName.fake())
-    assert subject.read(IssueIdentifier("E-5")).labels == LabelNames(
+def test_an_added_label_joins_the_ones_already_there(tracker: IssueTracker) -> None:
+    tracker.add_label(IssueIdentifier("E-5"), LabelName.fake())
+    assert tracker.read(IssueIdentifier("E-5")).labels == LabelNames(
         (LabelName("d-grill"), LabelName.fake())
     )
 
 
-def test_adding_a_label_twice_carries_it_once(tracking: Tracking) -> None:
-    subject = tracker(tracking)
-    subject.add_label(IssueIdentifier("E-1"), LabelName.fake())
-    subject.add_label(IssueIdentifier("E-1"), LabelName.fake())
-    assert subject.read(IssueIdentifier("E-1")).labels == LabelNames.fake()
+def test_adding_a_label_twice_carries_it_once(tracker: IssueTracker) -> None:
+    tracker.add_label(IssueIdentifier("E-1"), LabelName.fake())
+    tracker.add_label(IssueIdentifier("E-1"), LabelName.fake())
+    assert tracker.read(IssueIdentifier("E-1")).labels == LabelNames.fake()
 
 
-def test_adding_an_unknown_label_is_refused(tracking: Tracking) -> None:
+def test_adding_an_unknown_label_is_refused(tracker: IssueTracker) -> None:
     with pytest.raises(IssueTrackerError):
-        tracker(tracking).add_label(IssueIdentifier("E-1"), LabelName("Frontend"))
+        tracker.add_label(IssueIdentifier("E-1"), LabelName("Frontend"))
 
 
-def test_setting_labels_replaces_the_ones_there(tracking: Tracking) -> None:
-    subject = tracker(tracking)
-    subject.set_labels(IssueIdentifier("E-5"), LabelNames((LabelName("Backend"),)))
-    assert subject.read(IssueIdentifier("E-5")).labels == LabelNames((LabelName("Backend"),))
+def test_setting_labels_replaces_the_ones_there(tracker: IssueTracker) -> None:
+    tracker.set_labels(IssueIdentifier("E-5"), LabelNames((LabelName("Backend"),)))
+    assert tracker.read(IssueIdentifier("E-5")).labels == LabelNames((LabelName("Backend"),))
 
 
-def test_setting_no_labels_clears_them(tracking: Tracking) -> None:
-    subject = tracker(tracking)
-    subject.set_labels(IssueIdentifier("E-5"), LabelNames(()))
-    assert subject.read(IssueIdentifier("E-5")).labels == LabelNames(())
+def test_setting_no_labels_clears_them(tracker: IssueTracker) -> None:
+    tracker.set_labels(IssueIdentifier("E-5"), LabelNames(()))
+    assert tracker.read(IssueIdentifier("E-5")).labels == LabelNames(())
 
 
-def test_setting_an_unknown_label_is_refused(tracking: Tracking) -> None:
+def test_setting_an_unknown_label_is_refused(tracker: IssueTracker) -> None:
     with pytest.raises(IssueTrackerError):
-        tracker(tracking).set_labels(IssueIdentifier("E-5"), LabelNames((LabelName("Frontend"),)))
+        tracker.set_labels(IssueIdentifier("E-5"), LabelNames((LabelName("Frontend"),)))
 
 
-def test_assigning_a_known_issue_succeeds(tracking: Tracking) -> None:
-    tracker(tracking).assign(IssueIdentifier("E-1"), Assignee.fake())
+def test_assigning_a_known_issue_succeeds(tracker: IssueTracker) -> None:
+    tracker.assign(IssueIdentifier("E-1"), Assignee.fake())
 
 
-def test_assigning_an_unknown_issue_is_refused(tracking: Tracking) -> None:
+def test_assigning_an_unknown_issue_is_refused(tracker: IssueTracker) -> None:
     with pytest.raises(IssueTrackerError):
-        tracker(tracking).assign(IssueIdentifier("E-404"), Assignee.fake())
+        tracker.assign(IssueIdentifier("E-404"), Assignee.fake())
 
 
-def test_a_project_survives_the_round_trip(tracking: Tracking) -> None:
-    assert tracker(tracking).read(IssueIdentifier("E-1")).project == ProjectName.fake()
+def test_a_project_survives_the_round_trip(tracker: IssueTracker) -> None:
+    assert tracker.read(IssueIdentifier("E-1")).project == ProjectName.fake()

@@ -117,10 +117,14 @@ def issue_state(tracker: IssueTracker, issue: IssueIdentifier | None) -> IssueSt
     if issue is None:
         return None
     try:
-        return tracker.read(issue).state()
+        read = tracker.read(issue)
     except IssueTrackerError as error:
         logger.warning("Could not read the state of %s: %s", issue.root, error)
         return None
+    state = read.state()
+    if state is None:
+        logger.warning("%s has the unrecognised status %s.", issue.root, read.status.root)
+    return state
 
 
 def send_prompt(orca: Orca, worktree: SingleWorktree, request: OpenRequest) -> None:
