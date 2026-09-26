@@ -1,4 +1,8 @@
+import logging
+from typing import override
+
 import pytest
+from pydantic import RootModel
 
 from mb_workflow.b_core.a_features.start import StartRequest, start_ticket
 from mb_workflow.b_core.c_secondary_ports.claims import (
@@ -47,6 +51,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     WorktreePath,
     Worktrees,
 )
+from mb_workflow.d_lib.logging import LogLevel
 
 
 def tracking(status: IssueStatusName) -> FakeTicketTracker:
@@ -294,3 +299,84 @@ def test_a_claim_label_the_tracker_lacks_does_not_stop_the_start() -> None:
         manager, tracking(IssueStatusName("Specced")), StartRequest.fake(), claim_settings=missing
     )
     assert opened_in(manager).issue == IssueIdentifier.fake()
+
+
+class UnassignableTracker(FakeTicketTracker):
+    @override
+    def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None:
+        raise TicketTrackerError(f"{assignee.root} is not a member.")
+
+
+def unassignable() -> UnassignableTracker:
+    issue = Issue.fake().model_copy(update={"status": IssueStatusName("Specced")})
+    return UnassignableTracker(
+        LabelNames((*LabelNames.fake().root, LabelName("claimed"))),
+        (TrackedIssue.fake().model_copy(update={"issue": issue}),),
+    )
+
+
+class Reported(RootModel[tuple[str, ...]]):
+    @staticmethod
+    def at(level: LogLevel, caplog: pytest.LogCaptureFixture) -> Reported:
+        return Reported(
+            tuple(record.getMessage() for record in caplog.records if record.levelno == level.root)
+        )
+
+
+def created() -> WorktreePath:
+    return WorktreePath.fake().sibling(WorktreeName.of_issue(IssueIdentifier.fake()))
+
+
+def test_reports_each_step_of_the_start(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO):
+        _ = started(IssueStatusName("Specced"), StartRequest.fake())
+    assert Reported.at(LogLevel(logging.INFO), caplog).root == (
+        "E-4289 is in Specced, so the next step is /implement.",
+        "Claimed E-4289 for worktree E-4289 on ada-mbp.local.",
+        "Labelled E-4289 as claimed.",
+        "Assigned E-4289 to mab@flowbase.io.",
+        f"Created worktree {created().root}.",
+        "Typed /implement E-4289.",
+    )
+
+
+def test_reports_a_submitted_prompt_as_submitted(caplog: pytest.LogCaptureFixture) -> None:
+    submitting = StartRequest.fake().model_copy(update={"submit": Submit(True)})
+    with caplog.at_level(logging.INFO):
+        _ = started(IssueStatusName("Specced"), submitting)
+    assert Reported.at(LogLevel(logging.INFO), caplog).root[-1] == "Submitted /implement E-4289."
+
+
+def test_a_ticket_waiting_for_a_human_reports_no_prompt(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO):
+        _ = started(IssueStatusName("QA"), StartRequest.fake())
+    assert (
+        Reported.at(LogLevel(logging.INFO), caplog).root[-1]
+        == f"Created worktree {created().root}."
+    )
+    assert Reported.at(LogLevel(logging.WARNING), caplog).root == (
+        "E-4289 is in QA, which waits for a human, so no prompt is typed.",
+    )
+
+
+def test_a_failed_assignment_is_reported_as_a_warning(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO):
+        starting(fake_manager(), unassignable(), StartRequest.fake())
+    assert not any(
+        line.startswith("Assigned") for line in Reported.at(LogLevel(logging.INFO), caplog).root
+    )
+    assert Reported.at(LogLevel(logging.WARNING), caplog).root == (
+        "Could not assign E-4289 to mab@flowbase.io: mab@flowbase.io is not a member.",
+    )
+
+
+def test_without_a_claim_label_configured_no_label_is_reported(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO):
+        _ = labels_after_starting(ClaimSettings(label=None), FakeClaimRegistry())
+    assert not any(
+        line.startswith("Labelled") for line in Reported.at(LogLevel(logging.INFO), caplog).root
+    )

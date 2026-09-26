@@ -101,6 +101,8 @@ def add_claim_label(
         tracker.add_label(ticket, label)
     except TicketTrackerError as error:
         logger.warning("Could not label %s as %s: %s", ticket.root, label.root, error)
+    else:
+        logger.info("Labelled %s as %s.", ticket.root, label.root)
 
 
 class ReleaseRequest(Model):
