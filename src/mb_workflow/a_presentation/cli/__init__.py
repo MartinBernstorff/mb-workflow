@@ -186,6 +186,15 @@ def start_ticket(
     )
 
 
+@app.command("unclaim")
+def unclaim_ticket(
+    ticket: str = typer.Argument(..., help="Ticket whose stuck claim to release, e.g. MB-36."),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    raise typer.Exit(code=commands.ticket_unclaim(IssueIdentifier(ticket)).root)
+
+
 @flow_app.command("config")
 def flow_config(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
