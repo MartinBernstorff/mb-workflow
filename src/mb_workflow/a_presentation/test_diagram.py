@@ -2,7 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from mb_workflow.a_presentation.diagram import DiagramPath, ImageFormat, render_mermaid
+from mb_workflow.a_presentation.diagram import (
+    DiagramPath,
+    DotSource,
+    ImageFormat,
+    render_dot,
+    render_mermaid,
+)
 
 
 def test_renders_a_mermaid_state_diagram() -> None:
@@ -28,3 +34,16 @@ def test_the_extension_of_the_destination_picks_the_image_format() -> None:
 def test_a_destination_with_no_extension_is_rejected() -> None:
     with pytest.raises(ValueError, match="no extension"):
         _ = ImageFormat.of(DiagramPath(Path("/tmp/flow")))
+
+
+def test_the_image_source_is_the_same_on_every_render() -> None:
+    assert render_dot() == render_dot()
+
+
+def test_ids_derived_from_object_identity_are_numbered_in_order_of_appearance() -> None:
+    source = DotSource(
+        "__initial_4462144752 -> a;\ncluster___atomic_4462144752;\n__initial_987_sg;\n"
+    )
+    assert source.with_stable_ids() == DotSource(
+        "__initial_0 -> a;\ncluster___atomic_0;\n__initial_1_sg;\n"
+    )
