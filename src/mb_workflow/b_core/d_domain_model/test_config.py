@@ -21,8 +21,8 @@ from mb_workflow.b_core.d_domain_model.config import (
     WorkingDirectory,
     WorkspaceSettings,
 )
-from mb_workflow.b_core.d_domain_model.issue import Assignee, LabelName
-from mb_workflow.b_core.d_domain_model.pool import ViewSlug
+from mb_workflow.b_core.d_domain_model.issue import Assignee, IssueStatusName, LabelName
+from mb_workflow.b_core.d_domain_model.pool import Limit, PoolLimits, ViewSlug
 from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
 
 if TYPE_CHECKING:
@@ -234,3 +234,35 @@ def test_draining_without_a_pool_is_refused() -> None:
     settings = settings_with_fake_workspace(issues={"tracker": "linear"})
     with pytest.raises(InvalidConfigError, match=r"\[pool\] view"):
         _ = settings.required_pool()
+
+
+def test_a_pool_without_limits_takes_the_default_limits() -> None:
+    settings = settings_with_fake_workspace(
+        issues={"tracker": "linear"}, pool={"view": "4efb86b38740"}
+    )
+    assert settings.required_pool().limits == PoolLimits()
+
+
+def test_the_pool_limits_table_sets_the_limits(tmp_path: Path) -> None:
+    _ = (tmp_path / "mb-workflow.toml").write_text(
+        '[issues]\ntracker = "linear"\n'
+        '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
+        '[pool]\nview = "4efb86b38740"\n'
+        "[pool.limits]\ntotal = 6\nQA = 2\n"
+    )
+    resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake())
+    assert resolved.settings.required_pool().limits == PoolLimits(
+        total=Limit(6),
+        statuses={IssueStatusName("Grilling"): Limit(1), IssueStatusName("QA"): Limit(2)},
+    )
+
+
+def test_a_limit_on_a_status_outside_the_chart_is_a_config_error(tmp_path: Path) -> None:
+    _ = (tmp_path / "mb-workflow.toml").write_text(
+        '[issues]\ntracker = "linear"\n'
+        '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
+        '[pool]\nview = "4efb86b38740"\n'
+        "[pool.limits]\nTodo = 1\n"
+    )
+    with pytest.raises(InvalidConfigError, match="Todo"):
+        _ = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake())

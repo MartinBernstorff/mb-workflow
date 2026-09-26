@@ -26,7 +26,14 @@ class ConfigReport(Value[str]):
                     f"orca project: {settings.workspace.orca_project.root}",
                     f"assignee: {settings.workspace.assignee.root}",
                     f"claim label: {settings.claims.label.root}",
-                    *(() if settings.pool is None else (f"pool view: {settings.pool.view.root}",)),
+                    *(
+                        ()
+                        if settings.pool is None
+                        else (
+                            f"pool view: {settings.pool.view.root}",
+                            f"pool limits: {settings.pool.limits.summary().root}",
+                        )
+                    ),
                     f"origin: {config.origin.root}",
                 )
             )

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
         IssueUpdate,
         LabelName,
         LabelNames,
+        StatusNames,
     )
     from mb_workflow.b_core.d_domain_model.pool import PoolTickets, ViewSlug
     from mb_workflow.c_infrastructure.linear import LinearApiKey
@@ -76,6 +77,10 @@ class LazyLinear(TicketTracker):
     @override
     def view_tickets(self, view: ViewSlug) -> PoolTickets:
         return self._tracker().view_tickets(view)
+
+    @override
+    def labelled_issues(self, label: LabelName, excluding: StatusNames) -> Issues:
+        return self._tracker().labelled_issues(label, excluding)
 
     @override
     def read_issue(self, issue: IssueIdentifier) -> Issue:

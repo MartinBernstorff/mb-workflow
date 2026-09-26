@@ -20,7 +20,9 @@ def pick_listing(ready: PoolTickets) -> Output:
 
 
 def log_drain_outcome(outcome: DrainOutcome) -> None:
-    if outcome.started is None:
+    if not outcome.picked.root:
         logger.info("Started no ticket; %s were ready.", len(outcome.ready.root))
         return
-    logger.info("Started %s.", outcome.started.root)
+    logger.info(
+        "Started %s.", ", ".join(identifier.root for identifier in outcome.picked.identifiers())
+    )

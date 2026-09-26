@@ -46,6 +46,8 @@ class TicketTracker(Protocol):
 
     def view_tickets(self, view: ViewSlug) -> PoolTickets: ...
 
+    def labelled_issues(self, label: LabelName, excluding: StatusNames) -> Issues: ...
+
     def read_issue(self, issue: IssueIdentifier) -> Issue: ...
 
     def read_issue_detail(self, issue: IssueIdentifier) -> IssueDetail: ...
@@ -134,6 +136,17 @@ class FakeTicketTracker(TicketTracker):
                     blockers=self._blockers(tracked),
                 )
                 for tracked in (self._tracked(identifier) for identifier in listed)
+            )
+        )
+
+    @override
+    def labelled_issues(self, label: LabelName, excluding: StatusNames) -> Issues:
+        return Issues(
+            tuple(
+                tracked.issue
+                for tracked in self._issues.values()
+                if tracked.issue.labels.matching(label) is not None
+                and excluding.matching(tracked.issue.status) is None
             )
         )
 
