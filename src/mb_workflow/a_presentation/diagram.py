@@ -1,7 +1,9 @@
 import logging
+import re
 import sys
 from pathlib import Path
 
+import pydot
 from statemachine.contrib.diagram import DotGraphMachine, MermaidGraphMachine
 
 from mb_workflow.a_presentation.console import ExitCode
@@ -38,14 +40,37 @@ class ImageFormat(Value[str]):
         return ImageFormat(suffix)
 
 
+class DotSource(Value[str]):
+    @staticmethod
+    def fake() -> DotSource:
+        return DotSource("digraph WorkflowChart {\n__initial_0 -> grilling;\n}\n")
+
+    def with_stable_ids(self) -> DotSource:
+        # The library names the initial node and atomic cluster after id() of their parent graph, which differs every run.
+        prefix = r"(__initial_|cluster___atomic_)"
+        identities = dict.fromkeys(
+            match.group(2) for match in re.finditer(rf"{prefix}(\d+)", self.root)
+        )
+        source = self.root
+        for ordinal, identity in enumerate(identities):
+            source = re.sub(rf"{prefix}{identity}(?!\d)", rf"\g<1>{ordinal}", source)
+        return DotSource(source)
+
+
 def render_mermaid() -> MermaidDiagram:
     return MermaidDiagram(MermaidGraphMachine(WorkflowChart).get_mermaid())
 
 
+def render_dot() -> DotSource:
+    return DotSource(DotGraphMachine(WorkflowChart).get_graph().to_string()).with_stable_ids()
+
+
 def write_image(destination: DiagramPath) -> None:
     image_format = ImageFormat.of(destination)
-    graph = DotGraphMachine(WorkflowChart).get_graph()
-    _ = graph.write(str(destination.root), format=image_format.root)
+    graphs = pydot.graph_from_dot_data(render_dot().root)
+    if not graphs:
+        raise ValueError("The chart's DOT source could not be parsed.")
+    _ = graphs[0].write(str(destination.root), format=image_format.root)
 
 
 def diagram(destination: DiagramPath | None) -> ExitCode:
