@@ -4,3 +4,6 @@ tracker = "linear"
 [workspace]
 orca_project = "github:martinbernstorff/mb-workflow"
 assignee = "mab@flowbase.io"
+
+[pool]
+view = "4efb86b38740"
