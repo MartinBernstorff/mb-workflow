@@ -10,19 +10,13 @@ from mb_workflow.b_core.c_secondary_ports.claims import (
     release_claim,
     require_claim_label,
 )
-from mb_workflow.b_core.d_domain_model.claim import (
-    ClaimHolder,
-    HostName,
-    Released,
-    SettleTime,
-    TakeOver,
-)
+from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, Released, TakeOver
 from mb_workflow.b_core.d_domain_model.pool import Occupancy, PoolTicket, PoolTickets
 from mb_workflow.b_core.d_domain_model.workspace import Submit, TimeoutMs, WorktreeName
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry, Pause
+    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
     from mb_workflow.b_core.c_secondary_ports.run_lock import RunLock
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
@@ -42,7 +36,6 @@ class DrainRequest(Model):
     dry_run: DryRun
     idle_timeout: TimeoutMs
     host: HostName
-    settle: SettleTime
 
     @staticmethod
     def fake() -> DrainRequest:
@@ -50,7 +43,6 @@ class DrainRequest(Model):
             dry_run=DryRun(False),
             idle_timeout=TimeoutMs.fake(),
             host=HostName.fake(),
-            settle=SettleTime.fake(),
         )
 
     def start_request(self, ticket: IssueIdentifier) -> StartRequest:
@@ -60,7 +52,6 @@ class DrainRequest(Model):
             idle_timeout=self.idle_timeout,
             host=self.host,
             take_over=TakeOver(False),
-            settle=self.settle,
         )
 
 
@@ -77,7 +68,6 @@ def drain_pool(
     *,
     tracker: TicketTracker,
     claims: ClaimRegistry,
-    pause: Pause,
     manager: WorkspaceManager,
     board: WorkspaceStatusStore,
     lock: RunLock,
@@ -104,7 +94,6 @@ def drain_pool(
                 or try_start_ticket(
                     tracker=tracker,
                     claims=claims,
-                    pause=pause,
                     manager=manager,
                     board=board,
                     workspace=workspace,
@@ -128,7 +117,6 @@ def try_start_ticket(
     *,
     tracker: TicketTracker,
     claims: ClaimRegistry,
-    pause: Pause,
     manager: WorkspaceManager,
     board: WorkspaceStatusStore,
     workspace: WorkspaceSettings,
@@ -140,7 +128,6 @@ def try_start_ticket(
             manager=manager,
             tracker=tracker,
             claims=claims,
-            pause=pause,
             board=board,
             workspace=workspace,
             claim_settings=claim_settings,

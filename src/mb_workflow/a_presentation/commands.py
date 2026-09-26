@@ -62,7 +62,6 @@ from mb_workflow.c_infrastructure.linear_claims import LinearClaims
 from mb_workflow.c_infrastructure.orca import Orca
 from mb_workflow.c_infrastructure.random_tie_break import RandomTieBreak
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
-from mb_workflow.c_infrastructure.sleep import SleepingPause
 from mb_workflow.c_infrastructure.workspace_board import BoardError, WorkspaceBoard
 
 if TYPE_CHECKING:
@@ -195,7 +194,6 @@ def ticket_start(
         manager=orca,
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
-        pause=SleepingPause(),
         board=workspace_board(orca),
         workspace=settings.workspace,
         claim_settings=settings.claims,
@@ -215,7 +213,6 @@ def drain(
     outcome = drain_pool(
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
-        pause=SleepingPause(),
         manager=orca,
         board=workspace_board(orca),
         lock=FlockRunLock(LockPath.of(lock)),
