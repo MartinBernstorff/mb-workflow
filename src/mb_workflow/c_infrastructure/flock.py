@@ -2,8 +2,9 @@ import fcntl
 import logging
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
+from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, RunLock
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.d_lib.models import Value
 
@@ -11,10 +12,6 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
 logger = logging.getLogger(__name__)
-
-
-class AlreadyRunningError(Exception):
-    pass
 
 
 class LockName(Value[str]):
@@ -32,19 +29,26 @@ class LockPath(Value[Path]):
     def of(name: LockName) -> LockPath:
         return LockPath(CacheDirectory.of_user().root / f"{name.root}.lock")
 
+
+class FlockRunLock(RunLock):
+    def __init__(self, path: LockPath) -> None:
+        self._path = path
+
+    @override
     @contextmanager
     def held(self) -> Generator[None]:
-        self.root.parent.mkdir(parents=True, exist_ok=True)
-        with self.root.open("w") as handle:
+        path = self._path.root
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w") as handle:
             try:
                 fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as error:
                 raise AlreadyRunningError(
-                    f"another run holds {self.root}; it is still creating workspaces"
+                    f"another run holds {path}; it is still creating workspaces"
                 ) from error
-            logger.info("Holding %s", self.root)
+            logger.info("Holding %s", path)
             try:
                 yield
             finally:
                 fcntl.flock(handle, fcntl.LOCK_UN)
-                logger.info("Released %s", self.root)
+                logger.info("Released %s", path)

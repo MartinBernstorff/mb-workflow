@@ -11,7 +11,6 @@ from mb_workflow.b_core.a_features.label import LabelChange, LabelRequest
 from mb_workflow.b_core.a_features.open_issue import OpenRequest
 from mb_workflow.b_core.b_domain_services.flow_report import AsJson
 from mb_workflow.b_core.b_domain_services.flow_transition import Force
-from mb_workflow.b_core.b_domain_services.lock import LockName
 from mb_workflow.b_core.d_domain_model.autolabel import ExcludePattern, Exclusions
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
@@ -27,6 +26,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
 )
 from mb_workflow.b_core.d_domain_model.pull_request import (
     Lookback,
+    MergedSince,
     ReviewBody,
     ReviewDecision,
     ReviewRequest,
@@ -37,6 +37,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     TimeoutMs,
     WorkspaceStatus,
 )
+from mb_workflow.c_infrastructure.flock import LockName
 from mb_workflow.d_lib.logging import LogLevel, configure
 
 app = typer.Typer(no_args_is_help=True)
@@ -63,10 +64,9 @@ def review_workspaces(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    since = MergedSince.of(Lookback(merged_within_days), Today.now())
     raise typer.Exit(
-        code=commands.review_workspaces(
-            WorkspaceStatus(status), Lookback(merged_within_days), LockName(lock)
-        ).root
+        code=commands.review_workspaces(WorkspaceStatus(status), since, LockName(lock)).root
     )
 
 
