@@ -178,7 +178,7 @@ def workspaces_for_review(
 ) -> Outcome:
     worktrees = workspaces.worktrees()
     here = workspaces.where()
-    repo = worktrees.repo_id_at(here)
+    repo = worktrees.repo_at(here)
     logger.info("Inspecting %s worktrees from %s", len(worktrees.root), here.root)
     requested = github.review_requested()
     logger.info("PRs awaiting your review: %s", len(requested.root))
@@ -196,7 +196,7 @@ def workspaces_for_review(
     for worktree in obsolete.root:
         try:
             logger.info("    Removing %s", worktree.path.root)
-            workspaces.remove(worktree.path)
+            workspaces.remove_worktree(worktree.path)
         except (CalledProcessError, WorkspaceError, ValueError) as error:
             logger.error("    %s could not be removed: %s", worktree.path.root, error)
             failed.append(

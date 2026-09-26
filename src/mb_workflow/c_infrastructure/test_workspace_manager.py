@@ -37,18 +37,18 @@ class Arena:
         # A PR number no real review workspace carries, so the real board never sees a collision.
         self.pr = PrNumber(900_000 + secrets.randbelow(100_000))
 
-    def create(self) -> WorktreePath:
+    def create_review_worktree(self) -> WorktreePath:
         return self.manager.create_for_review(self.repo, self.pr, PrTitle.fake(), self.status)
 
     def clean_up(self) -> None:
         for worktree in self.manager.worktrees().root:
             if worktree.pull_request == self.pr:
-                self.manager.remove(worktree.path)
+                self.manager.remove_worktree(worktree.path)
 
 
 def fake_arena() -> Arena:
-    here = ExistingDirectory(Path.cwd())
-    statuses = (WorkspaceStatus("status-8"), WorkspaceStatus("status-5"))
+    here = ExistingDirectory.fake()
+    statuses = (WorkspaceStatus.fake(), WorkspaceStatus("status-5"))
     return Arena(
         FakeWorkspaceManager(
             here,
@@ -65,7 +65,7 @@ def orca_arena() -> Arena:
     columns = Columns.parse(orca.columns(ColumnLabel.unknown()))
     return Arena(
         orca,
-        orca.worktrees().repo_id_at(orca.where()),
+        orca.worktrees().repo_at(orca.where()),
         (columns.root[0].id, columns.root[1].id),
     )
 
@@ -83,7 +83,7 @@ def test_the_current_worktree_is_the_one_you_stand_in(arena: Arena) -> None:
 
 
 def test_a_created_review_worktree_is_listed_with_its_pr_and_status(arena: Arena) -> None:
-    path = arena.create()
+    path = arena.create_review_worktree()
     listed = arena.manager.worktrees().at(path)
     assert (listed.repo, listed.pull_request, listed.status) == (
         arena.repo,
@@ -93,30 +93,30 @@ def test_a_created_review_worktree_is_listed_with_its_pr_and_status(arena: Arena
 
 
 def test_a_removed_worktree_is_no_longer_listed(arena: Arena) -> None:
-    path = arena.create()
-    arena.manager.remove(path)
+    path = arena.create_review_worktree()
+    arena.manager.remove_worktree(path)
     with pytest.raises(WorkspaceError):
         _ = arena.manager.worktrees().at(path)
 
 
 def test_a_worktree_name_is_unique_within_a_repo(arena: Arena) -> None:
-    _ = arena.create()
+    _ = arena.create_review_worktree()
     with pytest.raises(WorkspaceError):
-        _ = arena.create()
+        _ = arena.create_review_worktree()
 
 
 def test_removing_an_unknown_path_fails(arena: Arena) -> None:
     with pytest.raises(WorkspaceError):
-        arena.manager.remove(WorktreePath(Path.cwd().parent / f"pr-{arena.pr.root}"))
+        arena.manager.remove_worktree(WorktreePath(Path.cwd().parent / f"pr-{arena.pr.root}"))
 
 
 def test_a_worktree_moves_to_another_status_the_board_has(arena: Arena) -> None:
-    path = arena.create()
+    path = arena.create_review_worktree()
     arena.manager.set_status(path, arena.other_status)
     assert arena.manager.worktrees().at(path).status == arena.other_status
 
 
 def test_setting_a_status_the_board_has_no_column_for_fails(arena: Arena) -> None:
-    path = arena.create()
+    path = arena.create_review_worktree()
     with pytest.raises(WorkspaceError):
         arena.manager.set_status(path, WorkspaceStatus("mb-workflow-has-no-such-column"))

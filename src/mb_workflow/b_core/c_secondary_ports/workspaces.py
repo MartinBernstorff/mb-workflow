@@ -50,7 +50,7 @@ class WorkspaceManager(Protocol):
 
     def set_status(self, path: WorktreePath, status: WorkspaceStatus) -> None: ...
 
-    def remove(self, path: WorktreePath) -> None: ...
+    def remove_worktree(self, path: WorktreePath) -> None: ...
 
 
 class FakeWorkspaceManager:
@@ -79,7 +79,7 @@ class FakeWorkspaceManager:
         name = WorktreeName.of(pr)
         self._worktrees.in_repo(repo).refuse_duplicate(name)
         worktree = Worktree(
-            repo=repo, path=self._path_for(name), name=name, pull_request=pr, status=status
+            repo=repo, path=self._path_for(repo, name), name=name, pull_request=pr, status=status
         )
         self._worktrees = Worktrees((*self._worktrees.root, worktree))
         return worktree.path
@@ -95,9 +95,10 @@ class FakeWorkspaceManager:
         if len(siblings.root) == 0:
             raise WorkspaceError(f"No repo is known for project {project.root}")
         siblings.refuse_duplicate(name)
+        repo = siblings.root[0].repo
         worktree = Worktree(
-            repo=siblings.root[0].repo,
-            path=self._path_for(name),
+            repo=repo,
+            path=self._path_for(repo, name),
             name=name,
             project=project,
             issue=issue,
@@ -121,12 +122,12 @@ class FakeWorkspaceManager:
         moved = self._worktrees.at(path).model_copy(update={"status": status})
         self._worktrees = Worktrees((*self._worktrees.without(path).root, moved))
 
-    def remove(self, path: WorktreePath) -> None:
+    def remove_worktree(self, path: WorktreePath) -> None:
         _ = self._worktrees.at(path)
         self._worktrees = self._worktrees.without(path)
 
-    def _path_for(self, name: WorktreeName) -> WorktreePath:
-        return WorktreePath(self._here.root.parent / name.root)
+    def _path_for(self, repo: RepoId, name: WorktreeName) -> WorktreePath:
+        return WorktreePath(self._here.root.parent / repo.root / name.root)
 
     def _refuse_unknown(self, status: WorkspaceStatus) -> None:
         if status not in self._statuses.root:

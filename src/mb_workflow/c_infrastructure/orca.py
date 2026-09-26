@@ -144,7 +144,7 @@ class OrcaWorktree(Payload):
             workspace_status=WorkspaceStatus.fake(),
         )
 
-    def domain(self) -> Worktree:
+    def to_worktree(self) -> Worktree:
         return Worktree(
             repo=self.repo_id,
             path=self.path,
@@ -165,9 +165,9 @@ class WorktreeList(Payload):
         return WorktreeList(worktrees=(OrcaWorktree.fake(),))
 
     @staticmethod
-    def parse(output: CommandOutput) -> Worktrees:
+    def parse_worktrees(output: CommandOutput) -> Worktrees:
         listed = Envelope[WorktreeList].model_validate_json(output.root).unwrap()
-        return Worktrees(tuple(worktree.domain() for worktree in listed.worktrees))
+        return Worktrees(tuple(worktree.to_worktree() for worktree in listed.worktrees))
 
 
 class Acknowledgement(Payload):
@@ -206,12 +206,12 @@ class SingleWorktree(Payload):
             return self.agent_terminal_handle
         return self.startup_terminal.handle if self.startup_terminal is not None else None
 
-    def opened(self) -> OpenedWorktree:
-        return OpenedWorktree(worktree=self.worktree.domain(), terminal=self.terminal())
+    def to_opened_worktree(self) -> OpenedWorktree:
+        return OpenedWorktree(worktree=self.worktree.to_worktree(), terminal=self.terminal())
 
 
 def single_worktree(output: CommandOutput) -> Worktree:
-    return SingleWorktree.parse(output).worktree.domain()
+    return SingleWorktree.parse(output).worktree.to_worktree()
 
 
 def acknowledged(output: CommandOutput) -> Acknowledgement:
@@ -230,7 +230,9 @@ class Orca:
         return single_worktree(self._run(Command(("orca", "worktree", "current", "--json"))))
 
     def worktrees(self) -> Worktrees:
-        return WorktreeList.parse(self._run(Command(("orca", "worktree", "list", "--json"))))
+        return WorktreeList.parse_worktrees(
+            self._run(Command(("orca", "worktree", "list", "--json")))
+        )
 
     # Orca suffixes a clashing name rather than refusing it, so the refusal the port promises lives here.
     def create_for_review(
@@ -286,7 +288,7 @@ class Orca:
             command += ["--linear-issue", issue.root]
         if agent is not None:
             command += ["--agent", agent.root]
-        return SingleWorktree.parse(self._run(Command(tuple(command)))).opened()
+        return SingleWorktree.parse(self._run(Command(tuple(command)))).to_opened_worktree()
 
     def wait_for_idle(self, terminal: TerminalHandle, timeout: TimeoutMs) -> None:
         try:
@@ -309,9 +311,14 @@ class Orca:
             raise OrcaError(f"{terminal.root} never went idle: {failed.stderr}") from failed
 
     def send_text(self, terminal: TerminalHandle, text: TerminalText) -> None:
-        _ = self._shell.run(
-            Command(("orca", "terminal", "send", "--terminal", terminal.root, "--text", text.root))
-        )
+        try:
+            _ = self._shell.run(
+                Command(
+                    ("orca", "terminal", "send", "--terminal", terminal.root, "--text", text.root)
+                )
+            )
+        except CalledProcessError as failed:
+            raise OrcaError(f"Could not type into {terminal.root}: {failed.stderr}") from failed
 
     # Orca has no command that lists board columns, so its refusal of an unknown one carries the list.
     def columns(self, unknown: ColumnLabel) -> ErrorMessage:
@@ -321,7 +328,7 @@ class Orca:
     def set_status(self, path: WorktreePath, status: WorkspaceStatus) -> None:
         _ = single_worktree(self._run(status_assignment(WorktreeSelector.of(path), status)))
 
-    def remove(self, path: WorktreePath) -> None:
+    def remove_worktree(self, path: WorktreePath) -> None:
         _ = acknowledged(
             self._run(
                 Command(

@@ -44,5 +44,5 @@ def finalized(
     github.review(pr, request)
     logger.info("Submitted %s on PR #%s.", request.decision.flag.root, pr.root)
 
-    workspaces.remove(worktree.path)
+    workspaces.remove_worktree(worktree.path)
     logger.info("Removed %s.", worktree.path.root)

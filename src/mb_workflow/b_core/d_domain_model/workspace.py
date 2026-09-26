@@ -143,7 +143,7 @@ class Worktrees(Value[tuple[Worktree, ...]]):
     def fake() -> Worktrees:
         return Worktrees((Worktree.fake(),))
 
-    def repo_id_at(self, directory: ExistingDirectory) -> RepoId:
+    def repo_at(self, directory: ExistingDirectory) -> RepoId:
         return self.at(WorktreePath.of(directory)).repo
 
     def at(self, path: WorktreePath) -> Worktree:
