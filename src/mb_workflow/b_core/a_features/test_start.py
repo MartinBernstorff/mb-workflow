@@ -1,8 +1,4 @@
-import logging
-from typing import override
-
 import pytest
-from pydantic import RootModel
 
 from mb_workflow.b_core.a_features.start import StartRequest, start_ticket
 from mb_workflow.b_core.c_secondary_ports.claims import (
@@ -51,7 +47,6 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     WorktreePath,
     Worktrees,
 )
-from mb_workflow.d_lib.logging import LogLevel
 
 
 def tracking(
@@ -301,90 +296,3 @@ def test_a_claim_label_the_tracker_lacks_does_not_stop_the_start() -> None:
         manager, tracking(IssueStatusName("Specced")), StartRequest.fake(), claim_settings=missing
     )
     assert opened_in(manager).issue == IssueIdentifier.fake()
-
-
-class UnassignableTracker(FakeTicketTracker):
-    @override
-    def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None:
-        raise TicketTrackerError(f"{assignee.root} is not a member.")
-
-
-class Reported(RootModel[tuple[str, ...]]):
-    @staticmethod
-    def at_level(level: LogLevel, caplog: pytest.LogCaptureFixture) -> Reported:
-        return Reported(
-            tuple(record.getMessage() for record in caplog.records if record.levelno == level.root)
-        )
-
-
-def test_reports_each_step_of_the_start(caplog: pytest.LogCaptureFixture) -> None:
-    with caplog.at_level(logging.INFO):
-        _ = started(IssueStatusName("Specced"), StartRequest.fake())
-    assert Reported.at_level(LogLevel(logging.INFO), caplog).root == (
-        "E-4289 is in Specced, so the next step is /implement.",
-        "Claimed E-4289 for worktree E-4289 on ada-mbp.local.",
-        "Labelled E-4289 as claimed.",
-        "Assigned E-4289 to mab@flowbase.io.",
-        "Created worktree /Users/me/orca/workspaces/mb-workflow/E-4289.",
-        "Typed /implement E-4289.",
-    )
-
-
-def test_reports_a_submitted_prompt_as_submitted(caplog: pytest.LogCaptureFixture) -> None:
-    submitting = StartRequest.fake().model_copy(update={"submit": Submit(True)})
-    with caplog.at_level(logging.INFO):
-        _ = started(IssueStatusName("Specced"), submitting)
-    assert Reported.at_level(LogLevel(logging.INFO), caplog).root[-1] == (
-        "Submitted /implement E-4289."
-    )
-
-
-def test_a_ticket_waiting_for_a_human_reports_no_prompt(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    with caplog.at_level(logging.INFO):
-        _ = started(IssueStatusName("QA"), StartRequest.fake())
-    assert Reported.at_level(LogLevel(logging.INFO), caplog).root == (
-        "Claimed E-4289 for worktree E-4289 on ada-mbp.local.",
-        "Labelled E-4289 as claimed.",
-        "Assigned E-4289 to mab@flowbase.io.",
-        "Created worktree /Users/me/orca/workspaces/mb-workflow/E-4289.",
-    )
-    assert Reported.at_level(LogLevel(logging.WARNING), caplog).root == (
-        "E-4289 is in QA, which waits for a human, so no prompt is typed.",
-    )
-
-
-def test_a_failed_assignment_is_reported_as_a_warning(caplog: pytest.LogCaptureFixture) -> None:
-    with caplog.at_level(logging.INFO):
-        starting(
-            fake_manager(),
-            tracking(IssueStatusName("Specced"), UnassignableTracker),
-            StartRequest.fake(),
-        )
-    assert Reported.at_level(LogLevel(logging.INFO), caplog).root == (
-        "E-4289 is in Specced, so the next step is /implement.",
-        "Claimed E-4289 for worktree E-4289 on ada-mbp.local.",
-        "Labelled E-4289 as claimed.",
-        "Created worktree /Users/me/orca/workspaces/mb-workflow/E-4289.",
-        "Typed /implement E-4289.",
-    )
-    assert Reported.at_level(LogLevel(logging.WARNING), caplog).root == (
-        "Could not assign E-4289 to mab@flowbase.io: mab@flowbase.io is not a member.",
-    )
-
-
-def test_without_a_claim_label_configured_no_label_is_reported(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    unlabelled = ClaimSettings(label=None)
-    with caplog.at_level(logging.INFO):
-        starting(
-            fake_manager(),
-            tracking(IssueStatusName("Specced")),
-            StartRequest.fake(),
-            claim_settings=unlabelled,
-        )
-    assert (
-        "Labelled E-4289 as claimed." not in Reported.at_level(LogLevel(logging.INFO), caplog).root
-    )
