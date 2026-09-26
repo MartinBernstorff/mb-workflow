@@ -57,9 +57,7 @@ def claim_ticket(registry: ClaimRegistry, pause: Pause, request: ClaimRequest) -
         return
     if current is not None and not request.take_over.root:
         raise claimed_error(request.ticket, current)
-    for stale in held.root:
-        logger.info("Withdrawing the claim of %s.", stale.holder.worktree.root)
-        registry.withdraw(request.ticket, stale.id)
+    withdraw_claims(registry, request.ticket, held)
 
     # Every claimer posts before reading, so whoever reads after the pause sees the same earliest claim.
     posted = registry.post(request.ticket, request.holder)
@@ -73,6 +71,16 @@ def claim_ticket(registry: ClaimRegistry, pause: Pause, request: ClaimRequest) -
     if winner is None:
         raise ClaimRefusedError(f"Our claim on {request.ticket.root} was withdrawn by another.")
     raise claimed_error(request.ticket, winner)
+
+
+def withdraw_claims(registry: ClaimRegistry, ticket: IssueIdentifier, held: Claims) -> None:
+    for claim in held.root:
+        logger.info(
+            "Withdrawing the claim of worktree %s on %s.",
+            claim.holder.worktree.root,
+            claim.holder.host.root,
+        )
+        registry.withdraw(ticket, claim.id)
 
 
 def claimed_error(ticket: IssueIdentifier, holder: Claim) -> ClaimRefusedError:
