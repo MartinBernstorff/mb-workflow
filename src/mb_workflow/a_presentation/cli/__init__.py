@@ -25,13 +25,18 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueIdentifier,
     LabelName,
 )
+from mb_workflow.b_core.d_domain_model.pull_request import (
+    Lookback,
+    ReviewBody,
+    ReviewDecision,
+    ReviewRequest,
+)
 from mb_workflow.b_core.d_domain_model.workspace import (
     ProjectSelector,
     TerminalText,
     TimeoutMs,
     WorkspaceStatus,
 )
-from mb_workflow.c_infrastructure.github import Lookback, ReviewBody, ReviewDecision, ReviewRequest
 from mb_workflow.d_lib.logging import LogLevel, configure
 
 app = typer.Typer(no_args_is_help=True)
@@ -73,7 +78,7 @@ def approve(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    request = ReviewRequest(decision=ReviewDecision.approve(), body=ReviewBody(comment))
+    request = ReviewRequest(decision=ReviewDecision.approve, body=ReviewBody(comment))
     raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
 
@@ -85,7 +90,7 @@ def reject(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    request = ReviewRequest(decision=ReviewDecision.reject(), body=ReviewBody(comment))
+    request = ReviewRequest(decision=ReviewDecision.request_changes, body=ReviewBody(comment))
     raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
 
@@ -97,7 +102,7 @@ def comment(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    request = ReviewRequest(decision=ReviewDecision.comment(), body=ReviewBody(comment))
+    request = ReviewRequest(decision=ReviewDecision.comment, body=ReviewBody(comment))
     raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
 

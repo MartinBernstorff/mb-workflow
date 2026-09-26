@@ -2,10 +2,16 @@ import logging
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
+from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.outcome import Failed
-from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
+from mb_workflow.b_core.d_domain_model.pull_request import (
+    CheckoutDirectory,
+    MergedSince,
+    PrNumber,
+    PullRequests,
+)
 from mb_workflow.b_core.d_domain_model.workspace import (
     RepoId,
     WorkspaceStatus,
@@ -13,15 +19,14 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     WorktreePath,
     Worktrees,
 )
-from mb_workflow.c_infrastructure.github import MergedSince, PullRequests
-from mb_workflow.c_infrastructure.shell import ExistingDirectory
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.lock import LockPath
+    from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.git import BranchNames
-    from mb_workflow.c_infrastructure.github import GitHub, Lookback
+    from mb_workflow.b_core.d_domain_model.pull_request import Lookback
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +109,7 @@ def uncovered(prs: PullRequests, worktrees: Worktrees) -> PullRequests:
     linked = {w.pull_request for w in worktrees.root if w.pull_request is not None}
     branches = {w.branch.branch() for w in worktrees.root if w.branch is not None}
     return PullRequests(
-        tuple(pr for pr in prs.root if pr.number not in linked and pr.head_ref_name not in branches)
+        tuple(pr for pr in prs.root if pr.number not in linked and pr.branch not in branches)
     )
 
 
@@ -116,7 +121,7 @@ def stale(
     here: WorktreePath,
 ) -> Worktrees:
     numbers = {pr.number for pr in prs.root}
-    branches = {pr.head_ref_name for pr in prs.root}
+    branches = {pr.branch for pr in prs.root}
     return Worktrees(
         tuple(
             worktree
@@ -159,7 +164,7 @@ def union(first: Worktrees, second: Worktrees) -> Worktrees:
 
 
 def create_workspaces(
-    github: GitHub,
+    review: CodeForge,
     manager: WorkspaceManager,
     status: WorkspaceStatus,
     lookback: Lookback,
@@ -167,18 +172,18 @@ def create_workspaces(
 ) -> Outcome:
     with lock.held():
         since = MergedSince.of(lookback, Today.now())
-        return workspaces_for_review(github, manager, status, since)
+        return workspaces_for_review(review, manager, status, since)
 
 
 def workspaces_for_review(
-    github: GitHub, manager: WorkspaceManager, status: WorkspaceStatus, since: MergedSince
+    review: CodeForge, manager: WorkspaceManager, status: WorkspaceStatus, since: MergedSince
 ) -> Outcome:
     worktrees = manager.worktrees()
     current = manager.current()
     here = current.path
     repo = current.repo
     logger.info("Inspecting %s worktrees from %s", len(worktrees.root), here.root)
-    requested = github.review_requested()
+    requested = review.review_requested()
     logger.info("PRs awaiting your review: %s", len(requested.root))
 
     created: list[CreatedWorkspace] = []
@@ -187,7 +192,7 @@ def workspaces_for_review(
 
     obsolete = union(
         stale(requested, worktrees, repo, status, here),
-        on_branches(prunable(worktrees, repo, here), github.merged_branches(since)),
+        on_branches(prunable(worktrees, repo, here), review.merged_branches(since)),
     )
     logger.info("Obsolete workspaces: %s", len(obsolete.root))
 
@@ -215,8 +220,8 @@ def workspaces_for_review(
             logger.info("    Creating worktree %s", WorktreeName.of(pr.number).root)
             path = manager.create_for_review(repo, pr.number, pr.title, status).path
             logger.info("    Checking out into %s", path.root)
-            github.checkout(pr.number, ExistingDirectory(path.root))
-        except (CalledProcessError, WorkspaceManagerError, ValueError) as error:
+            review.checkout(pr.number, CheckoutDirectory(path.root))
+        except (CalledProcessError, CodeReviewError, WorkspaceManagerError, ValueError) as error:
             logger.error("    PR #%s failed: %s", pr.number.root, error)
             failed.append(
                 Failure(subject=FailureSubject.of_pr(pr.number), reason=FailureReason(str(error)))

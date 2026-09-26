@@ -1,9 +1,34 @@
 import pytest
 
-from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, reviewed_pr
-from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
-from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus, Worktree
-from mb_workflow.c_infrastructure.github import ReviewBody, ReviewDecision, ReviewRequest
+from mb_workflow.b_core.a_features.finalize_review import (
+    NotFinalizableError,
+    finalize,
+    reviewed_pr,
+)
+from mb_workflow.b_core.c_secondary_ports.code_review import (
+    CodeReviewError,
+    Drafted,
+    FakeCodeReview,
+    SubmittedReview,
+)
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
+from mb_workflow.b_core.d_domain_model.pull_request import (
+    PrNumber,
+    PullRequests,
+    ReviewBody,
+    ReviewDecision,
+    ReviewRequest,
+)
+from mb_workflow.b_core.d_domain_model.workspace import (
+    WorkspaceStatus,
+    Worktree,
+    WorktreePath,
+    Worktrees,
+)
+
+
+def standing_in(worktree: Worktree) -> FakeWorkspaceManager:
+    return FakeWorkspaceManager(Worktrees((worktree,)), WorktreePath.fake())
 
 
 def test_finalizes_a_worktree_in_the_reviewing_status() -> None:
@@ -28,18 +53,33 @@ def test_rejects_a_worktree_with_no_linked_pull_request() -> None:
         _ = reviewed_pr(worktree, WorkspaceStatus.fake())
 
 
-def test_approval_carries_its_comment() -> None:
-    assert ReviewRequest.fake().command(PrNumber.fake()).root == (
-        ("gh", "pr", "review", "1234", "--approve", "--body", "Looks good to me.")
+def test_submits_the_decision_on_the_linked_pull_request() -> None:
+    review = FakeCodeReview(PullRequests.fake())
+    finalize(review, standing_in(Worktree.fake()), ReviewRequest.fake(), WorkspaceStatus.fake())
+    assert review.submitted() == (
+        SubmittedReview(pr=PrNumber.fake(), request=ReviewRequest.fake(), drafted=Drafted(False)),
     )
 
 
-def test_an_empty_comment_is_left_off_the_command() -> None:
-    request = ReviewRequest(decision=ReviewDecision.approve(), body=ReviewBody(""))
-    assert request.command(PrNumber.fake()).root == ("gh", "pr", "review", "1234", "--approve")
+def test_removes_the_worktree_once_the_review_is_in() -> None:
+    manager = standing_in(Worktree.fake())
+    finalize(
+        FakeCodeReview(PullRequests.fake()), manager, ReviewRequest.fake(), WorkspaceStatus.fake()
+    )
+    assert manager.worktrees() == Worktrees(())
 
 
-def test_rejecting_and_commenting_need_a_body() -> None:
-    assert ReviewDecision.reject().body_required.root
-    assert ReviewDecision.comment().body_required.root
-    assert not ReviewDecision.approve().body_required.root
+def test_a_refused_review_keeps_the_worktree() -> None:
+    manager = standing_in(Worktree.fake())
+    bare = ReviewRequest(decision=ReviewDecision.comment, body=ReviewBody(""))
+    with pytest.raises(CodeReviewError, match="comment requires comment text"):
+        finalize(FakeCodeReview(PullRequests.fake()), manager, bare, WorkspaceStatus.fake())
+    assert manager.worktrees() == Worktrees.fake()
+
+
+def test_a_worktree_in_another_status_submits_nothing() -> None:
+    review = FakeCodeReview(PullRequests.fake())
+    elsewhere = Worktree.fake().model_copy(update={"status": None})
+    with pytest.raises(NotFinalizableError):
+        finalize(review, standing_in(elsewhere), ReviewRequest.fake(), WorkspaceStatus.fake())
+    assert review.submitted() == ()
