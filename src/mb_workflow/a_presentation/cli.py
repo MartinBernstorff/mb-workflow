@@ -22,7 +22,8 @@ from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
 from mb_workflow.b_core.d_domain_model.flow import EventName
 from mb_workflow.b_core.d_domain_model.issue import BranchSlug, IssueIdentifier
-from mb_workflow.c_infrastructure.github import Lookback, ReviewBody, ReviewDecision, ReviewRequest
+from mb_workflow.b_core.d_domain_model.pull_request import Lookback
+from mb_workflow.b_core.d_domain_model.review import ReviewBody, ReviewDecision, ReviewRequest
 from mb_workflow.c_infrastructure.linear import (
     Assignee,
     CreatedAfter,
@@ -77,7 +78,7 @@ def approve(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    request = ReviewRequest(decision=ReviewDecision.approve(), body=ReviewBody(comment))
+    request = ReviewRequest(decision=ReviewDecision.approve, body=ReviewBody(comment))
     raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
 
@@ -89,7 +90,7 @@ def reject(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    request = ReviewRequest(decision=ReviewDecision.reject(), body=ReviewBody(comment))
+    request = ReviewRequest(decision=ReviewDecision.reject, body=ReviewBody(comment))
     raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
 
@@ -101,7 +102,7 @@ def comment(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    request = ReviewRequest(decision=ReviewDecision.comment(), body=ReviewBody(comment))
+    request = ReviewRequest(decision=ReviewDecision.comment, body=ReviewBody(comment))
     raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
 

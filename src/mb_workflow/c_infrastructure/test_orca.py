@@ -1,5 +1,6 @@
 import pytest
 
+from mb_workflow.b_core.d_domain_model.directory import ExistingDirectory
 from mb_workflow.b_core.d_domain_model.git import BranchName
 from mb_workflow.b_core.d_domain_model.issue import BranchSlug, IssueIdentifier
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
@@ -20,7 +21,7 @@ from mb_workflow.c_infrastructure.orca import (
     acknowledged,
     created_path,
 )
-from mb_workflow.c_infrastructure.shell import CommandOutput, ExistingDirectory
+from mb_workflow.c_infrastructure.shell import CommandOutput
 
 
 def test_parses_worktree_list() -> None:

@@ -30,17 +30,20 @@ from mb_workflow.b_core.d_domain_model.config import (
     MissingConfigError,
     WorkingDirectory,
 )
+from mb_workflow.b_core.d_domain_model.directory import ExistingDirectory
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError
+from mb_workflow.b_core.d_domain_model.review import MissingReviewBodyError
 from mb_workflow.c_infrastructure.board import BoardError
 from mb_workflow.c_infrastructure.orca import OrcaError, WorkspaceStatus
-from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
+from mb_workflow.c_infrastructure.shell import Shell
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from mb_workflow.b_core.b_domain_services.flow_report import AsJson
     from mb_workflow.b_core.b_domain_services.flow_transition import Force
-    from mb_workflow.c_infrastructure.github import Lookback, ReviewRequest
+    from mb_workflow.b_core.d_domain_model.pull_request import Lookback
+    from mb_workflow.b_core.d_domain_model.review import ReviewRequest
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +56,7 @@ FAILURES = (
     FlowError,
     InvalidConfigError,
     MissingConfigError,
+    MissingReviewBodyError,
     NotFinalizableError,
     OSError,
     OrcaError,

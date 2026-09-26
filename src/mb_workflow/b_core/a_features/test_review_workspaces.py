@@ -13,12 +13,14 @@ from mb_workflow.b_core.a_features.review_workspaces import (
     union,
 )
 from mb_workflow.b_core.d_domain_model.clock import Today
+from mb_workflow.b_core.d_domain_model.directory import ExistingDirectory
 from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames, Ref
 from mb_workflow.b_core.d_domain_model.outcome import Failed
-from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
-from mb_workflow.c_infrastructure.github import (
+from mb_workflow.b_core.d_domain_model.pull_request import (
     Lookback,
     MergedSince,
+    PrNumber,
+    PrTitle,
     PullRequest,
     PullRequests,
 )
@@ -30,7 +32,6 @@ from mb_workflow.c_infrastructure.orca import (
     WorktreePath,
     Worktrees,
 )
-from mb_workflow.c_infrastructure.shell import ExistingDirectory
 
 if TYPE_CHECKING:
     import pytest
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
 
 def other_pr() -> PullRequest:
     return PullRequest(
-        number=PrNumber(7), title=PrTitle("Other work"), head_ref_name=BranchName("feat/other")
+        number=PrNumber(7), title=PrTitle("Other work"), branch=BranchName("feat/other")
     )
 
 
@@ -191,9 +192,9 @@ def test_a_union_keeps_distinct_workspaces() -> None:
     assert union(Worktrees.fake(), Worktrees((second,))) == Worktrees((Worktree.fake(), second))
 
 
-def test_collects_the_head_ref_of_each_pr() -> None:
+def test_collects_the_branch_of_each_pr() -> None:
     prs = PullRequests((PullRequest.fake(), other_pr()))
-    assert prs.head_refs() == BranchNames((BranchName.fake(), BranchName("feat/other")))
+    assert prs.branches() == BranchNames((BranchName.fake(), BranchName("feat/other")))
 
 
 def test_selects_the_workspaces_on_the_given_branches() -> None:
@@ -204,7 +205,3 @@ def test_selects_the_workspaces_on_the_given_branches() -> None:
 
 def test_the_window_starts_the_lookback_before_today() -> None:
     assert MergedSince.of(Lookback.fake(), Today.fake()) == MergedSince.fake()
-
-
-def test_the_window_searches_for_prs_merged_since_then() -> None:
-    assert MergedSince.fake().search().root == "merged:>=2026-08-09"

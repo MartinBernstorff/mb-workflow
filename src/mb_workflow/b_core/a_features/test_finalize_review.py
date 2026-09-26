@@ -1,8 +1,13 @@
 import pytest
 
-from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, reviewed_pr
+from mb_workflow.b_core.a_features.finalize_review import (
+    NotFinalizableError,
+    finalized,
+    reviewed_pr,
+)
+from mb_workflow.b_core.c_secondary_ports.code_review import FakeCodeReview, Submissions
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
-from mb_workflow.c_infrastructure.github import ReviewBody, ReviewDecision, ReviewRequest
+from mb_workflow.b_core.d_domain_model.review import ReviewDecision, ReviewRequest
 from mb_workflow.c_infrastructure.orca import WorkspaceStatus, Worktree
 
 
@@ -30,18 +35,21 @@ def test_rejects_a_worktree_with_no_linked_pull_request() -> None:
         _ = reviewed_pr(worktree, WorkspaceStatus.fake())
 
 
-def test_approval_carries_its_comment() -> None:
-    assert ReviewRequest.fake().command(PrNumber.fake()).root == (
-        ("gh", "pr", "review", "1234", "--approve", "--body", "Looks good to me.")
-    )
+def test_submits_the_review_on_the_linked_pull_request() -> None:
+    code_review = FakeCodeReview()
+    finalized(code_review, Worktree.fake(), ReviewRequest.fake(), WorkspaceStatus.fake())
+    assert code_review.submitted() == Submissions.fake()
 
 
-def test_an_empty_comment_is_left_off_the_command() -> None:
-    request = ReviewRequest(decision=ReviewDecision.approve(), body=ReviewBody(""))
-    assert request.command(PrNumber.fake()).root == ("gh", "pr", "review", "1234", "--approve")
+def test_submits_nothing_for_a_worktree_in_another_status() -> None:
+    code_review = FakeCodeReview()
+    worktree = Worktree.fake().model_copy(update={"workspace_status": None})
+    with pytest.raises(NotFinalizableError):
+        finalized(code_review, worktree, ReviewRequest.fake(), WorkspaceStatus.fake())
+    assert code_review.submitted() == Submissions(())
 
 
 def test_rejecting_and_commenting_need_a_body() -> None:
-    assert ReviewDecision.reject().body_required.root
-    assert ReviewDecision.comment().body_required.root
-    assert not ReviewDecision.approve().body_required.root
+    assert ReviewDecision.reject.body_required().root
+    assert ReviewDecision.comment.body_required().root
+    assert not ReviewDecision.approve.body_required().root
