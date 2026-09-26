@@ -48,7 +48,6 @@ from mb_workflow.c_infrastructure.linear import (
     Linear,
     MilestonePayload,
     ProjectId,
-    StateId,
 )
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.d_lib.models import Model, Payload, Value
@@ -314,15 +313,14 @@ def linear_backlog(linear_client: LinearClient) -> Backlog:
     )
 
 
-def state_id(client: LinearClient, issue: IssueIdentifier, status: StatusName) -> StateId:
-    return Linear(client).state(issue, status)
-
-
 def reset(client: LinearClient, backlog: Backlog) -> None:
     tracker = Linear(client)
     for planted in seeds():
         identifier = backlog.identifier(planted.seed)
         tracker.set_labels(identifier, planted.labels)
+        tracker.update_issue(
+            identifier, IssueUpdate.nothing().model_copy(update={"status": planted.status})
+        )
         project = find_project(client, planted.project) if planted.project else None
         _ = client.execute(
             "mutation($id: String!, $input: IssueUpdateInput!) {"
@@ -335,7 +333,6 @@ def reset(client: LinearClient, backlog: Backlog) -> None:
                     "assigneeId": None,
                     "projectId": project.root if project is not None else None,
                     "projectMilestoneId": None,
-                    "stateId": state_id(client, identifier, planted.status).root,
                 },
             },
         )
