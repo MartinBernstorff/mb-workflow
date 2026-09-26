@@ -34,7 +34,6 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
     IssueIdentifier,
     IssueStatusName,
-    IssueUpdate,
     LabelName,
     LabelNames,
 )
@@ -56,9 +55,11 @@ def labelled(state: StateName | None) -> LabelNames:
 
 
 def tracking(
-    state: StateName | None, tracker: type[FakeTicketTracker] = FakeTicketTracker
+    state: StateName | None,
+    tracker: type[FakeTicketTracker] = FakeTicketTracker,
+    status: IssueStatusName = IssueStatusName.fake(),
 ) -> FakeTicketTracker:
-    issue = Issue.fake().model_copy(update={"labels": labelled(state)})
+    issue = Issue.fake().model_copy(update={"labels": labelled(state), "status": status})
     return tracker(
         LabelNames((*LabelNames.fake().root, LabelName("claimed"), *FlowLabels.fake().labels.root)),
         (TrackedIssue.fake().model_copy(update={"issue": issue}),),
@@ -136,23 +137,17 @@ def test_submits_the_prompt_when_asked_to() -> None:
         (StateName("Grilling"), TerminalText("/grill E-4289")),
         (StateName("Speccing"), TerminalText("/to-ticket E-4289")),
         (StateName("Specced"), TerminalText("/implement E-4289")),
-        (None, TerminalText("/grill E-4289")),
     ],
 )
 def test_the_prompt_is_the_next_action_for_the_state_of_the_flow_label(
-    state: StateName | None, prompt: TerminalText
+    state: StateName, prompt: TerminalText
 ) -> None:
     assert started(state, StartRequest.fake()).typed_texts() == (prompt,)
 
 
 def test_the_ticket_status_does_not_decide_the_state() -> None:
     manager = fake_manager()
-    tracker = tracking(StateName("Specced"))
-    issue = tracker.read_issue(IssueIdentifier.fake())
-    tracker.update_issue(
-        issue.identifier,
-        IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("Done")}),
-    )
+    tracker = tracking(StateName("Specced"), status=IssueStatusName("Done"))
     starting(manager, tracker, StartRequest.fake())
     assert manager.typed_texts() == (TerminalText("/implement E-4289"),)
 

@@ -2,7 +2,13 @@ from enum import IntEnum
 
 from pydantic import Field, JsonValue, NonNegativeInt, field_validator, model_validator
 
-from mb_workflow.b_core.d_domain_model.flow import StateName, StateNames, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import (
+    Skill,
+    StateName,
+    StateNames,
+    WorkflowChart,
+    WorkState,
+)
 from mb_workflow.b_core.d_domain_model.flow_labels import state_of
 from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
@@ -46,21 +52,23 @@ class PoolTicket(Model):
             priority=Priority.medium,
         )
 
+    # A ticket is ready when its state names a skill an agent can run.
     @staticmethod
     def ready_states() -> StateNames:
         return StateNames(
             frozenset(
-                StateName(name)
-                for name in ("Grilling", "Speccing", "Specced", "Implementing", "Merging")
+                StateName(state.name)
+                for state in WorkflowChart.states
+                if isinstance(state, WorkState) and isinstance(state.action, Skill)
             )
         )
 
-    def state(self) -> StateName:
+    def flow_state(self) -> StateName:
         return state_of(WorkflowChart, self.issue.labels)
 
     def ready(self, claim_label: LabelName) -> Ready:
         return Ready(
-            self.state() in PoolTicket.ready_states().root
+            self.flow_state() in PoolTicket.ready_states().root
             and self.issue.labels.matching(claim_label) is None
         )
 

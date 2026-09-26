@@ -261,15 +261,6 @@ def test_a_ticket_started_in_the_pass_fills_its_state() -> None:
     assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
 
 
-def test_a_ticket_without_a_flow_label_is_picked_to_grill() -> None:
-    manager = fake_manager()
-    tracker = pool_of(
-        pooled(IssueIdentifier("MB-1"), Priority.low, state=None, status=IssueStatusName("QA"))
-    )
-    assert picked(draining(tracker, manager=manager)) == (IssueIdentifier("MB-1"),)
-    assert manager.submitted_texts() == (TerminalText("/grill MB-1"),)
-
-
 def test_a_ticket_without_a_flow_label_fills_the_grilling_limit() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low, state=None),

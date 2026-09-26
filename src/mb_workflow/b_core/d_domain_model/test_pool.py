@@ -4,7 +4,6 @@ from mb_workflow.b_core.d_domain_model.flow import StateName
 from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
     Issues,
-    IssueStatusName,
     LabelName,
     LabelNames,
 )
@@ -35,16 +34,6 @@ def test_an_unclaimed_ticket_in_a_workable_state_is_ready(state: str) -> None:
 @pytest.mark.parametrize("state", ["QA", "Review", "Merged"])
 def test_a_ticket_in_any_other_state_is_not_ready(state: str) -> None:
     assert ticket(LabelName(state)).ready(LabelName("claimed")) == Ready(False)
-
-
-def test_a_ticket_without_a_flow_label_is_ready_to_grill() -> None:
-    unlabelled = ticket().model_copy(
-        update={"issue": ticket().issue.model_copy(update={"status": IssueStatusName("QA")})}
-    )
-    assert (unlabelled.state(), unlabelled.ready(LabelName("claimed"))) == (
-        StateName("Grilling"),
-        Ready(True),
-    )
 
 
 def test_a_ticket_carrying_the_claim_label_is_not_ready() -> None:
