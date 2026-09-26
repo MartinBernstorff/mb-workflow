@@ -33,7 +33,7 @@ from mb_workflow.b_core.d_domain_model.config import (
 )
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError
 from mb_workflow.c_infrastructure.board import BoardError
-from mb_workflow.c_infrastructure.linear_cli import LinearCli
+from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
 from mb_workflow.c_infrastructure.orca import Orca, OrcaError, WorkspaceStatus
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 
@@ -86,6 +86,10 @@ def here() -> Shell:
     return Shell(ExistingDirectory(Path.cwd()))
 
 
+def linear() -> Linear:
+    return Linear.connected(LinearApiKey.from_environment())
+
+
 @guarded
 def review_workspaces(status: WorkspaceStatus, lookback: Lookback, lock: LockName) -> ExitCode:
     return ExitCode.of(create_workspaces(here(), status, lookback, LockPath.of(lock)).failed_any())
@@ -99,20 +103,18 @@ def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode
 
 @guarded
 def relabel(request: LabelRequest) -> ExitCode:
-    shell = here()
-    changed(Orca(shell), LinearCli(shell), request)
+    changed(Orca(here()), linear(), request)
     return ExitCode(0)
 
 
 @guarded
 def linear_autolabel(request: AutolabelRequest, ledger: LedgerPath) -> ExitCode:
-    return ExitCode.of(sweep(LinearCli(here()), request, ledger).failed_any())
+    return ExitCode.of(sweep(linear(), request, ledger).failed_any())
 
 
 @guarded
 def open_linear_issue(request: OpenRequest) -> ExitCode:
-    shell = here()
-    open_workspace(Orca(shell), LinearCli(shell), request)
+    open_workspace(Orca(here()), linear(), request)
     return ExitCode(0)
 
 
