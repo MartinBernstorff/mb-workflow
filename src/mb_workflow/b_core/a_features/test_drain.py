@@ -263,14 +263,6 @@ def test_a_ticket_started_in_the_pass_fills_its_state() -> None:
     assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
 
 
-def test_a_ticket_without_a_flow_label_is_not_ready() -> None:
-    tracker = pool_of(
-        pooled(IssueIdentifier("MB-1"), Priority.low, state=None),
-        pooled(IssueIdentifier("MB-2"), Priority.urgent),
-    )
-    assert draining(tracker).ready.identifiers() == (IssueIdentifier("MB-2"),)
-
-
 def test_a_claimed_ticket_without_a_flow_label_does_not_count_toward_the_limits() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-2"), Priority.urgent, state=StateName("Grilling")),

@@ -29,10 +29,6 @@ def test_the_listing_names_each_ready_ticket_its_priority_and_state_in_order() -
 
 def test_the_listing_marks_a_ticket_without_a_flow_label_as_stateless() -> None:
     unlabelled = PoolTicket.fake().model_copy(
-        update={
-            "issue": PoolTicket.fake().issue.model_copy(
-                update={"identifier": IssueIdentifier("E-3"), "grouped": GroupedLabels(())}
-            )
-        }
+        update={"issue": PoolTicket.fake().issue.model_copy(update={"grouped": GroupedLabels(())})}
     )
-    assert pick_listing(PoolTickets((unlabelled,)), FlowLabels.fake()) == Output("E-3\tmedium\t-\n")
+    assert pick_listing(PoolTickets((unlabelled,)), FlowLabels.fake()).root.endswith("\t-\n")

@@ -139,7 +139,7 @@ def test_occupancy_counts_each_issue_under_its_flow_state() -> None:
     )
 
 
-def test_an_unlabelled_claimed_issue_leaves_the_grilling_limit_open() -> None:
+def test_an_issue_without_a_flow_label_leaves_the_grilling_limit_open() -> None:
     occupancy = Occupancy.of(
         Issues((Issue.fake().model_copy(update={"grouped": in_flow()}),)), FlowLabels.fake()
     )
