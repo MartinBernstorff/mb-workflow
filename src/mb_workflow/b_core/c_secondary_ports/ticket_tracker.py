@@ -42,6 +42,8 @@ class TicketTracker(Protocol):
 
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None: ...
 
+    def remove_label(self, issue: IssueIdentifier, label: LabelName) -> None: ...
+
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None: ...
 
     def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None: ...
@@ -120,6 +122,11 @@ class FakeTicketTracker(TicketTracker):
     @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
         self.set_labels(issue, LabelNames((*self.read_issue(issue).labels.root, label)))
+
+    @override
+    def remove_label(self, issue: IssueIdentifier, label: LabelName) -> None:
+        (known,) = self._spelled(LabelNames((label,))).root
+        self.set_labels(issue, self.read_issue(issue).labels.without(known))
 
     @override
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
