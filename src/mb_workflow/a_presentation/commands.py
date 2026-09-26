@@ -18,14 +18,10 @@ from mb_workflow.b_core.a_features.autolabel import (
 from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
-from mb_workflow.b_core.a_features.open_issue import (
-    OpenRequest,
-    PromptUndeliveredError,
-    open_workspace,
-)
 from mb_workflow.b_core.a_features.review_workspaces import create_workspaces
 from mb_workflow.b_core.a_features.show_config import show_config
 from mb_workflow.b_core.a_features.show_flow import show_flow
+from mb_workflow.b_core.a_features.start import PromptUndeliveredError, StartRequest, start
 from mb_workflow.b_core.a_features.transition import transition
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
@@ -156,12 +152,12 @@ def linear_autolabel(request: AutolabelRequest, window: CreatedAfter) -> ExitCod
 
 
 @guarded
-def open_linear_issue(
-    request: OpenRequest, directory: WorkingDirectory, name: ConfigFileName
+def start_ticket(
+    request: StartRequest, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
     workspace = Configuration.resolved(directory, name).settings.workspace
     orca = Orca(here())
-    open_workspace(orca, linear(), workspace_board(orca), workspace, request)
+    start(orca, linear(), workspace_board(orca), workspace, request)
     return ExitCode(0)
 
 

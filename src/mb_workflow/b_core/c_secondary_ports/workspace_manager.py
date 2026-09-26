@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
     from mb_workflow.b_core.d_domain_model.workspace import (
         AgentName,
+        Submit,
         TerminalText,
         TimeoutMs,
         WorkspaceStatus,
@@ -51,7 +52,7 @@ class WorkspaceManager(Protocol):
 
     def wait_for_idle(self, terminal: TerminalHandle, timeout: TimeoutMs) -> None: ...
 
-    def send_text(self, terminal: TerminalHandle, text: TerminalText) -> None: ...
+    def send_text(self, terminal: TerminalHandle, text: TerminalText, submit: Submit) -> None: ...
 
 
 class FakeWorkspaceManager(WorkspaceManager):
@@ -68,7 +69,7 @@ class FakeWorkspaceManager(WorkspaceManager):
         self._columns = columns
         self._project = project
         self._repo = repo
-        self._terminals: dict[TerminalHandle, tuple[TerminalText, ...]] = {}
+        self._terminals: dict[TerminalHandle, tuple[tuple[TerminalText, Submit], ...]] = {}
 
     @override
     def current(self) -> Worktree:
@@ -128,13 +129,18 @@ class FakeWorkspaceManager(WorkspaceManager):
         _ = self._typed_into(terminal)
 
     @override
-    def send_text(self, terminal: TerminalHandle, text: TerminalText) -> None:
-        self._terminals[terminal] = (*self._typed_into(terminal), text)
+    def send_text(self, terminal: TerminalHandle, text: TerminalText, submit: Submit) -> None:
+        self._terminals[terminal] = (*self._typed_into(terminal), (text, submit))
 
     def typed_texts(self) -> tuple[TerminalText, ...]:
-        return tuple(text for typed in self._terminals.values() for text in typed)
+        return tuple(text for typed in self._terminals.values() for text, _ in typed)
 
-    def _typed_into(self, terminal: TerminalHandle) -> tuple[TerminalText, ...]:
+    def submitted_texts(self) -> tuple[TerminalText, ...]:
+        return tuple(
+            text for typed in self._terminals.values() for text, submit in typed if submit.root
+        )
+
+    def _typed_into(self, terminal: TerminalHandle) -> tuple[tuple[TerminalText, Submit], ...]:
         typed = self._terminals.get(terminal)
         if typed is None:
             raise WorkspaceManagerError(f"No terminal is handled as {terminal.root}.")
