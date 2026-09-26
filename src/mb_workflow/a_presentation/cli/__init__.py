@@ -265,6 +265,13 @@ def flow_show(
     raise typer.Exit(code=commands.flow_show(AsJson(as_json)).root)
 
 
+@flow_app.command("seed-labels")
+def flow_seed_labels(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
+    """Create the flow label group in Linear, with one label per flow state."""
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    raise typer.Exit(code=commands.flow_seed_labels().root)
+
+
 @flow_app.command("grill")
 def flow_grill(
     force: bool = typer.Option(False, "--force", help=FORCING),

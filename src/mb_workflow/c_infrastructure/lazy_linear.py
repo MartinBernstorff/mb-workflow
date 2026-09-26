@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, ClaimId, Claims
+    from mb_workflow.b_core.d_domain_model.flow_labels import LabelGroupName
     from mb_workflow.b_core.d_domain_model.issue import (
         Assignee,
         Issue,
@@ -69,6 +70,14 @@ class LazyLinear(TicketTracker):
     @override
     def workspace_labels(self) -> LabelNames:
         return self._tracker().workspace_labels()
+
+    @override
+    def group_labels(self, group: LabelGroupName) -> LabelNames:
+        return self._tracker().group_labels(group)
+
+    @override
+    def create_group_labels(self, group: LabelGroupName, labels: LabelNames) -> None:
+        self._tracker().create_group_labels(group, labels)
 
     @override
     def list_issues(self, wanted: IssueFilter) -> Issues:

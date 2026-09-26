@@ -26,6 +26,7 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     TrackedIssue,
 )
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, ClaimId, Claims, HostName
+from mb_workflow.b_core.d_domain_model.flow_labels import LabelGroupName
 from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
@@ -60,6 +61,7 @@ from mb_workflow.b_core.d_domain_model.pool import (
 )
 from mb_workflow.c_infrastructure.credentials import CredentialsDirectory, RepositorySlug
 from mb_workflow.c_infrastructure.linear import (
+    LabelGroupRead,
     Linear,
     MilestonePayload,
     ProjectId,
@@ -553,6 +555,36 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
     )
 
 
+def drop_group(client: LinearClient, group: LabelGroupName) -> None:
+    found = LabelGroupRead.model_validate(
+        client.execute(
+            "query($name: String!) { issueLabels(first: 1, filter:"
+            " { name: { eqIgnoreCase: $name }, isGroup: { eq: true } })"
+            " { nodes { id children(first: 250) { nodes { id name } } } } }",
+            {"name": group.root},
+        )
+    ).groups
+    for held in found:
+        for child in held.children:
+            _ = client.execute(
+                "mutation($id: String!) { issueLabelDelete(id: $id) { success } }",
+                {"id": child.id.root},
+            )
+        _ = client.execute(
+            "mutation($id: String!) { issueLabelDelete(id: $id) { success } }", {"id": held.id.root}
+        )
+
+
+# Linear keeps a created group between runs, so each test that seeds one starts without it.
+@pytest.fixture
+def groupless(
+    kind: TrackerKind, tracker: TicketTracker, request: pytest.FixtureRequest
+) -> TicketTracker:
+    if kind == TrackerKind.linear:
+        drop_group(request.getfixturevalue("linear_client"), LabelGroupName.fake())
+    return tracker
+
+
 @pytest.fixture
 def claims(kind: TrackerKind, request: pytest.FixtureRequest) -> ClaimRegistry:
     if kind == TrackerKind.linear:
@@ -562,6 +594,45 @@ def claims(kind: TrackerKind, request: pytest.FixtureRequest) -> ClaimRegistry:
 
 def test_every_workspace_label_is_listed(tracker: TicketTracker) -> None:
     assert tracker.workspace_labels().unmatched(workspace_labels()) == LabelNames(())
+
+
+GRILLING = LabelName("Grilling")
+QA = LabelName("QA")
+
+
+def test_a_created_group_lists_its_labels_back(groupless: TicketTracker) -> None:
+    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((GRILLING, QA)))
+    assert set(groupless.group_labels(LabelGroupName.fake()).root) == set(
+        LabelNames((GRILLING, QA)).root
+    )
+
+
+def test_labels_added_to_a_group_join_the_ones_there(groupless: TicketTracker) -> None:
+    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((GRILLING,)))
+    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((QA,)))
+    assert set(groupless.group_labels(LabelGroupName.fake()).root) == set(
+        LabelNames((GRILLING, QA)).root
+    )
+
+
+def test_a_group_that_does_not_exist_lists_no_labels(groupless: TicketTracker) -> None:
+    assert groupless.group_labels(LabelGroupName.fake()) == LabelNames(())
+
+
+def test_an_issue_carries_a_label_of_a_group(groupless: TicketTracker, backlog: Backlog) -> None:
+    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((GRILLING, QA)))
+    groupless.set_labels(backlog.identifier(Seed.done), LabelNames((LabelName("d-grill"), QA)))
+    assert set(groupless.read_issue(backlog.identifier(Seed.done)).labels.root) == set(
+        LabelNames((LabelName("d-grill"), QA)).root
+    )
+
+
+def test_an_issue_carrying_two_labels_of_one_group_is_refused(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((GRILLING, QA)))
+    with pytest.raises(TicketTrackerError):
+        groupless.set_labels(backlog.identifier(Seed.done), LabelNames((GRILLING, QA)))
 
 
 def test_the_filter_picks_the_issues_one_creator_made_since_a_date(

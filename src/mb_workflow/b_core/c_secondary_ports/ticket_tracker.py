@@ -1,4 +1,4 @@
-from typing import Protocol, override
+from typing import TYPE_CHECKING, Protocol, override
 
 from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
@@ -34,6 +34,9 @@ from mb_workflow.b_core.d_domain_model.pool import (
 )
 from mb_workflow.d_lib.models import Model
 
+if TYPE_CHECKING:
+    from mb_workflow.b_core.d_domain_model.flow_labels import LabelGroupName
+
 
 class TicketTrackerError(Exception):
     pass
@@ -41,6 +44,10 @@ class TicketTrackerError(Exception):
 
 class TicketTracker(Protocol):
     def workspace_labels(self) -> LabelNames: ...
+
+    def group_labels(self, group: LabelGroupName) -> LabelNames: ...
+
+    def create_group_labels(self, group: LabelGroupName, labels: LabelNames) -> None: ...
 
     def list_issues(self, wanted: IssueFilter) -> Issues: ...
 
@@ -101,6 +108,7 @@ class FakeTicketTracker(TicketTracker):
         viewer: Assignee = Assignee.fake(),
         *,
         views: dict[ViewSlug, tuple[IssueIdentifier, ...]] | None = None,
+        groups: dict[LabelGroupName, LabelNames] | None = None,
     ) -> None:
         self._labels = labels
         self._issues = {tracked.issue.identifier: tracked for tracked in issues}
@@ -108,10 +116,20 @@ class FakeTicketTracker(TicketTracker):
         self._statuses = statuses
         self._viewer = viewer
         self._views = dict(views or {})
+        self._groups = dict(groups or {})
 
     @override
     def workspace_labels(self) -> LabelNames:
         return self._labels
+
+    @override
+    def group_labels(self, group: LabelGroupName) -> LabelNames:
+        return self._groups.get(group, LabelNames(()))
+
+    @override
+    def create_group_labels(self, group: LabelGroupName, labels: LabelNames) -> None:
+        self._groups[group] = LabelNames((*self.group_labels(group).root, *labels.root))
+        self._labels = LabelNames((*self._labels.root, *labels.root))
 
     @override
     def list_issues(self, wanted: IssueFilter) -> Issues:
@@ -232,7 +250,15 @@ class FakeTicketTracker(TicketTracker):
             raise TicketTrackerError(
                 f"No label is named {', '.join(label.root for label in unknown.root)}."
             )
-        return self._labels.spelled(labels)
+        spelled = self._labels.spelled(labels)
+        for group, members in self._groups.items():
+            held = members.spelled(spelled)
+            if len(held.root) > 1:
+                raise TicketTrackerError(
+                    f"{', '.join(label.root for label in held.root)} are all in the"
+                    f" {group.root} group, and an issue carries at most one label of a group."
+                )
+        return spelled
 
     def _moved(
         self, held: ProjectName | None, wanted: ProjectName | Cleared | None

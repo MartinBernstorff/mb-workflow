@@ -21,6 +21,7 @@ from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
 from mb_workflow.b_core.a_features.review_workspaces import create_workspaces
+from mb_workflow.b_core.a_features.seed_labels import seed_flow_labels
 from mb_workflow.b_core.a_features.show_config import show_config
 from mb_workflow.b_core.a_features.show_flow import show_flow
 from mb_workflow.b_core.a_features.start import (
@@ -32,6 +33,7 @@ from mb_workflow.b_core.a_features.teardown import TeardownRequest, teardown_wor
 from mb_workflow.b_core.a_features.transition import transition
 from mb_workflow.b_core.a_features.unclaim import unclaim_ticket
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
+from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRefusedError
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError
@@ -47,6 +49,7 @@ from mb_workflow.b_core.d_domain_model.config import (
     WorkingDirectory,
 )
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError, StateNames, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, LabelGroupName
 from mb_workflow.c_infrastructure.credentials import (
     CredentialsDirectory,
     InvalidCredentialsError,
@@ -90,6 +93,7 @@ FAILURES = (
     InvalidCredentialsError,
     MissingConfigError,
     MissingCredentialsError,
+    MissingFlowLabelsError,
     NotFinalizableError,
     OSError,
     PromptUndeliveredError,
@@ -127,6 +131,10 @@ def linear_key() -> LinearApiKey:
 
 def linear() -> Linear:
     return Linear.connected(linear_key())
+
+
+def flow_labels() -> FlowLabels:
+    return FlowLabels.of_chart(WorkflowChart, LabelGroupName("flow"))
 
 
 def workspace_board(orca: Orca) -> WorkspaceBoard:
@@ -277,4 +285,19 @@ def flow_show(as_json: AsJson) -> ExitCode:
 @guarded
 def flow_event(event: EventName, force: Force) -> ExitCode:
     logger.info("Moved to %s.", transition(workspace_board(Orca(here())), event, force).root)
+    return ExitCode(0)
+
+
+@guarded
+def flow_seed_labels() -> ExitCode:
+    wanted = flow_labels()
+    created = seed_flow_labels(linear(), wanted)
+    if created.root:
+        logger.info(
+            "Created %s in the %s label group.",
+            ", ".join(label.root for label in created.root),
+            wanted.group.root,
+        )
+    else:
+        logger.info("The %s label group already holds every flow label.", wanted.group.root)
     return ExitCode(0)
