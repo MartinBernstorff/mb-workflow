@@ -128,7 +128,12 @@ def seeded(
 
 def seeds() -> tuple[SeededIssue, ...]:
     return (
-        seeded(Seed.recent, CreatedOn(date(2026, 9, 1)), Priority.urgent, blocked_by=(Seed.old,)),
+        seeded(
+            Seed.recent,
+            CreatedOn(date(2026, 9, 1)),
+            Priority.urgent,
+            blocked_by=(Seed.old, Seed.done),
+        ),
         seeded(Seed.old, CreatedOn(date(2026, 8, 1)), Priority.low),
         seeded(Seed.newest, CreatedOn(date(2026, 9, 2)), Priority.no_priority),
         SeededIssue(
@@ -576,18 +581,18 @@ def test_a_view_lists_its_unblocked_tickets_with_their_priority(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
     assert set(tracker.view_tickets(backlog.view).root) == {
-        backlog.ticket(seed) for seed in (Seed.old, Seed.newest, Seed.done)
+        backlog.ticket(seed) for seed in set(Seed) - {Seed.recent}
     }
 
 
-def test_a_ticket_with_an_open_blocker_is_left_out_of_a_view(
+def test_a_ticket_with_one_open_blocker_among_closed_ones_is_left_out_of_a_view(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
     assert Seed.recent not in listed(tracker, backlog)
 
 
 @pytest.mark.parametrize("status", ["Done", "Canceled"])
-def test_a_ticket_whose_blocker_is_closed_is_listed(
+def test_a_ticket_whose_blockers_are_all_closed_is_listed(
     tracker: TicketTracker, backlog: Backlog, status: str
 ) -> None:
     tracker.update_issue(

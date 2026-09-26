@@ -1,5 +1,6 @@
 from typing import Protocol, override
 
+from mb_workflow.b_core.d_domain_model.claim import Released
 from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
@@ -261,10 +262,11 @@ class FakeTicketTracker(TicketTracker):
 
     # Linear counts a blocker as open until it reaches a completed or canceled state.
     def _open_blockers(self, tracked: TrackedIssue) -> tuple[IssueIdentifier, ...]:
+        finished = StatusNames((*Released.statuses().root, IssueStatusName("Done")))
         return tuple(
             blocker
             for blocker in tracked.blocked_by
-            if StatusNames.finished().matching(self._tracked(blocker).issue.status) is None
+            if finished.matching(self._tracked(blocker).issue.status) is None
         )
 
     def _tracked(self, issue: IssueIdentifier) -> TrackedIssue:
