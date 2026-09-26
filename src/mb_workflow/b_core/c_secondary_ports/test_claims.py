@@ -63,13 +63,6 @@ def test_with_a_claim_label_configured_releasing_removes_it() -> None:
     assert tracker.read_issue(IssueIdentifier.fake()).labels == Issue.fake().labels
 
 
-def test_without_a_claim_label_configured_releasing_leaves_the_labels() -> None:
-    tracker = tracker_with_the_claimed_label()
-    unlabelled = ReleaseRequest.fake().model_copy(update={"label": None})
-    release_claim(registry_held_by(ClaimHolder.fake()), tracker, unlabelled)
-    assert tracker.read_issue(IssueIdentifier.fake()).labels.has(LabelName("claimed")).root
-
-
 def test_releasing_leaves_another_holders_claim_and_its_label() -> None:
     registry = registry_held_by(rival())
     tracker = tracker_with_the_claimed_label()

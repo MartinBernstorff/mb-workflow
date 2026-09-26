@@ -201,9 +201,9 @@ def test_a_workspace_table_without_an_orca_project_is_refused() -> None:
         )
 
 
-def test_claims_are_unlabelled_unless_configured() -> None:
+def test_claims_are_labelled_workspace_unless_configured() -> None:
     settings = settings_with_fake_workspace(issues={"tracker": "linear"})
-    assert settings.claims == ClaimSettings(label=None)
+    assert settings.claims == ClaimSettings(label=LabelName("workspace"))
 
 
 def test_a_configured_claim_label_is_read() -> None:

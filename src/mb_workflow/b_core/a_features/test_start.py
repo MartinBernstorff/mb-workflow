@@ -268,11 +268,6 @@ def test_with_a_claim_label_configured_the_claimed_ticket_carries_it() -> None:
     assert labels_after_starting(labelling, FakeClaimRegistry()).has(LabelName("claimed")).root
 
 
-def test_without_a_claim_label_configured_the_claimed_ticket_is_not_labelled() -> None:
-    unlabelled = ClaimSettings(label=None)
-    assert labels_after_starting(unlabelled, FakeClaimRegistry()) == Issue.fake().labels
-
-
 def test_a_ticket_claimed_by_another_holder_is_not_labelled() -> None:
     tracker = tracking(IssueStatusName("Specced"))
     labelling = ClaimSettings(label=LabelName("claimed"))
@@ -287,10 +282,17 @@ def test_a_ticket_claimed_by_another_holder_is_not_labelled() -> None:
     assert tracker.read_issue(IssueIdentifier.fake()).labels == Issue.fake().labels
 
 
-def test_a_claim_label_the_tracker_lacks_does_not_stop_the_start() -> None:
+def test_a_claim_label_the_tracker_lacks_fails_the_start_and_withdraws_the_claim() -> None:
     manager = fake_manager()
+    claims = FakeClaimRegistry()
     missing = ClaimSettings(label=LabelName("absent"))
-    starting(
-        manager, tracking(IssueStatusName("Specced")), StartRequest.fake(), claim_settings=missing
-    )
-    assert opened_in(manager).issue == IssueIdentifier.fake()
+    with pytest.raises(ClaimRefusedError, match="absent"):
+        starting(
+            manager,
+            tracking(IssueStatusName("Specced")),
+            StartRequest.fake(),
+            claims,
+            claim_settings=missing,
+        )
+    assert claims.claims(IssueIdentifier.fake()) == Claims(())
+    assert manager.worktrees() == Worktrees.fake()

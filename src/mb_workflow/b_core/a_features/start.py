@@ -4,8 +4,9 @@ from typing import TYPE_CHECKING
 from mb_workflow.b_core.b_domain_services.next_action import next_action, state_of
 from mb_workflow.b_core.c_secondary_ports.claims import (
     ClaimRequest,
-    add_claim_label,
+    ReleaseRequest,
     claim_ticket,
+    label_claim,
 )
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
@@ -85,18 +86,23 @@ def start_ticket(
     prompt = request.prompt_for(action_in(state))
 
     name = WorktreeName.of_issue(request.ticket)
+    holder = ClaimHolder(host=request.host, worktree=name)
     claim_ticket(
         claims,
         pause,
         ClaimRequest(
             ticket=request.ticket,
             status=status,
-            holder=ClaimHolder(host=request.host, worktree=name),
+            holder=holder,
             take_over=request.take_over,
             settle=request.settle,
         ),
     )
-    add_claim_label(tracker, request.ticket, claim_settings.label)
+    label_claim(
+        claims,
+        tracker,
+        ReleaseRequest(ticket=request.ticket, holder=holder, label=claim_settings.label),
+    )
 
     # Assignment is a convenience, not the point of starting a ticket, so never fail the run over it.
     try:
