@@ -1,8 +1,8 @@
 from pathlib import Path
 
 from mb_workflow.b_core.d_domain_model.git import Ref
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
-from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueTitle
+from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
 from mb_workflow.d_lib.models import Model, Value
 
 
@@ -30,6 +30,20 @@ class WorktreeName(Value[str]):
     @staticmethod
     def of_issue(issue: IssueIdentifier) -> WorktreeName:
         return WorktreeName(issue.root)
+
+
+class DisplayName(Value[str]):
+    @staticmethod
+    def fake() -> DisplayName:
+        return DisplayName.of_issue(IssueTitle.fake())
+
+    @staticmethod
+    def of_issue(title: IssueTitle) -> DisplayName:
+        return DisplayName(title.root)
+
+    @staticmethod
+    def of_pr(title: PrTitle) -> DisplayName:
+        return DisplayName(title.root)
 
 
 class WorktreePath(Value[Path]):
@@ -107,6 +121,7 @@ class Worktree(Model):
     pull_request: PrNumber | None
     issue: IssueIdentifier | None
     status: WorkspaceStatus | None
+    display_name: DisplayName | None
 
     @staticmethod
     def fake() -> Worktree:
@@ -117,12 +132,19 @@ class Worktree(Model):
             pull_request=PrNumber.fake(),
             issue=IssueIdentifier.fake(),
             status=WorkspaceStatus.fake(),
+            display_name=DisplayName.fake(),
         )
 
     @staticmethod
     def bare(repo: RepoId, path: WorktreePath) -> Worktree:
         return Worktree(
-            repo=repo, path=path, branch=None, pull_request=None, issue=None, status=None
+            repo=repo,
+            path=path,
+            branch=None,
+            pull_request=None,
+            issue=None,
+            status=None,
+            display_name=None,
         )
 
 

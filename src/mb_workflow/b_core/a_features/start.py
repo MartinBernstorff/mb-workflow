@@ -10,7 +10,10 @@ from mb_workflow.b_core.c_secondary_ports.claims import (
     require_claim_label,
 )
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
-from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
+    WorkspaceManagerError,
+    set_display_name_or_warn,
+)
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, TakeOver
 from mb_workflow.b_core.d_domain_model.flow import (
     AwaitingHuman,
@@ -22,6 +25,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.workspace import (
     AgentName,
+    DisplayName,
     Submit,
     TerminalText,
     TimeoutMs,
@@ -79,7 +83,8 @@ def start_ticket(
     request: StartRequest,
 ) -> None:
     # Resolve the state before touching anything, so a ticket with no work left is neither claimed, assigned nor opened.
-    status = tracker.read_issue(request.ticket).status
+    detail = tracker.read_issue_detail(request.ticket)
+    status = detail.issue.status
     state = state_of(WorkflowChart, status)
     prompt = request.prompt_for(action_in(request.ticket, state))
 
@@ -128,6 +133,7 @@ def start_ticket(
         board.status_for(state),
     )
     logger.info("Created worktree %s.", opened.worktree.path.root)
+    set_display_name_or_warn(manager, opened.worktree.path, DisplayName.of_issue(detail.title))
 
     if prompt is not None:
         send_prompt(manager, opened, prompt, request.idle_timeout, request.submit)
