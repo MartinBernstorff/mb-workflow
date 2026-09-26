@@ -15,6 +15,7 @@ def test_reports_the_resolved_tracker_and_the_file_it_came_from() -> None:
         "status store: orca\n"
         "orca project: github:flowbasedk/flowbase\n"
         "assignee: mab@flowbase.io\n"
+        "claim label: claimed\n"
         "origin: /Users/me/orca/workspaces/mb-workflow/mb-workflow.toml"
     )
 

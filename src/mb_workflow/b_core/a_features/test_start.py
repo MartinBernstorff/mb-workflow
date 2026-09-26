@@ -21,7 +21,7 @@ from mb_workflow.b_core.d_domain_model.claim import (
     HostName,
     TakeOver,
 )
-from mb_workflow.b_core.d_domain_model.config import WorkspaceSettings
+from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
 from mb_workflow.b_core.d_domain_model.flow import (
     FlowError,
     StateName,
@@ -34,6 +34,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
     IssueIdentifier,
     IssueStatusName,
+    LabelName,
     LabelNames,
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
@@ -51,7 +52,8 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 def tracking(status: IssueStatusName) -> FakeTicketTracker:
     issue = Issue.fake().model_copy(update={"status": status})
     return FakeTicketTracker(
-        LabelNames.fake(), (TrackedIssue.fake().model_copy(update={"issue": issue}),)
+        LabelNames((*LabelNames.fake().root, LabelName("claimed"))),
+        (TrackedIssue.fake().model_copy(update={"issue": issue}),),
     )
 
 
@@ -80,7 +82,9 @@ def starting(
     tracker: FakeTicketTracker,
     request: StartRequest,
     claims: FakeClaimRegistry | None = None,
+    *,
     workspace: WorkspaceSettings | None = None,
+    claiming: ClaimSettings | None = None,
 ) -> None:
     start_ticket(
         manager=manager,
@@ -89,6 +93,7 @@ def starting(
         pause=FakePause(),
         board=fake_board(),
         workspace=workspace or WorkspaceSettings.fake(),
+        claiming=claiming or ClaimSettings.fake(),
         request=request,
     )
 
@@ -220,6 +225,7 @@ def test_the_claim_settles_before_it_is_verified() -> None:
         pause=pause,
         board=fake_board(),
         workspace=WorkspaceSettings.fake(),
+        claiming=ClaimSettings.fake(),
         request=StartRequest.fake(),
     )
     assert pause.waited() == (StartRequest.fake().settle,)
@@ -249,3 +255,36 @@ def test_a_ticket_this_worktree_already_claimed_is_not_claimed_twice() -> None:
     )
     starting(fake_manager(), tracking(IssueStatusName("Specced")), StartRequest.fake(), claims)
     assert holders(claims) == (ours(),)
+
+
+def labels_after_starting(claiming: ClaimSettings, claims: FakeClaimRegistry) -> LabelNames:
+    tracker = tracking(IssueStatusName("Specced"))
+    starting(fake_manager(), tracker, StartRequest.fake(), claims, claiming=claiming)
+    return tracker.read_issue(IssueIdentifier.fake()).labels
+
+
+def test_with_a_claim_label_configured_the_claimed_ticket_carries_it() -> None:
+    labelling = ClaimSettings(label=LabelName("claimed"))
+    assert labels_after_starting(labelling, FakeClaimRegistry()).has(LabelName("claimed")).root
+
+
+def test_without_a_claim_label_configured_the_claimed_ticket_is_not_labelled() -> None:
+    unlabelled = ClaimSettings(label=None)
+    assert labels_after_starting(unlabelled, FakeClaimRegistry()) == Issue.fake().labels
+
+
+def test_a_ticket_claimed_by_another_holder_is_not_labelled() -> None:
+    tracker = tracking(IssueStatusName("Specced"))
+    labelling = ClaimSettings(label=LabelName("claimed"))
+    with pytest.raises(ClaimRefusedError):
+        starting(
+            fake_manager(), tracker, StartRequest.fake(), claimed_by_a_rival(), claiming=labelling
+        )
+    assert tracker.read_issue(IssueIdentifier.fake()).labels == Issue.fake().labels
+
+
+def test_a_claim_label_the_tracker_lacks_does_not_stop_the_start() -> None:
+    manager = fake_manager()
+    missing = ClaimSettings(label=LabelName("absent"))
+    starting(manager, tracking(IssueStatusName("Specced")), StartRequest.fake(), claiming=missing)
+    assert opened_in(manager).issue == IssueIdentifier.fake()

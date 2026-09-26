@@ -481,6 +481,21 @@ def test_adding_an_unknown_label_is_refused(tracker: TicketTracker, backlog: Bac
         tracker.add_label(backlog.identifier(Seed.recent), LabelName("Frontend"))
 
 
+def test_a_removed_label_leaves_the_others(tracker: TicketTracker, backlog: Backlog) -> None:
+    tracker.add_label(backlog.identifier(Seed.done), LabelName.fake())
+    tracker.remove_label(backlog.identifier(Seed.done), LabelName("d-grill"))
+    assert tracker.read_issue(backlog.identifier(Seed.done)).labels == LabelNames.fake()
+
+
+def test_removing_a_label_the_issue_lacks_leaves_it_unchanged(
+    tracker: TicketTracker, backlog: Backlog
+) -> None:
+    tracker.remove_label(backlog.identifier(Seed.done), LabelName.fake())
+    assert tracker.read_issue(backlog.identifier(Seed.done)).labels == LabelNames(
+        (LabelName("d-grill"),)
+    )
+
+
 def test_setting_labels_replaces_the_ones_there(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.set_labels(backlog.identifier(Seed.done), LabelNames((LabelName("Backend"),)))
     assert tracker.read_issue(backlog.identifier(Seed.done)).labels == LabelNames(

@@ -167,7 +167,7 @@ def linear_autolabel(request: AutolabelRequest, window: CreatedAfter) -> ExitCod
 def ticket_start(
     request: StartRequest, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
-    workspace = Configuration.resolved(directory, name).settings.workspace
+    settings = Configuration.resolved(directory, name).settings
     orca = Orca(here())
     key = linear_key()
     start_ticket(
@@ -176,7 +176,8 @@ def ticket_start(
         claims=LinearClaims.connected(key),
         pause=SleepingPause(),
         board=workspace_board(orca),
-        workspace=workspace,
+        workspace=settings.workspace,
+        claiming=settings.claims,
         request=request,
     )
     return ExitCode(0)

@@ -2,6 +2,7 @@ import logging
 from itertools import count
 from typing import Protocol, override
 
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker, TicketTrackerError
 from mb_workflow.b_core.d_domain_model.claim import (
     Claim,
     ClaimHolder,
@@ -10,7 +11,7 @@ from mb_workflow.b_core.d_domain_model.claim import (
     SettleTime,
     TakeOver,
 )
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName, LabelName
 from mb_workflow.d_lib.models import Model
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,45 @@ def claimed_error(ticket: IssueIdentifier, holder: Claim) -> ClaimRefusedError:
         f"{ticket.root} is claimed by worktree {holder.holder.worktree.root}"
         f" on {holder.holder.host.root}. Pass --force to take the claim over."
     )
+
+
+# The label only makes the claim visible; the comment is the claim, so a failed label never fails it.
+def label_claimed(tracker: TicketTracker, ticket: IssueIdentifier, label: LabelName | None) -> None:
+    if label is None:
+        return
+    try:
+        tracker.add_label(ticket, label)
+    except TicketTrackerError as error:
+        logger.warning("Could not label %s as %s: %s", ticket.root, label.root, error)
+
+
+class ReleaseRequest(Model):
+    ticket: IssueIdentifier
+    holder: ClaimHolder
+    label: LabelName | None
+
+    @staticmethod
+    def fake() -> ReleaseRequest:
+        return ReleaseRequest(
+            ticket=IssueIdentifier.fake(), holder=ClaimHolder.fake(), label=LabelName("claimed")
+        )
+
+
+def release_claim(registry: ClaimRegistry, tracker: TicketTracker, request: ReleaseRequest) -> None:
+    for held in registry.claims(request.ticket).root:
+        if held.holder == request.holder:
+            registry.withdraw(request.ticket, held.id)
+    if request.label is None or registry.claims(request.ticket).root:
+        return
+    try:
+        tracker.remove_label(request.ticket, request.label)
+    except TicketTrackerError as error:
+        logger.warning(
+            "Could not remove the %s label from %s: %s",
+            request.label.root,
+            request.ticket.root,
+            error,
+        )
 
 
 class FakeClaimRegistry(ClaimRegistry):
