@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow import StateName
+    from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.workspace import OpenedWorktree
 
 logger = logging.getLogger(__name__)
@@ -77,11 +78,12 @@ def start_ticket(
     board: WorkspaceStatusStore,
     workspace: WorkspaceSettings,
     claim_settings: ClaimSettings,
+    flow_labels: FlowLabels,
     request: StartRequest,
 ) -> None:
     # Resolve the state before touching anything, so a ticket with no work left is neither claimed, assigned nor opened.
     issue = tracker.read_issue(request.ticket)
-    state = state_of(WorkflowChart, issue.labels)
+    state = state_of(WorkflowChart, flow_labels, issue.grouped)
     prompt = request.prompt_for(action_in(request.ticket, state))
 
     name = WorktreeName.of_issue(request.ticket)

@@ -63,6 +63,7 @@ def tracking(
     return tracker(
         LabelNames((*LabelNames.fake().root, LabelName("claimed"), *FlowLabels.fake().labels.root)),
         (TrackedIssue.fake().model_copy(update={"issue": issue}),),
+        groups={FlowLabels.fake().group: FlowLabels.fake().labels},
     )
 
 
@@ -102,6 +103,7 @@ def starting(
         board=fake_board(),
         workspace=workspace or WorkspaceSettings.fake(),
         claim_settings=claim_settings or ClaimSettings.fake(),
+        flow_labels=FlowLabels.fake(),
         request=request,
     )
 

@@ -7,6 +7,8 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Cleared,
     CreatedOn,
     Creator,
+    GroupedLabel,
+    GroupedLabels,
     Issue,
     IssueDescription,
     IssueDetail,
@@ -32,7 +34,7 @@ from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Prio
 from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.d_domain_model.flow_labels import LabelGroupName
+    from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
 
 
 class TicketTrackerError(Exception):
@@ -132,7 +134,7 @@ class FakeTicketTracker(TicketTracker):
     def list_issues(self, wanted: IssueFilter) -> Issues:
         return Issues(
             tuple(
-                tracked.issue
+                self._read(tracked)
                 for tracked in self._issues.values()
                 if wanted.matches(tracked.creator, tracked.created_on).root
             )
@@ -145,7 +147,7 @@ class FakeTicketTracker(TicketTracker):
             raise TicketTrackerError(f"No view has the slug {view.root}.")
         return PoolTickets(
             tuple(
-                PoolTicket(issue=tracked.issue, priority=tracked.priority)
+                PoolTicket(issue=self._read(tracked), priority=tracked.priority)
                 for tracked in (self._tracked(identifier) for identifier in listed)
                 if not self._open_blockers(tracked)
             )
@@ -155,7 +157,7 @@ class FakeTicketTracker(TicketTracker):
     def labelled_issues(self, label: LabelName, excluding: StatusTypes) -> Issues:
         return Issues(
             tuple(
-                tracked.issue
+                self._read(tracked)
                 for tracked in self._issues.values()
                 if tracked.issue.labels.matching(label) is not None
                 and not excluding.has(self._status_named(tracked.issue.status).type).root
@@ -164,13 +166,13 @@ class FakeTicketTracker(TicketTracker):
 
     @override
     def read_issue(self, issue: IssueIdentifier) -> Issue:
-        return self._tracked(issue).issue
+        return self._read(self._tracked(issue))
 
     @override
     def read_issue_detail(self, issue: IssueIdentifier) -> IssueDetail:
         tracked = self._tracked(issue)
         return IssueDetail(
-            issue=tracked.issue,
+            issue=self._read(tracked),
             title=tracked.title,
             description=tracked.description,
             assignee=tracked.assignee,
@@ -301,6 +303,18 @@ class FakeTicketTracker(TicketTracker):
             for blocker in tracked.blocked_by
             if finished.matching(self._tracked(blocker).issue.status) is None
         )
+
+    # Linear reports each label's group on the issue, so the fake reads it from the groups it keeps.
+    def _read(self, tracked: TrackedIssue) -> Issue:
+        grouped = GroupedLabels(
+            tuple(
+                GroupedLabel(group=group, label=label)
+                for label in tracked.issue.labels.root
+                for group, members in self._groups.items()
+                if members.matching(label) is not None
+            )
+        )
+        return tracked.issue.model_copy(update={"grouped": grouped})
 
     def _tracked(self, issue: IssueIdentifier) -> TrackedIssue:
         tracked = self._issues.get(issue)

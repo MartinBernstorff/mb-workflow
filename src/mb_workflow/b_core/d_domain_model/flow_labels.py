@@ -1,12 +1,11 @@
-from mb_workflow.b_core.d_domain_model.flow import StateName, StateNames, WorkflowChart
-from mb_workflow.b_core.d_domain_model.issue import LabelName, LabelNames
-from mb_workflow.d_lib.models import Model, Value
-
-
-class LabelGroupName(Value[str]):
-    @staticmethod
-    def fake() -> LabelGroupName:
-        return LabelGroupName("flow")
+from mb_workflow.b_core.d_domain_model.flow import FlowError, StateName, StateNames, WorkflowChart
+from mb_workflow.b_core.d_domain_model.issue import (
+    GroupedLabels,
+    LabelGroupName,
+    LabelName,
+    LabelNames,
+)
+from mb_workflow.d_lib.models import Model
 
 
 class FlowLabels(Model):
@@ -33,6 +32,14 @@ def chart_labels(chart: type[WorkflowChart]) -> LabelNames:
     return LabelNames(tuple(LabelName(state.name) for state in chart.states))
 
 
-def state_of(chart: type[WorkflowChart], held: LabelNames) -> StateName:
-    found = next(iter(chart_labels(chart).spelled(held).root), None)
-    return StateNames.initial_state(chart) if found is None else StateName(found.root)
+def state_of(chart: type[WorkflowChart], flow_labels: FlowLabels, held: GroupedLabels) -> StateName:
+    found = held.in_group(flow_labels.group).root
+    if not found:
+        return StateNames.initial_state(chart)
+    if len(found) > 1:
+        listed = ", ".join(label.root for label in found)
+        raise FlowError(f"The ticket carries the flow labels {listed}, but may carry only one.")
+    known = chart_labels(chart).matching(found[0])
+    if known is None:
+        raise FlowError(f"{found[0].root} is no state of the chart.")
+    return StateName(known.root)

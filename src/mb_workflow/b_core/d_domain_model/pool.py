@@ -9,8 +9,10 @@ from mb_workflow.b_core.d_domain_model.flow import (
     WorkflowChart,
     WorkState,
 )
-from mb_workflow.b_core.d_domain_model.flow_labels import state_of
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, state_of
 from mb_workflow.b_core.d_domain_model.issue import (
+    GroupedLabel,
+    GroupedLabels,
     Issue,
     IssueIdentifier,
     Issues,
@@ -48,7 +50,12 @@ class PoolTicket(Model):
     @staticmethod
     def fake() -> PoolTicket:
         return PoolTicket(
-            issue=Issue.fake().model_copy(update={"labels": LabelNames((LabelName("Specced"),))}),
+            issue=Issue.fake().model_copy(
+                update={
+                    "labels": LabelNames((GroupedLabel.fake().label,)),
+                    "grouped": GroupedLabels((GroupedLabel.fake(),)),
+                }
+            ),
             priority=Priority.medium,
         )
 
@@ -63,12 +70,12 @@ class PoolTicket(Model):
             )
         )
 
-    def flow_state(self) -> StateName:
-        return state_of(WorkflowChart, self.issue.labels)
+    def flow_state(self, flow_labels: FlowLabels) -> StateName:
+        return state_of(WorkflowChart, flow_labels, self.issue.grouped)
 
-    def ready(self, claim_label: LabelName) -> Ready:
+    def ready(self, claim_label: LabelName, flow_labels: FlowLabels) -> Ready:
         return Ready(
-            self.flow_state() in PoolTicket.ready_states().root
+            self.flow_state(flow_labels) in PoolTicket.ready_states().root
             and self.issue.labels.matching(claim_label) is None
         )
 
@@ -78,8 +85,10 @@ class PoolTickets(Value[tuple[PoolTicket, ...]]):
     def fake() -> PoolTickets:
         return PoolTickets((PoolTicket.fake(),))
 
-    def ready(self, claim_label: LabelName) -> PoolTickets:
-        return PoolTickets(tuple(ticket for ticket in self.root if ticket.ready(claim_label).root))
+    def ready(self, claim_label: LabelName, flow_labels: FlowLabels) -> PoolTickets:
+        return PoolTickets(
+            tuple(ticket for ticket in self.root if ticket.ready(claim_label, flow_labels).root)
+        )
 
     def identifiers(self) -> tuple[IssueIdentifier, ...]:
         return tuple(ticket.issue.identifier for ticket in self.root)
@@ -115,8 +124,10 @@ class Occupancy(Value[tuple[StateName, ...]]):
         return Occupancy((StateName("Implementing"),))
 
     @staticmethod
-    def of(issues: Issues) -> Occupancy:
-        return Occupancy(tuple(state_of(WorkflowChart, issue.labels) for issue in issues.root))
+    def of(issues: Issues, flow_labels: FlowLabels) -> Occupancy:
+        return Occupancy(
+            tuple(state_of(WorkflowChart, flow_labels, issue.grouped) for issue in issues.root)
+        )
 
     def with_ticket_in(self, state: StateName) -> Occupancy:
         return Occupancy((*self.root, state))

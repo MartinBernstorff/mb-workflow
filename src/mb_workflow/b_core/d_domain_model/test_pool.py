@@ -1,9 +1,13 @@
 import pytest
 
 from mb_workflow.b_core.d_domain_model.flow import StateName
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import (
+    GroupedLabel,
+    GroupedLabels,
     Issue,
     Issues,
+    LabelGroupName,
     LabelName,
     LabelNames,
 )
@@ -18,32 +22,39 @@ from mb_workflow.b_core.d_domain_model.pool import (
 )
 
 
-def ticket(*labels: LabelName) -> PoolTicket:
-    return PoolTicket.fake().model_copy(
-        update={"issue": PoolTicket.fake().issue.model_copy(update={"labels": LabelNames(labels)})}
+def in_flow(*labels: LabelName) -> GroupedLabels:
+    return GroupedLabels(
+        tuple(GroupedLabel(group=LabelGroupName.fake(), label=label) for label in labels)
     )
+
+
+def ticket(flow: LabelName, *others: LabelName) -> PoolTicket:
+    issue = PoolTicket.fake().issue.model_copy(
+        update={"labels": LabelNames((flow, *others)), "grouped": in_flow(flow)}
+    )
+    return PoolTicket.fake().model_copy(update={"issue": issue})
 
 
 @pytest.mark.parametrize(
     "state", ["Grilling", "Speccing", "Specced", "Implementing", "Merging", "specced"]
 )
 def test_an_unclaimed_ticket_in_a_workable_state_is_ready(state: str) -> None:
-    assert ticket(LabelName(state)).ready(LabelName("claimed")) == Ready(True)
+    assert ticket(LabelName(state)).ready(LabelName("claimed"), FlowLabels.fake()) == Ready(True)
 
 
 @pytest.mark.parametrize("state", ["QA", "Review", "Merged"])
 def test_a_ticket_in_any_other_state_is_not_ready(state: str) -> None:
-    assert ticket(LabelName(state)).ready(LabelName("claimed")) == Ready(False)
+    assert ticket(LabelName(state)).ready(LabelName("claimed"), FlowLabels.fake()) == Ready(False)
 
 
 def test_a_ticket_carrying_the_claim_label_is_not_ready() -> None:
     claimed = ticket(LabelName("Specced"), LabelName("Claimed"))
-    assert claimed.ready(LabelName("claimed")) == Ready(False)
+    assert claimed.ready(LabelName("claimed"), FlowLabels.fake()) == Ready(False)
 
 
 def test_other_labels_leave_a_ticket_ready() -> None:
     labelled = ticket(LabelName("Specced"), LabelName("Backend"))
-    assert labelled.ready(LabelName("claimed")) == Ready(True)
+    assert labelled.ready(LabelName("claimed"), FlowLabels.fake()) == Ready(True)
 
 
 def test_the_defaults_cap_the_total_at_four_and_grilling_at_one() -> None:
@@ -111,11 +122,11 @@ def test_a_pool_below_the_total_is_not_filled() -> None:
 def test_occupancy_counts_each_issue_under_its_flow_state() -> None:
     issues = Issues(
         tuple(
-            Issue.fake().model_copy(update={"labels": LabelNames(labels)})
-            for labels in ((LabelName("QA"),), (LabelName("Merging"), LabelName("claimed")), ())
+            Issue.fake().model_copy(update={"grouped": grouped})
+            for grouped in (in_flow(LabelName("QA")), in_flow(LabelName("Merging")), in_flow())
         )
     )
-    assert Occupancy.of(issues) == Occupancy(
+    assert Occupancy.of(issues, FlowLabels.fake()) == Occupancy(
         (StateName("QA"), StateName("Merging"), StateName("Grilling"))
     )
 

@@ -96,6 +96,7 @@ def pool_of(
         (*tickets, *elsewhere),
         statuses=statuses_in_flight(*closing),
         views={PoolSettings.fake().view: tuple(ticket.issue.identifier for ticket in tickets)},
+        groups={FlowLabels.fake().group: FlowLabels.fake().labels},
     )
 
 
@@ -177,6 +178,7 @@ def draining(
         tie_break=ReversingTieBreak(),
         workspace=WorkspaceSettings.fake(),
         claim_settings=ClaimSettings(label=LabelName("claimed")),
+        flow_labels=FlowLabels.fake(),
         pool=pool or PoolSettings.fake(),
         request=request or DrainRequest.fake(),
     )

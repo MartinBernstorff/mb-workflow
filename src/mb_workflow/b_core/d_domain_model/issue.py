@@ -60,6 +60,34 @@ class LabelNames(Value[tuple[LabelName, ...]]):
         )
 
 
+class LabelGroupName(Value[str]):
+    @staticmethod
+    def fake() -> LabelGroupName:
+        return LabelGroupName("flow")
+
+
+class GroupedLabel(Model):
+    group: LabelGroupName
+    label: LabelName
+
+    @staticmethod
+    def fake() -> GroupedLabel:
+        return GroupedLabel(group=LabelGroupName.fake(), label=LabelName("Specced"))
+
+
+class GroupedLabels(Value[tuple[GroupedLabel, ...]]):
+    @staticmethod
+    def fake() -> GroupedLabels:
+        return GroupedLabels((GroupedLabel.fake(),))
+
+    # Linear resolves a group name ignoring case, as it does a label name.
+    def in_group(self, group: LabelGroupName) -> LabelNames:
+        wanted = group.root.casefold()
+        return LabelNames(
+            tuple(held.label for held in self.root if held.group.root.casefold() == wanted)
+        )
+
+
 # ProjectName and StatusName share a base so one exclusion pattern can match either.
 class IssueText(Value[str]):
     def names(self, other: IssueText) -> Matches:
@@ -146,6 +174,7 @@ class Issue(Model):
     status: IssueStatusName
     project: ProjectName | None
     labels: LabelNames
+    grouped: GroupedLabels
     assigned: Assigned
 
     @staticmethod
@@ -155,6 +184,7 @@ class Issue(Model):
             status=IssueStatusName.fake(),
             project=ProjectName.fake(),
             labels=LabelNames.fake(),
+            grouped=GroupedLabels(()),
             assigned=Assigned.fake(),
         )
 

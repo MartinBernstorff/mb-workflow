@@ -49,7 +49,8 @@ from mb_workflow.b_core.d_domain_model.config import (
     WorkingDirectory,
 )
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError, StateNames, WorkflowChart
-from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, LabelGroupName
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
+from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
 from mb_workflow.c_infrastructure.credentials import (
     CredentialsDirectory,
     InvalidCredentialsError,
@@ -205,6 +206,7 @@ def ticket_start(
         board=workspace_board(orca),
         workspace=settings.workspace,
         claim_settings=settings.claims,
+        flow_labels=flow_labels_of_chart(),
         request=request,
     )
     return ExitCode(0)
@@ -227,11 +229,12 @@ def drain(
         tie_break=RandomTieBreak(),
         workspace=settings.workspace,
         claim_settings=settings.claims,
+        flow_labels=flow_labels_of_chart(),
         pool=pool,
         request=request,
     )
     if request.dry_run.root:
-        write(pick_listing(outcome.picked))
+        write(pick_listing(outcome.picked, flow_labels_of_chart()))
     else:
         log_drain_outcome(outcome)
     return ExitCode(0)
