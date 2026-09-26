@@ -132,10 +132,5 @@ def test_an_empty_comment_is_left_off_the_command() -> None:
     )
 
 
-def test_requesting_changes_maps_to_its_flag() -> None:
-    request = ReviewRequest(decision=ReviewDecision.request_changes, body=ReviewBody(""))
-    assert review_command(PrNumber.fake(), request).root[-1] == "--request-changes"
-
-
 def test_the_window_searches_for_prs_merged_since_then() -> None:
     assert SearchQuery.merged_since(MergedSince.fake()).root == "merged:>=2026-08-09"

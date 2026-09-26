@@ -29,7 +29,7 @@ from mb_workflow.c_infrastructure.shell import (
 )
 
 
-class StandingIn(CommandRunner):
+class ScriptedOrca(CommandRunner):
     def __init__(self, worktree: Workspace) -> None:
         self._worktree = worktree
         self.removed: list[WorktreePath] = []
@@ -39,7 +39,7 @@ class StandingIn(CommandRunner):
         return ExistingDirectory.fake()
 
     @override
-    def at(self, directory: ExistingDirectory) -> StandingIn:
+    def at(self, directory: ExistingDirectory) -> ScriptedOrca:
         return self
 
     @override
@@ -84,7 +84,7 @@ def test_rejects_a_worktree_with_no_linked_pull_request() -> None:
 def test_submits_the_decision_on_the_linked_pull_request() -> None:
     review = FakeCodeReview(PullRequests.fake())
     finalize(
-        review, Orca(StandingIn(Workspace.fake())), ReviewRequest.fake(), WorkspaceStatus.fake()
+        review, Orca(ScriptedOrca(Workspace.fake())), ReviewRequest.fake(), WorkspaceStatus.fake()
     )
     assert review.submitted() == (
         SubmittedReview(pr=PrNumber.fake(), request=ReviewRequest.fake(), drafted=Drafted(False)),
@@ -92,7 +92,7 @@ def test_submits_the_decision_on_the_linked_pull_request() -> None:
 
 
 def test_removes_the_worktree_once_the_review_is_in() -> None:
-    orca = StandingIn(Workspace.fake())
+    orca = ScriptedOrca(Workspace.fake())
     finalize(
         FakeCodeReview(PullRequests.fake()),
         Orca(orca),
@@ -103,7 +103,7 @@ def test_removes_the_worktree_once_the_review_is_in() -> None:
 
 
 def test_a_refused_review_keeps_the_worktree() -> None:
-    orca = StandingIn(Workspace.fake())
+    orca = ScriptedOrca(Workspace.fake())
     bare = ReviewRequest(decision=ReviewDecision.comment, body=ReviewBody(""))
     with pytest.raises(CodeReviewError, match="comment requires comment text"):
         finalize(FakeCodeReview(PullRequests.fake()), Orca(orca), bare, WorkspaceStatus.fake())
@@ -114,5 +114,7 @@ def test_a_worktree_in_another_status_submits_nothing() -> None:
     review = FakeCodeReview(PullRequests.fake())
     elsewhere = Workspace.fake().model_copy(update={"workspace_status": None})
     with pytest.raises(NotFinalizableError):
-        finalize(review, Orca(StandingIn(elsewhere)), ReviewRequest.fake(), WorkspaceStatus.fake())
+        finalize(
+            review, Orca(ScriptedOrca(elsewhere)), ReviewRequest.fake(), WorkspaceStatus.fake()
+        )
     assert review.submitted() == ()

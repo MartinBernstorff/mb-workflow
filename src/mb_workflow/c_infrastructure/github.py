@@ -2,7 +2,11 @@ import logging
 from itertools import chain
 from typing import override
 
-from mb_workflow.b_core.c_secondary_ports.code_review import CodeReview, refuse_incomplete
+from mb_workflow.b_core.c_secondary_ports.code_review import (
+    CodeReview,
+    refuse_incomplete,
+    refuse_missing,
+)
 from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames
 from mb_workflow.b_core.d_domain_model.pull_request import (
     CheckoutDirectory,
@@ -232,6 +236,7 @@ class GitHub(CodeReview):
 
     @override
     def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> None:
+        refuse_missing(into)
         _ = self._shell.at(ExistingDirectory(into.root)).run(
             Command(("gh", "pr", "checkout", str(pr.root), "--force"))
         )

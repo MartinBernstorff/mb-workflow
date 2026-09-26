@@ -2,6 +2,7 @@ import logging
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
+from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.b_core.d_domain_model.pull_request import (
@@ -222,7 +223,7 @@ def workspaces_for_review(
             path = orca.create_worktree(repo, pr.number, pr.title, status)
             logger.info("    Checking out into %s", path.root)
             review.checkout(pr.number, CheckoutDirectory(path.root))
-        except (CalledProcessError, OrcaError, ValueError) as error:
+        except (CalledProcessError, CodeReviewError, OrcaError, ValueError) as error:
             logger.error("    PR #%s failed: %s", pr.number.root, error)
             failed.append(
                 Failure(subject=FailureSubject.of_pr(pr.number), reason=FailureReason(str(error)))

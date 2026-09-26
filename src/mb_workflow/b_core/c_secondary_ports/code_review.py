@@ -32,6 +32,11 @@ def refuse_incomplete(request: ReviewRequest) -> None:
         raise CodeReviewError(f"{request.decision.value} requires comment text")
 
 
+def refuse_missing(into: CheckoutDirectory) -> None:
+    if not into.root.is_dir():
+        raise CodeReviewError(f"Cannot check out into {into.root}: not a directory")
+
+
 class MergedOn(Value[date]):
     @staticmethod
     def fake() -> MergedOn:
@@ -94,6 +99,7 @@ class FakeCodeReview(CodeReview):
 
     @override
     def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> None:
+        refuse_missing(into)
         self._checkouts[into] = pr
 
     @override
