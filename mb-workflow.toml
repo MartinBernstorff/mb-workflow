@@ -1,3 +1,7 @@
 [issues]
 tracker = "todoist"
 project_tag = "it-mb-workflow"
+
+[workspace]
+orca_project = "github:martinbernstorff/mb-workflow"
+assignee = "mab@flowbase.io"

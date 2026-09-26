@@ -23,6 +23,8 @@ class ConfigReport(Value[str]):
                 (
                     *issues,
                     f"status store: {settings.status.store}",
+                    f"orca project: {settings.workspace.orca_project.root}",
+                    f"assignee: {settings.workspace.assignee.root}",
                     f"origin: {config.origin.root}",
                 )
             )

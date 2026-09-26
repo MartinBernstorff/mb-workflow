@@ -15,7 +15,10 @@ if TYPE_CHECKING:
 
 
 def test_reporting_a_resolved_configuration_succeeds(tmp_path: Path) -> None:
-    _ = (tmp_path / "mb-workflow.toml").write_text('[issues]\ntracker = "linear"\n')
+    _ = (tmp_path / "mb-workflow.toml").write_text(
+        '[issues]\ntracker = "linear"\n'
+        '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
+    )
 
     report = show_config(WorkingDirectory(tmp_path), ConfigFileName.fake())
 

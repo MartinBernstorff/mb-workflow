@@ -5,6 +5,8 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
+from mb_workflow.b_core.d_domain_model.issue import Assignee
+from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
 from mb_workflow.d_lib.models import Model, Value
 
 
@@ -66,6 +68,15 @@ class OrcaStatus(Model):
         return OrcaStatus(store=StatusStore.orca)
 
 
+class WorkspaceSettings(Model):
+    orca_project: ProjectSelector
+    assignee: Assignee
+
+    @staticmethod
+    def fake() -> WorkspaceSettings:
+        return WorkspaceSettings(orca_project=ProjectSelector.fake(), assignee=Assignee.fake())
+
+
 type TrackerSettings = Annotated[LinearTracker | TodoistTracker, Field(discriminator="tracker")]
 type StatusSettings = OrcaStatus
 
@@ -73,10 +84,15 @@ type StatusSettings = OrcaStatus
 class Settings(Model):
     issues: TrackerSettings
     status: StatusSettings = OrcaStatus()
+    workspace: WorkspaceSettings
 
     @staticmethod
     def fake() -> Settings:
-        return Settings(issues=TodoistTracker.fake(), status=OrcaStatus.fake())
+        return Settings(
+            issues=TodoistTracker.fake(),
+            status=OrcaStatus.fake(),
+            workspace=WorkspaceSettings.fake(),
+        )
 
 
 class ConfigPath(Value[Path]):
