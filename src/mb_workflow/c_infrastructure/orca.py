@@ -276,6 +276,7 @@ class Orca(WorkspaceManager):
         name: WorktreeName,
         issue: IssueIdentifier | None,
         agent: AgentName | None,
+        status: WorkspaceStatus | None,
     ) -> OpenedWorktree:
         command = [
             "orca",
@@ -293,6 +294,8 @@ class Orca(WorkspaceManager):
             command += ["--linear-issue", issue.root]
         if agent is not None:
             command += ["--agent", agent.root]
+        if status is not None:
+            command += ["--workspace-status", status.root]
         return self._single(Command(tuple(command))).opened()
 
     @override

@@ -134,4 +134,8 @@ class WorkspaceBoard(WorkspaceStatusStore):
 
     @override
     def write(self, state: StateName) -> None:
-        self._manager.set_status(self._manager.current().path, self._columns.column_for(state))
+        self._manager.set_status(self._manager.current().path, self.column_for(state))
+
+    @override
+    def column_for(self, state: StateName) -> WorkspaceStatus:
+        return self._columns.column_for(state)

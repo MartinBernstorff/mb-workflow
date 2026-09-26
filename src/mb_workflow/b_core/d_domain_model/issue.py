@@ -1,5 +1,4 @@
 from datetime import date, timedelta
-from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from mb_workflow.d_lib.models import Model, Value
@@ -93,19 +92,6 @@ class StatusNames(Value[tuple[StatusName, ...]]):
         return next((known for known in self.root if known.names(status).root), None)
 
 
-class IssueState(StrEnum):
-    backlog = "Backlog"
-    maturing = "Maturing"
-    todo = "Todo"
-    in_progress = "In Progress"
-    in_review = "In Review"
-    ready_for_release = "Ready For Release"
-    done = "Done"
-    canceled = "Canceled"
-    duplicate = "Duplicate"
-    triage = "Triage"
-
-
 class Assigned(Value[bool]):
     @staticmethod
     def fake() -> Assigned:
@@ -128,12 +114,6 @@ class Issue(Model):
             labels=LabelNames.fake(),
             assigned=Assigned.fake(),
         )
-
-    def state(self) -> IssueState | None:
-        try:
-            return IssueState(self.status.root)
-        except ValueError:
-            return None
 
 
 class IssueTitle(Value[str]):

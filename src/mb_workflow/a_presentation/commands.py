@@ -21,7 +21,6 @@ from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeEr
 from mb_workflow.b_core.a_features.open_issue import (
     OpenRequest,
     PromptUndeliveredError,
-    UnprefixedStateError,
     open_workspace,
 )
 from mb_workflow.b_core.a_features.review_workspaces import create_workspaces
@@ -85,7 +84,6 @@ FAILURES = (
     PromptUndeliveredError,
     UnknownLabelError,
     UnlinkedWorktreeError,
-    UnprefixedStateError,
     ValueError,
     WorkspaceManagerError,
     re.error,
@@ -115,8 +113,8 @@ def linear() -> Linear:
     return Linear.connected(path.credentials().linear.api_key)
 
 
-def workspace_board() -> WorkspaceBoard:
-    return WorkspaceBoard.of_orca(Orca(here()), StateNames.initial_state(WorkflowChart))
+def workspace_board(orca: Orca) -> WorkspaceBoard:
+    return WorkspaceBoard.of_orca(orca, StateNames.initial_state(WorkflowChart))
 
 
 @guarded
@@ -158,7 +156,8 @@ def linear_autolabel(request: AutolabelRequest, window: CreatedAfter) -> ExitCod
 
 @guarded
 def open_linear_issue(request: OpenRequest) -> ExitCode:
-    open_workspace(Orca(here()), linear(), request)
+    orca = Orca(here())
+    open_workspace(orca, linear(), workspace_board(orca), request)
     return ExitCode(0)
 
 
@@ -183,11 +182,11 @@ def flow_config(directory: WorkingDirectory, name: ConfigFileName) -> ExitCode:
 
 @guarded
 def flow_show(as_json: AsJson) -> ExitCode:
-    write(Output(show_flow(workspace_board(), as_json).root))
+    write(Output(show_flow(workspace_board(Orca(here())), as_json).root))
     return ExitCode(0)
 
 
 @guarded
 def flow_event(event: EventName, force: Force) -> ExitCode:
-    logger.info("Moved to %s.", transition(workspace_board(), event, force).root)
+    logger.info("Moved to %s.", transition(workspace_board(Orca(here())), event, force).root)
     return ExitCode(0)

@@ -13,18 +13,53 @@ class FlowError(Exception):
     pass
 
 
+class StateName(Value[str]):
+    @staticmethod
+    def fake() -> StateName:
+        return StateName("Grilling")
+
+
+class Skill(Value[str]):
+    @staticmethod
+    def fake() -> Skill:
+        return Skill("/implement")
+
+
+class AwaitingHuman(Model):
+    @staticmethod
+    def fake() -> AwaitingHuman:
+        return AwaitingHuman()
+
+
+class Finished(Model):
+    @staticmethod
+    def fake() -> Finished:
+        return Finished()
+
+
+type NextAction = Skill | AwaitingHuman | Finished
+
+
+# Each state names its next action, so no state can be added without deciding what happens in it.
+class WorkState(State):
+    def __init__(self, name: StateName, action: NextAction) -> None:
+        super().__init__(name.root, final=isinstance(action, Finished))
+        self.action: NextAction = action
+
+
+# The first state declared is where the work starts.
 class WorkflowChart(StateChart[ChartModel]):
     allow_event_without_transition = False
     catch_errors_as_events = False
 
-    grilling = State("Grilling", initial=True)
-    speccing = State("Speccing")
-    specced = State("Specced")
-    implementing = State("Implementing")
-    qa = State("QA")
-    review = State("Review")
-    merging = State("Merging")
-    merged = State("Merged", final=True)
+    grilling = WorkState(StateName("Grilling"), Skill("/grill"))
+    speccing = WorkState(StateName("Speccing"), Skill("/to-ticket"))
+    specced = WorkState(StateName("Specced"), Skill("/implement"))
+    implementing = WorkState(StateName("Implementing"), Skill("/implement"))
+    qa = WorkState(StateName("QA"), AwaitingHuman())
+    review = WorkState(StateName("Review"), AwaitingHuman())
+    merging = WorkState(StateName("Merging"), Skill("/merge"))
+    merged = WorkState(StateName("Merged"), Finished())
 
     grill = Event(implementing.to(grilling), id="grill", name="grill")
     to_ticket = Event(
@@ -39,12 +74,6 @@ class WorkflowChart(StateChart[ChartModel]):
     merge = Event(qa.to(merging) | review.to(merging), id="merge", name="merge")
     to_merged = Event(review.to(merged) | merging.to(merged), id="merged", name="merged")
     resolve_review = Event(review.to(implementing), id="resolve-review", name="resolve-review")
-
-
-class StateName(Value[str]):
-    @staticmethod
-    def fake() -> StateName:
-        return StateName("Grilling")
 
 
 class EventName(Value[str]):

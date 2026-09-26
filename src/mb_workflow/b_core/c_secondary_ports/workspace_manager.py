@@ -42,6 +42,7 @@ class WorkspaceManager(Protocol):
         name: WorktreeName,
         issue: IssueIdentifier | None,
         agent: AgentName | None,
+        status: WorkspaceStatus | None,
     ) -> OpenedWorktree: ...
 
     def remove(self, path: WorktreePath) -> None: ...
@@ -94,11 +95,15 @@ class FakeWorkspaceManager(WorkspaceManager):
         name: WorktreeName,
         issue: IssueIdentifier | None,
         agent: AgentName | None,
+        status: WorkspaceStatus | None,
     ) -> OpenedWorktree:
         if project != self._project:
             raise WorkspaceManagerError(f"No project is selected by {project.root}.")
+        column = None if status is None else self._column(status)
         worktree = self._add(
-            Worktree.bare(self._repo, self._unused_path(name)).model_copy(update={"issue": issue})
+            Worktree.bare(self._repo, self._unused_path(name)).model_copy(
+                update={"issue": issue, "status": column}
+            )
         )
         if agent is None:
             return OpenedWorktree(worktree=worktree, terminal=None)
