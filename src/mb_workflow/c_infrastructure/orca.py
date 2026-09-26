@@ -276,6 +276,7 @@ class Orca(WorkspaceManager):
         name: WorktreeName,
         issue: IssueIdentifier | None,
         agent: AgentName | None,
+        status: WorkspaceStatus | None,
     ) -> OpenedWorktree:
         command = [
             "orca",
@@ -293,6 +294,8 @@ class Orca(WorkspaceManager):
             command += ["--linear-issue", issue.root]
         if agent is not None:
             command += ["--agent", agent.root]
+        if status is not None:
+            command += ["--workspace-status", status.root]
         return self._single(Command(tuple(command))).opened()
 
     @override
@@ -340,9 +343,13 @@ class Orca(WorkspaceManager):
             Command(("orca", "terminal", "send", "--terminal", terminal.root, "--text", text.root))
         )
 
-    # Orca has no command that lists board columns, so its refusal of an unknown one carries the list.
     def columns(self, unknown: ColumnLabel) -> ErrorMessage:
-        command = status_assignment(WorktreeSelector.current(), unknown)
+        listed = self.worktrees().root
+        if not listed:
+            raise WorkspaceManagerError(
+                "Orca manages no worktree to read the board's columns through."
+            )
+        command = status_assignment(WorktreeSelector.of(listed[0].path), unknown)
         try:
             output = self._shell.run(command)
         except CalledProcessError as refused:

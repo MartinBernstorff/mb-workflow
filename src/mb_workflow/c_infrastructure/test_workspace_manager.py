@@ -149,16 +149,38 @@ def test_creating_in_a_column_the_board_lacks_is_refused(
 
 
 def test_an_issue_worktree_is_linked_to_its_issue(manager: WorkspaceManager, board: Board) -> None:
-    opened = manager.create_for_issue(board.project, contract_name(), IssueIdentifier.fake(), None)
+    opened = manager.create_for_issue(
+        board.project, contract_name(), IssueIdentifier.fake(), None, None
+    )
     listed = manager.worktrees().at(opened.worktree.path)
     assert listed is not None
     assert listed.issue == IssueIdentifier.fake()
 
 
+def test_an_issue_worktree_is_created_in_its_column(
+    manager: WorkspaceManager, board: Board
+) -> None:
+    opened = manager.create_for_issue(
+        board.project, contract_name(), None, None, board.other_column()
+    )
+    listed = manager.worktrees().at(opened.worktree.path)
+    assert listed is not None
+    assert listed.status == board.other_column()
+
+
+def test_creating_an_issue_worktree_in_a_column_the_board_lacks_is_refused(
+    manager: WorkspaceManager, board: Board
+) -> None:
+    with pytest.raises(WorkspaceManagerError):
+        _ = manager.create_for_issue(board.project, contract_name(), None, None, board.unlisted())
+
+
 def test_a_worktree_opened_without_an_agent_has_no_terminal(
     manager: WorkspaceManager, board: Board
 ) -> None:
-    assert manager.create_for_issue(board.project, contract_name(), None, None).terminal is None
+    assert (
+        manager.create_for_issue(board.project, contract_name(), None, None, None).terminal is None
+    )
 
 
 def test_opening_under_an_unknown_project_is_refused(
@@ -166,15 +188,19 @@ def test_opening_under_an_unknown_project_is_refused(
 ) -> None:
     with pytest.raises(WorkspaceManagerError):
         _ = manager.create_for_issue(
-            ProjectSelector("github:mb-workflow/no-such-project"), contract_name(), None, None
+            ProjectSelector("github:mb-workflow/no-such-project"),
+            contract_name(),
+            None,
+            None,
+            None,
         )
 
 
 def test_a_taken_name_puts_the_second_worktree_elsewhere(
     manager: WorkspaceManager, board: Board
 ) -> None:
-    first = manager.create_for_issue(board.project, contract_name(), None, None)
-    second = manager.create_for_issue(board.project, contract_name(), None, None)
+    first = manager.create_for_issue(board.project, contract_name(), None, None, None)
+    second = manager.create_for_issue(board.project, contract_name(), None, None, None)
     assert first.worktree.path != second.worktree.path
     assert manager.worktrees().at(first.worktree.path) is not None
     assert manager.worktrees().at(second.worktree.path) is not None

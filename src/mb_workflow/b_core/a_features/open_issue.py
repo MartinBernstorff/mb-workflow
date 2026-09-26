@@ -1,12 +1,19 @@
 import logging
 from typing import TYPE_CHECKING
 
+from mb_workflow.b_core.b_domain_services.next_action import next_action, state_of
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
+from mb_workflow.b_core.d_domain_model.flow import (
+    AwaitingHuman,
+    Finished,
+    FlowError,
+    Skill,
+    WorkflowChart,
+)
 from mb_workflow.b_core.d_domain_model.issue import (
     BranchSlug,
     IssueIdentifier,
-    IssueState,
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
     AgentName,
@@ -14,44 +21,21 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     TimeoutMs,
     WorktreeName,
 )
-from mb_workflow.d_lib.models import Model, Value
+from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
+    from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.config import WorkspaceSettings
+    from mb_workflow.b_core.d_domain_model.flow import StateName
     from mb_workflow.b_core.d_domain_model.workspace import OpenedWorktree
 
 logger = logging.getLogger(__name__)
 
 
-class UnprefixedStateError(Exception):
-    pass
-
-
 class PromptUndeliveredError(Exception):
     pass
-
-
-class PromptPrefix(Value[str]):
-    @staticmethod
-    def fake() -> PromptPrefix:
-        return PromptPrefix("/implement")
-
-    @staticmethod
-    def of(state: IssueState) -> PromptPrefix:
-        prefixes = {
-            IssueState.backlog: PromptPrefix("/grill"),
-            IssueState.maturing: PromptPrefix("/to-ticket"),
-            IssueState.todo: PromptPrefix("/implement"),
-        }
-        prefix = prefixes.get(state)
-        if prefix is None:
-            raise UnprefixedStateError(f"No prompt prefix for an issue in {state}.")
-        return prefix
-
-    def applied(self, prompt: TerminalText) -> TerminalText:
-        return TerminalText(f"{self.root} {prompt.root}")
 
 
 class OpenRequest(Model):
@@ -72,18 +56,26 @@ class OpenRequest(Model):
     def agent(self) -> AgentName | None:
         return AgentName.claude() if self.prompt is not None else None
 
-    def prefixed(self, state: IssueState | None) -> OpenRequest:
-        if self.prompt is None or state is None:
+    def prompted_for(self, action: Skill | AwaitingHuman | None) -> OpenRequest:
+        if self.prompt is None or action is None:
             return self
-        return self.model_copy(update={"prompt": PromptPrefix.of(state).applied(self.prompt)})
+        if isinstance(action, AwaitingHuman):
+            return self.model_copy(update={"prompt": None})
+        return self.model_copy(update={"prompt": TerminalText(f"{action.root} {self.prompt.root}")})
 
 
 def open_workspace(
     manager: WorkspaceManager,
     tracker: TicketTracker,
+    board: WorkspaceStatusStore,
     workspace: WorkspaceSettings,
     request: OpenRequest,
 ) -> None:
+    # Resolve the state before touching anything, so an issue with no work left is neither assigned nor opened.
+    state = issue_state(tracker, request.issue)
+    prompting = request.prompted_for(None if state is None else action_in(state))
+    status = None if state is None else board.status_for(state)
+
     # Assignment is a convenience, not the point of opening a workspace, so never fail the run over it.
     if request.issue is not None:
         try:
@@ -96,18 +88,28 @@ def open_workspace(
                 error,
             )
 
-    # Resolve the prompt before creating anything, so an unprefixable state leaves no half-open workspace.
-    prompting = request.prefixed(issue_state(tracker, request.issue))
-
     name = WorktreeName.of_branch(request.branch, request.issue)
     logger.info("Creating worktree with name: %s", name.root)
-    opened = manager.create_for_issue(workspace.orca_project, name, request.issue, request.agent())
+    opened = manager.create_for_issue(
+        workspace.orca_project, name, request.issue, prompting.agent(), status
+    )
     logger.info("Created %s", opened.worktree.path.root)
 
     send_prompt(manager, opened, prompting)
 
 
-def issue_state(tracker: TicketTracker, issue: IssueIdentifier | None) -> IssueState | None:
+def action_in(state: StateName) -> Skill | AwaitingHuman:
+    action = next_action(WorkflowChart, state)
+    if isinstance(action, Finished):
+        raise FlowError(f"The issue is {state.root}, so there is no work left in it.")
+    if isinstance(action, AwaitingHuman):
+        logger.warning(
+            "The issue is in %s, which waits for a human, so no prompt is typed.", state.root
+        )
+    return action
+
+
+def issue_state(tracker: TicketTracker, issue: IssueIdentifier | None) -> StateName | None:
     if issue is None:
         return None
     try:
@@ -115,10 +117,7 @@ def issue_state(tracker: TicketTracker, issue: IssueIdentifier | None) -> IssueS
     except TicketTrackerError as error:
         logger.warning("Could not read the state of %s: %s", issue.root, error)
         return None
-    state = read.state()
-    if state is None:
-        logger.warning("%s has the unrecognised status %s.", issue.root, read.status.root)
-    return state
+    return state_of(WorkflowChart, read.status)
 
 
 def send_prompt(manager: WorkspaceManager, opened: OpenedWorktree, request: OpenRequest) -> None:

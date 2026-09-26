@@ -1,4 +1,5 @@
 import re
+from functools import cached_property
 from typing import TYPE_CHECKING, override
 
 from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
@@ -8,6 +9,8 @@ from mb_workflow.c_infrastructure.orca import ColumnLabel, ErrorMessage, Orca
 from mb_workflow.d_lib.models import Model, Payload, Value
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
 
 
@@ -99,7 +102,7 @@ class Columns(Value[tuple[Column, ...]]):
                 return column.id
         return None
 
-    def column_for(self, state: StateName) -> WorkspaceStatus:
+    def status_for(self, state: StateName) -> WorkspaceStatus:
         label = StateColumns.of_chart().label_of(state)
         status = self.id_of(label)
         if status is None:
@@ -119,14 +122,23 @@ class Columns(Value[tuple[Column, ...]]):
 
 
 class WorkspaceBoard(WorkspaceStatusStore):
-    def __init__(self, manager: WorkspaceManager, columns: Columns, start: StateName) -> None:
+    def __init__(
+        self, manager: WorkspaceManager, columns: Callable[[], Columns], start: StateName
+    ) -> None:
         self._manager = manager
-        self._columns = columns
+        self._read_columns = columns
         self._start = start
 
     @staticmethod
     def of_orca(orca: Orca, start: StateName) -> WorkspaceBoard:
-        return WorkspaceBoard(orca, Columns.parse(orca.columns(ColumnLabel.unknown())), start)
+        return WorkspaceBoard(
+            orca, lambda: Columns.parse(orca.columns(ColumnLabel.unknown())), start
+        )
+
+    # Read on first use, so a command that never touches the board never asks Orca for its columns.
+    @cached_property
+    def _columns(self) -> Columns:
+        return self._read_columns()
 
     @override
     def read(self) -> StateName:
@@ -134,4 +146,8 @@ class WorkspaceBoard(WorkspaceStatusStore):
 
     @override
     def write(self, state: StateName) -> None:
-        self._manager.set_status(self._manager.current().path, self._columns.column_for(state))
+        self._manager.set_status(self._manager.current().path, self.status_for(state))
+
+    @override
+    def status_for(self, state: StateName) -> WorkspaceStatus:
+        return self._columns.status_for(state)

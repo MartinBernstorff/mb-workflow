@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING, Protocol, override
 
+from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus
+
 if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.flow import StateName
 
@@ -8,6 +10,8 @@ class WorkspaceStatusStore(Protocol):
     def read(self) -> StateName: ...
 
     def write(self, state: StateName) -> None: ...
+
+    def status_for(self, state: StateName) -> WorkspaceStatus: ...
 
 
 class FakeStatusStore(WorkspaceStatusStore):
@@ -21,3 +25,7 @@ class FakeStatusStore(WorkspaceStatusStore):
     @override
     def write(self, state: StateName) -> None:
         self._state = state
+
+    @override
+    def status_for(self, state: StateName) -> WorkspaceStatus:
+        return WorkspaceStatus(f"status-{state.root.casefold()}")
