@@ -6,6 +6,11 @@ addopts = [
     "--numprocesses=auto",
     "--quiet",
     "--tb=short",
+    "-m",
+    "not orca",
 ]
 testpaths = ["src"]
 python_files = ["test_*.py"]
+markers = [
+    "orca: drives the real Orca CLI, creating and removing throwaway worktrees; run with `-m orca`",
+]

@@ -1,24 +1,13 @@
 import logging
 import subprocess
-from pathlib import Path
-
-from pydantic import model_validator
+from typing import TYPE_CHECKING
 
 from mb_workflow.d_lib.models import Value
 
+if TYPE_CHECKING:
+    from mb_workflow.b_core.d_domain_model.directory import ExistingDirectory
+
 logger = logging.getLogger(__name__)
-
-
-class ExistingDirectory(Value[Path]):
-    @model_validator(mode="after")
-    def directory_exists(self) -> ExistingDirectory:
-        if not self.root.is_dir():
-            raise ValueError(f"Not a directory: {self.root}")
-        return self
-
-    @staticmethod
-    def fake() -> ExistingDirectory:
-        return ExistingDirectory(Path.cwd())
 
 
 class Command(Value[tuple[str, ...]]):

@@ -1,26 +1,33 @@
 import pytest
 
+from mb_workflow.b_core.d_domain_model.directory import ExistingDirectory
 from mb_workflow.b_core.d_domain_model.git import BranchName
 from mb_workflow.b_core.d_domain_model.issue import BranchSlug, IssueIdentifier
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
+from mb_workflow.b_core.d_domain_model.workspace import (
+    ProjectSelector,
+    RepoId,
+    TerminalHandle,
+    WorkspaceError,
+    WorkspaceStatus,
+    WorktreeName,
+    WorktreePath,
+)
 from mb_workflow.c_infrastructure.orca import (
     Acknowledgement,
     ColumnLabel,
     Envelope,
     ErrorMessage,
     OrcaError,
-    RepoId,
     SingleWorktree,
-    TerminalHandle,
     WorktreeComment,
-    WorktreeName,
-    WorktreePath,
-    Worktrees,
+    WorktreeList,
     WorktreeSelector,
     acknowledged,
-    created_path,
+    single_worktree,
+    status_assignment,
 )
-from mb_workflow.c_infrastructure.shell import CommandOutput, ExistingDirectory
+from mb_workflow.c_infrastructure.shell import CommandOutput
 
 
 def test_parses_worktree_list() -> None:
@@ -31,12 +38,12 @@ def test_parses_worktree_list() -> None:
         '"branch":"refs/heads/feat/review-workspaces","linkedIssue":1234,'
         '"isArchived":false}]},"_meta":{"runtimeId":"y"}}'
     )
-    parsed = Worktrees.parse(output).root[0]
-    assert parsed.repo_id == RepoId.fake()
+    parsed = WorktreeList.parse(output).root[0]
+    assert parsed.repo == RepoId.fake()
     assert parsed.path == WorktreePath.fake()
     assert parsed.branch is not None
     assert parsed.branch.branch() == BranchName.fake()
-    assert parsed.linked_issue == PrNumber.fake()
+    assert parsed.pull_request == PrNumber.fake()
 
 
 def test_parses_the_linked_linear_issue() -> None:
@@ -44,7 +51,7 @@ def test_parses_the_linked_linear_issue() -> None:
         '{"ok":true,"result":{"worktrees":[{"repoId":"r","path":"/tmp/x",'
         '"linkedLinearIssue":"E-4289"}]}}'
     )
-    assert Worktrees.parse(output).root[0].linked_linear_issue == IssueIdentifier.fake()
+    assert WorktreeList.parse(output).root[0].issue == IssueIdentifier.fake()
 
 
 def test_worktree_without_branch_or_issue_parses() -> None:
@@ -52,16 +59,16 @@ def test_worktree_without_branch_or_issue_parses() -> None:
         '{"ok":true,"result":{"worktrees":[{"repoId":"r","path":"/tmp/x",'
         '"branch":null,"linkedIssue":null}]}}'
     )
-    parsed = Worktrees.parse(output).root[0]
+    parsed = WorktreeList.parse(output).root[0]
     assert parsed.branch is None
-    assert parsed.linked_issue is None
-    assert parsed.linked_linear_issue is None
+    assert parsed.pull_request is None
+    assert parsed.issue is None
 
 
 def test_envelope_failure_surfaces_orca_message() -> None:
     output = CommandOutput('{"ok":false,"error":{"code":"repo_not_found","message":"nope"}}')
     with pytest.raises(OrcaError, match="nope"):
-        _ = Worktrees.parse(output)
+        _ = WorktreeList.parse(output)
 
 
 def test_reads_created_worktree_path() -> None:
@@ -70,7 +77,7 @@ def test_reads_created_worktree_path() -> None:
         f'"{ExistingDirectory.fake().root}"'
         '},"warnings":[]}}'
     )
-    assert created_path(output) == ExistingDirectory.fake()
+    assert single_worktree(output).path == WorktreePath.of(ExistingDirectory.fake())
 
 
 def test_acknowledges_a_removal() -> None:
@@ -84,18 +91,18 @@ def test_repo_id_at_matches_the_current_worktree() -> None:
         f'{{"repoId":"{RepoId.fake().root}","path":"{ExistingDirectory.fake().root}"}}'
         "]}}"
     )
-    assert Worktrees.parse(output).repo_id_at(ExistingDirectory.fake()) == RepoId.fake()
+    assert WorktreeList.parse(output).repo_id_at(ExistingDirectory.fake()) == RepoId.fake()
 
 
 def test_repo_id_at_rejects_an_unmanaged_directory() -> None:
     output = CommandOutput('{"ok":true,"result":{"worktrees":[]}}')
-    with pytest.raises(OrcaError, match="not an Orca-managed worktree"):
-        _ = Worktrees.parse(output).repo_id_at(ExistingDirectory.fake())
+    with pytest.raises(WorkspaceError, match="not a managed worktree"):
+        _ = WorktreeList.parse(output).repo_id_at(ExistingDirectory.fake())
 
 
 def test_a_created_worktree_is_selected_by_its_own_path() -> None:
     created = ExistingDirectory.fake()
-    assert WorktreePath.of(created).selector() == WorktreeSelector(f"path:{created.root}")
+    assert WorktreeSelector.of(WorktreePath.of(created)) == WorktreeSelector(f"path:{created.root}")
 
 
 def test_worktree_name_and_comment_describe_the_pr() -> None:
@@ -201,3 +208,16 @@ def test_a_command_orca_accepted_holds_no_refusal() -> None:
     envelope = Envelope[Acknowledgement].model_validate_json(output.root)
     with pytest.raises(OrcaError, match="meant to refuse"):
         _ = envelope.refusal()
+
+
+def test_moving_a_workspace_by_status_names_its_id() -> None:
+    assert status_assignment(WorktreeSelector.fake(), WorkspaceStatus.fake()).root[-2] == "status-8"
+
+
+def test_reads_the_name_and_project_orca_gave_the_worktree() -> None:
+    output = CommandOutput(
+        '{"ok":true,"result":{"worktrees":[{"repoId":"r","path":"/tmp/x",'
+        '"displayName":"pr-1234","projectId":"github:flowbasedk/flowbase"}]}}'
+    )
+    parsed = WorktreeList.parse(output).root[0]
+    assert (parsed.name, parsed.project) == (WorktreeName.fake(), ProjectSelector.fake())

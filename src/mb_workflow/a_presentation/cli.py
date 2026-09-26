@@ -22,6 +22,12 @@ from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
 from mb_workflow.b_core.d_domain_model.flow import EventName
 from mb_workflow.b_core.d_domain_model.issue import BranchSlug, IssueIdentifier
+from mb_workflow.b_core.d_domain_model.workspace import (
+    ProjectSelector,
+    TerminalText,
+    TimeoutMs,
+    WorkspaceStatus,
+)
 from mb_workflow.c_infrastructure.github import Lookback, ReviewBody, ReviewDecision, ReviewRequest
 from mb_workflow.c_infrastructure.linear import (
     Assignee,
@@ -30,12 +36,6 @@ from mb_workflow.c_infrastructure.linear import (
     Creator,
     IssueQuery,
     LabelName,
-)
-from mb_workflow.c_infrastructure.orca import (
-    ProjectSelector,
-    TerminalText,
-    TimeoutMs,
-    WorkspaceStatus,
 )
 from mb_workflow.d_lib.logging import LogLevel, configure
 

@@ -1,8 +1,18 @@
 import pytest
 
+from mb_workflow.b_core.c_secondary_ports.workspaces import FakeWorkspaceManager
+from mb_workflow.b_core.d_domain_model.directory import ExistingDirectory
 from mb_workflow.b_core.d_domain_model.flow import StateName, StateNames, WorkflowChart
-from mb_workflow.c_infrastructure.board import BoardError, Column, Columns, StateColumns
-from mb_workflow.c_infrastructure.orca import ColumnLabel, ErrorMessage, WorkspaceStatus
+from mb_workflow.b_core.d_domain_model.workspace import (
+    RepoId,
+    WorkspaceStatus,
+    WorkspaceStatuses,
+    Worktree,
+    WorktreePath,
+    Worktrees,
+)
+from mb_workflow.c_infrastructure.board import Board, BoardError, Column, Columns, StateColumns
+from mb_workflow.c_infrastructure.orca import ColumnLabel, ErrorMessage
 
 REFUSAL = ErrorMessage(
     'Unknown workspace status "zzz". Available: status-8-2 (Tomorrow), in-progress (Grilling), '
@@ -60,15 +70,31 @@ def test_a_column_the_board_no_longer_defines_reads_as_the_start_state() -> None
 
 
 def test_a_state_maps_to_the_board_column_its_label_names() -> None:
-    assert board().column_for(StateName("Review")) == ColumnLabel("Awaiting review")
+    assert board().status_for(StateName("Review")) == WorkspaceStatus("status-5")
 
 
 def test_a_state_the_board_has_no_column_for_is_a_clear_error() -> None:
     columns = Columns((Column(id=WorkspaceStatus("in-progress"), label=ColumnLabel("Grilling")),))
     with pytest.raises(BoardError, match="defines no Merged column"):
-        _ = columns.column_for(StateName("Merged"))
+        _ = columns.status_for(StateName("Merged"))
 
 
 def test_a_state_outside_the_chart_has_no_board_column() -> None:
     with pytest.raises(BoardError, match="no board column"):
         _ = StateColumns.of_chart().label_of(StateName("Abandoned"))
+
+
+def board_over_the_fake() -> Board:
+    here = ExistingDirectory.fake()
+    fake = FakeWorkspaceManager(
+        here,
+        WorkspaceStatuses(frozenset(column.id for column in board().root)),
+        Worktrees((Worktree(repo=RepoId.fake(), path=WorktreePath.of(here)),)),
+    )
+    return Board(fake, board(), StateNames.start(WorkflowChart))
+
+
+def test_a_written_state_reads_back_from_the_workspace() -> None:
+    store = board_over_the_fake()
+    store.write(StateName("QA"))
+    assert store.read() == StateName("QA")

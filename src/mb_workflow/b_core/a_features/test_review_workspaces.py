@@ -13,16 +13,11 @@ from mb_workflow.b_core.a_features.review_workspaces import (
     union,
 )
 from mb_workflow.b_core.d_domain_model.clock import Today
+from mb_workflow.b_core.d_domain_model.directory import ExistingDirectory
 from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames, Ref
 from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
-from mb_workflow.c_infrastructure.github import (
-    Lookback,
-    MergedSince,
-    PullRequest,
-    PullRequests,
-)
-from mb_workflow.c_infrastructure.orca import (
+from mb_workflow.b_core.d_domain_model.workspace import (
     RepoId,
     WorkspaceStatus,
     Worktree,
@@ -30,7 +25,12 @@ from mb_workflow.c_infrastructure.orca import (
     WorktreePath,
     Worktrees,
 )
-from mb_workflow.c_infrastructure.shell import ExistingDirectory
+from mb_workflow.c_infrastructure.github import (
+    Lookback,
+    MergedSince,
+    PullRequest,
+    PullRequests,
+)
 
 if TYPE_CHECKING:
     import pytest
@@ -43,12 +43,12 @@ def other_pr() -> PullRequest:
 
 
 def bare_worktree() -> Worktree:
-    return Worktree(repo_id=RepoId.fake(), path=WorktreePath.fake())
+    return Worktree(repo=RepoId.fake(), path=WorktreePath.fake())
 
 
 def review_worktree() -> Worktree:
     return bare_worktree().model_copy(
-        update={"linked_issue": PrNumber.fake(), "workspace_status": WorkspaceStatus.fake()}
+        update={"pull_request": PrNumber.fake(), "status": WorkspaceStatus.fake()}
     )
 
 
@@ -65,7 +65,7 @@ def test_keeps_prs_with_no_workspace() -> None:
 
 
 def test_skips_a_pr_linked_by_issue_number() -> None:
-    worktrees = Worktrees((bare_worktree().model_copy(update={"linked_issue": PrNumber.fake()}),))
+    worktrees = Worktrees((bare_worktree().model_copy(update={"pull_request": PrNumber.fake()}),))
     assert uncovered(PullRequests.fake(), worktrees) == PullRequests(())
 
 
@@ -94,18 +94,18 @@ def test_a_review_workspace_is_stale_once_its_pr_no_longer_awaits_review() -> No
 
 
 def test_a_workspace_outside_the_review_status_is_never_stale() -> None:
-    worktrees = Worktrees((review_worktree().model_copy(update={"workspace_status": None}),))
+    worktrees = Worktrees((review_worktree().model_copy(update={"status": None}),))
     assert stale_among(PullRequests(()), worktrees) == Worktrees(())
 
 
 def test_a_workspace_in_another_repo_is_never_stale() -> None:
-    worktrees = Worktrees((review_worktree().model_copy(update={"repo_id": RepoId("elsewhere")}),))
+    worktrees = Worktrees((review_worktree().model_copy(update={"repo": RepoId("elsewhere")}),))
     assert stale_among(PullRequests(()), worktrees) == Worktrees(())
 
 
 def test_a_review_workspace_matched_only_by_branch_survives() -> None:
     worktrees = Worktrees(
-        (review_worktree().model_copy(update={"linked_issue": None, "branch": Ref.fake()}),)
+        (review_worktree().model_copy(update={"pull_request": None, "branch": Ref.fake()}),)
     )
     assert stale_among(PullRequests.fake(), worktrees) == Worktrees(())
 
@@ -165,7 +165,7 @@ def test_a_workspace_without_a_branch_is_not_prunable() -> None:
 
 def test_a_workspace_in_another_repo_is_not_prunable() -> None:
     worktrees = Worktrees(
-        (bare_worktree().model_copy(update={"branch": Ref.fake(), "repo_id": RepoId("elsewhere")}),)
+        (bare_worktree().model_copy(update={"branch": Ref.fake(), "repo": RepoId("elsewhere")}),)
     )
     assert prunable(worktrees, RepoId.fake(), elsewhere()) == Worktrees(())
 

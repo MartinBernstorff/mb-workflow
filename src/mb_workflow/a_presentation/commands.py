@@ -30,10 +30,11 @@ from mb_workflow.b_core.d_domain_model.config import (
     MissingConfigError,
     WorkingDirectory,
 )
+from mb_workflow.b_core.d_domain_model.directory import ExistingDirectory
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError
+from mb_workflow.b_core.d_domain_model.workspace import WorkspaceError, WorkspaceStatus
 from mb_workflow.c_infrastructure.board import BoardError
-from mb_workflow.c_infrastructure.orca import OrcaError, WorkspaceStatus
-from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
+from mb_workflow.c_infrastructure.shell import Shell
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -55,12 +56,12 @@ FAILURES = (
     MissingConfigError,
     NotFinalizableError,
     OSError,
-    OrcaError,
     PromptUndeliveredError,
     UnknownLabelError,
     UnlinkedWorktreeError,
     UnprefixedStateError,
     ValueError,
+    WorkspaceError,
     re.error,
 )
 

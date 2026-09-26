@@ -5,11 +5,12 @@ from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
-from mb_workflow.c_infrastructure.shell import Command, CommandOutput, ExistingDirectory, Shell
+from mb_workflow.c_infrastructure.shell import Command, CommandOutput, Shell
 from mb_workflow.d_lib.models import Model, Payload, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.clock import Today
+    from mb_workflow.b_core.d_domain_model.directory import ExistingDirectory
 
 logger = logging.getLogger(__name__)
 

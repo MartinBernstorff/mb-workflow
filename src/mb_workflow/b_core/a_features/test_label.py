@@ -2,8 +2,8 @@ import pytest
 
 from mb_workflow.b_core.a_features.label import UnlinkedWorktreeError, labelled_issue
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
+from mb_workflow.b_core.d_domain_model.workspace import Worktree
 from mb_workflow.c_infrastructure.linear import Issue, LabelName, LabelNames
-from mb_workflow.c_infrastructure.orca import Worktree
 from mb_workflow.c_infrastructure.shell import CommandOutput
 
 
@@ -12,7 +12,7 @@ def test_labels_the_linear_issue_the_worktree_is_linked_to() -> None:
 
 
 def test_rejects_a_worktree_with_no_linked_linear_issue() -> None:
-    worktree = Worktree.fake().model_copy(update={"linked_linear_issue": None})
+    worktree = Worktree.fake().model_copy(update={"issue": None})
     with pytest.raises(UnlinkedWorktreeError, match="no linked Linear issue"):
         _ = labelled_issue(worktree)
 

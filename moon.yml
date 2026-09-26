@@ -17,6 +17,12 @@ tasks:
     options:
       outputStyle: "buffer-only-failure"
 
+  test-orca:
+    script: "uv run pytest -m orca"
+    options:
+      cache: false
+      runInCI: false
+
   types:
     script: "uv run pyrefly check"
     inputs:

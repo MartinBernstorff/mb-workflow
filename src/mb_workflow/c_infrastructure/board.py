@@ -1,14 +1,13 @@
 import re
+from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.d_domain_model.flow import StateName
-from mb_workflow.c_infrastructure.orca import (
-    ColumnLabel,
-    ErrorMessage,
-    Orca,
-    WorkspaceStatus,
-    WorktreeSelector,
-)
+from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus
+from mb_workflow.c_infrastructure.orca import ColumnLabel, ErrorMessage, Orca
 from mb_workflow.d_lib.models import Model, Payload, Value
+
+if TYPE_CHECKING:
+    from mb_workflow.b_core.c_secondary_ports.workspaces import WorkspaceManager
 
 
 class BoardError(Exception):
@@ -95,13 +94,14 @@ class Columns(Value[tuple[Column, ...]]):
                 return column.id
         return None
 
-    def column_for(self, state: StateName) -> ColumnLabel:
+    def status_for(self, state: StateName) -> WorkspaceStatus:
         label = StateColumns.of_chart().label_of(state)
-        if self.id_of(label) is None:
+        status = self.id_of(label)
+        if status is None:
             raise BoardError(
                 f"The board defines no {label.root} column, so {state.root} cannot be recorded."
             )
-        return label
+        return status
 
     def state_of(self, status: WorkspaceStatus | None, start: StateName) -> StateName:
         if status is None:
@@ -114,8 +114,8 @@ class Columns(Value[tuple[Column, ...]]):
 
 
 class Board:
-    def __init__(self, orca: Orca, columns: Columns, start: StateName) -> None:
-        self._orca = orca
+    def __init__(self, workspaces: WorkspaceManager, columns: Columns, start: StateName) -> None:
+        self._workspaces = workspaces
         self._columns = columns
         self._start = start
 
@@ -124,7 +124,9 @@ class Board:
         return Board(orca, Columns.parse(orca.columns(ColumnLabel.unknown())), start)
 
     def read(self) -> StateName:
-        return self._columns.state_of(self._orca.current().workspace_status, self._start)
+        return self._columns.state_of(self._workspaces.current().status, self._start)
 
     def write(self, state: StateName) -> None:
-        self._orca.set_status(WorktreeSelector.current(), self._columns.column_for(state))
+        self._workspaces.set_status(
+            self._workspaces.current().path, self._columns.status_for(state)
+        )

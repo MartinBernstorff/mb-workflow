@@ -3,11 +3,13 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from mb_workflow.c_infrastructure.linear import LabelName, Linear
-from mb_workflow.c_infrastructure.orca import Orca, Worktree
+from mb_workflow.c_infrastructure.orca import Orca
 from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
+    from mb_workflow.b_core.c_secondary_ports.workspaces import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
+    from mb_workflow.b_core.d_domain_model.workspace import Worktree
     from mb_workflow.c_infrastructure.shell import Shell
 
 logger = logging.getLogger(__name__)
@@ -32,17 +34,17 @@ class LabelRequest(Model):
 
 
 def labelled_issue(worktree: Worktree) -> IssueIdentifier:
-    if worktree.linked_linear_issue is None:
+    if worktree.issue is None:
         raise UnlinkedWorktreeError(f"{worktree.path.root} has no linked Linear issue")
-    return worktree.linked_linear_issue
+    return worktree.issue
 
 
 def change_label(shell: Shell, request: LabelRequest) -> None:
     changed(Orca(shell), Linear(shell), request)
 
 
-def changed(orca: Orca, linear: Linear, request: LabelRequest) -> None:
-    issue = labelled_issue(orca.current())
+def changed(workspaces: WorkspaceManager, linear: Linear, request: LabelRequest) -> None:
+    issue = labelled_issue(workspaces.current())
     if request.change == LabelChange.remove:
         removed(linear, issue, request.label)
         return
