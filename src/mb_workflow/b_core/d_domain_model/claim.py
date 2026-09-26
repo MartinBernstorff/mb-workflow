@@ -89,10 +89,13 @@ class Released(Value[bool]):
         return Released(False)
 
     @staticmethod
-    def of(status: IssueStatusName) -> Released:
+    def statuses() -> StatusNames:
         merged = tuple(IssueStatusName(state.name) for state in WorkflowChart.final_states)
-        finished = StatusNames((*StatusNames.closed().root, *merged))
-        return Released(finished.matching(status) is not None)
+        return StatusNames((*StatusNames.closed().root, *merged))
+
+    @staticmethod
+    def of(status: IssueStatusName) -> Released:
+        return Released(Released.statuses().matching(status) is not None)
 
 
 class TakeOver(Value[bool]):
