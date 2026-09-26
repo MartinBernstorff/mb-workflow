@@ -2,25 +2,26 @@ import logging
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
-from mb_workflow.c_infrastructure.github import GitHub, Lookback, MergedSince, PullRequests
-from mb_workflow.c_infrastructure.orca import (
-    Orca,
-    OrcaError,
+from mb_workflow.b_core.d_domain_model.workspace import (
     RepoId,
     WorkspaceStatus,
     WorktreeName,
     WorktreePath,
     Worktrees,
 )
-from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
+from mb_workflow.c_infrastructure.github import MergedSince, PullRequests
+from mb_workflow.c_infrastructure.shell import ExistingDirectory
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.lock import LockPath
+    from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.git import BranchNames
+    from mb_workflow.c_infrastructure.github import GitHub, Lookback
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +57,11 @@ class Failure(Model):
 
 class CreatedWorkspace(Model):
     name: WorktreeName
-    path: ExistingDirectory
+    path: WorktreePath
 
     @staticmethod
     def fake() -> CreatedWorkspace:
-        return CreatedWorkspace(name=WorktreeName.fake(), path=ExistingDirectory.fake())
+        return CreatedWorkspace(name=WorktreeName.fake(), path=WorktreePath.fake())
 
 
 class Unchanged(Value[bool]):
@@ -100,7 +101,7 @@ class Outcome(Model):
 
 
 def uncovered(prs: PullRequests, worktrees: Worktrees) -> PullRequests:
-    linked = {w.linked_issue for w in worktrees.root if w.linked_issue is not None}
+    linked = {w.pull_request for w in worktrees.root if w.pull_request is not None}
     branches = {w.branch.branch() for w in worktrees.root if w.branch is not None}
     return PullRequests(
         tuple(pr for pr in prs.root if pr.number not in linked and pr.head_ref_name not in branches)
@@ -112,33 +113,28 @@ def stale(
     worktrees: Worktrees,
     repo: RepoId,
     status: WorkspaceStatus,
-    here: ExistingDirectory,
+    here: WorktreePath,
 ) -> Worktrees:
     numbers = {pr.number for pr in prs.root}
     branches = {pr.head_ref_name for pr in prs.root}
-    cwd = here.root.resolve()
     return Worktrees(
         tuple(
             worktree
-            for worktree in worktrees.root
-            if worktree.repo_id == repo
-            and worktree.workspace_status == status
-            and worktree.linked_issue not in numbers
+            for worktree in worktrees.without(here).root
+            if worktree.repo == repo
+            and worktree.status == status
+            and worktree.pull_request not in numbers
             and (worktree.branch is None or worktree.branch.branch() not in branches)
-            and worktree.path.root.resolve() != cwd
         )
     )
 
 
-def prunable(worktrees: Worktrees, repo: RepoId, here: ExistingDirectory) -> Worktrees:
-    cwd = here.root.resolve()
+def prunable(worktrees: Worktrees, repo: RepoId, here: WorktreePath) -> Worktrees:
     return Worktrees(
         tuple(
             worktree
-            for worktree in worktrees.root
-            if worktree.repo_id == repo
-            and worktree.branch is not None
-            and worktree.path.root.resolve() != cwd
+            for worktree in worktrees.without(here).root
+            if worktree.repo == repo and worktree.branch is not None
         )
     )
 
@@ -154,30 +150,34 @@ def on_branches(worktrees: Worktrees, wanted: BranchNames) -> Worktrees:
 
 
 def union(first: Worktrees, second: Worktrees) -> Worktrees:
-    known = {worktree.path.root.resolve() for worktree in first.root}
     return Worktrees(
         (
             *first.root,
-            *(worktree for worktree in second.root if worktree.path.root.resolve() not in known),
+            *(worktree for worktree in second.root if first.at(worktree.path) is None),
         )
     )
 
 
 def create_workspaces(
-    shell: Shell, status: WorkspaceStatus, lookback: Lookback, lock: LockPath
+    github: GitHub,
+    manager: WorkspaceManager,
+    status: WorkspaceStatus,
+    lookback: Lookback,
+    lock: LockPath,
 ) -> Outcome:
     with lock.held():
         since = MergedSince.of(lookback, Today.now())
-        return workspaces_for_review(GitHub(shell), Orca(shell), status, since)
+        return workspaces_for_review(github, manager, status, since)
 
 
 def workspaces_for_review(
-    github: GitHub, orca: Orca, status: WorkspaceStatus, since: MergedSince
+    github: GitHub, manager: WorkspaceManager, status: WorkspaceStatus, since: MergedSince
 ) -> Outcome:
-    worktrees = orca.worktrees()
-    here = orca.where()
-    repo = worktrees.repo_id_at(here)
-    logger.info("Inspecting %s Orca worktrees from %s", len(worktrees.root), here.root)
+    worktrees = manager.worktrees()
+    current = manager.current()
+    here = current.path
+    repo = current.repo
+    logger.info("Inspecting %s worktrees from %s", len(worktrees.root), here.root)
     requested = github.review_requested()
     logger.info("PRs awaiting your review: %s", len(requested.root))
 
@@ -194,8 +194,8 @@ def workspaces_for_review(
     for worktree in obsolete.root:
         try:
             logger.info("    Removing %s", worktree.path.root)
-            orca.remove_worktree(worktree.path)
-        except (CalledProcessError, OrcaError, ValueError) as error:
+            manager.remove(worktree.path)
+        except WorkspaceManagerError as error:
             logger.error("    %s could not be removed: %s", worktree.path.root, error)
             failed.append(
                 Failure(
@@ -213,10 +213,10 @@ def workspaces_for_review(
         logger.info("Processing #%s", pr.number.root)
         try:
             logger.info("    Creating worktree %s", WorktreeName.of(pr.number).root)
-            path = orca.create_worktree(repo, pr.number, pr.title, status)
+            path = manager.create_for_review(repo, pr.number, pr.title, status).path
             logger.info("    Checking out into %s", path.root)
-            github.checkout(pr.number, path)
-        except (CalledProcessError, OrcaError, ValueError) as error:
+            github.checkout(pr.number, ExistingDirectory(path.root))
+        except (CalledProcessError, WorkspaceManagerError, ValueError) as error:
             logger.error("    PR #%s failed: %s", pr.number.root, error)
             failed.append(
                 Failure(subject=FailureSubject.of_pr(pr.number), reason=FailureReason(str(error)))

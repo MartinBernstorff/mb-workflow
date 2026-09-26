@@ -1,54 +1,41 @@
 import logging
-import re
-from pathlib import Path
+from contextlib import contextmanager
 from subprocess import CalledProcessError
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
+from pydantic import ValidationError
+
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
+    WorkspaceManager,
+    WorkspaceManagerError,
+)
 from mb_workflow.b_core.d_domain_model.git import Ref
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
-from mb_workflow.c_infrastructure.shell import Command, CommandOutput, ExistingDirectory, Shell
+from mb_workflow.b_core.d_domain_model.workspace import (
+    OpenedWorktree,
+    RepoId,
+    TerminalHandle,
+    WorkspaceStatus,
+    Worktree,
+    WorktreeName,
+    WorktreePath,
+    Worktrees,
+)
+from mb_workflow.c_infrastructure.shell import Command, CommandOutput, Shell
 from mb_workflow.d_lib.models import Payload, Value
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.d_domain_model.issue import BranchSlug
+    from collections.abc import Generator
+
+    from mb_workflow.b_core.d_domain_model.workspace import (
+        AgentName,
+        ProjectSelector,
+        TerminalText,
+        TimeoutMs,
+    )
 
 logger = logging.getLogger(__name__)
-
-
-class OrcaError(Exception):
-    pass
-
-
-class RepoId(Value[str]):
-    @staticmethod
-    def fake() -> RepoId:
-        return RepoId("ed089d5b-6f96-45d2-ad3a-c2131bb3be91")
-
-
-class WorktreeName(Value[str]):
-    @staticmethod
-    def fake() -> WorktreeName:
-        return WorktreeName(f"pr-{PrNumber.fake().root}")
-
-    @staticmethod
-    def of(pr: PrNumber) -> WorktreeName:
-        return WorktreeName(f"pr-{pr.root}")
-
-    @staticmethod
-    def of_branch(branch: BranchSlug, issue: IssueIdentifier | None) -> WorktreeName:
-        slug = branch.root or (issue.root if issue is not None else "linear-workspace")
-        # Orca prefixes the branch with the git user, so hand it the unprefixed slug.
-        name = slug.split("/", 1)[-1]
-        # Linear prefixes the slug with the issue identifier ("e-4289-..."), which orca shows on its own.
-        name = re.sub(r"^[A-Za-z]+-\d+-", "", name)
-        # Linear slugifies "fix(ci): ..." to "fixci-...", so drop the conventional-commit type and scope.
-        name = re.sub(
-            r"^(?:feat|fix|chore|refactor|revert|perf|docs|test|build|style|ci)[a-z]*-(?=.)",
-            "",
-            name,
-        )
-        return WorktreeName(name)
 
 
 class WorktreeComment(Value[str]):
@@ -61,12 +48,6 @@ class WorktreeComment(Value[str]):
         return WorktreeComment(f"PR #{pr.root} — {title.root}")
 
 
-class WorkspaceStatus(Value[str]):
-    @staticmethod
-    def fake() -> WorkspaceStatus:
-        return WorkspaceStatus("status-8")
-
-
 class ColumnLabel(Value[str]):
     @staticmethod
     def fake() -> ColumnLabel:
@@ -76,20 +57,6 @@ class ColumnLabel(Value[str]):
     def unknown() -> ColumnLabel:
         return ColumnLabel("mb-workflow-asks-which-columns-exist")
 
-    def assignment(self, worktree: WorktreeSelector) -> Command:
-        return Command(
-            (
-                "orca",
-                "worktree",
-                "set",
-                "--worktree",
-                worktree.root,
-                "--workspace-status",
-                self.root,
-                "--json",
-            )
-        )
-
 
 class ErrorMessage(Value[str]):
     @staticmethod
@@ -97,64 +64,33 @@ class ErrorMessage(Value[str]):
         return ErrorMessage("repo_not_found")
 
 
-class WorktreePath(Value[Path]):
-    @staticmethod
-    def fake() -> WorktreePath:
-        return WorktreePath(Path("/Users/me/orca/workspaces/mb-workflow/pr-1234"))
-
-    @staticmethod
-    def of(directory: ExistingDirectory) -> WorktreePath:
-        return WorktreePath(directory.root)
-
-    def existing(self) -> ExistingDirectory:
-        return ExistingDirectory(self.root)
-
-    def selector(self) -> WorktreeSelector:
-        return WorktreeSelector(f"path:{self.root}")
-
-
-class ProjectSelector(Value[str]):
-    @staticmethod
-    def fake() -> ProjectSelector:
-        return ProjectSelector("github:flowbasedk/flowbase")
-
-
-class AgentName(Value[str]):
-    @staticmethod
-    def fake() -> AgentName:
-        return AgentName.claude()
-
-    @staticmethod
-    def claude() -> AgentName:
-        return AgentName("claude")
-
-
-class TerminalHandle(Value[str]):
-    @staticmethod
-    def fake() -> TerminalHandle:
-        return TerminalHandle("terminal-1")
-
-
-class TerminalText(Value[str]):
-    @staticmethod
-    def fake() -> TerminalText:
-        return TerminalText("Implement the issue.")
-
-
-class TimeoutMs(Value[int]):
-    @staticmethod
-    def fake() -> TimeoutMs:
-        return TimeoutMs(60000)
-
-
 class WorktreeSelector(Value[str]):
     @staticmethod
     def fake() -> WorktreeSelector:
-        return WorktreeSelector(f"path:{WorktreePath.fake().root}")
+        return WorktreeSelector.of(WorktreePath.fake())
 
     @staticmethod
     def current() -> WorktreeSelector:
         return WorktreeSelector("current")
+
+    @staticmethod
+    def of(path: WorktreePath) -> WorktreeSelector:
+        return WorktreeSelector(f"path:{path.root}")
+
+
+def status_assignment(worktree: WorktreeSelector, column: WorkspaceStatus | ColumnLabel) -> Command:
+    return Command(
+        (
+            "orca",
+            "worktree",
+            "set",
+            "--worktree",
+            worktree.root,
+            "--workspace-status",
+            column.root,
+            "--json",
+        )
+    )
 
 
 class EnvelopeError(Payload):
@@ -178,18 +114,18 @@ class Envelope[T](Payload):
 
     def refusal(self) -> ErrorMessage:
         if self.ok.root or self.error is None:
-            raise OrcaError("orca accepted a value it was meant to refuse")
+            raise WorkspaceManagerError("orca accepted a value it was meant to refuse")
         return self.error.message
 
     def unwrap(self) -> T:
         if self.result is None or not self.ok.root:
-            raise OrcaError(
+            raise WorkspaceManagerError(
                 self.error.message.root if self.error is not None else "orca returned no result"
             )
         return self.result
 
 
-class Workspace(Payload):
+class WorktreePayload(Payload):
     repo_id: RepoId
     path: WorktreePath
     branch: Ref | None = None
@@ -198,8 +134,8 @@ class Workspace(Payload):
     workspace_status: WorkspaceStatus | None = None
 
     @staticmethod
-    def fake() -> Workspace:
-        return Workspace(
+    def fake() -> WorktreePayload:
+        return WorktreePayload(
             repo_id=RepoId.fake(),
             path=WorktreePath.fake(),
             branch=Ref.fake(),
@@ -208,19 +144,38 @@ class Workspace(Payload):
             workspace_status=WorkspaceStatus.fake(),
         )
 
+    def worktree(self) -> Worktree:
+        return Worktree(
+            repo=self.repo_id,
+            path=self.path,
+            branch=self.branch,
+            pull_request=self.linked_issue,
+            issue=self.linked_linear_issue,
+            status=self.workspace_status,
+        )
+
 
 class WorktreeList(Payload):
-    worktrees: tuple[Workspace, ...]
+    worktrees: tuple[WorktreePayload, ...]
 
     @staticmethod
     def fake() -> WorktreeList:
-        return WorktreeList(worktrees=(Workspace.fake(),))
+        return WorktreeList(worktrees=(WorktreePayload.fake(),))
+
+    @staticmethod
+    def parse(output: CommandOutput) -> Worktrees:
+        listed = Envelope[WorktreeList].model_validate_json(output.root).unwrap()
+        return Worktrees(tuple(worktree.worktree() for worktree in listed.worktrees))
 
 
 class Acknowledgement(Payload):
     @staticmethod
     def fake() -> Acknowledgement:
         return Acknowledgement()
+
+    @staticmethod
+    def parse(output: CommandOutput) -> Acknowledgement:
+        return Envelope[Acknowledgement].model_validate_json(output.root).unwrap()
 
 
 class StartupTerminal(Payload):
@@ -232,14 +187,14 @@ class StartupTerminal(Payload):
 
 
 class SingleWorktree(Payload):
-    worktree: Workspace
+    worktree: WorktreePayload
     agent_terminal_handle: TerminalHandle | None = None
     startup_terminal: StartupTerminal | None = None
 
     @staticmethod
     def fake() -> SingleWorktree:
         return SingleWorktree(
-            worktree=Workspace.fake(),
+            worktree=WorktreePayload.fake(),
             agent_terminal_handle=TerminalHandle.fake(),
             startup_terminal=StartupTerminal.fake(),
         )
@@ -253,85 +208,73 @@ class SingleWorktree(Payload):
             return self.agent_terminal_handle
         return self.startup_terminal.handle if self.startup_terminal is not None else None
 
-
-class Worktrees(Value[tuple[Workspace, ...]]):
-    @staticmethod
-    def fake() -> Worktrees:
-        return Worktrees((Workspace.fake(),))
-
-    @staticmethod
-    def parse(output: CommandOutput) -> Worktrees:
-        envelope = Envelope[WorktreeList].model_validate_json(output.root)
-        return Worktrees(envelope.unwrap().worktrees)
-
-    def repo_id_at(self, directory: ExistingDirectory) -> RepoId:
-        wanted = directory.root.resolve()
-        for worktree in self.root:
-            if worktree.path.root.resolve() == wanted:
-                return worktree.repo_id
-        raise OrcaError(f"{wanted} is not an Orca-managed worktree")
+    def opened(self) -> OpenedWorktree:
+        return OpenedWorktree(worktree=self.worktree.worktree(), terminal=self.terminal())
 
 
-def created_path(output: CommandOutput) -> ExistingDirectory:
-    return SingleWorktree.parse(output).worktree.path.existing()
+# Orca exits non-zero on a refusal but still prints the envelope, whose message says why.
+def refusal_of(error: CalledProcessError) -> ErrorMessage:
+    try:
+        return Envelope[Acknowledgement].model_validate_json(error.stdout).refusal()
+    except ValidationError, WorkspaceManagerError, TypeError:
+        return ErrorMessage(str(error))
 
 
-def single_worktree(output: CommandOutput) -> Workspace:
-    return SingleWorktree.parse(output).worktree
+@contextmanager
+def translated_errors() -> Generator[None]:
+    try:
+        yield
+    except CalledProcessError as error:
+        raise WorkspaceManagerError(refusal_of(error).root) from error
 
 
-def acknowledged(output: CommandOutput) -> Acknowledgement:
-    return Envelope[Acknowledgement].model_validate_json(output.root).unwrap()
-
-
-class Orca:
+class Orca(WorkspaceManager):
     def __init__(self, shell: Shell) -> None:
         self._shell = shell
         _ = shell.run(Command(("orca", "--version")))
 
-    def where(self) -> ExistingDirectory:
-        return self._shell.cwd()
+    @override
+    def current(self) -> Worktree:
+        return self._single(Command(("orca", "worktree", "current", "--json"))).worktree.worktree()
 
-    def current(self) -> Workspace:
-        return single_worktree(self._shell.run(Command(("orca", "worktree", "current", "--json"))))
-
+    @override
     def worktrees(self) -> Worktrees:
-        return Worktrees.parse(self._shell.run(Command(("orca", "worktree", "list", "--json"))))
+        return WorktreeList.parse(self._run(Command(("orca", "worktree", "list", "--json"))))
 
-    def create_worktree(
+    @override
+    def create_for_review(
         self, repo: RepoId, pr: PrNumber, title: PrTitle, status: WorkspaceStatus
-    ) -> ExistingDirectory:
-        return created_path(
-            self._shell.run(
-                Command(
-                    (
-                        "orca",
-                        "worktree",
-                        "create",
-                        "--repo",
-                        f"id:{repo.root}",
-                        "--name",
-                        WorktreeName.of(pr).root,
-                        "--no-parent",
-                        "--issue",
-                        str(pr.root),
-                        "--comment",
-                        WorktreeComment.of(pr, title).root,
-                        "--workspace-status",
-                        status.root,
-                        "--json",
-                    )
+    ) -> Worktree:
+        return self._single(
+            Command(
+                (
+                    "orca",
+                    "worktree",
+                    "create",
+                    "--repo",
+                    f"id:{repo.root}",
+                    "--name",
+                    WorktreeName.of(pr).root,
+                    "--no-parent",
+                    "--issue",
+                    str(pr.root),
+                    "--comment",
+                    WorktreeComment.of(pr, title).root,
+                    "--workspace-status",
+                    status.root,
+                    "--json",
                 )
             )
-        )
+        ).worktree.worktree()
 
+    @override
     def create_for_issue(
         self,
         project: ProjectSelector,
         name: WorktreeName,
         issue: IssueIdentifier | None,
         agent: AgentName | None,
-    ) -> SingleWorktree:
+    ) -> OpenedWorktree:
         command = [
             "orca",
             "worktree",
@@ -348,10 +291,33 @@ class Orca:
             command += ["--linear-issue", issue.root]
         if agent is not None:
             command += ["--agent", agent.root]
-        return SingleWorktree.parse(self._shell.run(Command(tuple(command))))
+        return self._single(Command(tuple(command))).opened()
 
+    @override
+    def remove(self, path: WorktreePath) -> None:
+        _ = Acknowledgement.parse(
+            self._run(
+                Command(
+                    (
+                        "orca",
+                        "worktree",
+                        "rm",
+                        "--worktree",
+                        WorktreeSelector.of(path).root,
+                        "--force",
+                        "--json",
+                    )
+                )
+            )
+        )
+
+    @override
+    def set_status(self, path: WorktreePath, status: WorkspaceStatus) -> None:
+        _ = self._single(status_assignment(WorktreeSelector.of(path), status))
+
+    @override
     def wait_for_idle(self, terminal: TerminalHandle, timeout: TimeoutMs) -> None:
-        _ = self._shell.run(
+        _ = self._run(
             Command(
                 (
                     "orca",
@@ -367,36 +333,24 @@ class Orca:
             )
         )
 
+    @override
     def send_text(self, terminal: TerminalHandle, text: TerminalText) -> None:
-        _ = self._shell.run(
+        _ = self._run(
             Command(("orca", "terminal", "send", "--terminal", terminal.root, "--text", text.root))
         )
 
     # Orca has no command that lists board columns, so its refusal of an unknown one carries the list.
     def columns(self, unknown: ColumnLabel) -> ErrorMessage:
-        command = unknown.assignment(WorktreeSelector.current())
+        command = status_assignment(WorktreeSelector.current(), unknown)
         try:
             output = self._shell.run(command)
         except CalledProcessError as refused:
             output = CommandOutput(refused.stdout)
         return Envelope[Acknowledgement].model_validate_json(output.root).refusal()
 
-    def set_status(self, worktree: WorktreeSelector, column: ColumnLabel) -> None:
-        _ = single_worktree(self._shell.run(column.assignment(worktree)))
+    def _single(self, command: Command) -> SingleWorktree:
+        return SingleWorktree.parse(self._run(command))
 
-    def remove_worktree(self, path: WorktreePath) -> None:
-        _ = acknowledged(
-            self._shell.run(
-                Command(
-                    (
-                        "orca",
-                        "worktree",
-                        "rm",
-                        "--worktree",
-                        path.selector().root,
-                        "--force",
-                        "--json",
-                    )
-                )
-            )
-        )
+    def _run(self, command: Command) -> CommandOutput:
+        with translated_errors():
+            return self._shell.run(command)

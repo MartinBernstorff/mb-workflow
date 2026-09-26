@@ -5,16 +5,28 @@ from mb_workflow.b_core.a_features.open_issue import (
     PromptPrefix,
     UnprefixedStateError,
     issue_state,
+    open_workspace,
 )
 from mb_workflow.b_core.c_secondary_ports.issue_tracker import FakeIssueTracker, TrackedIssue
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
+    FakeWorkspaceManager,
+    WorkspaceManagerError,
+)
 from mb_workflow.b_core.d_domain_model.issue import (
+    Assigned,
     Issue,
     IssueIdentifier,
     IssueState,
     LabelNames,
     StatusName,
 )
-from mb_workflow.c_infrastructure.orca import TerminalText
+from mb_workflow.b_core.d_domain_model.workspace import (
+    TerminalHandle,
+    TerminalText,
+    WorktreeName,
+    WorktreePath,
+    Worktrees,
+)
 
 
 def tracking(status: StatusName) -> FakeIssueTracker:
@@ -72,3 +84,48 @@ def test_an_issue_the_tracker_cannot_read_has_no_state() -> None:
 
 def test_no_issue_has_no_state() -> None:
     assert issue_state(tracking(StatusName.fake()), None) is None
+
+
+def opening() -> FakeWorkspaceManager:
+    return FakeWorkspaceManager(Worktrees.fake(), WorktreePath.fake())
+
+
+def opened_at() -> WorktreePath:
+    return WorktreePath.fake().sibling(WorktreeName("add-widget"))
+
+
+def test_opens_a_worktree_linked_to_the_issue() -> None:
+    manager = opening()
+    open_workspace(manager, tracking(StatusName("Todo")), OpenRequest.fake())
+    opened = manager.worktrees().at(opened_at())
+    assert opened is not None
+    assert opened.issue == IssueIdentifier.fake()
+
+
+def test_types_the_prefixed_prompt_into_the_agent_terminal() -> None:
+    manager = opening()
+    open_workspace(manager, tracking(StatusName("Todo")), OpenRequest.fake())
+    assert manager.typed(TerminalHandle("terminal-1")) == (
+        TerminalText(f"/implement {TerminalText.fake().root}"),
+    )
+
+
+def test_assigns_the_issue_it_opens() -> None:
+    tracker = tracking(StatusName("Todo"))
+    open_workspace(opening(), tracker, OpenRequest.fake())
+    assert tracker.read_issue(IssueIdentifier.fake()).assigned == Assigned(True)
+
+
+def test_without_a_prompt_no_agent_is_launched() -> None:
+    manager = opening()
+    promptless = OpenRequest.fake().model_copy(update={"prompt": None})
+    open_workspace(manager, tracking(StatusName("Todo")), promptless)
+    with pytest.raises(WorkspaceManagerError):
+        _ = manager.typed(TerminalHandle("terminal-1"))
+
+
+def test_a_state_with_no_prefix_opens_nothing() -> None:
+    manager = opening()
+    with pytest.raises(UnprefixedStateError):
+        open_workspace(manager, tracking(StatusName("In Progress")), OpenRequest.fake())
+    assert manager.worktrees() == Worktrees.fake()

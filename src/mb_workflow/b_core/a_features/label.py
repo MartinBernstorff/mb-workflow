@@ -7,8 +7,9 @@ from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
+    from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
-    from mb_workflow.c_infrastructure.orca import Orca, Workspace
+    from mb_workflow.b_core.d_domain_model.workspace import Worktree
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +32,14 @@ class LabelRequest(Model):
         return LabelRequest(label=LabelName.fake(), change=LabelChange.add)
 
 
-def issue_from_workspace(workspace: Workspace) -> IssueIdentifier:
-    if workspace.linked_linear_issue is None:
-        raise UnlinkedWorktreeError(f"{workspace.path.root} has no linked Linear issue")
-    return workspace.linked_linear_issue
+def issue_from_workspace(worktree: Worktree) -> IssueIdentifier:
+    if worktree.issue is None:
+        raise UnlinkedWorktreeError(f"{worktree.path.root} has no linked Linear issue")
+    return worktree.issue
 
 
-def change_label(orca: Orca, tracker: IssueTracker, request: LabelRequest) -> None:
-    issue = issue_from_workspace(orca.current())
+def change_label(manager: WorkspaceManager, tracker: IssueTracker, request: LabelRequest) -> None:
+    issue = issue_from_workspace(manager.current())
     if request.change == LabelChange.remove:
         remove_label(tracker, issue, request.label)
         return

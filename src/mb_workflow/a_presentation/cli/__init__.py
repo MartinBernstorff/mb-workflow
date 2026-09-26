@@ -32,13 +32,13 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueIdentifier,
     LabelName,
 )
-from mb_workflow.c_infrastructure.github import Lookback, ReviewBody, ReviewDecision, ReviewRequest
-from mb_workflow.c_infrastructure.orca import (
+from mb_workflow.b_core.d_domain_model.workspace import (
     ProjectSelector,
     TerminalText,
     TimeoutMs,
     WorkspaceStatus,
 )
+from mb_workflow.c_infrastructure.github import Lookback, ReviewBody, ReviewDecision, ReviewRequest
 from mb_workflow.d_lib.logging import LogLevel, configure
 
 app = typer.Typer(no_args_is_help=True)

@@ -7,8 +7,11 @@ addopts = [
     "--quiet",
     "--tb=short",
     "-m",
-    "not linear_live",
+    "not linear_live and not orca_live",
 ]
-markers = ["linear_live: runs against the live Linear integration-test workspace"]
+markers = [
+    "linear_live: runs against the live Linear integration-test workspace",
+    "orca_live: creates and removes worktrees in the local Orca, from an mb-workflow worktree",
+]
 testpaths = ["src"]
 python_files = ["test_*.py"]
