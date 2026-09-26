@@ -21,6 +21,11 @@ class ClaimRefusedError(Exception):
     pass
 
 
+# Another holder has the ticket, as distinct from a claim this run could never have made.
+class ClaimLostError(ClaimRefusedError):
+    pass
+
+
 class ClaimRegistry(Protocol):
     def claims(self, ticket: IssueIdentifier) -> Claims: ...
 
@@ -70,7 +75,7 @@ def claim_ticket(registry: ClaimRegistry, pause: Pause, request: ClaimRequest) -
     if posted in settled.ids():
         registry.withdraw(request.ticket, posted)
     if winner is None:
-        raise ClaimRefusedError(f"Our claim on {request.ticket.root} was withdrawn by another.")
+        raise ClaimLostError(f"Our claim on {request.ticket.root} was withdrawn by another.")
     raise claimed_error(request.ticket, winner)
 
 
@@ -84,8 +89,8 @@ def withdraw_claims(registry: ClaimRegistry, ticket: IssueIdentifier, held: Clai
         registry.withdraw(ticket, claim.id)
 
 
-def claimed_error(ticket: IssueIdentifier, holder: Claim) -> ClaimRefusedError:
-    return ClaimRefusedError(
+def claimed_error(ticket: IssueIdentifier, holder: Claim) -> ClaimLostError:
+    return ClaimLostError(
         f"{ticket.root} is claimed by worktree {holder.holder.worktree.root}"
         f" on {holder.holder.host.root}. Pass --force to take the claim over."
     )

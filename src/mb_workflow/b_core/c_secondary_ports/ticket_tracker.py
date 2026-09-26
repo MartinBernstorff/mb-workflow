@@ -24,6 +24,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Projects,
     StatusNames,
 )
+from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority, ViewSlug
 from mb_workflow.d_lib.models import Model
 
 
@@ -35,6 +36,8 @@ class TicketTracker(Protocol):
     def workspace_labels(self) -> LabelNames: ...
 
     def list_issues(self, wanted: IssueFilter) -> Issues: ...
+
+    def view_tickets(self, view: ViewSlug) -> PoolTickets: ...
 
     def read_issue(self, issue: IssueIdentifier) -> Issue: ...
 
@@ -61,6 +64,7 @@ class TrackedIssue(Model):
     milestone: MilestoneName | None
     creator: Creator
     created_on: CreatedOn
+    priority: Priority
 
     @staticmethod
     def fake() -> TrackedIssue:
@@ -72,6 +76,7 @@ class TrackedIssue(Model):
             milestone=MilestoneName.fake(),
             creator=Creator.fake(),
             created_on=CreatedOn.fake(),
+            priority=Priority.medium,
         )
 
 
@@ -83,12 +88,15 @@ class FakeTicketTracker(TicketTracker):
         projects: Projects = Projects.fake(),
         statuses: StatusNames = StatusNames.fake(),
         viewer: Assignee = Assignee.fake(),
+        *,
+        views: dict[ViewSlug, tuple[IssueIdentifier, ...]] | None = None,
     ) -> None:
         self._labels = labels
         self._issues = {tracked.issue.identifier: tracked for tracked in issues}
         self._projects = projects
         self._statuses = statuses
         self._viewer = viewer
+        self._views = dict(views or {})
 
     @override
     def workspace_labels(self) -> LabelNames:
@@ -101,6 +109,18 @@ class FakeTicketTracker(TicketTracker):
                 tracked.issue
                 for tracked in self._issues.values()
                 if wanted.matches(tracked.creator, tracked.created_on).root
+            )
+        )
+
+    @override
+    def view_tickets(self, view: ViewSlug) -> PoolTickets:
+        listed = self._views.get(view)
+        if listed is None:
+            raise TicketTrackerError(f"No view has the slug {view.root}.")
+        return PoolTickets(
+            tuple(
+                PoolTicket(issue=tracked.issue, priority=tracked.priority)
+                for tracked in (self._tracked(identifier) for identifier in listed)
             )
         )
 

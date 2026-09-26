@@ -11,6 +11,7 @@ from mb_workflow.b_core.d_domain_model.config import (
     LinearTracker,
     MissingConfigError,
     OrcaStatus,
+    PoolSettings,
     ProjectTag,
     SearchedDirectories,
     Settings,
@@ -21,6 +22,7 @@ from mb_workflow.b_core.d_domain_model.config import (
     WorkspaceSettings,
 )
 from mb_workflow.b_core.d_domain_model.issue import Assignee, LabelName
+from mb_workflow.b_core.d_domain_model.pool import ViewSlug
 from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
 
 if TYPE_CHECKING:
@@ -211,3 +213,24 @@ def test_a_configured_claim_label_is_read() -> None:
         issues={"tracker": "linear"}, claims={"label": "claimed"}
     )
     assert settings.claims.label == LabelName("claimed")
+
+
+def test_a_configured_pool_names_its_view() -> None:
+    settings = settings_with_fake_workspace(
+        issues={"tracker": "linear"}, pool={"view": "4efb86b38740"}
+    )
+    assert settings.pool == PoolSettings(view=ViewSlug("4efb86b38740"))
+
+
+def test_a_pool_outside_linear_is_refused() -> None:
+    with pytest.raises(ValueError, match="pool"):
+        _ = settings_with_fake_workspace(
+            issues={"tracker": "todoist", "project_tag": "it-mb-workflow"},
+            pool={"view": "4efb86b38740"},
+        )
+
+
+def test_draining_without_a_pool_is_refused() -> None:
+    settings = settings_with_fake_workspace(issues={"tracker": "linear"})
+    with pytest.raises(InvalidConfigError, match=r"\[pool\] view"):
+        _ = settings.required_pool()

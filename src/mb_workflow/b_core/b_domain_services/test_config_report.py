@@ -3,6 +3,7 @@ from mb_workflow.b_core.d_domain_model.config import (
     ConfigPath,
     Configuration,
     LinearTracker,
+    PoolSettings,
     Settings,
     WorkspaceSettings,
 )
@@ -28,3 +29,15 @@ def test_a_linear_configuration_reports_no_project_tag() -> None:
     report = ConfigReport.of(config)
     assert "tracker: linear" in report.root
     assert "project tag" not in report.root
+
+
+def test_a_configured_pool_reports_its_view() -> None:
+    config = Configuration(
+        settings=Settings(
+            issues=LinearTracker.fake(),
+            workspace=WorkspaceSettings.fake(),
+            pool=PoolSettings.fake(),
+        ),
+        origin=ConfigPath.fake(),
+    )
+    assert "pool view: 4efb86b38740" in ConfigReport.of(config).root

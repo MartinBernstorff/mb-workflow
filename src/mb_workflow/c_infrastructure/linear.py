@@ -31,12 +31,14 @@ from mb_workflow.b_core.d_domain_model.issue import (
     MilestoneName,
     ProjectName,
 )
+from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority
 from mb_workflow.d_lib.models import Payload, Value
 
 if TYPE_CHECKING:
     from collections.abc import Generator
 
     from mb_workflow.b_core.d_domain_model.issue import IssueFilter, IssueUpdate
+    from mb_workflow.b_core.d_domain_model.pool import ViewSlug
 
 
 class LinearApiKey(Value[str]):
@@ -281,6 +283,24 @@ class IssuePayload(Payload):
         )
 
 
+class PoolTicketPayload(IssuePayload):
+    priority: Priority
+
+    @override
+    @staticmethod
+    def fake() -> PoolTicketPayload:
+        return PoolTicketPayload(
+            identifier=IssueIdentifier.fake(),
+            status=IssueStatusName.fake(),
+            project=ProjectPayload.fake(),
+            labels=(LabelPayload.fake(),),
+            priority=Priority.medium,
+        )
+
+    def ticket(self) -> PoolTicket:
+        return PoolTicket(issue=self.issue(), priority=self.priority)
+
+
 class IssueDetailPayload(IssuePayload):
     title: IssueTitle
     description: IssueDescription | None = None
@@ -351,6 +371,23 @@ class IssueSweep(Payload):
         return IssueSweep(issues=IssuePage.fake())
 
 
+class PoolTicketPage(Payload):
+    nodes: tuple[PoolTicketPayload, ...]
+    page_info: PageInfo
+
+    @staticmethod
+    def fake() -> PoolTicketPage:
+        return PoolTicketPage(nodes=(PoolTicketPayload.fake(),), page_info=PageInfo.fake())
+
+
+class ViewRead(Payload):
+    issues: PoolTicketPage = Field(validation_alias=AliasPath("customView", "issues"))
+
+    @staticmethod
+    def fake() -> ViewRead:
+        return ViewRead(issues=PoolTicketPage.fake())
+
+
 @contextmanager
 def translated_errors() -> Generator[None]:
     try:
@@ -408,6 +445,38 @@ class Linear(TicketTracker):
             cursor = page.page_info.next_cursor()
             if cursor is None:
                 return Issues(tuple(found))
+
+    @override
+    def view_tickets(self, view: ViewSlug) -> PoolTickets:
+        found: list[PoolTicket] = []
+        cursor: PageCursor | None = None
+        while True:
+            with translated_errors():
+                data = self._client.execute(
+                    """
+                    query($view: String!, $after: String) {
+                      customView(id: $view) {
+                        issues(first: 250, after: $after) {
+                          nodes {
+                            identifier
+                            priority
+                            state { name }
+                            project { name }
+                            labels { nodes { name } }
+                            assignee { id }
+                          }
+                          pageInfo { hasNextPage endCursor }
+                        }
+                      }
+                    }
+                    """,
+                    {"view": view.root, "after": cursor.root if cursor is not None else None},
+                )
+            page = ViewRead.model_validate(data).issues
+            found.extend(node.ticket() for node in page.nodes)
+            cursor = page.page_info.next_cursor()
+            if cursor is None:
+                return PoolTickets(tuple(found))
 
     @override
     def read_issue(self, issue: IssueIdentifier) -> Issue:
