@@ -12,7 +12,7 @@ from linear_python_client import (
 )
 from pydantic import AliasPath, Field
 
-from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker, IssueTrackerError
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker, TicketTrackerError
 from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
@@ -182,7 +182,7 @@ class ProjectRecord(Payload):
     def milestone(self, name: MilestoneName) -> MilestoneId:
         found = next((known for known in self.milestones if known.name.names(name).root), None)
         if found is None:
-            raise IssueTrackerError(f"{self.name.root} has no milestone named {name.root}.")
+            raise TicketTrackerError(f"{self.name.root} has no milestone named {name.root}.")
         return found.id
 
 
@@ -216,7 +216,7 @@ class UpdateLookup(Payload):
         known = LabelNames(tuple(record.name for record in self.labels))
         unknown = known.unmatched(labels)
         if unknown.root:
-            raise IssueTrackerError(
+            raise TicketTrackerError(
                 f"No label is named {', '.join(label.root for label in unknown.root)}."
             )
         return tuple(
@@ -228,27 +228,27 @@ class UpdateLookup(Payload):
         if isinstance(assignee, Cleared):
             return None
         if not self.users:
-            raise IssueTrackerError(f"No Linear user has the email {assignee.root}.")
+            raise TicketTrackerError(f"No Linear user has the email {assignee.root}.")
         return self.users[0].id
 
     def project_id(self, project: ProjectName | Cleared) -> ProjectId | None:
         if isinstance(project, Cleared):
             return None
         if not self.projects:
-            raise IssueTrackerError(f"No project is named {project.root}.")
+            raise TicketTrackerError(f"No project is named {project.root}.")
         return self.projects[0].id
 
     def milestone_id(self, milestone: Milestone | Cleared) -> MilestoneId | None:
         if isinstance(milestone, Cleared):
             return None
         if not self.milestone_projects:
-            raise IssueTrackerError(f"No project is named {milestone.project.root}.")
+            raise TicketTrackerError(f"No project is named {milestone.project.root}.")
         return self.milestone_projects[0].milestone(milestone.name)
 
     def state_id(self, status: StatusName) -> StateId:
         found = next((known for known in self.states if known.name.names(status).root), None)
         if found is None:
-            raise IssueTrackerError(f"No status is named {status.root}.")
+            raise TicketTrackerError(f"No status is named {status.root}.")
         return found.id
 
 
@@ -355,11 +355,11 @@ def translated_errors() -> Generator[None]:
     try:
         yield
     except LinearError as error:
-        raise IssueTrackerError(str(error)) from error
+        raise TicketTrackerError(str(error)) from error
 
 
 # The client's own issue queries leave out the project, which the sweep's exclusions read.
-class Linear(IssueTracker):
+class Linear(TicketTracker):
     def __init__(self, client: LinearClient) -> None:
         self._client = client
 
@@ -451,7 +451,7 @@ class Linear(IssueTracker):
         with translated_errors():
             user = self._client.find_user(FindUserRequest(email=assignee.root)).user
             if user is None or user.id is None:
-                raise IssueTrackerError(f"No Linear user has the email {assignee.root}.")
+                raise TicketTrackerError(f"No Linear user has the email {assignee.root}.")
             _ = self._client.update_issue(IssueUpdateRequest(id=issue.root, assignee_id=user.id))
 
     @override
@@ -488,7 +488,7 @@ class Linear(IssueTracker):
         with translated_errors():
             viewer = self._client.viewer().viewer
         if viewer is None or viewer.email is None:
-            raise IssueTrackerError("Linear did not say who the API key belongs to.")
+            raise TicketTrackerError("Linear did not say who the API key belongs to.")
         return Assignee(viewer.email)
 
     def _lookup(self, issue: IssueIdentifier, update: IssueUpdate) -> UpdateLookup:
@@ -546,5 +546,5 @@ class Linear(IssueTracker):
         with translated_errors():
             found = self._client.find_label(FindLabelRequest(name=label.root)).label
         if found is None or found.id is None:
-            raise IssueTrackerError(f"No label is named {label.root}.")
+            raise TicketTrackerError(f"No label is named {label.root}.")
         return LabelId(found.id)

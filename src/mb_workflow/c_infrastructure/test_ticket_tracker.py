@@ -13,9 +13,9 @@ from linear_python_client import (
 )
 from pydantic import AliasPath, Field
 
-from mb_workflow.b_core.c_secondary_ports.issue_tracker import (
-    FakeIssueTracker,
-    IssueTrackerError,
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+    FakeTicketTracker,
+    TicketTrackerError,
     TrackedIssue,
 )
 from mb_workflow.b_core.d_domain_model.issue import (
@@ -53,7 +53,7 @@ from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.d_lib.models import Model, Payload, Value
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
 
 
 class Seed(StrEnum):
@@ -139,7 +139,7 @@ class Backlog(Model):
         planted = next(planted for planted in seeds() if planted.seed == seed)
         return planted.detail(self.identifier(seed))
 
-    def picked(self, wanted: IssueFilter, tracker: IssueTracker) -> tuple[Seed, ...]:
+    def picked(self, wanted: IssueFilter, tracker: TicketTracker) -> tuple[Seed, ...]:
         swept = tracker.list_issues(wanted).identifiers()
         return tuple(seed for seed in Seed if self.identifier(seed) in swept)
 
@@ -356,10 +356,10 @@ def backlog(kind: TrackerKind, request: pytest.FixtureRequest) -> Backlog:
 
 
 @pytest.fixture
-def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest) -> IssueTracker:
+def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest) -> TicketTracker:
     if kind == TrackerKind.linear:
         return Linear(request.getfixturevalue("linear_client"))
-    return FakeIssueTracker(
+    return FakeTicketTracker(
         workspace_labels(),
         tuple(
             TrackedIssue(
@@ -379,19 +379,19 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
     )
 
 
-def test_every_workspace_label_is_listed(tracker: IssueTracker) -> None:
+def test_every_workspace_label_is_listed(tracker: TicketTracker) -> None:
     assert tracker.workspace_labels().unmatched(workspace_labels()) == LabelNames(())
 
 
 def test_the_filter_picks_the_issues_one_creator_made_since_a_date(
-    tracker: IssueTracker, backlog: Backlog
+    tracker: TicketTracker, backlog: Backlog
 ) -> None:
     since = IssueFilter(creator=backlog.creator, created_after=CreatedAfter(date(2026, 8, 9)))
     assert backlog.picked(since, tracker) == (Seed.recent, Seed.newest, Seed.done)
 
 
 def test_the_filter_skips_issues_another_creator_made(
-    tracker: IssueTracker, backlog: Backlog
+    tracker: TicketTracker, backlog: Backlog
 ) -> None:
     other = IssueFilter(
         creator=Creator("someone@flowbase.io"), created_after=CreatedAfter(date(2026, 8, 9))
@@ -399,47 +399,47 @@ def test_the_filter_skips_issues_another_creator_made(
     assert backlog.picked(other, tracker) == ()
 
 
-def test_the_filter_start_date_is_inclusive(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_the_filter_start_date_is_inclusive(tracker: TicketTracker, backlog: Backlog) -> None:
     after = IssueFilter(creator=backlog.creator, created_after=CreatedAfter(date(2026, 9, 2)))
     assert backlog.picked(after, tracker) == (Seed.newest,)
 
 
-def test_reads_an_issue_back_as_it_was_given(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_reads_an_issue_back_as_it_was_given(tracker: TicketTracker, backlog: Backlog) -> None:
     assert tracker.read_issue(backlog.identifier(Seed.done)) == backlog.issue(Seed.done)
 
 
-def test_an_issue_without_a_project_carries_none(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_an_issue_without_a_project_carries_none(tracker: TicketTracker, backlog: Backlog) -> None:
     assert tracker.read_issue(backlog.identifier(Seed.done)).project is None
 
 
-def test_a_project_survives_the_round_trip(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_a_project_survives_the_round_trip(tracker: TicketTracker, backlog: Backlog) -> None:
     assert tracker.read_issue(backlog.identifier(Seed.recent)).project == ProjectName.fake()
 
 
-def test_reading_an_unknown_issue_is_refused(tracker: IssueTracker) -> None:
-    with pytest.raises(IssueTrackerError):
+def test_reading_an_unknown_issue_is_refused(tracker: TicketTracker) -> None:
+    with pytest.raises(TicketTrackerError):
         _ = tracker.read_issue(IssueIdentifier("E-404"))
 
 
 def test_viewing_an_issue_carries_its_title_and_description(
-    tracker: IssueTracker, backlog: Backlog
+    tracker: TicketTracker, backlog: Backlog
 ) -> None:
     assert tracker.read_issue_detail(backlog.identifier(Seed.recent)) == backlog.detail(Seed.recent)
 
 
 def test_an_issue_without_a_description_carries_none(
-    tracker: IssueTracker, backlog: Backlog
+    tracker: TicketTracker, backlog: Backlog
 ) -> None:
     assert tracker.read_issue_detail(backlog.identifier(Seed.done)).description is None
 
 
-def test_viewing_an_unknown_issue_is_refused(tracker: IssueTracker) -> None:
-    with pytest.raises(IssueTrackerError):
+def test_viewing_an_unknown_issue_is_refused(tracker: TicketTracker) -> None:
+    with pytest.raises(TicketTrackerError):
         _ = tracker.read_issue_detail(IssueIdentifier("E-404"))
 
 
 def test_an_added_label_joins_the_ones_already_there(
-    tracker: IssueTracker, backlog: Backlog
+    tracker: TicketTracker, backlog: Backlog
 ) -> None:
     tracker.add_label(backlog.identifier(Seed.done), LabelName.fake())
     assert set(tracker.read_issue(backlog.identifier(Seed.done)).labels.root) == {
@@ -448,55 +448,55 @@ def test_an_added_label_joins_the_ones_already_there(
     }
 
 
-def test_adding_a_label_twice_carries_it_once(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_adding_a_label_twice_carries_it_once(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.add_label(backlog.identifier(Seed.recent), LabelName.fake())
     tracker.add_label(backlog.identifier(Seed.recent), LabelName.fake())
     assert tracker.read_issue(backlog.identifier(Seed.recent)).labels == LabelNames.fake()
 
 
-def test_adding_an_unknown_label_is_refused(tracker: IssueTracker, backlog: Backlog) -> None:
-    with pytest.raises(IssueTrackerError):
+def test_adding_an_unknown_label_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
+    with pytest.raises(TicketTrackerError):
         tracker.add_label(backlog.identifier(Seed.recent), LabelName("Frontend"))
 
 
-def test_setting_labels_replaces_the_ones_there(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_setting_labels_replaces_the_ones_there(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.set_labels(backlog.identifier(Seed.done), LabelNames((LabelName("Backend"),)))
     assert tracker.read_issue(backlog.identifier(Seed.done)).labels == LabelNames(
         (LabelName("Backend"),)
     )
 
 
-def test_setting_no_labels_clears_them(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_setting_no_labels_clears_them(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.set_labels(backlog.identifier(Seed.done), LabelNames(()))
     assert tracker.read_issue(backlog.identifier(Seed.done)).labels == LabelNames(())
 
 
-def test_setting_an_unknown_label_is_refused(tracker: IssueTracker, backlog: Backlog) -> None:
-    with pytest.raises(IssueTrackerError):
+def test_setting_an_unknown_label_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
+    with pytest.raises(TicketTrackerError):
         tracker.set_labels(backlog.identifier(Seed.done), LabelNames((LabelName("Frontend"),)))
 
 
-def test_an_issue_starts_unassigned(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_an_issue_starts_unassigned(tracker: TicketTracker, backlog: Backlog) -> None:
     assert tracker.read_issue(backlog.identifier(Seed.recent)).assigned == Assigned(False)
 
 
-def test_assigning_an_issue_leaves_it_assigned(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_assigning_an_issue_leaves_it_assigned(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.assign(backlog.identifier(Seed.recent), backlog.assignee)
     assert tracker.read_issue(backlog.identifier(Seed.recent)).assigned == Assigned(True)
 
 
-def test_assigning_an_unknown_issue_is_refused(tracker: IssueTracker, backlog: Backlog) -> None:
-    with pytest.raises(IssueTrackerError):
+def test_assigning_an_unknown_issue_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
+    with pytest.raises(TicketTrackerError):
         tracker.assign(IssueIdentifier("E-404"), backlog.assignee)
 
 
-def test_a_label_is_found_whatever_its_case(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_a_label_is_found_whatever_its_case(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.add_label(backlog.identifier(Seed.recent), LabelName("D-IMPLEMENT"))
     assert tracker.read_issue(backlog.identifier(Seed.recent)).labels == LabelNames.fake()
 
 
 def test_setting_labels_takes_the_workspace_spelling(
-    tracker: IssueTracker, backlog: Backlog
+    tracker: TicketTracker, backlog: Backlog
 ) -> None:
     tracker.set_labels(backlog.identifier(Seed.recent), LabelNames((LabelName("backend"),)))
     assert tracker.read_issue(backlog.identifier(Seed.recent)).labels == LabelNames(
@@ -505,18 +505,18 @@ def test_setting_labels_takes_the_workspace_spelling(
 
 
 def test_adding_a_label_in_another_case_carries_it_once(
-    tracker: IssueTracker, backlog: Backlog
+    tracker: TicketTracker, backlog: Backlog
 ) -> None:
     tracker.add_label(backlog.identifier(Seed.recent), LabelName.fake())
     tracker.add_label(backlog.identifier(Seed.recent), LabelName("D-Implement"))
     assert tracker.read_issue(backlog.identifier(Seed.recent)).labels == LabelNames.fake()
 
 
-def test_the_viewer_is_the_one_holding_the_key(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_the_viewer_is_the_one_holding_the_key(tracker: TicketTracker, backlog: Backlog) -> None:
     assert tracker.viewer() == backlog.assignee
 
 
-def test_an_update_sets_the_title_and_description(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_an_update_sets_the_title_and_description(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.done),
         IssueUpdate.nothing().model_copy(
@@ -534,7 +534,7 @@ def test_an_update_sets_the_title_and_description(tracker: IssueTracker, backlog
 
 
 def test_an_update_leaves_the_fields_it_does_not_name(
-    tracker: IssueTracker, backlog: Backlog
+    tracker: TicketTracker, backlog: Backlog
 ) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.done),
@@ -543,7 +543,7 @@ def test_an_update_leaves_the_fields_it_does_not_name(
     assert tracker.read_issue(backlog.identifier(Seed.done)) == backlog.issue(Seed.done)
 
 
-def test_an_update_replaces_the_labels(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_an_update_replaces_the_labels(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.done),
         IssueUpdate.nothing().model_copy(update={"labels": LabelNames((LabelName("backend"),))}),
@@ -554,9 +554,9 @@ def test_an_update_replaces_the_labels(tracker: IssueTracker, backlog: Backlog) 
 
 
 def test_an_update_with_an_unknown_label_is_refused(
-    tracker: IssueTracker, backlog: Backlog
+    tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    with pytest.raises(IssueTrackerError):
+    with pytest.raises(TicketTrackerError):
         tracker.update_issue(
             backlog.identifier(Seed.done),
             IssueUpdate.nothing().model_copy(
@@ -565,7 +565,7 @@ def test_an_update_with_an_unknown_label_is_refused(
         )
 
 
-def test_an_update_names_the_assignee(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_an_update_names_the_assignee(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"assignee": backlog.assignee}),
@@ -574,7 +574,7 @@ def test_an_update_names_the_assignee(tracker: IssueTracker, backlog: Backlog) -
     assert (detail.assignee, detail.issue.assigned) == (backlog.assignee, Assigned(True))
 
 
-def test_an_update_can_unassign(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_an_update_can_unassign(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"assignee": backlog.assignee}),
@@ -587,7 +587,7 @@ def test_an_update_can_unassign(tracker: IssueTracker, backlog: Backlog) -> None
     assert (detail.assignee, detail.issue.assigned) == (None, Assigned(False))
 
 
-def test_an_update_moves_an_issue_into_a_project(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_an_update_moves_an_issue_into_a_project(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.done),
         IssueUpdate.nothing().model_copy(update={"project": ProjectName.fake()}),
@@ -596,7 +596,7 @@ def test_an_update_moves_an_issue_into_a_project(tracker: IssueTracker, backlog:
 
 
 def test_an_update_can_take_an_issue_out_of_its_project(
-    tracker: IssueTracker, backlog: Backlog
+    tracker: TicketTracker, backlog: Backlog
 ) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.recent),
@@ -605,15 +605,15 @@ def test_an_update_can_take_an_issue_out_of_its_project(
     assert tracker.read_issue(backlog.identifier(Seed.recent)).project is None
 
 
-def test_moving_to_an_unknown_project_is_refused(tracker: IssueTracker, backlog: Backlog) -> None:
-    with pytest.raises(IssueTrackerError):
+def test_moving_to_an_unknown_project_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
+    with pytest.raises(TicketTrackerError):
         tracker.update_issue(
             backlog.identifier(Seed.recent),
             IssueUpdate.nothing().model_copy(update={"project": ProjectName("No such project")}),
         )
 
 
-def test_an_update_sets_a_milestone(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_an_update_sets_a_milestone(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"milestone": Milestone.fake()}),
@@ -623,7 +623,7 @@ def test_an_update_sets_a_milestone(tracker: IssueTracker, backlog: Backlog) -> 
     )
 
 
-def test_an_update_can_clear_the_milestone(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_an_update_can_clear_the_milestone(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"milestone": Milestone.fake()}),
@@ -635,16 +635,16 @@ def test_an_update_can_clear_the_milestone(tracker: IssueTracker, backlog: Backl
     assert tracker.read_issue_detail(backlog.identifier(Seed.recent)).milestone is None
 
 
-def test_an_unknown_milestone_is_refused(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_an_unknown_milestone_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
     unknown = Milestone(project=ProjectName.fake(), name=MilestoneName("No such milestone"))
-    with pytest.raises(IssueTrackerError):
+    with pytest.raises(TicketTrackerError):
         tracker.update_issue(
             backlog.identifier(Seed.recent),
             IssueUpdate.nothing().model_copy(update={"milestone": unknown}),
         )
 
 
-def test_an_update_moves_an_issue_to_a_status(tracker: IssueTracker, backlog: Backlog) -> None:
+def test_an_update_moves_an_issue_to_a_status(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"status": StatusName("in progress")}),
@@ -652,8 +652,8 @@ def test_an_update_moves_an_issue_to_a_status(tracker: IssueTracker, backlog: Ba
     assert tracker.read_issue(backlog.identifier(Seed.recent)).status == StatusName("In Progress")
 
 
-def test_moving_to_an_unknown_status_is_refused(tracker: IssueTracker, backlog: Backlog) -> None:
-    with pytest.raises(IssueTrackerError):
+def test_moving_to_an_unknown_status_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
+    with pytest.raises(TicketTrackerError):
         tracker.update_issue(
             backlog.identifier(Seed.recent),
             IssueUpdate.nothing().model_copy(update={"status": StatusName("No such status")}),

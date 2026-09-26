@@ -8,7 +8,7 @@ from mb_workflow.b_core.a_features.label import (
     issue_from_workspace,
     remove_label,
 )
-from mb_workflow.b_core.c_secondary_ports.issue_tracker import FakeIssueTracker, TrackedIssue
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracker, TrackedIssue
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
 from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
@@ -33,7 +33,7 @@ def test_removing_a_label_keeps_the_others() -> None:
     issue = Issue.fake().model_copy(
         update={"labels": LabelNames((LabelName("d-grill"), LabelName.fake()))}
     )
-    tracker = FakeIssueTracker(
+    tracker = FakeTicketTracker(
         LabelNames((LabelName("d-grill"), LabelName.fake())),
         (TrackedIssue.fake().model_copy(update={"issue": issue}),),
     )
@@ -43,7 +43,7 @@ def test_removing_a_label_keeps_the_others() -> None:
 
 def test_removing_the_only_label_leaves_none() -> None:
     issue = Issue.fake().model_copy(update={"labels": LabelNames.fake()})
-    tracker = FakeIssueTracker(
+    tracker = FakeTicketTracker(
         LabelNames((LabelName("d-grill"), LabelName.fake())),
         (TrackedIssue.fake().model_copy(update={"issue": issue}),),
     )
@@ -53,7 +53,7 @@ def test_removing_the_only_label_leaves_none() -> None:
 
 def test_removing_a_label_the_issue_does_not_carry_leaves_it_alone() -> None:
     issue = Issue.fake().model_copy(update={"labels": LabelNames.fake()})
-    tracker = FakeIssueTracker(
+    tracker = FakeTicketTracker(
         LabelNames((LabelName("d-grill"), LabelName.fake())),
         (TrackedIssue.fake().model_copy(update={"issue": issue}),),
     )
@@ -63,7 +63,7 @@ def test_removing_a_label_the_issue_does_not_carry_leaves_it_alone() -> None:
 
 def test_labels_the_issue_linked_to_the_worktree_you_stand_in() -> None:
     issue = Issue.fake().model_copy(update={"labels": LabelNames(())})
-    tracker = FakeIssueTracker(
+    tracker = FakeTicketTracker(
         LabelNames.fake(), (TrackedIssue.fake().model_copy(update={"issue": issue}),)
     )
     manager = FakeWorkspaceManager(Worktrees.fake(), WorktreePath.fake())
@@ -72,7 +72,7 @@ def test_labels_the_issue_linked_to_the_worktree_you_stand_in() -> None:
 
 
 def test_unlabels_the_issue_linked_to_the_worktree_you_stand_in() -> None:
-    tracker = FakeIssueTracker(LabelNames.fake(), (TrackedIssue.fake(),))
+    tracker = FakeTicketTracker(LabelNames.fake(), (TrackedIssue.fake(),))
     manager = FakeWorkspaceManager(Worktrees.fake(), WorktreePath.fake())
     request = LabelRequest(label=LabelName.fake(), change=LabelChange.remove)
     change_label(manager, tracker, request)

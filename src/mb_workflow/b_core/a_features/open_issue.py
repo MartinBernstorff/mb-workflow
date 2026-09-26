@@ -2,7 +2,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.b_domain_services.next_action import next_action, state_of
-from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.flow import (
     AwaitingHuman,
@@ -12,13 +12,11 @@ from mb_workflow.b_core.d_domain_model.flow import (
     WorkflowChart,
 )
 from mb_workflow.b_core.d_domain_model.issue import (
-    Assignee,
     BranchSlug,
     IssueIdentifier,
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
     AgentName,
-    ProjectSelector,
     TerminalText,
     TimeoutMs,
     WorktreeName,
@@ -26,9 +24,10 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
+    from mb_workflow.b_core.d_domain_model.config import WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow import StateName
     from mb_workflow.b_core.d_domain_model.workspace import OpenedWorktree
 
@@ -40,21 +39,17 @@ class PromptUndeliveredError(Exception):
 
 
 class OpenRequest(Model):
-    project: ProjectSelector
     branch: BranchSlug
     issue: IssueIdentifier | None
     prompt: TerminalText | None
-    assignee: Assignee
     idle_timeout: TimeoutMs
 
     @staticmethod
     def fake() -> OpenRequest:
         return OpenRequest(
-            project=ProjectSelector.fake(),
             branch=BranchSlug.fake(),
             issue=IssueIdentifier.fake(),
             prompt=TerminalText.fake(),
-            assignee=Assignee.fake(),
             idle_timeout=TimeoutMs.fake(),
         )
 
@@ -71,8 +66,9 @@ class OpenRequest(Model):
 
 def open_workspace(
     manager: WorkspaceManager,
-    tracker: IssueTracker,
+    tracker: TicketTracker,
     board: WorkspaceStatusStore,
+    workspace: WorkspaceSettings,
     request: OpenRequest,
 ) -> None:
     # Resolve the state before touching anything, so an issue with no work left is neither assigned nor opened.
@@ -83,19 +79,19 @@ def open_workspace(
     # Assignment is a convenience, not the point of opening a workspace, so never fail the run over it.
     if request.issue is not None:
         try:
-            tracker.assign(request.issue, request.assignee)
-        except IssueTrackerError as error:
+            tracker.assign(request.issue, workspace.assignee)
+        except TicketTrackerError as error:
             logger.warning(
                 "Could not assign %s to %s: %s",
                 request.issue.root,
-                request.assignee.root,
+                workspace.assignee.root,
                 error,
             )
 
     name = WorktreeName.of_branch(request.branch, request.issue)
     logger.info("Creating worktree with name: %s", name.root)
     opened = manager.create_for_issue(
-        request.project, name, request.issue, prompting.agent(), status
+        workspace.orca_project, name, request.issue, prompting.agent(), status
     )
     logger.info("Created %s", opened.worktree.path.root)
 
@@ -113,12 +109,12 @@ def action_in(state: StateName) -> Skill | AwaitingHuman:
     return action
 
 
-def issue_state(tracker: IssueTracker, issue: IssueIdentifier | None) -> StateName | None:
+def issue_state(tracker: TicketTracker, issue: IssueIdentifier | None) -> StateName | None:
     if issue is None:
         return None
     try:
         read = tracker.read_issue(issue)
-    except IssueTrackerError as error:
+    except TicketTrackerError as error:
         logger.warning("Could not read the state of %s: %s", issue.root, error)
         return None
     return state_of(WorkflowChart, read.status)

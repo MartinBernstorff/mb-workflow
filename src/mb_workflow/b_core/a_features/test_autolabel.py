@@ -10,12 +10,12 @@ from mb_workflow.b_core.a_features.autolabel import (
     UnknownLabelError,
     label_eligible_issues,
 )
-from mb_workflow.b_core.c_secondary_ports.issue_tracker import (
-    FakeIssueTracker,
-    IssueTrackerError,
+from mb_workflow.b_core.c_secondary_ports.ledger_store import FakeLedgerStore
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+    FakeTicketTracker,
+    TicketTrackerError,
     TrackedIssue,
 )
-from mb_workflow.b_core.c_secondary_ports.ledger_store import FakeLedgerStore
 from mb_workflow.b_core.d_domain_model.autolabel import Ledger, Recorded
 from mb_workflow.b_core.d_domain_model.issue import (
     CreatedAfter,
@@ -52,11 +52,11 @@ def tracked_issues() -> tuple[TrackedIssue, ...]:
     )
 
 
-def seeded_tracker() -> FakeIssueTracker:
-    return FakeIssueTracker(LabelNames.fake(), tracked_issues())
+def seeded_tracker() -> FakeTicketTracker:
+    return FakeTicketTracker(LabelNames.fake(), tracked_issues())
 
 
-class RefusingTracker(FakeIssueTracker):
+class RefusingTracker(FakeTicketTracker):
     def __init__(self, refused: IssueIdentifier) -> None:
         super().__init__(LabelNames.fake(), tracked_issues())
         self._refused = refused
@@ -64,7 +64,7 @@ class RefusingTracker(FakeIssueTracker):
     @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
         if issue == self._refused:
-            raise IssueTrackerError(f"{issue.root} refused the label.")
+            raise TicketTrackerError(f"{issue.root} refused the label.")
         super().add_label(issue, label)
 
 
@@ -78,7 +78,7 @@ def request_with(dry_run: DryRun) -> AutolabelRequest:
     return AutolabelRequest.fake().model_copy(update={"dry_run": dry_run})
 
 
-def apply_labels(issues: FakeIssueTracker, store: FakeLedgerStore) -> Outcome:
+def apply_labels(issues: FakeTicketTracker, store: FakeLedgerStore) -> Outcome:
     return label_eligible_issues(issues, store, request_with(DryRun(False)), CreatedAfter.fake())
 
 
