@@ -343,8 +343,6 @@ class Orca(WorkspaceManager):
             Command(("orca", "terminal", "send", "--terminal", terminal.root, "--text", text.root))
         )
 
-    # Orca has no command that lists board columns, so its refusal of an unknown one carries the list.
-    # The columns are the board's, so any worktree can be asked, and the current directory may be none.
     def columns(self, unknown: ColumnLabel) -> ErrorMessage:
         listed = self.worktrees().root
         if not listed:

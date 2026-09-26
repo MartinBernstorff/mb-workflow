@@ -42,7 +42,7 @@ def fake_board() -> FakeStatusStore:
 # The fake board names a column for every state, so the manager must hold them all.
 def fake_manager() -> FakeWorkspaceManager:
     columns = WorkspaceStatuses(
-        tuple(fake_board().column_for(state) for state in StateNames.of_chart(WorkflowChart).root)
+        tuple(fake_board().status_for(state) for state in StateNames.of_chart(WorkflowChart).root)
     )
     return FakeWorkspaceManager(Worktrees.fake(), WorktreePath.fake(), columns)
 
@@ -117,7 +117,7 @@ def test_an_issue_waiting_for_a_human_is_opened_without_a_prompt() -> None:
 def test_seeds_the_board_column_from_the_issues_state() -> None:
     opening = fake_manager()
     open_workspace(opening, tracking(StatusName("Backlog")), fake_board(), OpenRequest.fake())
-    assert opened_in(opening).status == fake_board().column_for(StateName("Grilling"))
+    assert opened_in(opening).status == fake_board().status_for(StateName("Grilling"))
 
 
 def test_an_issue_the_tracker_cannot_read_is_opened_in_no_column() -> None:

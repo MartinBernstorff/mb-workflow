@@ -78,7 +78,7 @@ def open_workspace(
     # Resolve the state before touching anything, so an issue with no work left is neither assigned nor opened.
     state = issue_state(tracker, request.issue)
     prompting = request.prompted_for(None if state is None else action_in(state))
-    column = None if state is None else board.column_for(state)
+    status = None if state is None else board.status_for(state)
 
     # Assignment is a convenience, not the point of opening a workspace, so never fail the run over it.
     if request.issue is not None:
@@ -95,7 +95,7 @@ def open_workspace(
     name = WorktreeName.of_branch(request.branch, request.issue)
     logger.info("Creating worktree with name: %s", name.root)
     opened = manager.create_for_issue(
-        request.project, name, request.issue, prompting.agent(), column
+        request.project, name, request.issue, prompting.agent(), status
     )
     logger.info("Created %s", opened.worktree.path.root)
 

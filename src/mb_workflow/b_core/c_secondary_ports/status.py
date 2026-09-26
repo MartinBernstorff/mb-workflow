@@ -11,7 +11,7 @@ class WorkspaceStatusStore(Protocol):
 
     def write(self, state: StateName) -> None: ...
 
-    def column_for(self, state: StateName) -> WorkspaceStatus: ...
+    def status_for(self, state: StateName) -> WorkspaceStatus: ...
 
 
 class FakeStatusStore(WorkspaceStatusStore):
@@ -27,5 +27,5 @@ class FakeStatusStore(WorkspaceStatusStore):
         self._state = state
 
     @override
-    def column_for(self, state: StateName) -> WorkspaceStatus:
-        return WorkspaceStatus(f"column-{state.root.casefold()}")
+    def status_for(self, state: StateName) -> WorkspaceStatus:
+        return WorkspaceStatus(f"status-{state.root.casefold()}")

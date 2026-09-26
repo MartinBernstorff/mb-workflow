@@ -114,7 +114,7 @@ def linear() -> Linear:
 
 
 def workspace_board(orca: Orca) -> WorkspaceBoard:
-    return WorkspaceBoard(orca, StateNames.initial_state(WorkflowChart))
+    return WorkspaceBoard.of_orca(orca, StateNames.initial_state(WorkflowChart))
 
 
 @guarded

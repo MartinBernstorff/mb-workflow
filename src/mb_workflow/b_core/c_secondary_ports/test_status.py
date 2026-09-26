@@ -12,6 +12,6 @@ def test_writing_moves_the_fake_store_to_the_new_state() -> None:
     assert store.read() == StateName("Implementing")
 
 
-def test_the_fake_store_gives_each_state_its_own_column() -> None:
+def test_the_fake_store_gives_each_state_its_own_status() -> None:
     store = FakeStatusStore(StateName("Grilling"))
-    assert store.column_for(StateName("QA")) != store.column_for(StateName("Review"))
+    assert store.status_for(StateName("QA")) != store.status_for(StateName("Review"))
