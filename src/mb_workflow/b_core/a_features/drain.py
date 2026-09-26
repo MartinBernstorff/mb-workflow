@@ -87,7 +87,7 @@ def drain_pool(
         for ticket in ready.root:
             if pool.limits.filled(occupancy).root:
                 break
-            if not pool.limits.admits(occupancy, ticket.issue.status).root:
+            if not pool.limits.admits(occupancy, ticket.state()).root:
                 continue
             if (
                 request.dry_run.root
@@ -103,7 +103,7 @@ def drain_pool(
             ):
                 picked.append(ticket)
             # A ticket lost to another host is now in progress there, so it fills a slot too.
-            occupancy = occupancy.with_ticket_in(ticket.issue.status)
+            occupancy = occupancy.with_ticket_in(ticket.state())
         return DrainOutcome(ready=ready, picked=PoolTickets(tuple(picked)))
 
 

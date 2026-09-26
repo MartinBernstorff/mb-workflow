@@ -21,7 +21,8 @@ from mb_workflow.b_core.d_domain_model.config import (
     WorkingDirectory,
     WorkspaceSettings,
 )
-from mb_workflow.b_core.d_domain_model.issue import Assignee, IssueStatusName, LabelName
+from mb_workflow.b_core.d_domain_model.flow import StateName
+from mb_workflow.b_core.d_domain_model.issue import Assignee, LabelName
 from mb_workflow.b_core.d_domain_model.pool import Limit, PoolLimits, ViewSlug
 from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
 
@@ -253,11 +254,11 @@ def test_the_pool_limits_table_sets_the_limits(tmp_path: Path) -> None:
     resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake())
     assert resolved.settings.required_pool().limits == PoolLimits(
         total=Limit(6),
-        statuses={IssueStatusName("Grilling"): Limit(1), IssueStatusName("QA"): Limit(2)},
+        states={StateName("Grilling"): Limit(1), StateName("QA"): Limit(2)},
     )
 
 
-def test_a_limit_on_a_status_outside_the_chart_is_a_config_error(tmp_path: Path) -> None:
+def test_a_limit_on_a_state_outside_the_chart_is_a_config_error(tmp_path: Path) -> None:
     _ = (tmp_path / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'

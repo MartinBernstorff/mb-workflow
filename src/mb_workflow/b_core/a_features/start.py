@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.b_domain_services.next_action import next_action, state_of
+from mb_workflow.b_core.b_domain_services.next_action import next_action
 from mb_workflow.b_core.c_secondary_ports.claims import (
     ClaimRequest,
     LabelledClaim,
@@ -19,6 +19,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
     Skill,
     WorkflowChart,
 )
+from mb_workflow.b_core.d_domain_model.flow_labels import state_of
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.workspace import (
     AgentName,
@@ -79,8 +80,8 @@ def start_ticket(
     request: StartRequest,
 ) -> None:
     # Resolve the state before touching anything, so a ticket with no work left is neither claimed, assigned nor opened.
-    status = tracker.read_issue(request.ticket).status
-    state = state_of(WorkflowChart, status)
+    issue = tracker.read_issue(request.ticket)
+    state = state_of(WorkflowChart, issue.labels)
     prompt = request.prompt_for(action_in(request.ticket, state))
 
     name = WorktreeName.of_issue(request.ticket)
@@ -90,7 +91,7 @@ def start_ticket(
         claims,
         ClaimRequest(
             ticket=request.ticket,
-            status=status,
+            status=issue.status,
             holder=holder,
             take_over=request.take_over,
         ),

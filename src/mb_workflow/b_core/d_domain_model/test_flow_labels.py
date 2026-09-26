@@ -1,5 +1,7 @@
+import pytest
+
 from mb_workflow.b_core.d_domain_model.flow import StateName, WorkflowChart
-from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, LabelGroupName
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, LabelGroupName, state_of
 from mb_workflow.b_core.d_domain_model.issue import LabelName, LabelNames
 
 GRILLING = LabelName("Grilling")
@@ -65,3 +67,19 @@ def test_relabelling_replaces_any_other_flow_label_and_keeps_the_rest() -> None:
     assert flow_labels_of(GRILLING, QA).relabelled(held, StateName("QA")) == LabelNames(
         (blocked, QA)
     )
+
+
+@pytest.mark.parametrize("state", ["Grilling", "Specced", "QA", "Merged"])
+def test_a_flow_label_gives_the_state_of_its_name(state: str) -> None:
+    held = LabelNames((LabelName("Backend"), LabelName(state)))
+    assert state_of(WorkflowChart, held) == StateName(state)
+
+
+def test_a_flow_label_in_another_case_gives_the_state_as_the_chart_spells_it() -> None:
+    assert state_of(WorkflowChart, LabelNames((LabelName("implementing"),))) == StateName(
+        "Implementing"
+    )
+
+
+def test_a_ticket_without_a_flow_label_counts_as_grilling() -> None:
+    assert state_of(WorkflowChart, LabelNames((LabelName("Backend"),))) == StateName("Grilling")

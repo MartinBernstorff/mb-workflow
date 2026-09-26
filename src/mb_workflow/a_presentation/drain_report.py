@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 def pick_listing(ready: PoolTickets) -> Output:
     return Output(
         "".join(
-            f"{ticket.issue.identifier.root}\t{ticket.priority.name}\t{ticket.issue.status.root}\n"
+            f"{ticket.issue.identifier.root}\t{ticket.priority.name}\t{ticket.state().root}\n"
             for ticket in ready.root
         )
     )
