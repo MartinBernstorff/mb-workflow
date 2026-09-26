@@ -87,7 +87,14 @@ class PoolTicket(Model):
         return StatusNames(
             tuple(
                 IssueStatusName(name)
-                for name in ("Grilling", "Speccing", "Specced", "Implementing", "Merging")
+                for name in (
+                    "Backlog",
+                    "Grilling",
+                    "Speccing",
+                    "Specced",
+                    "Implementing",
+                    "Merging",
+                )
             )
         )
 

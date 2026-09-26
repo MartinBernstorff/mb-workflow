@@ -48,7 +48,7 @@ def blocked_by(*statuses: IssueStatusName) -> PoolTicket:
 
 
 @pytest.mark.parametrize(
-    "status", ["Grilling", "Speccing", "Specced", "Implementing", "Merging", "specced"]
+    "status", ["Backlog", "Grilling", "Speccing", "Specced", "Implementing", "Merging", "specced"]
 )
 def test_an_unclaimed_ticket_in_a_workable_state_is_ready(status: str) -> None:
     assert ticket(IssueStatusName(status), LabelNames(())).ready(LabelName("claimed")) == Ready(
@@ -56,7 +56,7 @@ def test_an_unclaimed_ticket_in_a_workable_state_is_ready(status: str) -> None:
     )
 
 
-@pytest.mark.parametrize("status", ["Backlog", "QA", "Review", "Merged", "Canceled", "Todo"])
+@pytest.mark.parametrize("status", ["QA", "Review", "Merged", "Canceled", "Todo"])
 def test_a_ticket_in_any_other_state_is_not_ready(status: str) -> None:
     assert ticket(IssueStatusName(status), LabelNames(())).ready(LabelName("claimed")) == Ready(
         False
