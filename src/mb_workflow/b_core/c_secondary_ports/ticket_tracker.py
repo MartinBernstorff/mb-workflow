@@ -38,7 +38,7 @@ class TicketTracker(Protocol):
 
     def list_issues(self, wanted: IssueFilter) -> Issues: ...
 
-    def view_tickets(self, view: ViewSlug) -> PoolTickets: ...
+    def unblocked_view_tickets(self, view: ViewSlug) -> PoolTickets: ...
 
     def labelled_issues(self, label: LabelName, excluding: StatusNames) -> Issues: ...
 
@@ -118,7 +118,7 @@ class FakeTicketTracker(TicketTracker):
         )
 
     @override
-    def view_tickets(self, view: ViewSlug) -> PoolTickets:
+    def unblocked_view_tickets(self, view: ViewSlug) -> PoolTickets:
         listed = self._views.get(view)
         if listed is None:
             raise TicketTrackerError(f"No view has the slug {view.root}.")

@@ -573,14 +573,14 @@ def test_the_filter_start_date_is_inclusive(tracker: TicketTracker, backlog: Bac
 
 
 def listed(tracker: TicketTracker, backlog: Backlog) -> set[Seed]:
-    shown = tracker.view_tickets(backlog.view).identifiers()
+    shown = tracker.unblocked_view_tickets(backlog.view).identifiers()
     return {seed for seed in Seed if backlog.identifier(seed) in shown}
 
 
 def test_a_view_lists_its_unblocked_tickets_with_their_priority(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    assert set(tracker.view_tickets(backlog.view).root) == {
+    assert set(tracker.unblocked_view_tickets(backlog.view).root) == {
         backlog.ticket(seed) for seed in set(Seed) - {Seed.recent}
     }
 
@@ -604,7 +604,7 @@ def test_a_ticket_whose_blockers_are_all_closed_is_listed(
 
 def test_reading_an_unknown_view_is_refused(tracker: TicketTracker) -> None:
     with pytest.raises(TicketTrackerError):
-        _ = tracker.view_tickets(ViewSlug("000000000000"))
+        _ = tracker.unblocked_view_tickets(ViewSlug("000000000000"))
 
 
 def labelled_seeds(

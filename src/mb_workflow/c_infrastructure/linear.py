@@ -462,9 +462,8 @@ class Linear(TicketTracker):
             if cursor is None:
                 return Issues(tuple(found))
 
-    # hasBlockedByRelations counts only open blockers, as the "blocked" flag in Linear's UI does.
     @override
-    def view_tickets(self, view: ViewSlug) -> PoolTickets:
+    def unblocked_view_tickets(self, view: ViewSlug) -> PoolTickets:
         found: list[PoolTicket] = []
         cursor: PageCursor | None = None
         while True:

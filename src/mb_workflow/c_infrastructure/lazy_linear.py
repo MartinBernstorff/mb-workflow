@@ -75,8 +75,8 @@ class LazyLinear(TicketTracker):
         return self._tracker().list_issues(wanted)
 
     @override
-    def view_tickets(self, view: ViewSlug) -> PoolTickets:
-        return self._tracker().view_tickets(view)
+    def unblocked_view_tickets(self, view: ViewSlug) -> PoolTickets:
+        return self._tracker().unblocked_view_tickets(view)
 
     @override
     def labelled_issues(self, label: LabelName, excluding: StatusNames) -> Issues:
