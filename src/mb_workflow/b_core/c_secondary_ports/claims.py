@@ -53,7 +53,7 @@ def claim_ticket(registry: ClaimRegistry, request: ClaimRequest) -> None:
         raise claimed_error(request.ticket, current)
     withdraw_claims(registry, request.ticket, held)
 
-    # Every claimer posts before reading, so each reads back the same earliest claim.
+    # Every claimer posts before reading, so each reads back the same earliest claim, provided Linear serves a just-posted comment at once.
     posted = registry.post(request.ticket, request.holder)
     read_back = registry.claims(request.ticket)
     winner = read_back.holding(request.status)
