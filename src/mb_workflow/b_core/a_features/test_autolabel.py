@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING
 import pytest
 
 from mb_workflow.b_core.a_features.autolabel import (
-    Apply,
     AutolabelRequest,
     Criteria,
+    DryRun,
     ExcludePattern,
     Exclusions,
     Ledger,
@@ -141,11 +141,11 @@ def chosen() -> tuple[IssueIdentifier, ...]:
 
 
 def outcome() -> Outcome:
-    return Outcome(selection=selection(), applied=Apply(True), labelled=chosen(), failed=())
+    return Outcome(selection=selection(), dry_run=DryRun(False), labelled=chosen(), failed=())
 
 
 def dry_outcome() -> Outcome:
-    return Outcome(selection=selection(), applied=Apply(False), labelled=(), failed=())
+    return Outcome(selection=selection(), dry_run=DryRun(True), labelled=(), failed=())
 
 
 def unexcluded() -> Selection:
@@ -253,7 +253,7 @@ def test_the_summary_names_the_updates_that_failed() -> None:
 def test_a_sweep_that_skipped_nothing_summarises_only_the_labelling() -> None:
     every = unexcluded()
     labelled = tuple(issue.identifier for issue in every.labellable().root)
-    every_outcome = Outcome(selection=every, applied=Apply(True), labelled=labelled, failed=())
+    every_outcome = Outcome(selection=every, dry_run=DryRun(False), labelled=labelled, failed=())
     assert every_outcome.summary().root == "Labelled 11 of 11 issues"
 
 
@@ -325,39 +325,55 @@ def test_a_status_the_pattern_misses_is_kept() -> None:
     assert not Exclusions.fake().excludes_status(StatusName.fake()).root
 
 
-def sweeping() -> FakeIssueTracker:
-    return FakeIssueTracker(
+def request(dry_run: DryRun) -> AutolabelRequest:
+    return AutolabelRequest.fake().model_copy(update={"dry_run": dry_run})
+
+
+def test_an_applied_sweep_labels_the_survivors_on_the_tracker(tmp_path: Path) -> None:
+    tracker = FakeIssueTracker(
         LabelNames.fake(),
         tuple(
             TrackedIssue(issue=issue, creator=Creator.fake(), created_on=CreatedOn.fake())
             for issue in default_issues().root
         ),
     )
-
-
-def request(apply: Apply) -> AutolabelRequest:
-    return AutolabelRequest.fake().model_copy(update={"apply": apply})
-
-
-def test_an_applied_sweep_labels_the_survivors_on_the_tracker(tmp_path: Path) -> None:
-    tracker = sweeping()
-    _ = sweep(tracker, request(Apply(True)), LedgerPath(tmp_path / "ledger.txt"))
+    _ = sweep(tracker, request(DryRun(False)), LedgerPath(tmp_path / "ledger.txt"))
     assert tracker.read_issue(IssueIdentifier("E-4")).labels == LabelNames.fake()
 
 
 def test_an_applied_sweep_records_what_it_labelled(tmp_path: Path) -> None:
+    tracker = FakeIssueTracker(
+        LabelNames.fake(),
+        tuple(
+            TrackedIssue(issue=issue, creator=Creator.fake(), created_on=CreatedOn.fake())
+            for issue in default_issues().root
+        ),
+    )
     ledger_path = LedgerPath(tmp_path / "ledger.txt")
-    _ = sweep(sweeping(), request(Apply(True)), ledger_path)
+    _ = sweep(tracker, request(DryRun(False)), ledger_path)
     assert ledger_path.read() == Ledger(tuple(IssueIdentifier(f"E-{n}") for n in (4, 10, 11)))
 
 
 def test_a_dry_sweep_leaves_the_tracker_untouched(tmp_path: Path) -> None:
-    tracker = sweeping()
-    _ = sweep(tracker, request(Apply(False)), LedgerPath(tmp_path / "ledger.txt"))
+    tracker = FakeIssueTracker(
+        LabelNames.fake(),
+        tuple(
+            TrackedIssue(issue=issue, creator=Creator.fake(), created_on=CreatedOn.fake())
+            for issue in default_issues().root
+        ),
+    )
+    _ = sweep(tracker, request(DryRun(True)), LedgerPath(tmp_path / "ledger.txt"))
     assert tracker.read_issue(IssueIdentifier("E-4")).labels == LabelNames(())
 
 
 def test_sweeping_for_a_label_the_tracker_lacks_is_refused(tmp_path: Path) -> None:
-    unknown = request(Apply(True)).model_copy(update={"label": LabelName("Frontend")})
+    tracker = FakeIssueTracker(
+        LabelNames.fake(),
+        tuple(
+            TrackedIssue(issue=issue, creator=Creator.fake(), created_on=CreatedOn.fake())
+            for issue in default_issues().root
+        ),
+    )
+    unknown = request(DryRun(False)).model_copy(update={"label": LabelName("Frontend")})
     with pytest.raises(UnknownLabelError, match="Frontend"):
-        _ = sweep(sweeping(), unknown, LedgerPath(tmp_path / "ledger.txt"))
+        _ = sweep(tracker, unknown, LedgerPath(tmp_path / "ledger.txt"))

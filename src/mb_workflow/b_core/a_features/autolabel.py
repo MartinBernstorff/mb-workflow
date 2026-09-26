@@ -222,10 +222,10 @@ class Selection(Value[tuple[Decision, ...]]):
         )
 
 
-class Apply(Value[bool]):
+class DryRun(Value[bool]):
     @staticmethod
-    def fake() -> Apply:
-        return Apply(False)
+    def fake() -> DryRun:
+        return DryRun(True)
 
 
 class SummaryLine(Value[str]):
@@ -238,7 +238,7 @@ class AutolabelRequest(Model):
     label: LabelName
     wanted: IssueFilter
     exclusions: Exclusions
-    apply: Apply
+    dry_run: DryRun
 
     @staticmethod
     def fake() -> AutolabelRequest:
@@ -246,13 +246,13 @@ class AutolabelRequest(Model):
             label=LabelName.fake(),
             wanted=IssueFilter.fake(),
             exclusions=Exclusions.fake(),
-            apply=Apply.fake(),
+            dry_run=DryRun.fake(),
         )
 
 
 class Outcome(Model):
     selection: Selection
-    applied: Apply
+    dry_run: DryRun
     labelled: tuple[IssueIdentifier, ...]
     failed: tuple[IssueIdentifier, ...]
 
@@ -260,7 +260,7 @@ class Outcome(Model):
     def fake() -> Outcome:
         return Outcome(
             selection=Selection.fake(),
-            applied=Apply(True),
+            dry_run=DryRun(False),
             labelled=(IssueIdentifier.fake(),),
             failed=(),
         )
@@ -269,13 +269,13 @@ class Outcome(Model):
         return Failed(len(self.failed) > 0)
 
     def chosen(self) -> tuple[IssueIdentifier, ...]:
-        if self.applied.root:
+        if not self.dry_run.root:
             return self.labelled
         return self.selection.labellable().identifiers()
 
     def summary(self) -> SummaryLine:
         chosen = self.chosen()
-        verb = "Labelled" if self.applied.root else "Would label"
+        verb = "Would label" if self.dry_run.root else "Labelled"
         total = len(self.selection.root)
         parts = [f"{verb} {len(chosen)} of {total} issue{'' if total == 1 else 's'}"]
         skips = self.selection.skips()
@@ -288,11 +288,11 @@ class Outcome(Model):
         return SummaryLine("; ".join(parts))
 
     def report(self) -> None:
-        verb = "labelled" if self.applied.root else "would label"
+        verb = "would label" if self.dry_run.root else "labelled"
         for issue in self.chosen():
             logger.info("%s %s", verb, issue.root)
         logger.info("%s", self.summary().root)
-        if not self.applied.root:
+        if self.dry_run.root:
             logger.info("Re-run with --apply to label them.")
 
 
@@ -311,14 +311,14 @@ def sweep(tracker: IssueTracker, request: AutolabelRequest, ledger: LedgerPath) 
     criteria = Criteria(label=request.label, exclusions=request.exclusions, ledger=recorded)
     outcome = updated(tracker, Selection.of(issues, criteria), request)
     outcome.report()
-    if request.apply.root and len(outcome.labelled) > 0:
+    if not request.dry_run.root and len(outcome.labelled) > 0:
         ledger.write(recorded.extended(outcome.labelled))
     return outcome
 
 
 def updated(tracker: IssueTracker, selection: Selection, request: AutolabelRequest) -> Outcome:
-    if not request.apply.root:
-        return Outcome(selection=selection, applied=request.apply, labelled=(), failed=())
+    if request.dry_run.root:
+        return Outcome(selection=selection, dry_run=request.dry_run, labelled=(), failed=())
 
     added: list[IssueIdentifier] = []
     failed: list[IssueIdentifier] = []
@@ -332,7 +332,7 @@ def updated(tracker: IssueTracker, selection: Selection, request: AutolabelReque
             added.append(issue.identifier)
     return Outcome(
         selection=selection,
-        applied=request.apply,
+        dry_run=request.dry_run,
         labelled=tuple(added),
         failed=tuple(failed),
     )

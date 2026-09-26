@@ -171,7 +171,7 @@ def linear_client() -> LinearClient:
     key = os.environ.get("LINEAR_INTEGRATION_TEST_API_KEY")
     if not key:
         pytest.fail(
-            "Set LINEAR_INTEGRATION_TEST_API_KEY; `moon run test-linear` reads it from .env."
+            "Set LINEAR_INTEGRATION_TEST_API_KEY; `moon run test-linear-live` reads it from .env."
         )
     client = LinearClient(api_key=key)
     workspace = Workspace.of(client).organization.url_key
@@ -254,7 +254,7 @@ def reset(client: LinearClient, backlog: Backlog) -> None:
 
 
 @pytest.fixture(
-    params=[TrackerKind.fake, pytest.param(TrackerKind.linear, marks=pytest.mark.linear)]
+    params=[TrackerKind.fake, pytest.param(TrackerKind.linear, marks=pytest.mark.linear_live)]
 )
 def kind(request: pytest.FixtureRequest) -> TrackerKind:
     return TrackerKind(request.param)
@@ -294,14 +294,16 @@ def test_every_workspace_label_is_listed(tracker: IssueTracker) -> None:
 def test_the_filter_picks_the_issues_one_creator_made_since_a_date(
     tracker: IssueTracker, backlog: Backlog
 ) -> None:
-    since = IssueFilter(creator=backlog.creator, created_after=CreatedAfter.fake())
+    since = IssueFilter(creator=backlog.creator, created_after=CreatedAfter(date(2026, 8, 9)))
     assert backlog.picked(since, tracker) == (Seed.recent, Seed.newest, Seed.done)
 
 
 def test_the_filter_skips_issues_another_creator_made(
     tracker: IssueTracker, backlog: Backlog
 ) -> None:
-    other = IssueFilter(creator=Creator("someone@flowbase.io"), created_after=CreatedAfter.fake())
+    other = IssueFilter(
+        creator=Creator("someone@flowbase.io"), created_after=CreatedAfter(date(2026, 8, 9))
+    )
     assert backlog.picked(other, tracker) == ()
 
 

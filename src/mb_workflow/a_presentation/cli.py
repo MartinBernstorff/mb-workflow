@@ -6,8 +6,8 @@ import typer
 from mb_workflow.a_presentation import commands
 from mb_workflow.a_presentation.diagram import DiagramPath, diagram
 from mb_workflow.b_core.a_features.autolabel import (
-    Apply,
     AutolabelRequest,
+    DryRun,
     ExcludePattern,
     Exclusions,
     LedgerPath,
@@ -151,7 +151,7 @@ def linear_autolabel(
             projects=ExcludePattern(exclude_projects) if exclude_projects else None,
             statuses=ExcludePattern(exclude_statuses) if exclude_statuses else None,
         ),
-        apply=Apply(apply),
+        dry_run=DryRun(not apply),
     )
     ledger = LedgerPath.of(CacheDirectory.of_user(), label)
     raise typer.Exit(code=commands.linear_autolabel(request, ledger).root)

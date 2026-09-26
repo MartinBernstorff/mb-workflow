@@ -7,8 +7,8 @@ addopts = [
     "--quiet",
     "--tb=short",
     "-m",
-    "not linear",
+    "not linear_live",
 ]
-markers = ["linear: runs against the live Linear integration-test workspace"]
+markers = ["linear_live: runs against the live Linear integration-test workspace"]
 testpaths = ["src"]
 python_files = ["test_*.py"]
