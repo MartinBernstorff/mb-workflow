@@ -40,6 +40,9 @@ class WorktreePath(Value[Path]):
     def sibling(self, name: WorktreeName) -> WorktreePath:
         return WorktreePath(self.root.parent / name.root)
 
+    def name(self) -> WorktreeName:
+        return WorktreeName(self.root.name)
+
     def same_as(self, other: WorktreePath) -> SamePath:
         return SamePath(self.root.resolve() == other.root.resolve())
 
@@ -130,6 +133,9 @@ class Worktrees(Value[tuple[Worktree, ...]]):
 
     def at(self, path: WorktreePath) -> Worktree | None:
         return next((worktree for worktree in self.root if worktree.path.same_as(path).root), None)
+
+    def named(self, name: WorktreeName) -> Worktree | None:
+        return next((worktree for worktree in self.root if worktree.path.name() == name), None)
 
     def without(self, path: WorktreePath) -> Worktrees:
         return Worktrees(

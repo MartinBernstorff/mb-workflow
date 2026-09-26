@@ -26,6 +26,7 @@ from mb_workflow.b_core.a_features.start import (
     StartRequest,
     start_ticket,
 )
+from mb_workflow.b_core.a_features.teardown import TeardownRequest, teardown_worktree
 from mb_workflow.b_core.a_features.transition import transition
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRefusedError
@@ -52,7 +53,7 @@ from mb_workflow.c_infrastructure.flock import FlockRunLock, LockName, LockPath
 from mb_workflow.c_infrastructure.github import GitHub
 from mb_workflow.c_infrastructure.ledger_file import FileLedgerStore
 from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
-from mb_workflow.c_infrastructure.linear_claims import LinearClaims
+from mb_workflow.c_infrastructure.linear_claims import LazyLinearClaims, LinearClaims
 from mb_workflow.c_infrastructure.orca import Orca
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.c_infrastructure.sleep import SleepingPause
@@ -63,6 +64,7 @@ if TYPE_CHECKING:
 
     from mb_workflow.b_core.b_domain_services.flow_report import AsJson
     from mb_workflow.b_core.b_domain_services.flow_transition import Force
+    from mb_workflow.b_core.d_domain_model.claim import HostName
     from mb_workflow.b_core.d_domain_model.issue import CreatedAfter, IssueIdentifier
     from mb_workflow.b_core.d_domain_model.pull_request import MergedSince, ReviewRequest
     from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit
@@ -127,11 +129,15 @@ def workspace_board(orca: Orca) -> WorkspaceBoard:
 
 
 @guarded
-def review_workspaces(status: WorkspaceStatus, since: MergedSince, lock: LockName) -> ExitCode:
+def review_workspaces(
+    status: WorkspaceStatus, since: MergedSince, lock: LockName, host: HostName
+) -> ExitCode:
     shell = here()
     outcome = create_workspaces(
         review=GitHub(shell),
         manager=Orca(shell),
+        claims=LazyLinearClaims(linear_key),
+        host=host,
         lock=FlockRunLock(LockPath.of(lock)),
         narrator=LoggingNarrator(),
         status=status,
@@ -179,6 +185,12 @@ def ticket_start(
         workspace=workspace,
         request=request,
     )
+    return ExitCode(0)
+
+
+@guarded
+def teardown(request: TeardownRequest) -> ExitCode:
+    teardown_worktree(manager=Orca(here()), claims=LazyLinearClaims(linear_key), request=request)
     return ExitCode(0)
 
 

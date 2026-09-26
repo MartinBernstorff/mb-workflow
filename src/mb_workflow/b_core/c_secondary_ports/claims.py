@@ -75,6 +75,13 @@ def claim_ticket(registry: ClaimRegistry, pause: Pause, request: ClaimRequest) -
     raise claimed_error(request.ticket, winner)
 
 
+def release_claim(registry: ClaimRegistry, ticket: IssueIdentifier, holder: ClaimHolder) -> None:
+    for held in registry.claims(ticket).root:
+        if held.holder == holder:
+            logger.info("Releasing the claim on %s.", ticket.root)
+            registry.withdraw(ticket, held.id)
+
+
 def claimed_error(ticket: IssueIdentifier, holder: Claim) -> ClaimRefusedError:
     return ClaimRefusedError(
         f"{ticket.root} is claimed by worktree {holder.holder.worktree.root}"

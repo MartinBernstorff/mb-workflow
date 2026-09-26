@@ -12,10 +12,13 @@ from mb_workflow.b_core.a_features.review_workspaces import (
     Unchanged,
     create_workspaces,
 )
+from mb_workflow.b_core.c_secondary_ports.claims import FakeClaimRegistry
 from mb_workflow.b_core.c_secondary_ports.code_review import FakeCodeReview, MergedPullRequest
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, FakeRunLock
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
+from mb_workflow.b_core.d_domain_model.claim import Claim, ClaimHolder, Claims, HostName
 from mb_workflow.b_core.d_domain_model.git import Ref
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName
 from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.b_core.d_domain_model.pull_request import (
     CheckoutDirectory,
@@ -87,10 +90,13 @@ def run_review_workspaces(
     manager: FakeWorkspaceManager,
     lock: FakeRunLock | None = None,
     status: WorkspaceStatus = WorkspaceStatus.fake(),
+    claims: FakeClaimRegistry | None = None,
 ) -> Outcome:
     return create_workspaces(
         review=review,
         manager=manager,
+        claims=claims or FakeClaimRegistry(),
+        host=HostName.fake(),
         lock=FakeRunLock() if lock is None else lock,
         narrator=SilentNarrator(),
         status=status,
@@ -126,6 +132,26 @@ def test_removes_a_review_workspace_whose_pr_no_longer_awaits_review(here: Workt
     outcome = run_review_workspaces(FakeCodeReview(PullRequests(())), manager)
     assert outcome.removed == (stale.path,)
     assert manager.worktrees().at(stale.path) is None
+
+
+def test_releases_the_claim_of_a_workspace_it_removes(here: WorktreePath) -> None:
+    name = WorktreeName.of_issue(IssueIdentifier.fake())
+    stale = Worktree.fake().model_copy(update={"path": here.sibling(name)})
+    claims = FakeClaimRegistry(
+        {
+            IssueIdentifier.fake(): Claims(
+                (
+                    Claim.fake().model_copy(
+                        update={"holder": ClaimHolder.fake().model_copy(update={"worktree": name})}
+                    ),
+                )
+            )
+        }
+    )
+    _ = run_review_workspaces(
+        FakeCodeReview(PullRequests(())), standing_in(here, stale), claims=claims
+    )
+    assert claims.claims(IssueIdentifier.fake()).holding(IssueStatusName("Review")) is None
 
 
 def test_removes_a_workspace_whose_branch_merged_within_the_lookback(here: WorktreePath) -> None:
