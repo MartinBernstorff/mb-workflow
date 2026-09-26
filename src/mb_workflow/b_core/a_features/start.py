@@ -2,8 +2,10 @@ import logging
 from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.b_domain_services.next_action import next_action, state_of
+from mb_workflow.b_core.c_secondary_ports.claims import ClaimRequest, claim_ticket
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
+from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, SettleTime, TakeOver
 from mb_workflow.b_core.d_domain_model.flow import (
     AwaitingHuman,
     Finished,
@@ -22,6 +24,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
+    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry, Pause
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
@@ -40,6 +43,9 @@ class StartRequest(Model):
     ticket: IssueIdentifier
     submit: Submit
     idle_timeout: TimeoutMs
+    host: HostName
+    take_over: TakeOver
+    settle: SettleTime
 
     @staticmethod
     def fake() -> StartRequest:
@@ -47,6 +53,9 @@ class StartRequest(Model):
             ticket=IssueIdentifier.fake(),
             submit=Submit.fake(),
             idle_timeout=TimeoutMs.fake(),
+            host=HostName.fake(),
+            take_over=TakeOver.fake(),
+            settle=SettleTime.fake(),
         )
 
     def prompt_for(self, action: Skill | AwaitingHuman) -> TerminalText | None:
@@ -56,15 +65,32 @@ class StartRequest(Model):
 
 
 def start_ticket(
+    *,
     manager: WorkspaceManager,
     tracker: TicketTracker,
+    claims: ClaimRegistry,
+    pause: Pause,
     board: WorkspaceStatusStore,
     workspace: WorkspaceSettings,
     request: StartRequest,
 ) -> None:
-    # Resolve the state before touching anything, so a ticket with no work left is neither assigned nor opened.
-    state = state_of(WorkflowChart, tracker.read_issue(request.ticket).status)
+    # Resolve the state before touching anything, so a ticket with no work left is neither claimed, assigned nor opened.
+    status = tracker.read_issue(request.ticket).status
+    state = state_of(WorkflowChart, status)
     prompt = request.prompt_for(action_in(state))
+
+    name = WorktreeName.of_issue(request.ticket)
+    claim_ticket(
+        claims,
+        pause,
+        ClaimRequest(
+            ticket=request.ticket,
+            status=status,
+            holder=ClaimHolder(host=request.host, worktree=name),
+            take_over=request.take_over,
+            settle=request.settle,
+        ),
+    )
 
     # Assignment is a convenience, not the point of starting a ticket, so never fail the run over it.
     try:
@@ -77,7 +103,6 @@ def start_ticket(
             error,
         )
 
-    name = WorktreeName.of_issue(request.ticket)
     logger.info("Creating worktree with name: %s", name.root)
     opened = manager.create_for_issue(
         workspace.orca_project,

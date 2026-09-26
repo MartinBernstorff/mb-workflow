@@ -14,8 +14,7 @@ if TYPE_CHECKING:
 
 
 def state_of(chart: type[WorkflowChart], status: StatusName) -> StateName:
-    closed = StatusNames((StatusName("Canceled"), StatusName("Duplicate")))
-    if closed.matching(status) is not None:
+    if StatusNames.closed().matching(status) is not None:
         raise FlowError(f"The issue is {status.root}, so there is no work left in it.")
     if status.names(StatusName("Backlog")).root:
         return StateNames.initial_state(chart)

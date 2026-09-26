@@ -1,7 +1,7 @@
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import pytest
 from linear_python_client import (
@@ -13,11 +13,20 @@ from linear_python_client import (
 )
 from pydantic import AliasPath, Field
 
+from mb_workflow.b_core.c_secondary_ports.claims import (
+    ClaimRefusedError,
+    ClaimRegistry,
+    ClaimRequest,
+    FakeClaimRegistry,
+    FakePause,
+    claim_ticket,
+)
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
     TicketTrackerError,
     TrackedIssue,
 )
+from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, ClaimId, Claims, HostName
 from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
@@ -49,10 +58,13 @@ from mb_workflow.c_infrastructure.linear import (
     MilestonePayload,
     ProjectId,
 )
+from mb_workflow.c_infrastructure.linear_claims import LinearClaims
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.d_lib.models import Model, Payload, Value
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
 
 
@@ -315,8 +327,11 @@ def linear_backlog(linear_client: LinearClient) -> Backlog:
 
 def reset(client: LinearClient, backlog: Backlog) -> None:
     tracker = Linear(client)
+    claims = LinearClaims(client)
     for planted in seeds():
         identifier = backlog.identifier(planted.seed)
+        for stale in claims.claims(identifier).root:
+            claims.withdraw(identifier, stale.id)
         tracker.set_labels(identifier, planted.labels)
         tracker.update_issue(
             identifier, IssueUpdate.nothing().model_copy(update={"status": planted.status})
@@ -374,9 +389,16 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
             for planted in seeds()
         ),
         Projects.fake(),
-        StatusNames.fake(),
+        StatusNames((*StatusNames.fake().root, *StatusNames.closed().root)),
         backlog.assignee,
     )
+
+
+@pytest.fixture
+def claims(kind: TrackerKind, request: pytest.FixtureRequest) -> ClaimRegistry:
+    if kind == TrackerKind.linear:
+        return LinearClaims(request.getfixturevalue("linear_client"))
+    return FakeClaimRegistry()
 
 
 def test_every_workspace_label_is_listed(tracker: TicketTracker) -> None:
@@ -658,3 +680,77 @@ def test_moving_to_an_unknown_status_is_refused(tracker: TicketTracker, backlog:
             backlog.identifier(Seed.recent),
             IssueUpdate.nothing().model_copy(update={"status": StatusName("No such status")}),
         )
+
+
+def rival_of(holder: ClaimHolder) -> ClaimHolder:
+    return holder.model_copy(update={"host": HostName("bob-mbp.local")})
+
+
+def holders(claims: Claims) -> tuple[ClaimHolder, ...]:
+    return tuple(claim.holder for claim in claims.root)
+
+
+def test_claims_read_back_earliest_first(claims: ClaimRegistry, backlog: Backlog) -> None:
+    ticket = backlog.identifier(Seed.recent)
+    _ = claims.post(ticket, ClaimHolder.fake())
+    _ = claims.post(ticket, rival_of(ClaimHolder.fake()))
+    assert holders(claims.claims(ticket)) == (ClaimHolder.fake(), rival_of(ClaimHolder.fake()))
+
+
+def test_a_withdrawn_claim_is_gone(claims: ClaimRegistry, backlog: Backlog) -> None:
+    ticket = backlog.identifier(Seed.recent)
+    posted = claims.post(ticket, ClaimHolder.fake())
+    kept = claims.post(ticket, rival_of(ClaimHolder.fake()))
+    claims.withdraw(ticket, posted)
+    assert claims.claims(ticket).ids() == (kept,)
+
+
+def test_an_unclaimed_ticket_has_no_claims(claims: ClaimRegistry, backlog: Backlog) -> None:
+    assert claims.claims(backlog.identifier(Seed.recent)) == Claims(())
+
+
+# Runs a whole rival claim just before the first post, so both claimers pass the check for a holder.
+class RacedRegistry(ClaimRegistry):
+    def __init__(self, inner: ClaimRegistry, rival: Callable[[], None]) -> None:
+        self._inner = inner
+        self._rival: Callable[[], None] | None = rival
+
+    @override
+    def claims(self, ticket: IssueIdentifier) -> Claims:
+        return self._inner.claims(ticket)
+
+    @override
+    def post(self, ticket: IssueIdentifier, holder: ClaimHolder) -> ClaimId:
+        rival, self._rival = self._rival, None
+        if rival is not None:
+            rival()
+        return self._inner.post(ticket, holder)
+
+    @override
+    def withdraw(self, ticket: IssueIdentifier, claim: ClaimId) -> None:
+        self._inner.withdraw(ticket, claim)
+
+
+def test_of_two_racing_claimers_exactly_one_wins(
+    tracker: TicketTracker, claims: ClaimRegistry, backlog: Backlog
+) -> None:
+    ticket = backlog.identifier(Seed.recent)
+    first = ClaimRequest.fake().model_copy(
+        update={"ticket": ticket, "status": tracker.read_issue(ticket).status}
+    )
+    second = first.model_copy(update={"holder": rival_of(first.holder)})
+    raced = RacedRegistry(claims, lambda: claim_ticket(claims, FakePause(), second))
+    with pytest.raises(ClaimRefusedError, match="bob-mbp"):
+        claim_ticket(raced, FakePause(), first)
+    assert holders(claims.claims(ticket)) == (second.holder,)
+
+
+def test_a_claim_on_a_finished_ticket_reads_as_released(
+    tracker: TicketTracker, claims: ClaimRegistry, backlog: Backlog
+) -> None:
+    ticket = backlog.identifier(Seed.recent)
+    _ = claims.post(ticket, ClaimHolder.fake())
+    tracker.update_issue(
+        ticket, IssueUpdate.nothing().model_copy(update={"status": StatusName("Canceled")})
+    )
+    assert claims.claims(ticket).holding(tracker.read_issue(ticket).status) is None

@@ -82,6 +82,10 @@ class StatusNames(Value[tuple[StatusName, ...]]):
     def fake() -> StatusNames:
         return StatusNames((StatusName.fake(), StatusName("In Progress"), StatusName("Done")))
 
+    @staticmethod
+    def closed() -> StatusNames:
+        return StatusNames((StatusName("Canceled"), StatusName("Duplicate")))
+
     def matching(self, status: StatusName) -> StatusName | None:
         return next((known for known in self.root if known.names(status).root), None)
 

@@ -1,6 +1,11 @@
 import pytest
 
 from mb_workflow.b_core.a_features.start import StartRequest, start_ticket
+from mb_workflow.b_core.c_secondary_ports.claims import (
+    ClaimRefusedError,
+    FakeClaimRegistry,
+    FakePause,
+)
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
@@ -8,6 +13,14 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     TrackedIssue,
 )
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
+from mb_workflow.b_core.d_domain_model.claim import (
+    Claim,
+    ClaimHolder,
+    ClaimId,
+    Claims,
+    HostName,
+    TakeOver,
+)
 from mb_workflow.b_core.d_domain_model.config import WorkspaceSettings
 from mb_workflow.b_core.d_domain_model.flow import (
     FlowError,
@@ -62,9 +75,27 @@ def opened_in(manager: FakeWorkspaceManager) -> Worktree:
     return opened
 
 
+def starting(
+    manager: FakeWorkspaceManager,
+    tracker: FakeTicketTracker,
+    request: StartRequest,
+    claims: FakeClaimRegistry | None = None,
+    workspace: WorkspaceSettings | None = None,
+) -> None:
+    start_ticket(
+        manager=manager,
+        tracker=tracker,
+        claims=claims or FakeClaimRegistry(),
+        pause=FakePause(),
+        board=fake_board(),
+        workspace=workspace or WorkspaceSettings.fake(),
+        request=request,
+    )
+
+
 def started(status: StatusName, request: StartRequest) -> FakeWorkspaceManager:
     manager = fake_manager()
-    start_ticket(manager, tracking(status), fake_board(), WorkspaceSettings.fake(), request)
+    starting(manager, tracking(status), request)
     return manager
 
 
@@ -114,36 +145,28 @@ def test_seeds_the_board_column_from_the_tickets_state() -> None:
 
 
 def test_a_ticket_the_tracker_cannot_read_is_not_opened() -> None:
-    starting = fake_manager()
+    manager = fake_manager()
     unreadable = StartRequest.fake().model_copy(update={"ticket": IssueIdentifier("E-404")})
     with pytest.raises(TicketTrackerError):
-        start_ticket(
-            starting,
-            tracking(StatusName.fake()),
-            fake_board(),
-            WorkspaceSettings.fake(),
-            unreadable,
-        )
-    assert starting.worktrees() == Worktrees.fake()
+        starting(manager, tracking(StatusName.fake()), unreadable)
+    assert manager.worktrees() == Worktrees.fake()
 
 
 def test_opens_the_worktree_in_the_configured_project() -> None:
     project = ProjectSelector("github:other/project")
-    starting = FakeWorkspaceManager(
+    manager = FakeWorkspaceManager(
         Worktrees.fake(), WorktreePath.fake(), fake_board_statuses(), project=project
     )
     workspace = WorkspaceSettings.fake().model_copy(update={"orca_project": project})
-    start_ticket(
-        starting, tracking(StatusName("Specced")), fake_board(), workspace, StartRequest.fake()
-    )
-    assert opened_in(starting).issue == IssueIdentifier.fake()
+    starting(manager, tracking(StatusName("Specced")), StartRequest.fake(), workspace=workspace)
+    assert opened_in(manager).issue == IssueIdentifier.fake()
 
 
 def test_assigns_the_ticket_to_the_configured_assignee() -> None:
     tracker = tracking(StatusName("Specced"))
     assignee = Assignee("other@flowbase.io")
     workspace = WorkspaceSettings.fake().model_copy(update={"assignee": assignee})
-    start_ticket(fake_manager(), tracker, fake_board(), workspace, StartRequest.fake())
+    starting(fake_manager(), tracker, StartRequest.fake(), workspace=workspace)
     assert tracker.read_issue_detail(IssueIdentifier.fake()).assignee == assignee
 
 
@@ -151,9 +174,72 @@ def test_assigns_the_ticket_to_the_configured_assignee() -> None:
     "status", [StatusName("Merged"), StatusName("Canceled"), StatusName("Duplicate")]
 )
 def test_a_ticket_with_no_work_left_is_neither_opened_nor_assigned(status: StatusName) -> None:
-    starting = fake_manager()
+    manager = fake_manager()
     tracker = tracking(status)
+    claims = FakeClaimRegistry()
     with pytest.raises(FlowError, match="no work left"):
-        start_ticket(starting, tracker, fake_board(), WorkspaceSettings.fake(), StartRequest.fake())
-    assert starting.worktrees() == Worktrees.fake()
+        starting(manager, tracker, StartRequest.fake(), claims)
+    assert manager.worktrees() == Worktrees.fake()
     assert tracker.read_issue(IssueIdentifier.fake()).assigned == Assigned(False)
+    assert claims.claims(IssueIdentifier.fake()) == Claims(())
+
+
+def ours() -> ClaimHolder:
+    return ClaimHolder(host=StartRequest.fake().host, worktree=WorktreeName("E-4289"))
+
+
+def claimed_by_a_rival() -> FakeClaimRegistry:
+    rival = ClaimHolder(host=HostName("bob-mbp.local"), worktree=WorktreeName("E-4289"))
+    return FakeClaimRegistry(
+        {IssueIdentifier.fake(): Claims((Claim(id=ClaimId("rival"), holder=rival),))}
+    )
+
+
+def holders(claims: FakeClaimRegistry) -> tuple[ClaimHolder, ...]:
+    return tuple(claim.holder for claim in claims.claims(IssueIdentifier.fake()).root)
+
+
+def test_claims_the_ticket_for_this_host_and_worktree() -> None:
+    claims = FakeClaimRegistry()
+    starting(fake_manager(), tracking(StatusName("Specced")), StartRequest.fake(), claims)
+    assert holders(claims) == (ours(),)
+
+
+def test_the_claim_settles_before_it_is_verified() -> None:
+    pause = FakePause()
+    start_ticket(
+        manager=fake_manager(),
+        tracker=tracking(StatusName("Specced")),
+        claims=FakeClaimRegistry(),
+        pause=pause,
+        board=fake_board(),
+        workspace=WorkspaceSettings.fake(),
+        request=StartRequest.fake(),
+    )
+    assert pause.waited() == (StartRequest.fake().settle,)
+
+
+def test_a_ticket_claimed_by_another_holder_is_neither_opened_nor_assigned() -> None:
+    manager = fake_manager()
+    tracker = tracking(StatusName("Specced"))
+    with pytest.raises(ClaimRefusedError, match=r"bob-mbp\.local"):
+        starting(manager, tracker, StartRequest.fake(), claimed_by_a_rival())
+    assert manager.worktrees() == Worktrees.fake()
+    assert tracker.read_issue(IssueIdentifier.fake()).assigned == Assigned(False)
+
+
+def test_force_takes_the_claim_over() -> None:
+    manager = fake_manager()
+    claims = claimed_by_a_rival()
+    forcing = StartRequest.fake().model_copy(update={"take_over": TakeOver(True)})
+    starting(manager, tracking(StatusName("Specced")), forcing, claims)
+    assert holders(claims) == (ours(),)
+    assert opened_in(manager).issue == IssueIdentifier.fake()
+
+
+def test_a_ticket_this_worktree_already_claimed_is_not_claimed_twice() -> None:
+    claims = FakeClaimRegistry(
+        {IssueIdentifier.fake(): Claims((Claim(id=ClaimId("ours"), holder=ours()),))}
+    )
+    starting(fake_manager(), tracking(StatusName("Specced")), StartRequest.fake(), claims)
+    assert holders(claims) == (ours(),)
