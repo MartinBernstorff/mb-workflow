@@ -12,6 +12,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueFilter,
     IssueIdentifier,
     Issues,
+    IssueStatusName,
     IssueTitle,
     IssueUpdate,
     LabelName,
@@ -21,7 +22,6 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Project,
     ProjectName,
     Projects,
-    StatusName,
     StatusNames,
 )
 from mb_workflow.d_lib.models import Model
@@ -204,7 +204,7 @@ class FakeTicketTracker(TicketTracker):
             )
         return found
 
-    def _status(self, name: StatusName) -> StatusName:
+    def _status(self, name: IssueStatusName) -> IssueStatusName:
         status = self._statuses.matching(name)
         if status is None:
             raise TicketTrackerError(f"No status is named {name.root}.")

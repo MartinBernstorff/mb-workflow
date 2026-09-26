@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 from pathlib import Path
 
 import typer
@@ -12,6 +13,7 @@ from mb_workflow.b_core.a_features.start import StartRequest
 from mb_workflow.b_core.b_domain_services.flow_report import AsJson
 from mb_workflow.b_core.b_domain_services.flow_transition import Force
 from mb_workflow.b_core.d_domain_model.autolabel import ExcludePattern, Exclusions
+from mb_workflow.b_core.d_domain_model.claim import HostName, SettleTime, TakeOver
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
 from mb_workflow.b_core.d_domain_model.flow import EventName
@@ -158,6 +160,14 @@ def start_ticket(
         False, "--submit", help="Submit the prompt instead of leaving it typed."
     ),
     idle_timeout_ms: int = typer.Option(60000, "--idle-timeout-ms"),
+    force: bool = typer.Option(
+        False, "--force", help="Take the claim over from whoever holds the ticket."
+    ),
+    claim_settle_ms: int = typer.Option(
+        3000,
+        "--claim-settle-ms",
+        help="How long to wait between posting the claim and checking who holds the ticket.",
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
@@ -165,6 +175,9 @@ def start_ticket(
         ticket=IssueIdentifier(ticket),
         submit=Submit(submit),
         idle_timeout=TimeoutMs(idle_timeout_ms),
+        host=HostName.of_machine(),
+        take_over=TakeOver(force),
+        settle=SettleTime(timedelta(milliseconds=claim_settle_ms)),
     )
     raise typer.Exit(
         code=commands.ticket_start(

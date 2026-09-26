@@ -28,6 +28,7 @@ from mb_workflow.b_core.a_features.start import (
 )
 from mb_workflow.b_core.a_features.transition import transition
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
+from mb_workflow.b_core.c_secondary_ports.claims import ClaimRefusedError
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
@@ -50,9 +51,11 @@ from mb_workflow.c_infrastructure.credentials import (
 from mb_workflow.c_infrastructure.flock import FlockRunLock, LockName, LockPath
 from mb_workflow.c_infrastructure.github import GitHub
 from mb_workflow.c_infrastructure.ledger_file import FileLedgerStore
-from mb_workflow.c_infrastructure.linear import Linear
+from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
+from mb_workflow.c_infrastructure.linear_claims import LinearClaims
 from mb_workflow.c_infrastructure.orca import Orca
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
+from mb_workflow.c_infrastructure.sleep import SleepingPause
 from mb_workflow.c_infrastructure.workspace_board import BoardError, WorkspaceBoard
 
 if TYPE_CHECKING:
@@ -73,6 +76,7 @@ FAILURES = (
     AlreadyRunningError,
     BoardError,
     CalledProcessError,
+    ClaimRefusedError,
     CodeReviewError,
     FlowError,
     InvalidConfigError,
@@ -109,9 +113,13 @@ def here() -> Shell:
     return Shell(ExistingDirectory(Path.cwd()))
 
 
-def linear() -> Linear:
+def linear_key() -> LinearApiKey:
     path = CredentialsDirectory.of_user().path_for(RepositorySlug.of_origin(here()))
-    return Linear.connected(path.credentials().linear.api_key)
+    return path.credentials().linear.api_key
+
+
+def linear() -> Linear:
+    return Linear.connected(linear_key())
 
 
 def workspace_board(orca: Orca) -> WorkspaceBoard:
@@ -161,7 +169,16 @@ def ticket_start(
 ) -> ExitCode:
     workspace = Configuration.resolved(directory, name).settings.workspace
     orca = Orca(here())
-    start_ticket(orca, linear(), workspace_board(orca), workspace, request)
+    key = linear_key()
+    start_ticket(
+        manager=orca,
+        tracker=Linear.connected(key),
+        claims=LinearClaims.connected(key),
+        pause=SleepingPause(),
+        board=workspace_board(orca),
+        workspace=workspace,
+        request=request,
+    )
     return ExitCode(0)
 
 

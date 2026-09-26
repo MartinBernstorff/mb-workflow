@@ -9,10 +9,10 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     IssueIdentifier,
+    IssueStatusName,
     LabelName,
     LabelNames,
     Projects,
-    StatusName,
     StatusNames,
 )
 from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit, TicketEditError
@@ -65,6 +65,6 @@ def test_an_empty_edit_is_refused_before_the_ticket_is_read() -> None:
 
 def test_editing_a_ticket_moves_its_status() -> None:
     tracker = tracking()
-    edit = TicketEdit.nothing().model_copy(update={"status": StatusName("done")})
+    edit = TicketEdit.nothing().model_copy(update={"status": IssueStatusName("done")})
     edit_ticket(tracker, IssueIdentifier.fake(), edit)
-    assert tracker.read_issue(IssueIdentifier.fake()).status == StatusName("Done")
+    assert tracker.read_issue(IssueIdentifier.fake()).status == IssueStatusName("Done")

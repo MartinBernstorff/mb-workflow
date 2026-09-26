@@ -7,12 +7,12 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     IssueDescription,
     IssueIdentifier,
+    IssueStatusName,
     IssueTitle,
     LabelName,
     LabelNames,
     MilestoneName,
     ProjectName,
-    StatusName,
 )
 from mb_workflow.b_core.d_domain_model.ticket_edit import RemoveMilestone, TicketEdit
 from mb_workflow.d_lib.logging import LogLevel, configure
@@ -70,7 +70,7 @@ def ticket_edit(
         remove_assignee=Assignee.from_nullable(remove_assignee),
         add_project=ProjectName.from_nullable(add_project),
         remove_project=ProjectName.from_nullable(remove_project),
-        status=StatusName.from_nullable(state),
+        status=IssueStatusName.from_nullable(state),
         milestone=MilestoneName.from_nullable(milestone),
         remove_milestone=RemoveMilestone(remove_milestone),
     )
