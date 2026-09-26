@@ -7,7 +7,7 @@ from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
-    name_or_warn,
+    set_display_name_or_warn,
 )
 from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.b_core.d_domain_model.pull_request import CheckoutDirectory, PrNumber
@@ -196,7 +196,7 @@ def reconcile_workspaces(
         try:
             narrator.creating(pr.number)
             path = manager.create_for_review(repo, pr.number, status).path
-            name_or_warn(manager, path, DisplayName.of_pr(pr.title))
+            set_display_name_or_warn(manager, path, DisplayName.of_pr(pr.title))
             narrator.checking_out(path)
             review.checkout(pr.number, CheckoutDirectory(path.root))
         except (CalledProcessError, CodeReviewError, WorkspaceManagerError, ValueError) as error:

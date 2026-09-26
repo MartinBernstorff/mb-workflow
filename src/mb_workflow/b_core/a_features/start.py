@@ -12,7 +12,7 @@ from mb_workflow.b_core.c_secondary_ports.claims import (
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
-    name_or_warn,
+    set_display_name_or_warn,
 )
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, TakeOver
 from mb_workflow.b_core.d_domain_model.flow import (
@@ -133,7 +133,7 @@ def start_ticket(
         board.status_for(state),
     )
     logger.info("Created worktree %s.", opened.worktree.path.root)
-    name_or_warn(manager, opened.worktree.path, DisplayName.of_issue(detail.title))
+    set_display_name_or_warn(manager, opened.worktree.path, DisplayName.of_issue(detail.title))
 
     if prompt is not None:
         send_prompt(manager, opened, prompt, request.idle_timeout, request.submit)

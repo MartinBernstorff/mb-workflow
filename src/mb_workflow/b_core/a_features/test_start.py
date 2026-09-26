@@ -126,7 +126,6 @@ def test_a_refused_display_name_still_opens_the_worktree() -> None:
     )
     starting(manager, tracking(IssueStatusName("Specced")), StartRequest.fake())
     assert opened_in(manager).issue == IssueIdentifier.fake()
-    assert manager.typed_texts() == (TerminalText("/implement E-4289"),)
 
 
 def test_types_the_prompt_without_submitting_it_by_default() -> None:

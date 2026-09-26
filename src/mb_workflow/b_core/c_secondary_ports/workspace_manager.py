@@ -188,7 +188,9 @@ class DisplayNameRefusingWorkspaceManager(FakeWorkspaceManager):
 
 
 # The display name is cosmetic, so a refusal leaves the worktree under its directory name.
-def name_or_warn(manager: WorkspaceManager, path: WorktreePath, name: DisplayName) -> None:
+def set_display_name_or_warn(
+    manager: WorkspaceManager, path: WorktreePath, name: DisplayName
+) -> None:
     try:
         manager.set_display_name(path, name)
     except WorkspaceManagerError as error:

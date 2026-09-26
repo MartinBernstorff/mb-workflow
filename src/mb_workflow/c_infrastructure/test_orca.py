@@ -94,7 +94,7 @@ def test_worktree_name_and_comment_describe_the_pr() -> None:
 def test_parses_the_display_name() -> None:
     output = CommandOutput(
         '{"ok":true,"result":{"worktrees":[{"repoId":"r","path":"/tmp/x",'
-        '"displayName":"Add widget"}]}}'
+        f'"displayName":"{DisplayName.fake().root}"}}]}}}}'
     )
     assert WorktreeList.parse(output).root[0].display_name == DisplayName.fake()
 
