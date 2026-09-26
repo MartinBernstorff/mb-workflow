@@ -21,16 +21,17 @@ from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
 from mb_workflow.b_core.d_domain_model.flow import EventName
-from mb_workflow.b_core.d_domain_model.issue import BranchSlug, IssueIdentifier
-from mb_workflow.c_infrastructure.github import Lookback, ReviewBody, ReviewDecision, ReviewRequest
-from mb_workflow.c_infrastructure.linear import (
+from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
+    BranchSlug,
     CreatedAfter,
     CreatedWithin,
     Creator,
-    IssueQuery,
+    IssueFilter,
+    IssueIdentifier,
     LabelName,
 )
+from mb_workflow.c_infrastructure.github import Lookback, ReviewBody, ReviewDecision, ReviewRequest
 from mb_workflow.c_infrastructure.orca import (
     ProjectSelector,
     TerminalText,
@@ -142,7 +143,7 @@ def linear_autolabel(
     label = LabelName(name)
     request = AutolabelRequest(
         label=label,
-        query=IssueQuery(
+        wanted=IssueFilter(
             creator=Creator(creator),
             created_after=CreatedAfter.of(CreatedWithin(created_within_days), Today.now()),
         ),

@@ -2,25 +2,26 @@ import logging
 import re
 from enum import StrEnum
 from pathlib import Path
-from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
+from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
-from mb_workflow.b_core.d_domain_model.outcome import Failed
-from mb_workflow.c_infrastructure.linear import (
-    IssueQuery,
+from mb_workflow.b_core.d_domain_model.issue import (
+    Issue,
+    IssueFilter,
+    IssueIdentifier,
+    Issues,
     IssueText,
     LabelName,
-    Linear,
-    ListedIssue,
-    ListedIssues,
-    Project,
+    ProjectName,
     StatusName,
 )
+from mb_workflow.b_core.d_domain_model.outcome import Failed
+from mb_workflow.c_infrastructure.linear import Linear
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
+    from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
     from mb_workflow.c_infrastructure.shell import Shell
 
 logger = logging.getLogger(__name__)
@@ -84,10 +85,10 @@ class Exclusions(Model):
             statuses=ExcludePattern("done|canceled|duplicate|triage"),
         )
 
-    def excludes_project(self, project: Project | None) -> Excluded:
+    def excludes_project(self, project: ProjectName | None) -> Excluded:
         if project is None or self.projects is None:
             return Excluded(False)
-        return self.projects.matches(project.name)
+        return self.projects.matches(project)
 
     def excludes_status(self, status: StatusName) -> Excluded:
         if self.statuses is None:
@@ -167,25 +168,25 @@ class Criteria(Model):
     def fake() -> Criteria:
         return Criteria(label=LabelName.fake(), exclusions=Exclusions.fake(), ledger=Ledger.fake())
 
-    def skipped(self, issue: ListedIssue) -> SkipReason | None:
+    def skipped(self, issue: Issue) -> SkipReason | None:
         if self.exclusions.excludes_status(issue.status).root:
             return SkipReason.excluded_status
         if self.exclusions.excludes_project(issue.project).root:
             return SkipReason.excluded_project
         if self.ledger.records(issue.identifier).root:
             return SkipReason.already_recorded
-        if self.label in issue.label_names().root:
+        if issue.labels.has(self.label).root:
             return SkipReason.already_labelled
         return None
 
 
 class Decision(Model):
-    issue: ListedIssue
+    issue: Issue
     skipped: SkipReason | None
 
     @staticmethod
     def fake() -> Decision:
-        return Decision(issue=ListedIssue.fake(), skipped=None)
+        return Decision(issue=Issue.fake(), skipped=None)
 
 
 class SkipTally(Model):
@@ -203,15 +204,13 @@ class Selection(Value[tuple[Decision, ...]]):
         return Selection((Decision.fake(),))
 
     @staticmethod
-    def of(issues: ListedIssues, criteria: Criteria) -> Selection:
+    def of(issues: Issues, criteria: Criteria) -> Selection:
         return Selection(
             tuple(Decision(issue=issue, skipped=criteria.skipped(issue)) for issue in issues.root)
         )
 
-    def labellable(self) -> ListedIssues:
-        return ListedIssues(
-            tuple(decision.issue for decision in self.root if decision.skipped is None)
-        )
+    def labellable(self) -> Issues:
+        return Issues(tuple(decision.issue for decision in self.root if decision.skipped is None))
 
     def skips(self) -> tuple[SkipTally, ...]:
         counts = {
@@ -239,7 +238,7 @@ class SummaryLine(Value[str]):
 
 class AutolabelRequest(Model):
     label: LabelName
-    query: IssueQuery
+    wanted: IssueFilter
     exclusions: Exclusions
     apply: Apply
 
@@ -247,7 +246,7 @@ class AutolabelRequest(Model):
     def fake() -> AutolabelRequest:
         return AutolabelRequest(
             label=LabelName.fake(),
-            query=IssueQuery.fake(),
+            wanted=IssueFilter.fake(),
             exclusions=Exclusions.fake(),
             apply=Apply.fake(),
         )
@@ -274,7 +273,7 @@ class Outcome(Model):
     def chosen(self) -> tuple[IssueIdentifier, ...]:
         if self.applied.root:
             return self.labelled
-        return tuple(issue.identifier for issue in self.selection.labellable().root)
+        return self.selection.labellable().identifiers()
 
     def summary(self) -> SummaryLine:
         chosen = self.chosen()
@@ -300,30 +299,30 @@ class Outcome(Model):
 
 
 def autolabel(shell: Shell, request: AutolabelRequest, ledger: LedgerPath) -> Outcome:
-    return swept(Linear(shell), request, ledger)
+    return sweep(Linear(shell), request, ledger)
 
 
-def swept(linear: Linear, request: AutolabelRequest, ledger: LedgerPath) -> Outcome:
-    if not linear.workspace_labels().has(request.label).root:
-        raise UnknownLabelError(f"No Linear label is named {request.label.root}.")
+def sweep(tracker: IssueTracker, request: AutolabelRequest, ledger: LedgerPath) -> Outcome:
+    if not tracker.labels().has(request.label).root:
+        raise UnknownLabelError(f"No label is named {request.label.root}.")
 
     recorded = ledger.read()
-    issues = linear.issues(request.query)
+    issues = tracker.issues(request.wanted)
     logger.info(
         "Sweeping %s issues created since %s",
         len(issues.root),
-        request.query.created_after.root.isoformat(),
+        request.wanted.created_after.root.isoformat(),
     )
 
     criteria = Criteria(label=request.label, exclusions=request.exclusions, ledger=recorded)
-    outcome = updated(linear, Selection.of(issues, criteria), request)
+    outcome = updated(tracker, Selection.of(issues, criteria), request)
     outcome.report()
     if request.apply.root and len(outcome.labelled) > 0:
         ledger.write(recorded.extended(outcome.labelled))
     return outcome
 
 
-def updated(linear: Linear, selection: Selection, request: AutolabelRequest) -> Outcome:
+def updated(tracker: IssueTracker, selection: Selection, request: AutolabelRequest) -> Outcome:
     if not request.apply.root:
         return Outcome(selection=selection, applied=request.apply, labelled=(), failed=())
 
@@ -331,8 +330,8 @@ def updated(linear: Linear, selection: Selection, request: AutolabelRequest) -> 
     failed: list[IssueIdentifier] = []
     for issue in selection.labellable().root:
         try:
-            linear.add_label(issue.identifier, request.label)
-        except CalledProcessError as error:
+            tracker.add_label(issue.identifier, request.label)
+        except IssueTrackerError as error:
             logger.error("%s could not be labelled: %s", issue.identifier.root, error)
             failed.append(issue.identifier)
         else:

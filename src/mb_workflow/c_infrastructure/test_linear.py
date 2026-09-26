@@ -1,17 +1,27 @@
+import pytest
+
 from mb_workflow.b_core.d_domain_model.clock import Today
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
-from mb_workflow.c_infrastructure.linear import (
+from mb_workflow.b_core.d_domain_model.issue import (
     CreatedAfter,
     CreatedWithin,
-    IssuePage,
-    IssueQuery,
+    IssueFilter,
+    IssueIdentifier,
+    IssueState,
     LabelKnown,
     LabelName,
     LabelNames,
+    ProjectName,
+    StatusName,
+)
+from mb_workflow.c_infrastructure.linear import (
+    IssuePage,
+    IssuePayload,
     LabelPage,
     PageCursor,
-    Project,
-    StatusName,
+    issue_lookup,
+    label_addition,
+    label_lookup,
+    label_overwrite,
 )
 from mb_workflow.c_infrastructure.shell import CommandOutput
 
@@ -50,7 +60,7 @@ def test_the_window_starts_the_lookback_before_today() -> None:
 
 
 def test_the_first_page_is_asked_for_without_a_cursor() -> None:
-    assert IssueQuery.fake().command(None).root == (
+    assert issue_lookup(IssueFilter.fake(), None).root == (
         "linearis",
         "issues",
         "list",
@@ -64,7 +74,7 @@ def test_the_first_page_is_asked_for_without_a_cursor() -> None:
 
 
 def test_a_later_page_is_asked_for_from_the_cursor() -> None:
-    assert IssueQuery.fake().command(PageCursor.fake()).root[-2:] == (
+    assert issue_lookup(IssueFilter.fake(), PageCursor.fake()).root[-2:] == (
         "--after",
         PageCursor.fake().root,
     )
@@ -72,16 +82,16 @@ def test_a_later_page_is_asked_for_from_the_cursor() -> None:
 
 def test_reads_the_issues_off_a_page() -> None:
     issues = IssuePage.parse(first_page()).issues()
-    assert tuple(issue.identifier for issue in issues.root) == (IssueIdentifier.fake(),)
+    assert issues.identifiers() == (IssueIdentifier.fake(),)
 
 
 def test_reads_the_project_and_status_off_an_issue() -> None:
     issue = IssuePage.parse(first_page()).issues().root[0]
-    assert (issue.status, issue.project) == (StatusName.fake(), Project.fake())
+    assert (issue.status, issue.project) == (StatusName.fake(), ProjectName.fake())
 
 
 def test_reads_the_labels_an_issue_already_carries() -> None:
-    assert IssuePage.parse(first_page()).issues().root[0].label_names() == LabelNames.fake()
+    assert IssuePage.parse(first_page()).issues().root[0].labels == LabelNames.fake()
 
 
 def test_an_issue_without_a_project_carries_none() -> None:
@@ -89,7 +99,7 @@ def test_an_issue_without_a_project_carries_none() -> None:
 
 
 def test_an_issue_without_labels_carries_none() -> None:
-    assert IssuePage.parse(last_page()).issues().root[0].label_names() == LabelNames(())
+    assert IssuePage.parse(last_page()).issues().root[0].labels == LabelNames(())
 
 
 def test_a_page_with_more_to_come_yields_the_next_cursor() -> None:
@@ -112,11 +122,11 @@ def label_page() -> CommandOutput:
 
 
 def test_the_first_label_page_is_asked_for_without_a_cursor() -> None:
-    assert LabelNames.lookup(None).root == ("linearis", "labels", "list", "--limit", "250")
+    assert label_lookup(None).root == ("linearis", "labels", "list", "--limit", "250")
 
 
 def test_a_later_label_page_is_asked_for_from_the_cursor() -> None:
-    assert LabelNames.lookup(PageCursor.fake()).root[-2:] == ("--after", PageCursor.fake().root)
+    assert label_lookup(PageCursor.fake()).root[-2:] == ("--after", PageCursor.fake().root)
 
 
 def test_a_label_page_reports_whether_more_are_coming() -> None:
@@ -129,3 +139,62 @@ def test_finds_a_label_that_exists() -> None:
 
 def test_does_not_find_a_label_that_does_not_exist() -> None:
     assert LabelPage.parse(label_page()).names().has(LabelName("Frontend")) == LabelKnown(False)
+
+
+def test_adding_a_label_keeps_the_labels_already_there() -> None:
+    assert label_addition(IssueIdentifier.fake(), LabelName.fake()).root == (
+        "linearis",
+        "issues",
+        "update",
+        "E-4289",
+        "--labels",
+        "d-implement",
+        "--label-mode",
+        "add",
+    )
+
+
+def test_setting_labels_overwrites_with_the_ones_given() -> None:
+    assert label_overwrite(IssueIdentifier.fake(), LabelNames((LabelName("d-grill"),))).root == (
+        "linearis",
+        "issues",
+        "update",
+        "E-4289",
+        "--labels",
+        "d-grill",
+        "--label-mode",
+        "overwrite",
+    )
+
+
+def test_setting_no_labels_clears_them_all() -> None:
+    assert label_overwrite(IssueIdentifier.fake(), LabelNames(())).root == (
+        "linearis",
+        "issues",
+        "update",
+        "E-4289",
+        "--clear-labels",
+    )
+
+
+def test_reads_the_labels_off_an_issue() -> None:
+    output = CommandOutput(
+        '{"identifier":"E-4289","state":{"name":"Todo"},'
+        '"labels":{"nodes":[{"id":"x","name":"d-implement"}]}}'
+    )
+    assert IssuePayload.parse(output).issue().labels == LabelNames.fake()
+
+
+def test_an_issue_carries_no_labels_until_told_otherwise() -> None:
+    output = CommandOutput('{"identifier":"E-4289","state":{"name":"Todo"}}')
+    assert IssuePayload.parse(output).issue().labels == LabelNames(())
+
+
+def test_reads_the_state_off_an_issue() -> None:
+    output = CommandOutput('{"identifier": "E-4289", "state": {"name": "Maturing"}}')
+    assert IssuePayload.parse(output).issue().state() == IssueState.maturing
+
+
+def test_an_issue_without_a_state_does_not_parse() -> None:
+    with pytest.raises(ValueError, match="state"):
+        _ = IssuePayload.parse(CommandOutput('{"identifier": "E-4289"}'))

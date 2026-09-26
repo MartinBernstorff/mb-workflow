@@ -1,8 +1,11 @@
 import logging
 from typing import TYPE_CHECKING
 
+import pytest
+
 from mb_workflow.b_core.a_features.autolabel import (
     Apply,
+    AutolabelRequest,
     Criteria,
     ExcludePattern,
     Exclusions,
@@ -14,59 +17,99 @@ from mb_workflow.b_core.a_features.autolabel import (
     Selection,
     SkipCount,
     SkipReason,
+    UnknownLabelError,
+    sweep,
 )
+from mb_workflow.b_core.c_secondary_ports.issue_tracker import FakeIssueTracker, TrackedIssue
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
-from mb_workflow.b_core.d_domain_model.outcome import Failed
-from mb_workflow.c_infrastructure.linear import (
-    IssuePage,
+from mb_workflow.b_core.d_domain_model.issue import (
+    CreatedOn,
+    Creator,
+    Issue,
+    IssueIdentifier,
+    Issues,
     LabelName,
-    ListedIssues,
+    LabelNames,
     ProjectName,
     StatusName,
 )
-from mb_workflow.c_infrastructure.shell import CommandOutput
+from mb_workflow.b_core.d_domain_model.outcome import Failed
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
 
-
-def swept() -> ListedIssues:
-    return IssuePage.parse(
-        CommandOutput(
-            """
-            {
-              "nodes": [
-                {"identifier": "E-1", "state": {"name": "Todo"},
-                 "project": {"name": "BE: Campaigns MVP"}},
-                {"identifier": "E-2", "state": {"name": "Todo"},
-                 "project": {"name": "BE Shop"}},
-                {"identifier": "E-3", "state": {"name": "Todo"},
-                 "project": {"name": "Sentry Backend"}},
-                {"identifier": "E-4", "state": {"name": "Todo"}, "project": null},
-                {"identifier": "E-5", "state": {"name": "Done"},
-                 "project": {"name": "Editor Bugs"}},
-                {"identifier": "E-6", "state": {"name": "Canceled"},
-                 "project": {"name": "Editor Bugs"}},
-                {"identifier": "E-7", "state": {"name": "Duplicate"},
-                 "project": {"name": "Editor Bugs"}},
-                {"identifier": "E-8", "state": {"name": "Triage"},
-                 "project": {"name": "Editor Bugs"}},
-                {"identifier": "E-9", "state": {"name": "Todo"},
-                 "project": {"name": "Editor Bugs"},
-                 "labels": {"nodes": [{"name": "d-implement"}]}},
-                {"identifier": "E-10", "state": {"name": "Todo"},
-                 "project": {"name": "Editor Bugs"}},
-                {"identifier": "E-11", "state": {"name": "Todo"},
-                 "project": {"name": "Editor Bugs"}}
-              ],
-              "pageInfo": {"hasNextPage": false, "endCursor": "last"}
-            }
-            """
+def swept() -> Issues:
+    return Issues(
+        (
+            Issue(
+                identifier=IssueIdentifier("E-1"),
+                status=StatusName("Todo"),
+                project=ProjectName("BE: Campaigns MVP"),
+                labels=LabelNames(()),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-2"),
+                status=StatusName("Todo"),
+                project=ProjectName("BE Shop"),
+                labels=LabelNames(()),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-3"),
+                status=StatusName("Todo"),
+                project=ProjectName("Sentry Backend"),
+                labels=LabelNames(()),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-4"),
+                status=StatusName("Todo"),
+                project=None,
+                labels=LabelNames(()),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-5"),
+                status=StatusName("Done"),
+                project=ProjectName("Editor Bugs"),
+                labels=LabelNames(()),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-6"),
+                status=StatusName("Canceled"),
+                project=ProjectName("Editor Bugs"),
+                labels=LabelNames(()),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-7"),
+                status=StatusName("Duplicate"),
+                project=ProjectName("Editor Bugs"),
+                labels=LabelNames(()),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-8"),
+                status=StatusName("Triage"),
+                project=ProjectName("Editor Bugs"),
+                labels=LabelNames(()),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-9"),
+                status=StatusName("Todo"),
+                project=ProjectName("Editor Bugs"),
+                labels=LabelNames.fake(),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-10"),
+                status=StatusName("Todo"),
+                project=ProjectName("Editor Bugs"),
+                labels=LabelNames(()),
+            ),
+            Issue(
+                identifier=IssueIdentifier("E-11"),
+                status=StatusName("Todo"),
+                project=ProjectName("Editor Bugs"),
+                labels=LabelNames(()),
+            ),
         )
-    ).issues()
+    )
 
 
 def ledger() -> Ledger:
@@ -139,19 +182,6 @@ def test_an_issue_in_the_ledger_is_skipped() -> None:
 
 def test_the_survivors_are_the_ones_nothing_excludes() -> None:
     assert chosen() == (IssueIdentifier("E-4"), IssueIdentifier("E-11"))
-
-
-def test_each_survivor_is_labelled_by_the_shared_command_builder() -> None:
-    assert LabelName.fake().addition(chosen()[0]).root == (
-        "linearis",
-        "issues",
-        "update",
-        "E-4",
-        "--labels",
-        "d-implement",
-        "--label-mode",
-        "add",
-    )
 
 
 def test_counts_the_issues_dropped_for_each_reason() -> None:
@@ -281,3 +311,41 @@ def test_a_status_matching_the_pattern_is_excluded() -> None:
 
 def test_a_status_the_pattern_misses_is_kept() -> None:
     assert not Exclusions.fake().excludes_status(StatusName.fake()).root
+
+
+def sweeping() -> FakeIssueTracker:
+    return FakeIssueTracker(
+        LabelNames.fake(),
+        tuple(
+            TrackedIssue(issue=issue, creator=Creator.fake(), created_on=CreatedOn.fake())
+            for issue in swept().root
+        ),
+    )
+
+
+def request(apply: Apply) -> AutolabelRequest:
+    return AutolabelRequest.fake().model_copy(update={"apply": apply})
+
+
+def test_an_applied_sweep_labels_the_survivors_on_the_tracker(tmp_path: Path) -> None:
+    tracker = sweeping()
+    _ = sweep(tracker, request(Apply(True)), LedgerPath(tmp_path / "ledger.txt"))
+    assert tracker.read(IssueIdentifier("E-4")).labels == LabelNames.fake()
+
+
+def test_an_applied_sweep_records_what_it_labelled(tmp_path: Path) -> None:
+    ledger_path = LedgerPath(tmp_path / "ledger.txt")
+    _ = sweep(sweeping(), request(Apply(True)), ledger_path)
+    assert ledger_path.read() == Ledger(tuple(IssueIdentifier(f"E-{n}") for n in (4, 10, 11)))
+
+
+def test_a_dry_sweep_leaves_the_tracker_untouched(tmp_path: Path) -> None:
+    tracker = sweeping()
+    _ = sweep(tracker, request(Apply(False)), LedgerPath(tmp_path / "ledger.txt"))
+    assert tracker.read(IssueIdentifier("E-4")).labels == LabelNames(())
+
+
+def test_sweeping_for_a_label_the_tracker_lacks_is_refused(tmp_path: Path) -> None:
+    unknown = request(Apply(True)).model_copy(update={"label": LabelName("Frontend")})
+    with pytest.raises(UnknownLabelError, match="Frontend"):
+        _ = sweep(sweeping(), unknown, LedgerPath(tmp_path / "ledger.txt"))

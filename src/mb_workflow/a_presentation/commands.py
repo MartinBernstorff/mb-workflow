@@ -24,6 +24,7 @@ from mb_workflow.b_core.a_features.show_config import show_config
 from mb_workflow.b_core.a_features.show_flow import show_flow
 from mb_workflow.b_core.a_features.transition import transition
 from mb_workflow.b_core.b_domain_services.lock import AlreadyRunningError, LockName, LockPath
+from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
 from mb_workflow.b_core.d_domain_model.config import (
     ConfigFileName,
     InvalidConfigError,
@@ -52,6 +53,7 @@ FAILURES = (
     CalledProcessError,
     FlowError,
     InvalidConfigError,
+    IssueTrackerError,
     MissingConfigError,
     NotFinalizableError,
     OSError,

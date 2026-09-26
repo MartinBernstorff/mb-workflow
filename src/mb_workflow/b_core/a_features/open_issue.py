@@ -2,8 +2,14 @@ import logging
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.d_domain_model.issue import BranchSlug, IssueIdentifier
-from mb_workflow.c_infrastructure.linear import Assignee, IssueState, Linear
+from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
+from mb_workflow.b_core.d_domain_model.issue import (
+    Assignee,
+    BranchSlug,
+    IssueIdentifier,
+    IssueState,
+)
+from mb_workflow.c_infrastructure.linear import Linear
 from mb_workflow.c_infrastructure.orca import (
     AgentName,
     Orca,
@@ -16,6 +22,7 @@ from mb_workflow.c_infrastructure.orca import (
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
+    from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
     from mb_workflow.c_infrastructure.shell import Shell
 
 logger = logging.getLogger(__name__)
@@ -82,20 +89,21 @@ def open_issue(shell: Shell, request: OpenRequest) -> None:
     open_workspace(Orca(shell), Linear(shell), request)
 
 
-def open_workspace(orca: Orca, linear: Linear, request: OpenRequest) -> None:
+def open_workspace(orca: Orca, tracker: IssueTracker, request: OpenRequest) -> None:
     # Assignment is a convenience, not the point of opening a workspace, so never fail the run over it.
     if request.issue is not None:
-        failure = linear.assign(request.issue, request.assignee)
-        if failure is not None:
+        try:
+            tracker.assign(request.issue, request.assignee)
+        except IssueTrackerError as error:
             logger.warning(
                 "Could not assign %s to %s: %s",
                 request.issue.root,
                 request.assignee.root,
-                failure.root,
+                error,
             )
 
     # Resolve the prompt before creating anything, so an unprefixable state leaves no half-open workspace.
-    prompting = request.prefixed(issue_state(linear, request.issue))
+    prompting = request.prefixed(issue_state(tracker, request.issue))
 
     name = WorktreeName.of_branch(request.branch, request.issue)
     logger.info("Creating worktree with name: %s", name.root)
@@ -105,8 +113,14 @@ def open_workspace(orca: Orca, linear: Linear, request: OpenRequest) -> None:
     send_prompt(orca, worktree, prompting)
 
 
-def issue_state(linear: Linear, issue: IssueIdentifier | None) -> IssueState | None:
-    return linear.state(issue) if issue is not None else None
+def issue_state(tracker: IssueTracker, issue: IssueIdentifier | None) -> IssueState | None:
+    if issue is None:
+        return None
+    try:
+        return tracker.read(issue).state()
+    except IssueTrackerError as error:
+        logger.warning("Could not read the state of %s: %s", issue.root, error)
+        return None
 
 
 def send_prompt(orca: Orca, worktree: SingleWorktree, request: OpenRequest) -> None:

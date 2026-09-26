@@ -1,6 +1,7 @@
 import logging
 import subprocess
 from pathlib import Path
+from typing import Protocol
 
 from pydantic import model_validator
 
@@ -31,6 +32,10 @@ class CommandOutput(Value[str]):
     @staticmethod
     def fake() -> CommandOutput:
         return CommandOutput("[]")
+
+
+class CommandRunner(Protocol):
+    def run(self, command: Command) -> CommandOutput: ...
 
 
 class Shell:
