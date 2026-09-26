@@ -17,12 +17,10 @@ from mb_workflow.b_core.d_domain_model.issue import (
     StatusName,
 )
 from mb_workflow.b_core.d_domain_model.outcome import Failed
-from mb_workflow.c_infrastructure.linear import Linear
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
-    from mb_workflow.c_infrastructure.shell import Shell
 
 logger = logging.getLogger(__name__)
 
@@ -296,10 +294,6 @@ class Outcome(Model):
         logger.info("%s", self.summary().root)
         if not self.applied.root:
             logger.info("Re-run with --apply to label them.")
-
-
-def autolabel(shell: Shell, request: AutolabelRequest, ledger: LedgerPath) -> Outcome:
-    return sweep(Linear(shell), request, ledger)
 
 
 def sweep(tracker: IssueTracker, request: AutolabelRequest, ledger: LedgerPath) -> Outcome:

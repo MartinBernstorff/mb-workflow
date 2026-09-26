@@ -9,7 +9,6 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueIdentifier,
     IssueState,
 )
-from mb_workflow.c_infrastructure.linear import Linear
 from mb_workflow.c_infrastructure.orca import (
     AgentName,
     Orca,
@@ -23,7 +22,6 @@ from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
-    from mb_workflow.c_infrastructure.shell import Shell
 
 logger = logging.getLogger(__name__)
 
@@ -83,10 +81,6 @@ class OpenRequest(Model):
         if self.prompt is None or state is None:
             return self
         return self.model_copy(update={"prompt": PromptPrefix.of(state).applied(self.prompt)})
-
-
-def open_issue(shell: Shell, request: OpenRequest) -> None:
-    open_workspace(Orca(shell), Linear(shell), request)
 
 
 def open_workspace(orca: Orca, tracker: IssueTracker, request: OpenRequest) -> None:

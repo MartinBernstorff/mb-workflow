@@ -3,14 +3,12 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.d_domain_model.issue import LabelName
-from mb_workflow.c_infrastructure.linear import Linear
-from mb_workflow.c_infrastructure.orca import Orca, Worktree
 from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
-    from mb_workflow.c_infrastructure.shell import Shell
+    from mb_workflow.c_infrastructure.orca import Orca, Worktree
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +35,6 @@ def labelled_issue(worktree: Worktree) -> IssueIdentifier:
     if worktree.linked_linear_issue is None:
         raise UnlinkedWorktreeError(f"{worktree.path.root} has no linked Linear issue")
     return worktree.linked_linear_issue
-
-
-def change_label(shell: Shell, request: LabelRequest) -> None:
-    changed(Orca(shell), Linear(shell), request)
 
 
 def changed(orca: Orca, tracker: IssueTracker, request: LabelRequest) -> None:

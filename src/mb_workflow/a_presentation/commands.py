@@ -9,15 +9,15 @@ from mb_workflow.b_core.a_features.autolabel import (
     AutolabelRequest,
     LedgerPath,
     UnknownLabelError,
-    autolabel,
+    sweep,
 )
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
-from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
+from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, changed
 from mb_workflow.b_core.a_features.open_issue import (
     OpenRequest,
     PromptUndeliveredError,
     UnprefixedStateError,
-    open_issue,
+    open_workspace,
 )
 from mb_workflow.b_core.a_features.review_workspaces import create_workspaces
 from mb_workflow.b_core.a_features.show_config import show_config
@@ -33,7 +33,8 @@ from mb_workflow.b_core.d_domain_model.config import (
 )
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError
 from mb_workflow.c_infrastructure.board import BoardError
-from mb_workflow.c_infrastructure.orca import OrcaError, WorkspaceStatus
+from mb_workflow.c_infrastructure.linear import Linear
+from mb_workflow.c_infrastructure.orca import Orca, OrcaError, WorkspaceStatus
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 
 if TYPE_CHECKING:
@@ -98,18 +99,20 @@ def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode
 
 @guarded
 def relabel(request: LabelRequest) -> ExitCode:
-    change_label(here(), request)
+    shell = here()
+    changed(Orca(shell), Linear(shell), request)
     return ExitCode(0)
 
 
 @guarded
 def linear_autolabel(request: AutolabelRequest, ledger: LedgerPath) -> ExitCode:
-    return ExitCode.of(autolabel(here(), request, ledger).failed_any())
+    return ExitCode.of(sweep(Linear(here()), request, ledger).failed_any())
 
 
 @guarded
 def open_linear_issue(request: OpenRequest) -> ExitCode:
-    open_issue(here(), request)
+    shell = here()
+    open_workspace(Orca(shell), Linear(shell), request)
     return ExitCode(0)
 
 
