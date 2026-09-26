@@ -91,8 +91,18 @@ def claimed_error(ticket: IssueIdentifier, holder: Claim) -> ClaimRefusedError:
     )
 
 
+# Checked before claiming, so a doomed claim never withdraws another holder's claim.
+def require_claim_label(tracker: TicketTracker, label: LabelName) -> None:
+    if tracker.workspace_labels().matching(label) is None:
+        raise ClaimRefusedError(
+            f"No label is named {label.root}. Create the label or change claims.label."
+        )
+
+
 # The label is how in-progress tickets are found, so a claim that cannot be labelled is withdrawn.
-def label_claim(registry: ClaimRegistry, tracker: TicketTracker, request: ReleaseRequest) -> None:
+def label_claim_or_withdraw(
+    registry: ClaimRegistry, tracker: TicketTracker, request: LabelledClaim
+) -> None:
     try:
         tracker.add_label(request.ticket, request.label)
     except TicketTrackerError as error:
@@ -103,14 +113,14 @@ def label_claim(registry: ClaimRegistry, tracker: TicketTracker, request: Releas
         ) from error
 
 
-class ReleaseRequest(Model):
+class LabelledClaim(Model):
     ticket: IssueIdentifier
     holder: ClaimHolder
     label: LabelName
 
     @staticmethod
-    def fake() -> ReleaseRequest:
-        return ReleaseRequest(
+    def fake() -> LabelledClaim:
+        return LabelledClaim(
             ticket=IssueIdentifier.fake(), holder=ClaimHolder.fake(), label=LabelName("claimed")
         )
 
@@ -123,7 +133,7 @@ def withdraw_holders_claims(
             registry.withdraw(ticket, held.id)
 
 
-def release_claim(registry: ClaimRegistry, tracker: TicketTracker, request: ReleaseRequest) -> None:
+def release_claim(registry: ClaimRegistry, tracker: TicketTracker, request: LabelledClaim) -> None:
     withdraw_holders_claims(registry, request.ticket, request.holder)
     if registry.claims(request.ticket).root:
         return
