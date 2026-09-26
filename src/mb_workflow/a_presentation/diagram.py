@@ -8,7 +8,7 @@ from statemachine.contrib.diagram import DotGraphMachine, MermaidGraphMachine
 
 from mb_workflow.a_presentation.console import ExitCode
 from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
-from mb_workflow.d_lib.models import Value
+from mb_workflow.d_lib.models import Model, Value
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,16 @@ class MermaidDiagram(Value[str]):
     @staticmethod
     def fake() -> MermaidDiagram:
         return MermaidDiagram("stateDiagram-v2\n    direction LR\n    [*] --> grilling\n")
+
+
+class MermaidDocument(Value[str]):
+    @staticmethod
+    def fake() -> MermaidDocument:
+        return MermaidDocument.of(MermaidDiagram.fake())
+
+    @staticmethod
+    def of(diagram: MermaidDiagram) -> MermaidDocument:
+        return MermaidDocument(f"```mermaid\n{diagram.root}```\n")
 
 
 class DiagramPath(Value[Path]):
@@ -38,6 +48,18 @@ class ImageFormat(Value[str]):
                 f"{destination.root} has no extension, and the extension picks the image format."
             )
         return ImageFormat(suffix)
+
+
+class MermaidFormat(Model):
+    @staticmethod
+    def fake() -> MermaidFormat:
+        return MermaidFormat()
+
+
+def format_of(destination: DiagramPath) -> MermaidFormat | ImageFormat:
+    if destination.root.suffix == ".md":
+        return MermaidFormat()
+    return ImageFormat.of(destination)
 
 
 class DotSource(Value[str]):
@@ -65,12 +87,19 @@ def render_dot() -> DotSource:
     return DotSource(DotGraphMachine(WorkflowChart).get_graph().to_string()).with_stable_ids()
 
 
-def write_image(destination: DiagramPath) -> None:
-    image_format = ImageFormat.of(destination)
+def write_image(destination: DiagramPath, image_format: ImageFormat) -> None:
     graphs = pydot.graph_from_dot_data(render_dot().root)
     if not graphs:
         raise ValueError("The chart's DOT source could not be parsed.")
     _ = graphs[0].write(str(destination.root), format=image_format.root)
+
+
+def write(destination: DiagramPath) -> None:
+    match format_of(destination):
+        case MermaidFormat():
+            _ = destination.root.write_text(MermaidDocument.of(render_mermaid()).root)
+        case ImageFormat() as image_format:
+            write_image(destination, image_format)
 
 
 def diagram(destination: DiagramPath | None) -> ExitCode:
@@ -78,7 +107,7 @@ def diagram(destination: DiagramPath | None) -> ExitCode:
         _ = sys.stdout.write(render_mermaid().root)
         return ExitCode(0)
     try:
-        write_image(destination)
+        write(destination)
     except OSError as error:
         logger.error("Could not write %s: %s", destination.root, error)
         return ExitCode(1)
