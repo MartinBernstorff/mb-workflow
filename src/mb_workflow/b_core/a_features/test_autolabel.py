@@ -23,6 +23,7 @@ from mb_workflow.b_core.a_features.autolabel import (
 from mb_workflow.b_core.c_secondary_ports.issue_tracker import FakeIssueTracker, TrackedIssue
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.b_core.d_domain_model.issue import (
+    Assigned,
     CreatedOn,
     Creator,
     Issue,
@@ -47,66 +48,77 @@ def swept() -> Issues:
                 status=StatusName("Todo"),
                 project=ProjectName("BE: Campaigns MVP"),
                 labels=LabelNames(()),
+                assigned=Assigned(False),
             ),
             Issue(
                 identifier=IssueIdentifier("E-2"),
                 status=StatusName("Todo"),
                 project=ProjectName("BE Shop"),
                 labels=LabelNames(()),
+                assigned=Assigned(False),
             ),
             Issue(
                 identifier=IssueIdentifier("E-3"),
                 status=StatusName("Todo"),
                 project=ProjectName("Sentry Backend"),
                 labels=LabelNames(()),
+                assigned=Assigned(False),
             ),
             Issue(
                 identifier=IssueIdentifier("E-4"),
                 status=StatusName("Todo"),
                 project=None,
                 labels=LabelNames(()),
+                assigned=Assigned(False),
             ),
             Issue(
                 identifier=IssueIdentifier("E-5"),
                 status=StatusName("Done"),
                 project=ProjectName("Editor Bugs"),
                 labels=LabelNames(()),
+                assigned=Assigned(False),
             ),
             Issue(
                 identifier=IssueIdentifier("E-6"),
                 status=StatusName("Canceled"),
                 project=ProjectName("Editor Bugs"),
                 labels=LabelNames(()),
+                assigned=Assigned(False),
             ),
             Issue(
                 identifier=IssueIdentifier("E-7"),
                 status=StatusName("Duplicate"),
                 project=ProjectName("Editor Bugs"),
                 labels=LabelNames(()),
+                assigned=Assigned(False),
             ),
             Issue(
                 identifier=IssueIdentifier("E-8"),
                 status=StatusName("Triage"),
                 project=ProjectName("Editor Bugs"),
                 labels=LabelNames(()),
+                assigned=Assigned(False),
             ),
             Issue(
                 identifier=IssueIdentifier("E-9"),
                 status=StatusName("Todo"),
                 project=ProjectName("Editor Bugs"),
                 labels=LabelNames.fake(),
+                assigned=Assigned(False),
             ),
             Issue(
                 identifier=IssueIdentifier("E-10"),
                 status=StatusName("Todo"),
                 project=ProjectName("Editor Bugs"),
                 labels=LabelNames(()),
+                assigned=Assigned(False),
             ),
             Issue(
                 identifier=IssueIdentifier("E-11"),
                 status=StatusName("Todo"),
                 project=ProjectName("Editor Bugs"),
                 labels=LabelNames(()),
+                assigned=Assigned(False),
             ),
         )
     )

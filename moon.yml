@@ -92,7 +92,7 @@ tasks:
       - "pyproject.toml"
       - "uv.lock"
       - "src/mb_workflow/a_presentation/diagram.py"
-      - "src/mb_workflow/b_core/flow.py"
+      - "src/mb_workflow/b_core/d_domain_model/flow.py"
     outputs:
       - "docs/flow.svg"
     options:

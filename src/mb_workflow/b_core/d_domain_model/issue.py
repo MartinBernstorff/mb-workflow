@@ -96,7 +96,7 @@ class Issue(Model):
     status: StatusName
     project: ProjectName | None
     labels: LabelNames
-    assigned: Assigned = Assigned(False)
+    assigned: Assigned
 
     @staticmethod
     def fake() -> Issue:

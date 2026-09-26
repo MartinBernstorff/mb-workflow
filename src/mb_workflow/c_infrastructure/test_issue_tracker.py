@@ -58,6 +58,7 @@ def backlog() -> tuple[TrackedIssue, ...]:
                 status=StatusName("Done"),
                 project=None,
                 labels=LabelNames((LabelName("d-grill"),)),
+                assigned=Assigned(False),
             ),
             creator=Creator.fake(),
             created_on=CreatedOn.fake(),
