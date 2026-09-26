@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from mb_workflow.d_lib.models import Model, Value
@@ -90,6 +91,48 @@ class StatusNames(Value[tuple[IssueStatusName, ...]]):
 
     def matching(self, status: IssueStatusName) -> IssueStatusName | None:
         return next((known for known in self.root if known.names(status).root), None)
+
+
+class StatusType(StrEnum):
+    triage = "triage"
+    backlog = "backlog"
+    unstarted = "unstarted"
+    started = "started"
+    completed = "completed"
+    canceled = "canceled"
+
+
+class StatusTypes(Value[tuple[StatusType, ...]]):
+    @staticmethod
+    def fake() -> StatusTypes:
+        return StatusTypes((StatusType.completed,))
+
+    def has(self, status_type: StatusType) -> Matches:
+        return Matches(status_type in self.root)
+
+
+class IssueStatus(Model):
+    name: IssueStatusName
+    type: StatusType
+
+    @staticmethod
+    def fake() -> IssueStatus:
+        return IssueStatus(name=IssueStatusName.fake(), type=StatusType.unstarted)
+
+
+class IssueStatuses(Value[tuple[IssueStatus, ...]]):
+    @staticmethod
+    def fake() -> IssueStatuses:
+        return IssueStatuses(
+            (
+                IssueStatus.fake(),
+                IssueStatus(name=IssueStatusName("In Progress"), type=StatusType.started),
+                IssueStatus(name=IssueStatusName("Done"), type=StatusType.completed),
+            )
+        )
+
+    def matching(self, name: IssueStatusName) -> IssueStatus | None:
+        return next((known for known in self.root if known.name.names(name).root), None)
 
 
 class Assigned(Value[bool]):

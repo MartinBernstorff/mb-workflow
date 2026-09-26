@@ -2,7 +2,6 @@ import pytest
 
 from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
-    IssueIdentifier,
     Issues,
     IssueStatusName,
     LabelName,
@@ -10,8 +9,6 @@ from mb_workflow.b_core.d_domain_model.issue import (
 )
 from mb_workflow.b_core.d_domain_model.pool import (
     Admitted,
-    Blocker,
-    Blockers,
     Filled,
     Limit,
     Occupancy,
@@ -21,34 +18,16 @@ from mb_workflow.b_core.d_domain_model.pool import (
 )
 
 
-def ticket(
-    status: IssueStatusName, labels: LabelNames, blockers: Blockers = Blockers(())
-) -> PoolTicket:
+def ticket(status: IssueStatusName, labels: LabelNames) -> PoolTicket:
     return PoolTicket.fake().model_copy(
         update={
-            "issue": PoolTicket.fake().issue.model_copy(
-                update={"status": status, "labels": labels}
-            ),
-            "blockers": blockers,
+            "issue": PoolTicket.fake().issue.model_copy(update={"status": status, "labels": labels})
         }
     )
 
 
-def blocked_by(*statuses: IssueStatusName) -> PoolTicket:
-    return ticket(
-        IssueStatusName("Specced"),
-        LabelNames(()),
-        Blockers(
-            tuple(
-                Blocker(issue=IssueIdentifier(f"MB-{n}"), status=status)
-                for n, status in enumerate(statuses, start=100)
-            )
-        ),
-    )
-
-
 @pytest.mark.parametrize(
-    "status", ["Grilling", "Speccing", "Specced", "Implementing", "Merging", "specced"]
+    "status", ["Backlog", "Grilling", "Speccing", "Specced", "Implementing", "Merging", "specced"]
 )
 def test_an_unclaimed_ticket_in_a_workable_state_is_ready(status: str) -> None:
     assert ticket(IssueStatusName(status), LabelNames(())).ready(LabelName("claimed")) == Ready(
@@ -56,7 +35,7 @@ def test_an_unclaimed_ticket_in_a_workable_state_is_ready(status: str) -> None:
     )
 
 
-@pytest.mark.parametrize("status", ["Backlog", "QA", "Review", "Merged", "Canceled", "Todo"])
+@pytest.mark.parametrize("status", ["QA", "Review", "Merged", "Canceled", "Todo"])
 def test_a_ticket_in_any_other_state_is_not_ready(status: str) -> None:
     assert ticket(IssueStatusName(status), LabelNames(())).ready(LabelName("claimed")) == Ready(
         False
@@ -71,22 +50,6 @@ def test_a_ticket_carrying_the_claim_label_is_not_ready() -> None:
 def test_other_labels_leave_a_ticket_ready() -> None:
     labelled = ticket(IssueStatusName("Specced"), LabelNames((LabelName("Backend"),)))
     assert labelled.ready(LabelName("claimed")) == Ready(True)
-
-
-@pytest.mark.parametrize("status", ["Merged", "Canceled", "Duplicate", "merged"])
-def test_a_resolved_blocker_leaves_a_ticket_ready(status: str) -> None:
-    assert blocked_by(IssueStatusName(status)).ready(LabelName("claimed")) == Ready(True)
-
-
-@pytest.mark.parametrize("status", ["Specced", "Implementing", "QA", "Review", "Merging", "Done"])
-def test_an_unresolved_blocker_holds_a_ticket_back(status: str) -> None:
-    assert blocked_by(IssueStatusName(status)).ready(LabelName("claimed")) == Ready(False)
-
-
-def test_one_unresolved_blocker_among_resolved_ones_holds_a_ticket_back() -> None:
-    assert blocked_by(
-        IssueStatusName("Merged"), IssueStatusName("Review"), IssueStatusName("Canceled")
-    ).ready(LabelName("claimed")) == Ready(False)
 
 
 def test_the_defaults_cap_the_total_at_four_and_grilling_at_one() -> None:

@@ -39,6 +39,8 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueDetail,
     IssueFilter,
     IssueIdentifier,
+    IssueStatus,
+    IssueStatuses,
     IssueStatusName,
     IssueTitle,
     IssueUpdate,
@@ -50,15 +52,10 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Project,
     ProjectName,
     Projects,
-    StatusNames,
+    StatusType,
+    StatusTypes,
 )
-from mb_workflow.b_core.d_domain_model.pool import (
-    Blocker,
-    Blockers,
-    PoolTicket,
-    Priority,
-    ViewSlug,
-)
+from mb_workflow.b_core.d_domain_model.pool import PoolTicket, Priority, ViewSlug
 from mb_workflow.c_infrastructure.credentials import CredentialsDirectory, RepositorySlug
 from mb_workflow.c_infrastructure.linear import (
     LabelGroupRead,
@@ -136,7 +133,12 @@ def seeded(
 
 def seeds() -> tuple[SeededIssue, ...]:
     return (
-        seeded(Seed.recent, CreatedOn(date(2026, 9, 1)), Priority.urgent, blocked_by=(Seed.old,)),
+        seeded(
+            Seed.recent,
+            CreatedOn(date(2026, 9, 1)),
+            Priority.urgent,
+            blocked_by=(Seed.old, Seed.done),
+        ),
         seeded(Seed.old, CreatedOn(date(2026, 8, 1)), Priority.low),
         seeded(Seed.newest, CreatedOn(date(2026, 9, 2)), Priority.no_priority),
         SeededIssue(
@@ -173,19 +175,7 @@ class Backlog(Model):
         return PoolTicket(
             issue=self.issue(seed),
             priority=planted.priority,
-            blockers=Blockers(
-                tuple(
-                    Blocker(issue=self.identifier(blocker), status=self.issue(blocker).status)
-                    for blocker in planted.blocked_by
-                )
-            ),
         )
-
-    def blockers(self, seed: Seed, tracker: TicketTracker) -> Blockers:
-        listed = tracker.view_tickets(self.view).root
-        return next(
-            ticket for ticket in listed if ticket.issue.identifier == self.identifier(seed)
-        ).blockers
 
     def picked(self, wanted: IssueFilter, tracker: TicketTracker) -> tuple[Seed, ...]:
         swept = tracker.list_issues(wanted).identifiers()
@@ -549,7 +539,13 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
             for planted in seeds()
         ),
         Projects.fake(),
-        StatusNames((*StatusNames.fake().root, *StatusNames.closed().root)),
+        IssueStatuses(
+            (
+                *IssueStatuses.fake().root,
+                IssueStatus(name=IssueStatusName("Canceled"), type=StatusType.canceled),
+                IssueStatus(name=IssueStatusName("Duplicate"), type=StatusType.canceled),
+            )
+        ),
         backlog.assignee,
         views={backlog.view: tuple(backlog.identifier(seed) for seed in Seed)},
     )
@@ -653,48 +649,43 @@ def test_the_filter_start_date_is_inclusive(tracker: TicketTracker, backlog: Bac
     assert backlog.picked(after, tracker) == (Seed.newest,)
 
 
-def test_a_view_lists_its_tickets_with_their_priority(
+def listed(tracker: TicketTracker, backlog: Backlog) -> set[Seed]:
+    shown = tracker.unblocked_view_tickets(backlog.view).identifiers()
+    return {seed for seed in Seed if backlog.identifier(seed) in shown}
+
+
+def test_a_view_lists_its_unblocked_tickets_with_their_priority(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    assert set(tracker.view_tickets(backlog.view).root) == {backlog.ticket(seed) for seed in Seed}
+    assert set(tracker.unblocked_view_tickets(backlog.view).root) == {
+        backlog.ticket(seed) for seed in set(Seed) - {Seed.recent}
+    }
 
 
-def test_a_view_lists_a_tickets_blockers_with_their_status(
+def test_a_ticket_with_one_open_blocker_among_closed_ones_is_left_out_of_a_view(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    assert backlog.blockers(Seed.recent, tracker) == Blockers(
-        (Blocker(issue=backlog.identifier(Seed.old), status=backlog.issue(Seed.old).status),)
-    )
+    assert Seed.recent not in listed(tracker, backlog)
 
 
-def test_a_blocker_carries_its_current_status(tracker: TicketTracker, backlog: Backlog) -> None:
+@pytest.mark.parametrize("status", ["Done", "Canceled"])
+def test_a_ticket_whose_blockers_are_all_closed_is_listed(
+    tracker: TicketTracker, backlog: Backlog, status: str
+) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.old),
-        IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("Canceled")}),
+        IssueUpdate.nothing().model_copy(update={"status": IssueStatusName(status)}),
     )
-    assert backlog.blockers(Seed.recent, tracker) == Blockers(
-        (Blocker(issue=backlog.identifier(Seed.old), status=IssueStatusName("Canceled")),)
-    )
-
-
-def test_a_ticket_blocks_nothing_it_is_blocked_by(tracker: TicketTracker, backlog: Backlog) -> None:
-    assert backlog.blockers(Seed.old, tracker) == Blockers(())
-
-
-def test_a_related_issue_is_no_blocker(tracker: TicketTracker, backlog: Backlog) -> None:
-    assert (backlog.blockers(Seed.newest, tracker), backlog.blockers(Seed.done, tracker)) == (
-        Blockers(()),
-        Blockers(()),
-    )
+    assert Seed.recent in listed(tracker, backlog)
 
 
 def test_reading_an_unknown_view_is_refused(tracker: TicketTracker) -> None:
     with pytest.raises(TicketTrackerError):
-        _ = tracker.view_tickets(ViewSlug("000000000000"))
+        _ = tracker.unblocked_view_tickets(ViewSlug("000000000000"))
 
 
 def labelled_seeds(
-    tracker: TicketTracker, backlog: Backlog, label: LabelName, excluding: StatusNames
+    tracker: TicketTracker, backlog: Backlog, label: LabelName, excluding: StatusTypes
 ) -> set[Seed]:
     listed = tracker.labelled_issues(label, excluding).identifiers()
     return {seed for seed in Seed if backlog.identifier(seed) in listed}
@@ -702,24 +693,29 @@ def labelled_seeds(
 
 def test_the_issues_carrying_a_label_are_listed(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.add_label(backlog.identifier(Seed.recent), LabelName("d-grill"))
-    assert labelled_seeds(tracker, backlog, LabelName("d-grill"), StatusNames(())) == {
+    assert labelled_seeds(tracker, backlog, LabelName("d-grill"), StatusTypes(())) == {
         Seed.recent,
         Seed.done,
     }
 
 
-def test_labelled_issues_in_an_excluded_status_are_left_out(
+def test_labelled_issues_of_an_excluded_status_type_are_left_out(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    tracker.add_label(backlog.identifier(Seed.recent), LabelName("d-grill"))
-    excluding = StatusNames((IssueStatusName("Done"), IssueStatusName("Canceled")))
+    for seed in (Seed.recent, Seed.old):
+        tracker.add_label(backlog.identifier(seed), LabelName("d-grill"))
+    tracker.update_issue(
+        backlog.identifier(Seed.old),
+        IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("Canceled")}),
+    )
+    excluding = StatusTypes((StatusType.completed, StatusType.canceled))
     assert labelled_seeds(tracker, backlog, LabelName("d-grill"), excluding) == {Seed.recent}
 
 
 def test_a_labelled_issue_is_found_whatever_the_label_case(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    assert labelled_seeds(tracker, backlog, LabelName("D-Grill"), StatusNames(())) == {Seed.done}
+    assert labelled_seeds(tracker, backlog, LabelName("D-Grill"), StatusTypes(())) == {Seed.done}
 
 
 def test_reads_an_issue_back_as_it_was_given(tracker: TicketTracker, backlog: Backlog) -> None:
