@@ -1,6 +1,6 @@
-import os
 from datetime import date
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -35,7 +35,9 @@ from mb_workflow.b_core.d_domain_model.issue import (
     ProjectName,
     StatusName,
 )
+from mb_workflow.c_infrastructure.credentials import CredentialsDirectory, RepositorySlug
 from mb_workflow.c_infrastructure.linear import Linear
+from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.d_lib.models import Model, Payload, Value
 
 if TYPE_CHECKING:
@@ -185,12 +187,13 @@ def fake_backlog() -> Backlog:
 # A key for the production workspace would make this suite rewrite real issues.
 @pytest.fixture(scope="session")
 def linear_client() -> LinearClient:
-    key = os.environ.get("LINEAR_INTEGRATION_TEST_API_KEY")
-    if not key:
-        pytest.fail(
-            "Set LINEAR_INTEGRATION_TEST_API_KEY; `moon run test-linear-live` reads it from .env."
-        )
-    client = LinearClient(api_key=key)
+    path = CredentialsDirectory.of_user().path_for(
+        RepositorySlug.of_origin(Shell(ExistingDirectory(Path.cwd())))
+    )
+    key = path.credentials().linear.integration_test_api_key
+    if key is None:
+        pytest.fail(f"Set [linear] integration_test_api_key in {path.root}.")
+    client = LinearClient(api_key=key.root)
     workspace = Workspace.of(client).organization.url_key
     if workspace != WorkspaceKey("mb-workflow-integration-test"):
         pytest.fail(f"The API key belongs to {workspace.root}, not the integration-test workspace.")

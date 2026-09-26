@@ -33,7 +33,13 @@ from mb_workflow.b_core.d_domain_model.config import (
     WorkingDirectory,
 )
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError
-from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
+from mb_workflow.c_infrastructure.credentials import (
+    CredentialsDirectory,
+    InvalidCredentialsError,
+    MissingCredentialsError,
+    RepositorySlug,
+)
+from mb_workflow.c_infrastructure.linear import Linear
 from mb_workflow.c_infrastructure.orca import Orca, OrcaError, WorkspaceStatus
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.c_infrastructure.workspace_board import BoardError
@@ -56,8 +62,10 @@ FAILURES = (
     CalledProcessError,
     FlowError,
     InvalidConfigError,
+    InvalidCredentialsError,
     IssueTrackerError,
     MissingConfigError,
+    MissingCredentialsError,
     NotFinalizableError,
     OSError,
     OrcaError,
@@ -89,7 +97,8 @@ def here() -> Shell:
 
 
 def linear() -> Linear:
-    return Linear.connected(LinearApiKey.from_environment())
+    path = CredentialsDirectory.of_user().path_for(RepositorySlug.of_origin(here()))
+    return Linear.connected(path.credentials().linear.api_key)
 
 
 @guarded

@@ -57,7 +57,7 @@ Built with Typer, entry point `mb_workflow.cli:app`. Every command must accept `
 
 ## Tickets
 
-`MB-<n>` identifiers are Linear issues. Read them with `mw ticket view`; modify them with `linear-cli`. `mw` needs `LINEAR_API_KEY` set to a key for the mb-workflow workspace.
+`MB-<n>` identifiers are Linear issues. Read them with `mw ticket view`; modify them with `linear-cli`.
 
 ```bash
 uv run mw ticket view MB-19
@@ -65,6 +65,16 @@ linear-cli issues update MB-19 --state Implementing
 ```
 
 The team's statuses are the workflow states (`Grilling`, `Speccing`, `Specced`, `Implementing`, `QA`, `Review`, `Merging`, `Merged`), not Linear's defaults.
+
+## Credentials
+
+`mw` reads its Linear keys from `~/.config/mb-workflow/projects/<owner>/<repo>.toml`, where `<owner>/<repo>` comes from the `origin` remote, so every worktree of a repository shares one file:
+
+```toml
+[linear]
+api_key = "lin_api_…"                   # the workspace this repository's issues live in
+integration_test_api_key = "lin_api_…"  # only for `moon run test-linear-live`
+```
 
 ## Commits
 

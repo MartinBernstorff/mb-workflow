@@ -1,4 +1,3 @@
-import os
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, override
 
@@ -39,13 +38,6 @@ class LinearApiKey(Value[str]):
     @staticmethod
     def fake() -> LinearApiKey:
         return LinearApiKey("lin_api_0000000000000000000000000000000000000000")
-
-    @staticmethod
-    def from_environment() -> LinearApiKey:
-        key = os.environ.get("LINEAR_API_KEY")
-        if not key:
-            raise IssueTrackerError("Set LINEAR_API_KEY to a Linear personal API key.")
-        return LinearApiKey(key)
 
 
 class LabelId(Value[str]):

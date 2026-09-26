@@ -27,7 +27,6 @@ tasks:
       - "@group(sources)"
     options:
       cache: false
-      envFile: ".env"
       runInCI: false
       outputStyle: "buffer-only-failure"
 
