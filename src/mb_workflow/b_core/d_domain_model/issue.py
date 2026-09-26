@@ -40,13 +40,20 @@ class LabelNames(Value[tuple[LabelName, ...]]):
     def has(self, label: LabelName) -> LabelKnown:
         return LabelKnown(label in self.root)
 
-    def added(self, label: LabelName) -> LabelNames:
-        if self.has(label).root:
-            return self
-        return LabelNames((*self.root, label))
-
     def without(self, label: LabelName) -> LabelNames:
         return LabelNames(tuple(name for name in self.root if name != label))
+
+    # Linear resolves a label name ignoring case, so these three take a workspace's labels as self.
+    def matching(self, label: LabelName) -> LabelName | None:
+        wanted = label.root.casefold()
+        return next((known for known in self.root if known.root.casefold() == wanted), None)
+
+    def unmatched(self, requested: LabelNames) -> LabelNames:
+        return LabelNames(tuple(label for label in requested.root if self.matching(label) is None))
+
+    def spelled(self, requested: LabelNames) -> LabelNames:
+        matched = (self.matching(label) for label in requested.root)
+        return LabelNames(tuple(dict.fromkeys(known for known in matched if known is not None)))
 
 
 # ProjectName and StatusName share a base so one exclusion pattern can match either.

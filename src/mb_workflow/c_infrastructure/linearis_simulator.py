@@ -169,17 +169,13 @@ class LinearisSimulator:
     def _labelled(self, command: Command, current: LabelNames, arguments: Arguments) -> LabelNames:
         if arguments.clear_labels.root or arguments.labels is None:
             return LabelNames(())
-        unknown = [
-            label.root for label in arguments.labels.root if not self._labels.has(label).root
-        ]
-        if unknown:
-            raise refused(command, Refusal(f"Label not found: {', '.join(unknown)}"))
+        unknown = self._labels.unmatched(arguments.labels)
+        if len(unknown.root) > 0:
+            names = ", ".join(label.root for label in unknown.root)
+            raise refused(command, Refusal(f"Label not found: {names}"))
         if arguments.label_mode != LabelMode.add:
-            return arguments.labels
-        labels = current
-        for label in arguments.labels.root:
-            labels = labels.added(label)
-        return labels
+            return self._labels.spelled(arguments.labels)
+        return self._labels.spelled(LabelNames((*current.root, *arguments.labels.root)))
 
     def _tracked(self, command: Command, identifier: IssueIdentifier) -> TrackedIssue:
         tracked = self._issues.get(identifier)

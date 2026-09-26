@@ -63,15 +63,18 @@ class FakeIssueTracker:
         return self._tracked(issue).issue
 
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
-        self.set_labels(issue, self.read(issue).labels.added(label))
+        self.set_labels(issue, LabelNames((*self.read(issue).labels.root, label)))
 
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
-        unknown = [label.root for label in labels.root if not self._labels.has(label).root]
-        if unknown:
-            raise IssueTrackerError(f"No label is named {', '.join(unknown)}.")
+        unknown = self._labels.unmatched(labels)
+        if len(unknown.root) > 0:
+            raise IssueTrackerError(
+                f"No label is named {', '.join(label.root for label in unknown.root)}."
+            )
         tracked = self._tracked(issue)
+        spelled = self._labels.spelled(labels)
         self._issues[issue] = tracked.model_copy(
-            update={"issue": tracked.issue.model_copy(update={"labels": labels})}
+            update={"issue": tracked.issue.model_copy(update={"labels": spelled})}
         )
 
     def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None:  # noqa: ARG002

@@ -146,3 +146,19 @@ def test_assigning_an_unknown_issue_is_refused(tracker: IssueTracker) -> None:
 
 def test_a_project_survives_the_round_trip(tracker: IssueTracker) -> None:
     assert tracker.read(IssueIdentifier("E-1")).project == ProjectName.fake()
+
+
+def test_a_label_is_found_whatever_its_case(tracker: IssueTracker) -> None:
+    tracker.add_label(IssueIdentifier("E-1"), LabelName("D-IMPLEMENT"))
+    assert tracker.read(IssueIdentifier("E-1")).labels == LabelNames.fake()
+
+
+def test_setting_labels_takes_the_workspace_spelling(tracker: IssueTracker) -> None:
+    tracker.set_labels(IssueIdentifier("E-1"), LabelNames((LabelName("backend"),)))
+    assert tracker.read(IssueIdentifier("E-1")).labels == LabelNames((LabelName("Backend"),))
+
+
+def test_adding_a_label_in_another_case_carries_it_once(tracker: IssueTracker) -> None:
+    tracker.add_label(IssueIdentifier("E-1"), LabelName.fake())
+    tracker.add_label(IssueIdentifier("E-1"), LabelName("D-Implement"))
+    assert tracker.read(IssueIdentifier("E-1")).labels == LabelNames.fake()
