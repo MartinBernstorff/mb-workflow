@@ -115,7 +115,7 @@ def linear() -> Linear:
     return Linear.connected(path.credentials().linear.api_key)
 
 
-def board() -> WorkspaceBoard:
+def workspace_board() -> WorkspaceBoard:
     return WorkspaceBoard.of_orca(Orca(here()), StateNames.initial_state(WorkflowChart))
 
 
@@ -183,11 +183,11 @@ def flow_config(directory: WorkingDirectory, name: ConfigFileName) -> ExitCode:
 
 @guarded
 def flow_show(as_json: AsJson) -> ExitCode:
-    write(Output(show_flow(board(), as_json).root))
+    write(Output(show_flow(workspace_board(), as_json).root))
     return ExitCode(0)
 
 
 @guarded
 def flow_event(event: EventName, force: Force) -> ExitCode:
-    logger.info("Moved to %s.", transition(board(), event, force).root)
+    logger.info("Moved to %s.", transition(workspace_board(), event, force).root)
     return ExitCode(0)

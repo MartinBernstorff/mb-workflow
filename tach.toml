@@ -1,4 +1,5 @@
 source_roots = ["src"]
+ignore_type_checking_imports = false
 
 # Tests sit beside the code they cover, so each layer also owns their imports.
 [[modules]]
