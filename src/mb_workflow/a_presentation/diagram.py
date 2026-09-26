@@ -26,7 +26,7 @@ class MermaidDocument(Value[str]):
 
     @staticmethod
     def of(diagram: MermaidDiagram) -> MermaidDocument:
-        return MermaidDocument(f"```mermaid\n{diagram.root}```\n")
+        return MermaidDocument(f"```mermaid\n{diagram.root.rstrip()}\n```\n")
 
 
 class DiagramPath(Value[Path]):
@@ -94,10 +94,14 @@ def write_image(destination: DiagramPath, image_format: ImageFormat) -> None:
     _ = graphs[0].write(str(destination.root), format=image_format.root)
 
 
-def write(destination: DiagramPath) -> None:
+def write_mermaid(destination: DiagramPath) -> None:
+    _ = destination.root.write_text(MermaidDocument.of(render_mermaid()).root)
+
+
+def write_diagram(destination: DiagramPath) -> None:
     match format_of(destination):
         case MermaidFormat():
-            _ = destination.root.write_text(MermaidDocument.of(render_mermaid()).root)
+            write_mermaid(destination)
         case ImageFormat() as image_format:
             write_image(destination, image_format)
 
@@ -107,7 +111,7 @@ def diagram(destination: DiagramPath | None) -> ExitCode:
         _ = sys.stdout.write(render_mermaid().root)
         return ExitCode(0)
     try:
-        write(destination)
+        write_diagram(destination)
     except OSError as error:
         logger.error("Could not write %s: %s", destination.root, error)
         return ExitCode(1)
