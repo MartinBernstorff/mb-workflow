@@ -172,6 +172,6 @@ class IssueFilter(Model):
     def fake() -> IssueFilter:
         return IssueFilter(creator=Creator.fake(), created_after=CreatedAfter.fake())
 
-    # linearis compares the creation time against midnight of the date, so the day itself is included.
+    # Linear compares the creation time against midnight of the date, so the day itself is included.
     def matches(self, creator: Creator, created: CreatedOn) -> Matches:
         return Matches(creator == self.creator and created.root >= self.created_after.root)

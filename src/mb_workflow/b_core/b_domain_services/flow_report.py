@@ -4,7 +4,7 @@ from mb_workflow.b_core.d_domain_model.flow import FlowStatus, WorkflowChart
 from mb_workflow.d_lib.models import Value
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.status import StatusStore
+    from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
 
 
 class AsJson(Value[bool]):
@@ -26,5 +26,7 @@ class StatusReport(Value[str]):
         return StatusReport(f"{status.state.root}\n{legal}")
 
 
-def status_report(chart: type[WorkflowChart], store: StatusStore, as_json: AsJson) -> StatusReport:
+def status_report(
+    chart: type[WorkflowChart], store: WorkspaceStatusStore, as_json: AsJson
+) -> StatusReport:
     return StatusReport.of(FlowStatus.of(chart, store.read()), as_json)

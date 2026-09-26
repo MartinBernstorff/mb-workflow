@@ -1,7 +1,7 @@
 import re
 from typing import override
 
-from mb_workflow.b_core.c_secondary_ports.status import StatusStore
+from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
 from mb_workflow.b_core.d_domain_model.flow import StateName
 from mb_workflow.c_infrastructure.orca import (
     ColumnLabel,
@@ -115,15 +115,15 @@ class Columns(Value[tuple[Column, ...]]):
         return state if state is not None else start
 
 
-class Board(StatusStore):
+class WorkspaceBoard(WorkspaceStatusStore):
     def __init__(self, orca: Orca, columns: Columns, start: StateName) -> None:
         self._orca = orca
         self._columns = columns
         self._start = start
 
     @staticmethod
-    def of_orca(orca: Orca, start: StateName) -> Board:
-        return Board(orca, Columns.parse(orca.columns(ColumnLabel.unknown())), start)
+    def of_orca(orca: Orca, start: StateName) -> WorkspaceBoard:
+        return WorkspaceBoard(orca, Columns.parse(orca.columns(ColumnLabel.unknown())), start)
 
     @override
     def read(self) -> StateName:
