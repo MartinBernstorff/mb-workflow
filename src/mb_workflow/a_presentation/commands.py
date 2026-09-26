@@ -6,6 +6,10 @@ from typing import TYPE_CHECKING
 
 from mb_workflow.a_presentation.autolabel_report import log_outcome
 from mb_workflow.a_presentation.console import ExitCode, Output, write
+from mb_workflow.a_presentation.review_workspaces_report import (
+    LoggingNarrator,
+    log_review_workspaces_outcome,
+)
 from mb_workflow.b_core.a_features.autolabel import (
     AutolabelRequest,
     UnknownLabelError,
@@ -25,9 +29,9 @@ from mb_workflow.b_core.a_features.show_config import show_config
 from mb_workflow.b_core.a_features.show_flow import show_flow
 from mb_workflow.b_core.a_features.transition import transition
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
-from mb_workflow.b_core.b_domain_services.lock import AlreadyRunningError, LockName, LockPath
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
+from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.b_core.d_domain_model.config import (
@@ -43,6 +47,7 @@ from mb_workflow.c_infrastructure.credentials import (
     MissingCredentialsError,
     RepositorySlug,
 )
+from mb_workflow.c_infrastructure.flock import FlockRunLock, LockName, LockPath
 from mb_workflow.c_infrastructure.github import GitHub
 from mb_workflow.c_infrastructure.ledger_file import FileLedgerStore
 from mb_workflow.c_infrastructure.linear import Linear
@@ -56,7 +61,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_report import AsJson
     from mb_workflow.b_core.b_domain_services.flow_transition import Force
     from mb_workflow.b_core.d_domain_model.issue import CreatedAfter, IssueIdentifier
-    from mb_workflow.b_core.d_domain_model.pull_request import Lookback, ReviewRequest
+    from mb_workflow.b_core.d_domain_model.pull_request import MergedSince, ReviewRequest
     from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit
     from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus
 
@@ -111,9 +116,17 @@ def linear() -> Linear:
 
 
 @guarded
-def review_workspaces(status: WorkspaceStatus, lookback: Lookback, lock: LockName) -> ExitCode:
+def review_workspaces(status: WorkspaceStatus, since: MergedSince, lock: LockName) -> ExitCode:
     shell = here()
-    outcome = create_workspaces(GitHub(shell), Orca(shell), status, lookback, LockPath.of(lock))
+    outcome = create_workspaces(
+        review=GitHub(shell),
+        manager=Orca(shell),
+        lock=FlockRunLock(LockPath.of(lock)),
+        narrator=LoggingNarrator(),
+        status=status,
+        since=since,
+    )
+    log_review_workspaces_outcome(outcome)
     return ExitCode.of(outcome.failed_any())
 
 

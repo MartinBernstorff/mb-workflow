@@ -1,26 +1,26 @@
-import logging
-from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
+
+import pytest
 
 from mb_workflow.b_core.a_features.review_workspaces import (
+    CreatedWorkspace,
     Failure,
+    FailureReason,
+    FailureSubject,
+    Narrator,
     Outcome,
     Unchanged,
-    on_branches,
-    prunable,
-    stale,
-    uncovered,
-    union,
+    create_workspaces,
 )
-from mb_workflow.b_core.d_domain_model.clock import Today
-from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames, Ref
+from mb_workflow.b_core.c_secondary_ports.code_review import FakeCodeReview, MergedPullRequest
+from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, FakeRunLock
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
+from mb_workflow.b_core.d_domain_model.git import Ref
 from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.b_core.d_domain_model.pull_request import (
-    Lookback,
+    CheckoutDirectory,
     MergedSince,
     PrNumber,
-    PrTitle,
-    PullRequest,
     PullRequests,
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
@@ -33,89 +33,137 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 )
 
 if TYPE_CHECKING:
-    import pytest
+    from pathlib import Path
+
+    from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
 
 
-def other_pr() -> PullRequest:
-    return PullRequest(
-        number=PrNumber(7), title=PrTitle("Other work"), branch=BranchName("feat/other")
+class SilentNarrator(Narrator):
+    @override
+    def inspecting(self, worktrees: Worktrees, here: WorktreePath) -> None: ...
+
+    @override
+    def awaiting_review(self, prs: PullRequests) -> None: ...
+
+    @override
+    def found_obsolete(self, worktrees: Worktrees) -> None: ...
+
+    @override
+    def removing(self, path: WorktreePath) -> None: ...
+
+    @override
+    def found_uncovered(self, prs: PullRequests) -> None: ...
+
+    @override
+    def creating(self, pr: PrNumber) -> None: ...
+
+    @override
+    def checking_out(self, path: WorktreePath) -> None: ...
+
+    @override
+    def removal_failed(self, failure: Failure) -> None: ...
+
+    @override
+    def creation_failed(self, failure: Failure) -> None: ...
+
+
+@pytest.fixture
+def here(tmp_path: Path) -> WorktreePath:
+    return WorktreePath(tmp_path / "main")
+
+
+def standing_in(here: WorktreePath, *others: Worktree) -> FakeWorkspaceManager:
+    return FakeWorkspaceManager(Worktrees((Worktree.bare(RepoId.fake(), here), *others)), here)
+
+
+def create_review_directory(here: WorktreePath) -> WorktreePath:
+    path = here.sibling(WorktreeName.fake())
+    path.root.mkdir()
+    return path
+
+
+def run_review_workspaces(
+    review: CodeForge,
+    manager: FakeWorkspaceManager,
+    lock: FakeRunLock | None = None,
+    status: WorkspaceStatus = WorkspaceStatus.fake(),
+) -> Outcome:
+    return create_workspaces(
+        review=review,
+        manager=manager,
+        lock=FakeRunLock() if lock is None else lock,
+        narrator=SilentNarrator(),
+        status=status,
+        since=MergedSince.fake(),
     )
 
 
-def bare_worktree() -> Worktree:
-    return Worktree.bare(RepoId.fake(), WorktreePath.fake())
+def test_creates_a_workspace_for_a_pr_awaiting_review(here: WorktreePath) -> None:
+    path = create_review_directory(here)
+    outcome = run_review_workspaces(FakeCodeReview(PullRequests.fake()), standing_in(here))
+    assert outcome.created == (CreatedWorkspace(name=WorktreeName.fake(), path=path),)
 
 
-def review_worktree() -> Worktree:
-    return bare_worktree().model_copy(
-        update={"pull_request": PrNumber.fake(), "status": WorkspaceStatus.fake()}
+def test_checks_the_pr_out_into_its_new_workspace(here: WorktreePath) -> None:
+    path = create_review_directory(here)
+    review = FakeCodeReview(PullRequests.fake())
+    _ = run_review_workspaces(review, standing_in(here))
+    assert review.checked_out(CheckoutDirectory(path.root)) == PrNumber.fake()
+
+
+def test_the_new_workspace_sits_in_the_review_status(here: WorktreePath) -> None:
+    path = create_review_directory(here)
+    manager = standing_in(here)
+    _ = run_review_workspaces(FakeCodeReview(PullRequests.fake()), manager)
+    created = manager.worktrees().at(path)
+    assert created is not None
+    assert created.status == WorkspaceStatus.fake()
+
+
+def test_removes_a_review_workspace_whose_pr_no_longer_awaits_review(here: WorktreePath) -> None:
+    stale = Worktree.fake().model_copy(update={"path": here.sibling(WorktreeName("stale"))})
+    manager = standing_in(here, stale)
+    outcome = run_review_workspaces(FakeCodeReview(PullRequests(())), manager)
+    assert outcome.removed == (stale.path,)
+    assert manager.worktrees().at(stale.path) is None
+
+
+def test_removes_a_workspace_whose_branch_merged_within_the_lookback(here: WorktreePath) -> None:
+    merged = Worktree.bare(RepoId.fake(), here.sibling(WorktreeName("merged"))).model_copy(
+        update={"branch": Ref.fake()}
     )
+    review = FakeCodeReview(PullRequests(()), merged=(MergedPullRequest.fake(),))
+    outcome = run_review_workspaces(review, standing_in(here, merged))
+    assert outcome.removed == (merged.path,)
 
 
-def elsewhere() -> WorktreePath:
-    return WorktreePath(Path.cwd())
+def test_a_workspace_that_already_matches_is_left_unchanged(here: WorktreePath) -> None:
+    covered = Worktree.fake().model_copy(update={"path": here.sibling(WorktreeName("covered"))})
+    outcome = run_review_workspaces(FakeCodeReview(PullRequests.fake()), standing_in(here, covered))
+    assert outcome.unchanged() == Unchanged(True)
 
 
-def stale_among(prs: PullRequests, worktrees: Worktrees) -> Worktrees:
-    return stale(prs, worktrees, RepoId.fake(), WorkspaceStatus.fake(), elsewhere())
-
-
-def test_keeps_prs_with_no_workspace() -> None:
-    assert uncovered(PullRequests.fake(), Worktrees((bare_worktree(),))) == PullRequests.fake()
-
-
-def test_skips_a_pr_linked_by_issue_number() -> None:
-    worktrees = Worktrees((bare_worktree().model_copy(update={"pull_request": PrNumber.fake()}),))
-    assert uncovered(PullRequests.fake(), worktrees) == PullRequests(())
-
-
-def test_skips_a_pr_whose_branch_is_already_checked_out() -> None:
-    worktrees = Worktrees((bare_worktree().model_copy(update={"branch": Ref.fake()}),))
-    assert uncovered(PullRequests.fake(), worktrees) == PullRequests(())
-
-
-def test_a_workspace_for_another_pr_does_not_cover_this_one() -> None:
-    prs = PullRequests((PullRequest.fake(), other_pr()))
-    worktrees = Worktrees((bare_worktree().model_copy(update={"branch": Ref.fake()}),))
-    assert uncovered(prs, worktrees) == PullRequests((other_pr(),))
-
-
-def test_no_prs_yields_nothing_to_do() -> None:
-    assert uncovered(PullRequests(()), Worktrees.fake()) == PullRequests(())
-
-
-def test_a_review_workspace_survives_while_its_pr_awaits_review() -> None:
-    assert stale_among(PullRequests.fake(), Worktrees((review_worktree(),))) == Worktrees(())
-
-
-def test_a_review_workspace_is_stale_once_its_pr_no_longer_awaits_review() -> None:
-    worktrees = Worktrees((review_worktree(),))
-    assert stale_among(PullRequests((other_pr(),)), worktrees) == worktrees
-
-
-def test_a_workspace_outside_the_review_status_is_never_stale() -> None:
-    worktrees = Worktrees((review_worktree().model_copy(update={"status": None}),))
-    assert stale_among(PullRequests(()), worktrees) == Worktrees(())
-
-
-def test_a_workspace_in_another_repo_is_never_stale() -> None:
-    worktrees = Worktrees((review_worktree().model_copy(update={"repo": RepoId("elsewhere")}),))
-    assert stale_among(PullRequests(()), worktrees) == Worktrees(())
-
-
-def test_a_review_workspace_matched_only_by_branch_survives() -> None:
-    worktrees = Worktrees(
-        (review_worktree().model_copy(update={"pull_request": None, "branch": Ref.fake()}),)
+def test_a_workspace_that_cannot_be_created_is_reported_as_failed(here: WorktreePath) -> None:
+    outcome = run_review_workspaces(
+        FakeCodeReview(PullRequests.fake()),
+        standing_in(here),
+        status=WorkspaceStatus("no-such-column"),
     )
-    assert stale_among(PullRequests.fake(), worktrees) == Worktrees(())
+    assert outcome.failed == (
+        Failure(
+            subject=FailureSubject.of_pr(PrNumber.fake()),
+            reason=FailureReason("The board has no column no-such-column."),
+        ),
+    )
+    assert outcome.failed_any() == Failed(True)
 
 
-def test_the_workspace_you_are_standing_in_is_never_stale() -> None:
-    here = elsewhere()
-    worktrees = Worktrees((review_worktree().model_copy(update={"path": here}),))
-    assert stale(
-        PullRequests(()), worktrees, RepoId.fake(), WorkspaceStatus.fake(), here
-    ) == Worktrees(())
+def test_a_run_is_refused_while_another_holds_the_lock(here: WorktreePath) -> None:
+    lock = FakeRunLock()
+    manager = standing_in(here)
+    with lock.held(), pytest.raises(AlreadyRunningError):
+        _ = run_review_workspaces(FakeCodeReview(PullRequests.fake()), manager, lock)
+    assert len(manager.worktrees().root) == 1
 
 
 def test_a_run_that_touched_nothing_is_unchanged() -> None:
@@ -132,71 +180,3 @@ def test_a_clean_run_exits_zero() -> None:
 
 def test_any_failure_exits_non_zero() -> None:
     assert Outcome(created=(), removed=(), failed=(Failure.fake(),)).failed_any() == Failed(True)
-
-
-def test_reports_each_created_workspace(caplog: pytest.LogCaptureFixture) -> None:
-    with caplog.at_level(logging.INFO):
-        Outcome.fake().report()
-    assert "Created 1 workspace:" in caplog.text
-    assert f"    {WorktreeName.fake().root} \u2192 " in caplog.text
-
-
-def test_reports_each_removed_workspace(caplog: pytest.LogCaptureFixture) -> None:
-    with caplog.at_level(logging.INFO):
-        Outcome(created=(), removed=(WorktreePath.fake(),), failed=()).report()
-    assert "Removed 1 workspace:" in caplog.text
-    assert f"    {WorktreePath.fake().root}" in caplog.text
-
-
-def test_reports_nothing_when_nothing_changed(caplog: pytest.LogCaptureFixture) -> None:
-    with caplog.at_level(logging.INFO):
-        Outcome(created=(), removed=(), failed=()).report()
-    assert caplog.text == ""
-
-
-def test_a_workspace_on_a_branch_is_prunable() -> None:
-    worktrees = Worktrees((bare_worktree().model_copy(update={"branch": Ref.fake()}),))
-    assert prunable(worktrees, RepoId.fake(), elsewhere()) == worktrees
-
-
-def test_a_workspace_without_a_branch_is_not_prunable() -> None:
-    assert prunable(Worktrees((bare_worktree(),)), RepoId.fake(), elsewhere()) == Worktrees(())
-
-
-def test_a_workspace_in_another_repo_is_not_prunable() -> None:
-    worktrees = Worktrees(
-        (bare_worktree().model_copy(update={"branch": Ref.fake(), "repo": RepoId("elsewhere")}),)
-    )
-    assert prunable(worktrees, RepoId.fake(), elsewhere()) == Worktrees(())
-
-
-def test_the_workspace_you_are_standing_in_is_not_prunable() -> None:
-    here = elsewhere()
-    worktrees = Worktrees(
-        (bare_worktree().model_copy(update={"branch": Ref.fake(), "path": here}),)
-    )
-    assert prunable(worktrees, RepoId.fake(), here) == Worktrees(())
-
-
-def test_a_union_keeps_each_workspace_once() -> None:
-    assert union(Worktrees.fake(), Worktrees.fake()) == Worktrees.fake()
-
-
-def test_a_union_keeps_distinct_workspaces() -> None:
-    second = bare_worktree().model_copy(update={"path": WorktreePath(Path("/tmp/other"))})
-    assert union(Worktrees.fake(), Worktrees((second,))) == Worktrees((Worktree.fake(), second))
-
-
-def test_collects_the_branch_of_each_pr() -> None:
-    prs = PullRequests((PullRequest.fake(), other_pr()))
-    assert prs.branches() == BranchNames((BranchName.fake(), BranchName("feat/other")))
-
-
-def test_selects_the_workspaces_on_the_given_branches() -> None:
-    wanted = bare_worktree().model_copy(update={"branch": Ref.fake()})
-    other = bare_worktree().model_copy(update={"branch": Ref("refs/heads/feat/other")})
-    assert on_branches(Worktrees((wanted, other)), BranchNames.fake()) == Worktrees((wanted,))
-
-
-def test_the_window_starts_the_lookback_before_today() -> None:
-    assert MergedSince.of(Lookback.fake(), Today.fake()) == MergedSince.fake()

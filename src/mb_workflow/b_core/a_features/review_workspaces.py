@@ -1,34 +1,20 @@
-import logging
 from subprocess import CalledProcessError
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
+from mb_workflow.b_core.b_domain_services.worktree_reconciliation import obsolete, uncovered
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
-from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.outcome import Failed
-from mb_workflow.b_core.d_domain_model.pull_request import (
-    CheckoutDirectory,
-    MergedSince,
-    PrNumber,
-    PullRequests,
-)
-from mb_workflow.b_core.d_domain_model.workspace import (
-    RepoId,
-    WorkspaceStatus,
-    WorktreeName,
-    WorktreePath,
-    Worktrees,
-)
+from mb_workflow.b_core.d_domain_model.pull_request import CheckoutDirectory, PrNumber
+from mb_workflow.b_core.d_domain_model.workspace import WorktreeName, WorktreePath
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.b_domain_services.lock import LockPath
     from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
+    from mb_workflow.b_core.c_secondary_ports.run_lock import RunLock
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
-    from mb_workflow.b_core.d_domain_model.git import BranchNames
-    from mb_workflow.b_core.d_domain_model.pull_request import Lookback
-
-logger = logging.getLogger(__name__)
+    from mb_workflow.b_core.d_domain_model.pull_request import MergedSince, PullRequests
+    from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus, Worktrees
 
 
 class FailureReason(Value[str]):
@@ -84,18 +70,6 @@ class Outcome(Model):
     def fake() -> Outcome:
         return Outcome(created=(CreatedWorkspace.fake(),), removed=(), failed=())
 
-    def report(self) -> None:
-        if len(self.removed) > 0:
-            noun = "workspace" if len(self.removed) == 1 else "workspaces"
-            logger.info("Removed %s %s:", len(self.removed), noun)
-            for path in self.removed:
-                logger.info("    %s", path.root)
-        if len(self.created) > 0:
-            noun = "workspace" if len(self.created) == 1 else "workspaces"
-            logger.info("Created %s %s:", len(self.created), noun)
-            for workspace in self.created:
-                logger.info("    %s → %s", workspace.name.root, workspace.path.root)
-
     def unchanged(self) -> Unchanged:
         return Unchanged(
             len(self.created) == 0 and len(self.removed) == 0 and len(self.failed) == 0
@@ -105,132 +79,97 @@ class Outcome(Model):
         return Failed(len(self.failed) > 0)
 
 
-def uncovered(prs: PullRequests, worktrees: Worktrees) -> PullRequests:
-    linked = {w.pull_request for w in worktrees.root if w.pull_request is not None}
-    branches = {w.branch.branch() for w in worktrees.root if w.branch is not None}
-    return PullRequests(
-        tuple(pr for pr in prs.root if pr.number not in linked and pr.branch not in branches)
-    )
+class Narrator(Protocol):
+    def inspecting(self, worktrees: Worktrees, here: WorktreePath) -> None: ...
 
+    def awaiting_review(self, prs: PullRequests) -> None: ...
 
-def stale(
-    prs: PullRequests,
-    worktrees: Worktrees,
-    repo: RepoId,
-    status: WorkspaceStatus,
-    here: WorktreePath,
-) -> Worktrees:
-    numbers = {pr.number for pr in prs.root}
-    branches = {pr.branch for pr in prs.root}
-    return Worktrees(
-        tuple(
-            worktree
-            for worktree in worktrees.without(here).root
-            if worktree.repo == repo
-            and worktree.status == status
-            and worktree.pull_request not in numbers
-            and (worktree.branch is None or worktree.branch.branch() not in branches)
-        )
-    )
+    def found_obsolete(self, worktrees: Worktrees) -> None: ...
 
+    def removing(self, path: WorktreePath) -> None: ...
 
-def prunable(worktrees: Worktrees, repo: RepoId, here: WorktreePath) -> Worktrees:
-    return Worktrees(
-        tuple(
-            worktree
-            for worktree in worktrees.without(here).root
-            if worktree.repo == repo and worktree.branch is not None
-        )
-    )
+    def found_uncovered(self, prs: PullRequests) -> None: ...
 
+    def creating(self, pr: PrNumber) -> None: ...
 
-def on_branches(worktrees: Worktrees, wanted: BranchNames) -> Worktrees:
-    return Worktrees(
-        tuple(
-            worktree
-            for worktree in worktrees.root
-            if worktree.branch is not None and worktree.branch.branch() in wanted.root
-        )
-    )
+    def checking_out(self, path: WorktreePath) -> None: ...
 
+    def removal_failed(self, failure: Failure) -> None: ...
 
-def union(first: Worktrees, second: Worktrees) -> Worktrees:
-    return Worktrees(
-        (
-            *first.root,
-            *(worktree for worktree in second.root if first.at(worktree.path) is None),
-        )
-    )
+    def creation_failed(self, failure: Failure) -> None: ...
 
 
 def create_workspaces(
+    *,
     review: CodeForge,
     manager: WorkspaceManager,
+    lock: RunLock,
+    narrator: Narrator,
     status: WorkspaceStatus,
-    lookback: Lookback,
-    lock: LockPath,
+    since: MergedSince,
 ) -> Outcome:
     with lock.held():
-        since = MergedSince.of(lookback, Today.now())
-        return workspaces_for_review(review, manager, status, since)
+        return reconcile_workspaces(review, manager, narrator, status, since)
 
 
-def workspaces_for_review(
-    review: CodeForge, manager: WorkspaceManager, status: WorkspaceStatus, since: MergedSince
+def reconcile_workspaces(
+    review: CodeForge,
+    manager: WorkspaceManager,
+    narrator: Narrator,
+    status: WorkspaceStatus,
+    since: MergedSince,
 ) -> Outcome:
     worktrees = manager.worktrees()
     current = manager.current()
     here = current.path
     repo = current.repo
-    logger.info("Inspecting %s worktrees from %s", len(worktrees.root), here.root)
+    narrator.inspecting(worktrees, here)
     requested = review.review_requested()
-    logger.info("PRs awaiting your review: %s", len(requested.root))
+    narrator.awaiting_review(requested)
 
     created: list[CreatedWorkspace] = []
     removed: list[WorktreePath] = []
     failed: list[Failure] = []
 
-    obsolete = union(
-        stale(requested, worktrees, repo, status, here),
-        on_branches(prunable(worktrees, repo, here), review.merged_branches(since)),
+    to_remove = obsolete(
+        requested=requested,
+        merged=review.merged_branches(since),
+        worktrees=worktrees,
+        repo=repo,
+        status=status,
+        here=here,
     )
-    logger.info("Obsolete workspaces: %s", len(obsolete.root))
+    narrator.found_obsolete(to_remove)
 
-    for worktree in obsolete.root:
+    for worktree in to_remove.root:
         try:
-            logger.info("    Removing %s", worktree.path.root)
+            narrator.removing(worktree.path)
             manager.remove(worktree.path)
         except WorkspaceManagerError as error:
-            logger.error("    %s could not be removed: %s", worktree.path.root, error)
-            failed.append(
-                Failure(
-                    subject=FailureSubject.of_path(worktree.path),
-                    reason=FailureReason(str(error)),
-                )
+            failure = Failure(
+                subject=FailureSubject.of_path(worktree.path), reason=FailureReason(str(error))
             )
+            narrator.removal_failed(failure)
+            failed.append(failure)
         else:
             removed.append(worktree.path)
 
     missing = uncovered(requested, worktrees)
-    logger.info("PRs without a workspace: %s", len(missing.root))
+    narrator.found_uncovered(missing)
 
     for pr in missing.root:
-        logger.info("Processing #%s", pr.number.root)
         try:
-            logger.info("    Creating worktree %s", WorktreeName.of(pr.number).root)
+            narrator.creating(pr.number)
             path = manager.create_for_review(repo, pr.number, pr.title, status).path
-            logger.info("    Checking out into %s", path.root)
+            narrator.checking_out(path)
             review.checkout(pr.number, CheckoutDirectory(path.root))
         except (CalledProcessError, CodeReviewError, WorkspaceManagerError, ValueError) as error:
-            logger.error("    PR #%s failed: %s", pr.number.root, error)
-            failed.append(
-                Failure(subject=FailureSubject.of_pr(pr.number), reason=FailureReason(str(error)))
+            failure = Failure(
+                subject=FailureSubject.of_pr(pr.number), reason=FailureReason(str(error))
             )
+            narrator.creation_failed(failure)
+            failed.append(failure)
         else:
             created.append(CreatedWorkspace(name=WorktreeName.of(pr.number), path=path))
 
-    outcome = Outcome(created=tuple(created), removed=tuple(removed), failed=tuple(failed))
-    if outcome.unchanged().root:
-        logger.info("Review workspaces already match the PRs awaiting review")
-    outcome.report()
-    return outcome
+    return Outcome(created=tuple(created), removed=tuple(removed), failed=tuple(failed))
