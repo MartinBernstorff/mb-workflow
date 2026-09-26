@@ -1,6 +1,5 @@
 import re
 import socket
-from datetime import timedelta
 
 from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
 from mb_workflow.b_core.d_domain_model.issue import IssueStatusName, StatusNames
@@ -100,9 +99,3 @@ class TakeOver(Value[bool]):
     @staticmethod
     def fake() -> TakeOver:
         return TakeOver(False)
-
-
-class SettleTime(Value[timedelta]):
-    @staticmethod
-    def fake() -> SettleTime:
-        return SettleTime(timedelta(seconds=3))

@@ -18,7 +18,6 @@ from mb_workflow.b_core.c_secondary_ports.claims import (
     ClaimRegistry,
     ClaimRequest,
     FakeClaimRegistry,
-    FakePause,
     claim_ticket,
 )
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
@@ -835,9 +834,9 @@ def test_of_two_racing_claimers_exactly_one_wins(
         update={"ticket": ticket, "status": tracker.read_issue(ticket).status}
     )
     second = first.model_copy(update={"holder": rival_of(first.holder)})
-    raced = RacedRegistry(claims, lambda: claim_ticket(claims, FakePause(), second))
+    raced = RacedRegistry(claims, lambda: claim_ticket(claims, second))
     with pytest.raises(ClaimRefusedError, match="bob-mbp"):
-        claim_ticket(raced, FakePause(), first)
+        claim_ticket(raced, first)
     assert holders(claims.claims(ticket)) == (second.holder,)
 
 

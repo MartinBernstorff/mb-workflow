@@ -7,7 +7,6 @@ from mb_workflow.b_core.a_features.drain import DrainOutcome, DrainRequest, drai
 from mb_workflow.b_core.c_secondary_ports.claims import (
     ClaimRefusedError,
     FakeClaimRegistry,
-    FakePause,
 )
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, FakeRunLock
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
@@ -127,7 +126,6 @@ def draining(
     return drain_pool(
         tracker=tracker,
         claims=claims or FakeClaimRegistry(),
-        pause=FakePause(),
         manager=manager or fake_manager(),
         board=fake_board(),
         lock=lock or FakeRunLock(),
