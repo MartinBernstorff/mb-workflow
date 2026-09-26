@@ -11,7 +11,10 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     TicketTrackerError,
     TrackedIssue,
 )
-from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
+    DisplayNameRefusingWorkspaceManager,
+    FakeWorkspaceManager,
+)
 from mb_workflow.b_core.d_domain_model.claim import (
     Claim,
     ClaimHolder,
@@ -33,10 +36,12 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
     IssueIdentifier,
     IssueStatusName,
+    IssueTitle,
     LabelName,
     LabelNames,
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
+    DisplayName,
     ProjectSelector,
     Submit,
     TerminalText,
@@ -108,6 +113,19 @@ def test_opens_a_worktree_named_and_linked_after_the_ticket() -> None:
     opened = opened_in(started(IssueStatusName("Specced"), StartRequest.fake()))
     assert opened.issue == IssueIdentifier.fake()
     assert opened.path == WorktreePath.fake().sibling(WorktreeName.of_issue(IssueIdentifier.fake()))
+
+
+def test_names_the_worktree_after_the_ticket_title() -> None:
+    opened = opened_in(started(IssueStatusName("Specced"), StartRequest.fake()))
+    assert opened.display_name == DisplayName.of_issue(IssueTitle.fake())
+
+
+def test_a_refused_display_name_still_opens_the_worktree() -> None:
+    manager = DisplayNameRefusingWorkspaceManager(
+        Worktrees.fake(), WorktreePath.fake(), fake_board_statuses()
+    )
+    starting(manager, tracking(IssueStatusName("Specced")), StartRequest.fake())
+    assert opened_in(manager).issue == IssueIdentifier.fake()
 
 
 def test_types_the_prompt_without_submitting_it_by_default() -> None:
