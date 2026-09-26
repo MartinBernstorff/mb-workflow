@@ -11,7 +11,6 @@ from mb_workflow.b_core.c_secondary_ports.issue_tracker import FakeIssueTracker,
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
 from mb_workflow.b_core.d_domain_model.config import WorkspaceSettings
 from mb_workflow.b_core.d_domain_model.issue import (
-    Assigned,
     Assignee,
     Issue,
     IssueIdentifier,
@@ -101,13 +100,6 @@ def test_types_the_prefixed_prompt_into_the_agent_terminal() -> None:
     assert manager.typed_texts() == (TerminalText(f"/implement {TerminalText.fake().root}"),)
 
 
-def test_assigns_the_issue_it_opens() -> None:
-    tracker = tracking(StatusName("Todo"))
-    manager = FakeWorkspaceManager(Worktrees.fake(), WorktreePath.fake())
-    open_workspace(manager, tracker, WorkspaceSettings.fake(), OpenRequest.fake())
-    assert tracker.read_issue(IssueIdentifier.fake()).assigned == Assigned(True)
-
-
 def test_without_a_prompt_nothing_is_typed() -> None:
     manager = FakeWorkspaceManager(Worktrees.fake(), WorktreePath.fake())
     promptless = OpenRequest.fake().model_copy(update={"prompt": None})
@@ -139,10 +131,7 @@ def test_opens_the_worktree_in_the_configured_project() -> None:
 def test_assigns_the_issue_to_the_configured_assignee() -> None:
     tracker = tracking(StatusName("Todo"))
     manager = FakeWorkspaceManager(Worktrees.fake(), WorktreePath.fake())
-    workspace = WorkspaceSettings.fake().model_copy(
-        update={"assignee": Assignee("other@flowbase.io")}
-    )
+    assignee = Assignee("other@flowbase.io")
+    workspace = WorkspaceSettings.fake().model_copy(update={"assignee": assignee})
     open_workspace(manager, tracker, workspace, OpenRequest.fake())
-    assert tracker.read_issue_detail(IssueIdentifier.fake()).assignee == Assignee(
-        "other@flowbase.io"
-    )
+    assert tracker.read_issue_detail(IssueIdentifier.fake()).assignee == assignee

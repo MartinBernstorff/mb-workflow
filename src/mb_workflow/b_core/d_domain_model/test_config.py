@@ -26,8 +26,8 @@ if TYPE_CHECKING:
     from pydantic import JsonValue
 
 
-def validated(**tables: JsonValue) -> Settings:
-    workspace = {"orca_project": "github:flowbasedk/flowbase", "assignee": "mab@flowbase.io"}
+def settings_with_fake_workspace(**tables: JsonValue) -> Settings:
+    workspace = WorkspaceSettings.fake().model_dump(mode="json")
     return Settings.model_validate({"workspace": workspace, **tables})
 
 
@@ -108,62 +108,68 @@ def test_a_malformed_configuration_file_names_itself(tmp_path: Path) -> None:
 
 
 def test_a_linear_configuration_names_only_its_tracker() -> None:
-    settings = validated(issues={"tracker": "linear"})
+    settings = settings_with_fake_workspace(issues={"tracker": "linear"})
     assert settings.issues == LinearTracker(tracker=Tracker.linear)
 
 
 def test_a_todoist_configuration_names_its_project_tag() -> None:
-    settings = validated(issues={"tracker": "todoist", "project_tag": "it-mb-workflow"})
+    settings = settings_with_fake_workspace(
+        issues={"tracker": "todoist", "project_tag": "it-mb-workflow"}
+    )
     assert settings.issues == TodoistTracker(tracker=Tracker.todoist, project_tag=ProjectTag.fake())
 
 
 def test_a_todoist_configuration_without_a_project_tag_is_refused() -> None:
     with pytest.raises(ValueError, match=r"todoist\.project_tag"):
-        _ = validated(issues={"tracker": "todoist"})
+        _ = settings_with_fake_workspace(issues={"tracker": "todoist"})
 
 
 def test_a_project_tag_without_todoist_is_refused() -> None:
     with pytest.raises(ValueError, match=r"linear\.project_tag"):
-        _ = validated(issues={"tracker": "linear", "project_tag": "it-mb-workflow"})
+        _ = settings_with_fake_workspace(
+            issues={"tracker": "linear", "project_tag": "it-mb-workflow"}
+        )
 
 
 def test_an_unknown_tracker_is_refused() -> None:
     with pytest.raises(ValueError, match="union_tag_invalid"):
-        _ = validated(issues={"tracker": "jira"})
+        _ = settings_with_fake_workspace(issues={"tracker": "jira"})
 
 
 def test_a_configuration_naming_no_tracker_is_refused() -> None:
     with pytest.raises(ValueError, match="issues"):
-        _ = validated()
+        _ = settings_with_fake_workspace()
 
 
 def test_the_status_store_defaults_to_orca() -> None:
-    settings = validated(issues={"tracker": "linear"})
+    settings = settings_with_fake_workspace(issues={"tracker": "linear"})
     assert settings.status == OrcaStatus(store=StatusStore.orca)
 
 
 def test_an_empty_status_table_defaults_to_orca() -> None:
-    settings = validated(issues={"tracker": "linear"}, status={})
+    settings = settings_with_fake_workspace(issues={"tracker": "linear"}, status={})
     assert settings.status == OrcaStatus.fake()
 
 
 def test_the_status_store_can_be_named_explicitly() -> None:
-    settings = validated(issues={"tracker": "linear"}, status={"store": "orca"})
+    settings = settings_with_fake_workspace(issues={"tracker": "linear"}, status={"store": "orca"})
     assert settings.status == OrcaStatus.fake()
 
 
 def test_an_unknown_status_store_is_refused() -> None:
     with pytest.raises(ValueError, match=r"status\.store"):
-        _ = validated(issues={"tracker": "linear"}, status={"store": "sticky-notes"})
+        _ = settings_with_fake_workspace(
+            issues={"tracker": "linear"}, status={"store": "sticky-notes"}
+        )
 
 
 def test_a_setting_the_file_does_not_define_is_refused() -> None:
     with pytest.raises(ValueError, match="extra_forbidden"):
-        _ = validated(issues={"tracker": "linear"}, sttaus={"store": "orca"})
+        _ = settings_with_fake_workspace(issues={"tracker": "linear"}, sttaus={"store": "orca"})
 
 
 def test_the_workspace_table_names_the_orca_project_and_the_assignee() -> None:
-    settings = validated(
+    settings = settings_with_fake_workspace(
         issues={"tracker": "linear"},
         workspace={"orca_project": "github:other/project", "assignee": "other@flowbase.io"},
     )
@@ -180,6 +186,13 @@ def test_a_configuration_without_a_workspace_table_is_refused() -> None:
 
 def test_a_workspace_table_without_an_assignee_is_refused() -> None:
     with pytest.raises(ValueError, match=r"workspace\.assignee"):
-        _ = validated(
+        _ = settings_with_fake_workspace(
             issues={"tracker": "linear"}, workspace={"orca_project": "github:other/project"}
+        )
+
+
+def test_a_workspace_table_without_an_orca_project_is_refused() -> None:
+    with pytest.raises(ValueError, match=r"workspace\.orca_project"):
+        _ = settings_with_fake_workspace(
+            issues={"tracker": "linear"}, workspace={"assignee": "other@flowbase.io"}
         )
