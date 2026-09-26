@@ -10,16 +10,16 @@ logger = logging.getLogger(__name__)
 class SkipPhrase(Value[str]):
     @staticmethod
     def fake() -> SkipPhrase:
-        return counted(SkipReason.already_labelled, SkipCount.fake())
+        return skip_phrase(SkipReason.already_labelled, SkipCount.fake())
 
 
 class SummaryLine(Value[str]):
     @staticmethod
     def fake() -> SummaryLine:
-        return summary(Outcome.fake())
+        return outcome_summary(Outcome.fake())
 
 
-def counted(reason: SkipReason, count: SkipCount) -> SkipPhrase:
+def skip_phrase(reason: SkipReason, count: SkipCount) -> SkipPhrase:
     if count.root == 1:
         return SkipPhrase(f"{count.root} {reason.value}")
     plural = {
@@ -29,23 +29,23 @@ def counted(reason: SkipReason, count: SkipCount) -> SkipPhrase:
     return SkipPhrase(f"{count.root} {plural}")
 
 
-def summary(outcome: Outcome) -> SummaryLine:
+def outcome_summary(outcome: Outcome) -> SummaryLine:
     chosen = outcome.chosen()
     verb = "Would label" if outcome.dry_run.root else "Labelled"
     total = len(outcome.selection.root)
     parts = [f"{verb} {len(chosen)} of {total} issue{'' if total == 1 else 's'}"]
     skips = outcome.selection.skips()
     if len(skips) > 0:
-        parts.append("skipped " + ", ".join(counted(t.reason, t.count).root for t in skips))
+        parts.append("skipped " + ", ".join(skip_phrase(t.reason, t.count).root for t in skips))
     if len(outcome.failed) > 0:
         parts.append(f"{len(outcome.failed)} failed")
     return SummaryLine("; ".join(parts))
 
 
-def report(outcome: Outcome) -> None:
+def log_outcome(outcome: Outcome) -> None:
     verb = "would label" if outcome.dry_run.root else "labelled"
     for issue in outcome.chosen():
         logger.info("%s %s", verb, issue.root)
-    logger.info("%s", summary(outcome).root)
+    logger.info("%s", outcome_summary(outcome).root)
     if outcome.dry_run.root:
         logger.info("Re-run with --apply to label them.")

@@ -16,7 +16,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
 )
 
 
-def issue(
+def issue_with(
     identifier: IssueIdentifier,
     status: StatusName,
     project: ProjectName | None,
@@ -32,17 +32,17 @@ def default_issues() -> Issues:
     editor = ProjectName("Editor Bugs")
     return Issues(
         (
-            issue(IssueIdentifier("E-1"), todo, ProjectName("BE: Campaigns MVP")),
-            issue(IssueIdentifier("E-2"), todo, ProjectName("BE Shop")),
-            issue(IssueIdentifier("E-3"), todo, ProjectName("Sentry Backend")),
-            issue(IssueIdentifier("E-4"), todo, None),
-            issue(IssueIdentifier("E-5"), StatusName("Done"), editor),
-            issue(IssueIdentifier("E-6"), StatusName("Canceled"), editor),
-            issue(IssueIdentifier("E-7"), StatusName("Duplicate"), editor),
-            issue(IssueIdentifier("E-8"), StatusName("Triage"), editor),
-            issue(IssueIdentifier("E-9"), todo, editor, LabelNames.fake()),
-            issue(IssueIdentifier("E-10"), todo, editor),
-            issue(IssueIdentifier("E-11"), todo, editor),
+            issue_with(IssueIdentifier("E-1"), todo, ProjectName("BE: Campaigns MVP")),
+            issue_with(IssueIdentifier("E-2"), todo, ProjectName("BE Shop")),
+            issue_with(IssueIdentifier("E-3"), todo, ProjectName("Sentry Backend")),
+            issue_with(IssueIdentifier("E-4"), todo, None),
+            issue_with(IssueIdentifier("E-5"), StatusName("Done"), editor),
+            issue_with(IssueIdentifier("E-6"), StatusName("Canceled"), editor),
+            issue_with(IssueIdentifier("E-7"), StatusName("Duplicate"), editor),
+            issue_with(IssueIdentifier("E-8"), StatusName("Triage"), editor),
+            issue_with(IssueIdentifier("E-9"), todo, editor, LabelNames.fake()),
+            issue_with(IssueIdentifier("E-10"), todo, editor),
+            issue_with(IssueIdentifier("E-11"), todo, editor),
         )
     )
 

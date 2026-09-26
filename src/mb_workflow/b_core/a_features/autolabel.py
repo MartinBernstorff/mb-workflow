@@ -71,28 +71,31 @@ class Outcome(Model):
         return self.labelled
 
 
-def sweep(
-    tracker: IssueTracker, ledgers: LedgerStore, request: AutolabelRequest, window: CreatedAfter
+def label_eligible_issues(
+    tracker: IssueTracker,
+    ledger_store: LedgerStore,
+    request: AutolabelRequest,
+    window: CreatedAfter,
 ) -> Outcome:
     if not tracker.workspace_labels().has(request.label).root:
         raise UnknownLabelError(f"No label is named {request.label.root}.")
 
-    recorded = ledgers.read(request.label)
+    recorded = ledger_store.read(request.label)
     issues = tracker.list_issues(IssueFilter(creator=request.creator, created_after=window))
     logger.info("Sweeping %s issues created since %s", len(issues.root), window.root.isoformat())
 
     criteria = AutoLabelCriteria(
         label=request.label, exclusions=request.exclusions, ledger=recorded
     )
-    outcome = update_labels(tracker, Selection.of(issues, criteria), request)
+    outcome = add_label_to_eligible(tracker, Selection.of(issues, criteria), request)
 
     if not request.dry_run.root and len(outcome.labelled) > 0:
-        ledgers.write(request.label, recorded.extended(outcome.labelled))
+        ledger_store.write(request.label, recorded.extended(outcome.labelled))
 
     return outcome
 
 
-def update_labels(
+def add_label_to_eligible(
     tracker: IssueTracker, selection: Selection, request: AutolabelRequest
 ) -> Outcome:
     if request.dry_run.root:

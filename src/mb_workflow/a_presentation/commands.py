@@ -4,9 +4,13 @@ from pathlib import Path
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
-from mb_workflow.a_presentation.autolabel_report import report
+from mb_workflow.a_presentation.autolabel_report import log_outcome
 from mb_workflow.a_presentation.console import ExitCode, Output, write
-from mb_workflow.b_core.a_features.autolabel import AutolabelRequest, UnknownLabelError, sweep
+from mb_workflow.b_core.a_features.autolabel import (
+    AutolabelRequest,
+    UnknownLabelError,
+    label_eligible_issues,
+)
 from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
@@ -126,8 +130,10 @@ def relabel(request: LabelRequest) -> ExitCode:
 
 @guarded
 def linear_autolabel(request: AutolabelRequest, window: CreatedAfter) -> ExitCode:
-    outcome = sweep(linear(), FileLedgerStore(CacheDirectory.of_user()), request, window)
-    report(outcome)
+    outcome = label_eligible_issues(
+        linear(), FileLedgerStore(CacheDirectory.of_user()), request, window
+    )
+    log_outcome(outcome)
     return ExitCode.of(outcome.failed_any())
 
 
