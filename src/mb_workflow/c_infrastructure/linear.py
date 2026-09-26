@@ -178,7 +178,7 @@ class Linear(IssueTracker):
             return LabelNames(tuple(LabelName(label.name) for label in labels if label.name))
 
     @override
-    def list_issue(self, wanted: IssueFilter) -> Issues:
+    def list_issues(self, wanted: IssueFilter) -> Issues:
         found: list[Issue] = []
         cursor: PageCursor | None = None
         while True:

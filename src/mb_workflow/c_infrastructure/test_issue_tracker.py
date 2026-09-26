@@ -105,7 +105,7 @@ class Backlog(Model):
         return planted.issue(self.identifier(seed))
 
     def picked(self, wanted: IssueFilter, tracker: IssueTracker) -> tuple[Seed, ...]:
-        swept = tracker.list_issue(wanted).identifiers()
+        swept = tracker.list_issues(wanted).identifiers()
         return tuple(seed for seed in Seed if self.identifier(seed) in swept)
 
 

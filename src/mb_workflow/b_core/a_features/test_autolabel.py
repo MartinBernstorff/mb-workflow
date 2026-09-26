@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from mb_workflow.b_core.a_features.autolabel import (
+    AutoLabelCriteria,
     AutolabelRequest,
-    Criteria,
     DryRun,
     ExcludePattern,
     Exclusions,
@@ -128,8 +128,8 @@ def ledger() -> Ledger:
     return Ledger((IssueIdentifier("E-10"),))
 
 
-def criteria() -> Criteria:
-    return Criteria(label=LabelName.fake(), exclusions=Exclusions.fake(), ledger=ledger())
+def criteria() -> AutoLabelCriteria:
+    return AutoLabelCriteria(label=LabelName.fake(), exclusions=Exclusions.fake(), ledger=ledger())
 
 
 def selection() -> Selection:
@@ -151,7 +151,7 @@ def dry_outcome() -> Outcome:
 def unexcluded() -> Selection:
     return Selection.of(
         default_issues(),
-        Criteria(
+        AutoLabelCriteria(
             label=LabelName("Backend"),
             exclusions=Exclusions(projects=None, statuses=None),
             ledger=Ledger(()),

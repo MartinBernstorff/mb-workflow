@@ -157,14 +157,16 @@ class LedgerPath(Value[Path]):
         _ = self.root.write_text(ledger.encode().root)
 
 
-class Criteria(Model):
+class AutoLabelCriteria(Model):
     label: LabelName
     exclusions: Exclusions
     ledger: Ledger
 
     @staticmethod
-    def fake() -> Criteria:
-        return Criteria(label=LabelName.fake(), exclusions=Exclusions.fake(), ledger=Ledger.fake())
+    def fake() -> AutoLabelCriteria:
+        return AutoLabelCriteria(
+            label=LabelName.fake(), exclusions=Exclusions.fake(), ledger=Ledger.fake()
+        )
 
     def skipped(self, issue: Issue) -> SkipReason | None:
         if self.exclusions.excludes_status(issue.status).root:
@@ -202,7 +204,7 @@ class Selection(Value[tuple[Decision, ...]]):
         return Selection((Decision.fake(),))
 
     @staticmethod
-    def of(issues: Issues, criteria: Criteria) -> Selection:
+    def of(issues: Issues, criteria: AutoLabelCriteria) -> Selection:
         return Selection(
             tuple(Decision(issue=issue, skipped=criteria.skipped(issue)) for issue in issues.root)
         )
@@ -301,22 +303,28 @@ def sweep(tracker: IssueTracker, request: AutolabelRequest, ledger: LedgerPath) 
         raise UnknownLabelError(f"No label is named {request.label.root}.")
 
     recorded = ledger.read()
-    issues = tracker.list_issue(request.wanted)
+    issues = tracker.list_issues(request.wanted)
     logger.info(
         "Sweeping %s issues created since %s",
         len(issues.root),
         request.wanted.created_after.root.isoformat(),
     )
 
-    criteria = Criteria(label=request.label, exclusions=request.exclusions, ledger=recorded)
-    outcome = updated(tracker, Selection.of(issues, criteria), request)
+    criteria = AutoLabelCriteria(
+        label=request.label, exclusions=request.exclusions, ledger=recorded
+    )
+    outcome = update_labels(tracker, Selection.of(issues, criteria), request)
     outcome.report()
+
     if not request.dry_run.root and len(outcome.labelled) > 0:
         ledger.write(recorded.extended(outcome.labelled))
+
     return outcome
 
 
-def updated(tracker: IssueTracker, selection: Selection, request: AutolabelRequest) -> Outcome:
+def update_labels(
+    tracker: IssueTracker, selection: Selection, request: AutolabelRequest
+) -> Outcome:
     if request.dry_run.root:
         return Outcome(selection=selection, dry_run=request.dry_run, labelled=(), failed=())
 
