@@ -46,6 +46,7 @@ def test_the_chart_holds_every_transition_the_work_can_take() -> None:
     assert Edges.of_chart(WorkflowChart) == Edges(
         frozenset(
             {
+                edge(GRILLING, EventName("grill"), GRILLING),
                 edge(GRILLING, EventName("to-ticket"), SPECCING),
                 edge(SPECCING, EventName("specced"), SPECCED),
                 edge(SPECCED, EventName("implement"), IMPLEMENTING),
@@ -60,6 +61,7 @@ def test_the_chart_holds_every_transition_the_work_can_take() -> None:
                 edge(REVIEW, EventName("merge"), MERGING),
                 edge(REVIEW, EventName("merged"), MERGED),
                 edge(MERGING, EventName("merged"), MERGED),
+                edge(MERGING, EventName("qa"), QA),
             }
         )
     )
@@ -101,7 +103,7 @@ def test_no_event_is_legal_from_the_final_state() -> None:
 
 def test_a_status_pairs_a_state_with_the_events_legal_from_it() -> None:
     assert FlowStatus.of(WorkflowChart, GRILLING) == FlowStatus(
-        state=GRILLING, events=EventNames((EventName("to-ticket"),))
+        state=GRILLING, events=EventNames((EventName("grill"), EventName("to-ticket")))
     )
 
 
@@ -126,7 +128,9 @@ def test_a_legal_event_leads_to_the_state_the_chart_names() -> None:
 
 
 def test_an_illegal_event_names_the_current_state_and_the_events_legal_from_it() -> None:
-    with pytest.raises(FlowError, match=r"merge is not legal from Grilling\. Legal: to-ticket\."):
+    with pytest.raises(
+        FlowError, match=r"merge is not legal from Grilling\. Legal: grill, to-ticket\."
+    ):
         _ = Edges.of_chart(WorkflowChart).target_from(GRILLING, EventName("merge"))
 
 
