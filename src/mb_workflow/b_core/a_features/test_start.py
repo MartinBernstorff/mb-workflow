@@ -263,14 +263,9 @@ def labels_after_starting(claim_settings: ClaimSettings, claims: FakeClaimRegist
     return tracker.read_issue(IssueIdentifier.fake()).labels
 
 
-def test_with_a_claim_label_configured_the_claimed_ticket_carries_it() -> None:
+def test_the_claimed_ticket_carries_the_claim_label() -> None:
     labelling = ClaimSettings(label=LabelName("claimed"))
     assert labels_after_starting(labelling, FakeClaimRegistry()).has(LabelName("claimed")).root
-
-
-def test_without_a_claim_label_configured_the_claimed_ticket_is_not_labelled() -> None:
-    unlabelled = ClaimSettings(label=None)
-    assert labels_after_starting(unlabelled, FakeClaimRegistry()) == Issue.fake().labels
 
 
 def test_a_ticket_claimed_by_another_holder_is_not_labelled() -> None:
@@ -287,10 +282,32 @@ def test_a_ticket_claimed_by_another_holder_is_not_labelled() -> None:
     assert tracker.read_issue(IssueIdentifier.fake()).labels == Issue.fake().labels
 
 
-def test_a_claim_label_the_tracker_lacks_does_not_stop_the_start() -> None:
+def test_a_claim_label_the_tracker_lacks_fails_the_start_without_leaving_a_claim() -> None:
     manager = fake_manager()
+    claims = FakeClaimRegistry()
     missing = ClaimSettings(label=LabelName("absent"))
-    starting(
-        manager, tracking(IssueStatusName("Specced")), StartRequest.fake(), claim_settings=missing
-    )
-    assert opened_in(manager).issue == IssueIdentifier.fake()
+    with pytest.raises(ClaimRefusedError, match="absent"):
+        starting(
+            manager,
+            tracking(IssueStatusName("Specced")),
+            StartRequest.fake(),
+            claims,
+            claim_settings=missing,
+        )
+    assert claims.claims(IssueIdentifier.fake()) == Claims(())
+    assert manager.worktrees() == Worktrees.fake()
+
+
+def test_a_forced_start_with_a_missing_claim_label_keeps_the_rivals_claim() -> None:
+    claims = claimed_by_a_rival()
+    forcing = StartRequest.fake().model_copy(update={"take_over": TakeOver(True)})
+    missing = ClaimSettings(label=LabelName("absent"))
+    with pytest.raises(ClaimRefusedError, match="absent"):
+        starting(
+            fake_manager(),
+            tracking(IssueStatusName("Specced")),
+            forcing,
+            claims,
+            claim_settings=missing,
+        )
+    assert holders(claims) == holders(claimed_by_a_rival())
