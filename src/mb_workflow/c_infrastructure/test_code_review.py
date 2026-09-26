@@ -502,7 +502,6 @@ def ledger(
 
 @pytest.fixture
 def review(
-    kind: ReviewKind,
     ledger: FakeCodeReview | ScriptedGh | LiveGitHub,
     request: pytest.FixtureRequest,
 ) -> CodeReview:
