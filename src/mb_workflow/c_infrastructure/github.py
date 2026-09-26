@@ -1,85 +1,100 @@
 import logging
-from datetime import date, timedelta
 from itertools import chain
-from typing import TYPE_CHECKING
+from typing import override
 
+from mb_workflow.b_core.c_secondary_ports.code_review import (
+    CodeForge,
+    refuse_incomplete,
+    refuse_missing,
+)
 from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames
-from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
-from mb_workflow.c_infrastructure.shell import Command, CommandOutput, ExistingDirectory, Shell
-from mb_workflow.d_lib.models import Model, Payload, Value
-
-if TYPE_CHECKING:
-    from mb_workflow.b_core.d_domain_model.clock import Today
+from mb_workflow.b_core.d_domain_model.pull_request import (
+    CheckoutDirectory,
+    MergedSince,
+    PrNumber,
+    PrTitle,
+    PullRequest,
+    PullRequests,
+    ReviewDecision,
+    ReviewRequest,
+)
+from mb_workflow.c_infrastructure.shell import (
+    Command,
+    CommandOutput,
+    CommandRunner,
+    ExistingDirectory,
+)
+from mb_workflow.d_lib.models import Payload, Value
 
 logger = logging.getLogger(__name__)
 
 
-class PullRequest(Payload):
+class PullRequestPayload(Payload):
     number: PrNumber
     title: PrTitle
     head_ref_name: BranchName
 
     @staticmethod
-    def fake() -> PullRequest:
-        return PullRequest(
+    def fake() -> PullRequestPayload:
+        return PullRequestPayload(
             number=PrNumber.fake(), title=PrTitle.fake(), head_ref_name=BranchName.fake()
         )
 
+    def pull_request(self) -> PullRequest:
+        return PullRequest(number=self.number, title=self.title, branch=self.head_ref_name)
 
-class PullRequests(Value[tuple[PullRequest, ...]]):
+
+class PullRequestPayloads(Value[tuple[PullRequestPayload, ...]]):
     @staticmethod
-    def fake() -> PullRequests:
-        return PullRequests((PullRequest.fake(),))
+    def fake() -> PullRequestPayloads:
+        return PullRequestPayloads((PullRequestPayload.fake(),))
 
     @staticmethod
     def parse(output: CommandOutput) -> PullRequests:
-        return PullRequests.model_validate_json(output.root)
-
-    def head_refs(self) -> BranchNames:
-        return BranchNames(tuple(pr.head_ref_name for pr in self.root))
+        payloads = PullRequestPayloads.model_validate_json(output.root)
+        return PullRequests(tuple(payload.pull_request() for payload in payloads.root))
 
 
 class SearchQuery(Value[str]):
     @staticmethod
     def fake() -> SearchQuery:
-        return MergedSince.fake().search()
-
-
-class Lookback(Value[int]):
-    @staticmethod
-    def fake() -> Lookback:
-        return Lookback(30)
-
-
-class MergedSince(Value[date]):
-    @staticmethod
-    def fake() -> MergedSince:
-        return MergedSince(date(2026, 8, 9))
+        return SearchQuery.merged_since(MergedSince.fake())
 
     @staticmethod
-    def of(lookback: Lookback, today: Today) -> MergedSince:
-        return MergedSince(today.root - timedelta(days=lookback.root))
-
-    def search(self) -> SearchQuery:
-        return SearchQuery(f"merged:>={self.root.isoformat()}")
-
-
-class ReviewBody(Value[str]):
-    @staticmethod
-    def fake() -> ReviewBody:
-        return ReviewBody("Looks good to me.")
+    def merged_since(since: MergedSince) -> SearchQuery:
+        return SearchQuery(f"merged:>={since.root.isoformat()}")
 
 
 class ReviewFlag(Value[str]):
     @staticmethod
     def fake() -> ReviewFlag:
-        return ReviewFlag("--approve")
+        return ReviewFlag.of(ReviewDecision.approve)
+
+    @staticmethod
+    def of(decision: ReviewDecision) -> ReviewFlag:
+        match decision:
+            case ReviewDecision.approve:
+                return ReviewFlag("--approve")
+            case ReviewDecision.request_changes:
+                return ReviewFlag("--request-changes")
+            case ReviewDecision.comment:
+                return ReviewFlag("--comment")
 
 
 class ReviewEvent(Value[str]):
     @staticmethod
     def fake() -> ReviewEvent:
-        return ReviewEvent("APPROVE")
+        return ReviewEvent.of(ReviewDecision.approve)
+
+    @staticmethod
+    def of(decision: ReviewDecision) -> ReviewEvent:
+        match decision:
+            case ReviewDecision.approve:
+                return ReviewEvent("APPROVE")
+            case ReviewDecision.request_changes:
+                return ReviewEvent("REQUEST_CHANGES")
+            case ReviewDecision.comment:
+                return ReviewEvent("COMMENT")
 
 
 class ReviewId(Value[int]):
@@ -151,83 +166,37 @@ class Reviews(Value[tuple[Review, ...]]):
         return mine[-1] if len(mine) > 0 else None
 
 
-class BodyRequired(Value[bool]):
-    @staticmethod
-    def fake() -> BodyRequired:
-        return BodyRequired(False)
+def review_command(pr: PrNumber, request: ReviewRequest) -> Command:
+    review = ("gh", "pr", "review", str(pr.root), ReviewFlag.of(request.decision).root)
+    if len(request.body.root) == 0:
+        return Command(review)
+    return Command((*review, "--body", request.body.root))
 
 
-class ReviewDecision(Model):
-    flag: ReviewFlag
-    event: ReviewEvent
-    body_required: BodyRequired
-
-    @staticmethod
-    def fake() -> ReviewDecision:
-        return ReviewDecision.approve()
-
-    @staticmethod
-    def approve() -> ReviewDecision:
-        return ReviewDecision(
-            flag=ReviewFlag("--approve"),
-            event=ReviewEvent("APPROVE"),
-            body_required=BodyRequired(False),
-        )
-
-    @staticmethod
-    def reject() -> ReviewDecision:
-        return ReviewDecision(
-            flag=ReviewFlag("--request-changes"),
-            event=ReviewEvent("REQUEST_CHANGES"),
-            body_required=BodyRequired(True),
-        )
-
-    @staticmethod
-    def comment() -> ReviewDecision:
-        return ReviewDecision(
-            flag=ReviewFlag("--comment"),
-            event=ReviewEvent("COMMENT"),
-            body_required=BodyRequired(True),
-        )
+def pending_submission(pr: PrNumber, pending: ReviewId, request: ReviewRequest) -> Command:
+    submit = (
+        "gh",
+        "api",
+        "--method",
+        "POST",
+        f"repos/{{owner}}/{{repo}}/pulls/{pr.root}/reviews/{pending.root}/events",
+        "--silent",
+        "-f",
+        f"event={ReviewEvent.of(request.decision).root}",
+    )
+    if len(request.body.root) == 0:
+        return Command(submit)
+    return Command((*submit, "-f", f"body={request.body.root}"))
 
 
-class ReviewRequest(Model):
-    decision: ReviewDecision
-    body: ReviewBody
-
-    @staticmethod
-    def fake() -> ReviewRequest:
-        return ReviewRequest(decision=ReviewDecision.fake(), body=ReviewBody.fake())
-
-    def command(self, pr: PrNumber) -> Command:
-        review = ("gh", "pr", "review", str(pr.root), self.decision.flag.root)
-        if len(self.body.root) == 0:
-            return Command(review)
-        return Command((*review, "--body", self.body.root))
-
-    def submission(self, pr: PrNumber, pending: ReviewId) -> Command:
-        submit = (
-            "gh",
-            "api",
-            "--method",
-            "POST",
-            f"repos/{{owner}}/{{repo}}/pulls/{pr.root}/reviews/{pending.root}/events",
-            "--silent",
-            "-f",
-            f"event={self.decision.event.root}",
-        )
-        if len(self.body.root) == 0:
-            return Command(submit)
-        return Command((*submit, "-f", f"body={self.body.root}"))
-
-
-class GitHub:
-    def __init__(self, shell: Shell) -> None:
+class GitHub(CodeForge):
+    def __init__(self, shell: CommandRunner) -> None:
         self._shell = shell
         _ = shell.run(Command(("gh", "--version")))
 
+    @override
     def review_requested(self) -> PullRequests:
-        return PullRequests.parse(
+        return PullRequestPayloads.parse(
             self._shell.run(
                 Command(
                     (
@@ -243,8 +212,9 @@ class GitHub:
             )
         )
 
+    @override
     def merged_branches(self, since: MergedSince) -> BranchNames:
-        return PullRequests.parse(
+        return PullRequestPayloads.parse(
             self._shell.run(
                 Command(
                     (
@@ -254,7 +224,7 @@ class GitHub:
                         "--state",
                         "merged",
                         "--search",
-                        since.search().root,
+                        SearchQuery.merged_since(since).root,
                         "--limit",
                         "1000",
                         "--json",
@@ -262,10 +232,14 @@ class GitHub:
                     )
                 )
             )
-        ).head_refs()
+        ).branches()
 
-    def checkout(self, pr: PrNumber, into: ExistingDirectory) -> None:
-        _ = Shell(into).run(Command(("gh", "pr", "checkout", str(pr.root), "--force")))
+    @override
+    def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> None:
+        refuse_missing(into)
+        _ = self._shell.at(ExistingDirectory(into.root)).run(
+            Command(("gh", "pr", "checkout", str(pr.root), "--force"))
+        )
 
     def viewer(self) -> UserLogin:
         return UserLogin.parse(self._shell.run(Command(("gh", "api", "user", "--jq", ".login"))))
@@ -285,10 +259,12 @@ class GitHub:
             )
         )
 
-    def review(self, pr: PrNumber, request: ReviewRequest) -> None:
+    @override
+    def submit(self, pr: PrNumber, request: ReviewRequest) -> None:
+        refuse_incomplete(request)
         pending = self.reviews(pr).pending_by(self.viewer())
         if pending is None:
-            _ = self._shell.run(request.command(pr))
+            _ = self._shell.run(review_command(pr, request))
             return
         logger.info("Submitting pending review %s.", pending.root)
-        _ = self._shell.run(request.submission(pr, pending))
+        _ = self._shell.run(pending_submission(pr, pending, request))

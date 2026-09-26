@@ -26,6 +26,7 @@ from mb_workflow.b_core.a_features.show_flow import show_flow
 from mb_workflow.b_core.a_features.transition import transition
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.b_domain_services.lock import AlreadyRunningError, LockName, LockPath
+from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.config import (
@@ -53,9 +54,9 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_report import AsJson
     from mb_workflow.b_core.b_domain_services.flow_transition import Force
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
+    from mb_workflow.b_core.d_domain_model.pull_request import Lookback, ReviewRequest
     from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit
     from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus
-    from mb_workflow.c_infrastructure.github import Lookback, ReviewRequest
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ FAILURES = (
     AlreadyRunningError,
     BoardError,
     CalledProcessError,
+    CodeReviewError,
     FlowError,
     InvalidConfigError,
     InvalidCredentialsError,

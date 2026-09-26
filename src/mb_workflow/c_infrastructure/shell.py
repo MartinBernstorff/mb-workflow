@@ -35,6 +35,10 @@ class CommandOutput(Value[str]):
 
 
 class CommandRunner(Protocol):
+    def cwd(self) -> ExistingDirectory: ...
+
+    def at(self, directory: ExistingDirectory) -> CommandRunner: ...
+
     def run(self, command: Command) -> CommandOutput: ...
 
 
@@ -42,8 +46,13 @@ class Shell(CommandRunner):
     def __init__(self, cwd: ExistingDirectory) -> None:
         self._cwd = cwd
 
+    @override
     def cwd(self) -> ExistingDirectory:
         return self._cwd
+
+    @override
+    def at(self, directory: ExistingDirectory) -> Shell:
+        return Shell(directory)
 
     @override
     def run(self, command: Command) -> CommandOutput:
