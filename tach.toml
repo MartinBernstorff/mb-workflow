@@ -26,7 +26,6 @@ depends_on = [
     "mb_workflow.b_core.b_domain_services",
     "mb_workflow.b_core.c_secondary_ports",
     "mb_workflow.b_core.d_domain_model",
-    "mb_workflow.c_infrastructure",
     "mb_workflow.d_lib",
 ]
 

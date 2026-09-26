@@ -1,14 +1,11 @@
 from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.b_domain_services.flow_report import AsJson, StatusReport, status_report
-from mb_workflow.b_core.d_domain_model.flow import StateNames, WorkflowChart
-from mb_workflow.c_infrastructure.orca import Orca
-from mb_workflow.c_infrastructure.workspace_board import WorkspaceBoard
+from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
 
 if TYPE_CHECKING:
-    from mb_workflow.c_infrastructure.shell import Shell
+    from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
 
 
-def show_flow(shell: Shell, as_json: AsJson) -> StatusReport:
-    board = WorkspaceBoard.of_orca(Orca(shell), StateNames.initial_state(WorkflowChart))
-    return status_report(WorkflowChart, board, as_json)
+def show_flow(store: WorkspaceStatusStore, as_json: AsJson) -> StatusReport:
+    return status_report(WorkflowChart, store, as_json)

@@ -1,14 +1,13 @@
 from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.b_domain_services import flow_transition
-from mb_workflow.b_core.d_domain_model.flow import EventName, StateName, StateNames, WorkflowChart
-from mb_workflow.c_infrastructure.orca import Orca
-from mb_workflow.c_infrastructure.workspace_board import WorkspaceBoard
+from mb_workflow.b_core.d_domain_model.flow import EventName, StateName, WorkflowChart
 
 if TYPE_CHECKING:
-    from mb_workflow.c_infrastructure.shell import Shell
+    from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
 
 
-def transition(shell: Shell, event: EventName, force: flow_transition.Force) -> StateName:
-    board = WorkspaceBoard.of_orca(Orca(shell), StateNames.initial_state(WorkflowChart))
-    return flow_transition.transition(WorkflowChart, board, event, force)
+def transition(
+    store: WorkspaceStatusStore, event: EventName, force: flow_transition.Force
+) -> StateName:
+    return flow_transition.transition(WorkflowChart, store, event, force)
