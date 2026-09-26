@@ -70,7 +70,7 @@ class PoolTicket(Model):
             )
         )
 
-    def flow_state(self, flow_labels: FlowLabels) -> StateName:
+    def flow_state(self, flow_labels: FlowLabels) -> StateName | None:
         return state_of(WorkflowChart, flow_labels, self.issue.grouped)
 
     def ready(self, claim_label: LabelName, flow_labels: FlowLabels) -> Ready:
@@ -125,9 +125,8 @@ class Occupancy(Value[tuple[StateName, ...]]):
 
     @staticmethod
     def of(issues: Issues, flow_labels: FlowLabels) -> Occupancy:
-        return Occupancy(
-            tuple(state_of(WorkflowChart, flow_labels, issue.grouped) for issue in issues.root)
-        )
+        states = (state_of(WorkflowChart, flow_labels, issue.grouped) for issue in issues.root)
+        return Occupancy(tuple(state for state in states if state is not None))
 
     def with_ticket_in(self, state: StateName) -> Occupancy:
         return Occupancy((*self.root, state))

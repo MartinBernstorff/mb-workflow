@@ -1,4 +1,4 @@
-from mb_workflow.b_core.d_domain_model.flow import FlowError, StateName, StateNames, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import FlowError, StateName, WorkflowChart
 from mb_workflow.b_core.d_domain_model.issue import (
     GroupedLabels,
     LabelGroupName,
@@ -32,10 +32,12 @@ def chart_labels(chart: type[WorkflowChart]) -> LabelNames:
     return LabelNames(tuple(LabelName(state.name) for state in chart.states))
 
 
-def state_of(chart: type[WorkflowChart], flow_labels: FlowLabels, held: GroupedLabels) -> StateName:
+def state_of(
+    chart: type[WorkflowChart], flow_labels: FlowLabels, held: GroupedLabels
+) -> StateName | None:
     found = held.in_group(flow_labels.group).root
     if not found:
-        return StateNames.initial_state(chart)
+        return None
     if len(found) > 1:
         listed = ", ".join(label.root for label in found)
         raise FlowError(f"The ticket carries the flow labels {listed}, but may carry only one.")
