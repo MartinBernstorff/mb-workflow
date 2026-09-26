@@ -55,6 +55,17 @@ Built with Typer, entry point `mb_workflow.cli:app`. Every command must accept `
 
 `cli.py` is the Typer boundary and is the one file excluded from `noprim`, because Typer can only bind primitives. Keep it free of logic: bind the primitive, wrap it in its domain type on the first line of the body, delegate. Anything with behaviour belongs in another module, where `noprim` still applies.
 
+## Issues
+
+`MB-<n>` identifiers are Linear issues in the `mb-workflow` workspace, and only `linear-cli` can reach it. `linear` and `linearis` are authenticated against a different workspace and report `MB-<n>` as not found.
+
+```bash
+linear-cli issues get MB-19
+linear-cli issues update MB-19 --state Implementing
+```
+
+The team's statuses are the workflow states (`Grilling`, `Speccing`, `Specced`, `Implementing`, `QA`, `Review`, `Merging`, `Merged`), not Linear's defaults. `linear-cli statuses list --team MB` lists them.
+
 ## Commits
 
 Pre-commit validation runs via lefthook. Run `uv run lefthook install` once per clone; Conductor does this via `.conductor/settings.toml`.
