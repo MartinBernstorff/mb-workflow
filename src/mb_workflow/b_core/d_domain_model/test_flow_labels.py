@@ -103,13 +103,13 @@ def test_the_flow_group_is_found_whatever_its_case() -> None:
     assert state_of(WorkflowChart, FlowLabels.fake(), held) == StateName("QA")
 
 
-def test_a_ticket_without_a_flow_label_counts_as_grilling() -> None:
-    assert state_of(WorkflowChart, FlowLabels.fake(), GroupedLabels(())) == StateName("Grilling")
+def test_a_ticket_without_a_flow_label_has_no_state() -> None:
+    assert state_of(WorkflowChart, FlowLabels.fake(), GroupedLabels(())) is None
 
 
 def test_a_label_named_as_a_state_outside_the_flow_group_does_not_count() -> None:
     held = GroupedLabels((GroupedLabel(group=LabelGroupName("team"), label=QA),))
-    assert state_of(WorkflowChart, FlowLabels.fake(), held) == StateName("Grilling")
+    assert state_of(WorkflowChart, FlowLabels.fake(), held) is None
 
 
 def test_a_ticket_with_two_flow_labels_is_a_clear_error() -> None:

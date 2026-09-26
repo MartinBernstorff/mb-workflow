@@ -263,12 +263,27 @@ def test_a_ticket_started_in_the_pass_fills_its_state() -> None:
     assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
 
 
-def test_a_ticket_without_a_flow_label_fills_the_grilling_limit() -> None:
+def test_a_ticket_without_a_flow_label_is_not_ready() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low, state=None),
-        pooled(IssueIdentifier("MB-2"), Priority.urgent, state=StateName("Grilling")),
+        pooled(IssueIdentifier("MB-2"), Priority.urgent),
     )
-    assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
+    assert draining(tracker).ready.identifiers() == (IssueIdentifier("MB-2"),)
+
+
+def test_a_claimed_ticket_without_a_flow_label_does_not_count_toward_the_limits() -> None:
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-2"), Priority.urgent, state=StateName("Grilling")),
+        elsewhere=(
+            pooled(
+                IssueIdentifier("MB-10"),
+                Priority.medium,
+                state=None,
+                labels=LabelNames((LabelName("claimed"),)),
+            ),
+        ),
+    )
+    assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-2"),)
 
 
 def test_a_ticket_carrying_the_claim_label_is_passed_over() -> None:

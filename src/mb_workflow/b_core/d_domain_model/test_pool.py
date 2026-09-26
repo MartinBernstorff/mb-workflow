@@ -47,6 +47,14 @@ def test_a_ticket_in_any_other_state_is_not_ready(state: str) -> None:
     assert ticket(LabelName(state)).ready(LabelName("claimed"), FlowLabels.fake()) == Ready(False)
 
 
+def test_a_ticket_without_a_flow_label_is_not_ready() -> None:
+    unlabelled = PoolTicket.fake().issue.model_copy(
+        update={"labels": LabelNames(()), "grouped": GroupedLabels(())}
+    )
+    ticket = PoolTicket.fake().model_copy(update={"issue": unlabelled})
+    assert ticket.ready(LabelName("claimed"), FlowLabels.fake()) == Ready(False)
+
+
 def test_a_ticket_carrying_the_claim_label_is_not_ready() -> None:
     claimed = ticket(LabelName("Specced"), LabelName("Claimed"))
     assert claimed.ready(LabelName("claimed"), FlowLabels.fake()) == Ready(False)
@@ -127,8 +135,15 @@ def test_occupancy_counts_each_issue_under_its_flow_state() -> None:
         )
     )
     assert Occupancy.of(issues, FlowLabels.fake()) == Occupancy(
-        (StateName("QA"), StateName("Merging"), StateName("Grilling"))
+        (StateName("QA"), StateName("Merging"))
     )
+
+
+def test_an_unlabelled_claimed_issue_leaves_the_grilling_limit_open() -> None:
+    occupancy = Occupancy.of(
+        Issues((Issue.fake().model_copy(update={"grouped": in_flow()}),)), FlowLabels.fake()
+    )
+    assert PoolLimits().admits(occupancy, StateName("Grilling")) == Admitted(True)
 
 
 def test_a_started_ticket_joins_the_occupancy() -> None:

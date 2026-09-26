@@ -183,9 +183,15 @@ def test_seeds_the_board_column_from_the_flow_label() -> None:
     assert opened.status == fake_board().status_for(StateName("Speccing"))
 
 
-def test_a_ticket_without_a_flow_label_seeds_the_grilling_column() -> None:
-    opened = opened_in(started(None, StartRequest.fake()))
-    assert opened.status == fake_board().status_for(StateName("Grilling"))
+def test_a_ticket_without_a_flow_label_is_neither_claimed_assigned_nor_opened() -> None:
+    manager = fake_manager()
+    tracker = tracking(None)
+    claims = FakeClaimRegistry()
+    with pytest.raises(FlowError, match="no flow label"):
+        starting(manager, tracker, StartRequest.fake(), claims)
+    assert manager.worktrees() == Worktrees.fake()
+    assert tracker.read_issue(IssueIdentifier.fake()).assigned == Assigned(False)
+    assert claims.claims(IssueIdentifier.fake()) == Claims(())
 
 
 def test_a_ticket_the_tracker_cannot_read_is_not_opened() -> None:

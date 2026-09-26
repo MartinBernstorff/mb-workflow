@@ -88,6 +88,8 @@ def start_ticket(
     # Resolve the state before touching anything, so a ticket with no work left is neither claimed, assigned nor opened.
     detail = tracker.read_issue_detail(request.ticket)
     state = state_of(WorkflowChart, flow_labels, detail.issue.grouped)
+    if state is None:
+        raise FlowError(f"{request.ticket.root} carries no flow label, so it is not in the flow.")
     prompt = request.prompt_for(action_in(request.ticket, state))
 
     name = WorktreeName.of_issue(request.ticket)
