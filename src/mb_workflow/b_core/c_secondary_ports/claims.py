@@ -83,35 +83,51 @@ def claimed_error(ticket: IssueIdentifier, holder: Claim) -> ClaimRefusedError:
     )
 
 
-# The label only makes the claim visible; the comment is the claim, so a failed label never fails it.
-def add_claim_label(
-    tracker: TicketTracker, ticket: IssueIdentifier, label: LabelName | None
+# Checked before claiming, so a doomed claim never withdraws another holder's claim.
+def require_claim_label(tracker: TicketTracker, label: LabelName) -> None:
+    if tracker.workspace_labels().matching(label) is None:
+        raise ClaimRefusedError(
+            f"No label is named {label.root}. Create the label or change claims.label."
+        )
+
+
+# The label is how in-progress tickets are found, so a claim that cannot be labelled is withdrawn.
+def label_claim_or_withdraw(
+    registry: ClaimRegistry, tracker: TicketTracker, request: LabelledClaim
 ) -> None:
-    if label is None:
-        return
     try:
-        tracker.add_label(ticket, label)
+        tracker.add_label(request.ticket, request.label)
     except TicketTrackerError as error:
-        logger.warning("Could not label %s as %s: %s", ticket.root, label.root, error)
+        withdraw_holders_claims(registry, request.ticket, request.holder)
+        raise ClaimRefusedError(
+            f"Could not label {request.ticket.root} as {request.label.root}, so the claim was"
+            f" withdrawn. Create the label or change claims.label. {error}"
+        ) from error
 
 
-class ReleaseRequest(Model):
+class LabelledClaim(Model):
     ticket: IssueIdentifier
     holder: ClaimHolder
-    label: LabelName | None
+    label: LabelName
 
     @staticmethod
-    def fake() -> ReleaseRequest:
-        return ReleaseRequest(
+    def fake() -> LabelledClaim:
+        return LabelledClaim(
             ticket=IssueIdentifier.fake(), holder=ClaimHolder.fake(), label=LabelName("claimed")
         )
 
 
-def release_claim(registry: ClaimRegistry, tracker: TicketTracker, request: ReleaseRequest) -> None:
-    for held in registry.claims(request.ticket).root:
-        if held.holder == request.holder:
-            registry.withdraw(request.ticket, held.id)
-    if request.label is None or registry.claims(request.ticket).root:
+def withdraw_holders_claims(
+    registry: ClaimRegistry, ticket: IssueIdentifier, holder: ClaimHolder
+) -> None:
+    for held in registry.claims(ticket).root:
+        if held.holder == holder:
+            registry.withdraw(ticket, held.id)
+
+
+def release_claim(registry: ClaimRegistry, tracker: TicketTracker, request: LabelledClaim) -> None:
+    withdraw_holders_claims(registry, request.ticket, request.holder)
+    if registry.claims(request.ticket).root:
         return
     try:
         tracker.remove_label(request.ticket, request.label)

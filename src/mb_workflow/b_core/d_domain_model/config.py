@@ -78,7 +78,7 @@ class WorkspaceSettings(Model):
 
 
 class ClaimSettings(Model):
-    label: LabelName | None = None
+    label: LabelName = LabelName("workspace")
 
     @staticmethod
     def fake() -> ClaimSettings:

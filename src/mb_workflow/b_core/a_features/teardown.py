@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.c_secondary_ports.claims import ReleaseRequest, release_claim
+from mb_workflow.b_core.c_secondary_ports.claims import LabelledClaim, release_claim
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName
 from mb_workflow.b_core.d_domain_model.workspace import WorktreeName
@@ -60,6 +60,6 @@ def release_and_remove(
         release_claim(
             claims,
             tracker,
-            ReleaseRequest(ticket=worktree.issue, holder=holder, label=claim_settings.label),
+            LabelledClaim(ticket=worktree.issue, holder=holder, label=claim_settings.label),
         )
     manager.remove(worktree.path)

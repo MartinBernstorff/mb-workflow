@@ -18,7 +18,6 @@ class ConfigReport(Value[str]):
                 )
             case LinearTracker() as linear:
                 issues = (f"tracker: {linear.tracker}",)
-        label = settings.claims.label
         return ConfigReport(
             "\n".join(
                 (
@@ -26,7 +25,7 @@ class ConfigReport(Value[str]):
                     f"status store: {settings.status.store}",
                     f"orca project: {settings.workspace.orca_project.root}",
                     f"assignee: {settings.workspace.assignee.root}",
-                    f"claim label: {'off' if label is None else label.root}",
+                    f"claim label: {settings.claims.label.root}",
                     f"origin: {config.origin.root}",
                 )
             )
