@@ -4,14 +4,12 @@ from typing import TYPE_CHECKING
 from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.issue import (
-    Assignee,
     BranchSlug,
     IssueIdentifier,
     IssueState,
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
     AgentName,
-    ProjectSelector,
     TerminalText,
     TimeoutMs,
     WorktreeName,
@@ -21,6 +19,7 @@ from mb_workflow.d_lib.models import Model, Value
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
+    from mb_workflow.b_core.d_domain_model.config import WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.workspace import OpenedWorktree
 
 logger = logging.getLogger(__name__)
@@ -56,21 +55,17 @@ class PromptPrefix(Value[str]):
 
 
 class OpenRequest(Model):
-    project: ProjectSelector
     branch: BranchSlug
     issue: IssueIdentifier | None
     prompt: TerminalText | None
-    assignee: Assignee
     idle_timeout: TimeoutMs
 
     @staticmethod
     def fake() -> OpenRequest:
         return OpenRequest(
-            project=ProjectSelector.fake(),
             branch=BranchSlug.fake(),
             issue=IssueIdentifier.fake(),
             prompt=TerminalText.fake(),
-            assignee=Assignee.fake(),
             idle_timeout=TimeoutMs.fake(),
         )
 
@@ -83,16 +78,21 @@ class OpenRequest(Model):
         return self.model_copy(update={"prompt": PromptPrefix.of(state).applied(self.prompt)})
 
 
-def open_workspace(manager: WorkspaceManager, tracker: IssueTracker, request: OpenRequest) -> None:
+def open_workspace(
+    manager: WorkspaceManager,
+    tracker: IssueTracker,
+    workspace: WorkspaceSettings,
+    request: OpenRequest,
+) -> None:
     # Assignment is a convenience, not the point of opening a workspace, so never fail the run over it.
     if request.issue is not None:
         try:
-            tracker.assign(request.issue, request.assignee)
+            tracker.assign(request.issue, workspace.assignee)
         except IssueTrackerError as error:
             logger.warning(
                 "Could not assign %s to %s: %s",
                 request.issue.root,
-                request.assignee.root,
+                workspace.assignee.root,
                 error,
             )
 
@@ -101,7 +101,7 @@ def open_workspace(manager: WorkspaceManager, tracker: IssueTracker, request: Op
 
     name = WorktreeName.of_branch(request.branch, request.issue)
     logger.info("Creating worktree with name: %s", name.root)
-    opened = manager.create_for_issue(request.project, name, request.issue, request.agent())
+    opened = manager.create_for_issue(workspace.orca_project, name, request.issue, request.agent())
     logger.info("Created %s", opened.worktree.path.root)
 
     send_prompt(manager, opened, prompting)
