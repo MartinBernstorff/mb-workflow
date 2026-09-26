@@ -7,8 +7,9 @@ from mb_workflow.b_core.d_domain_model.claim import (
     Claims,
     CommentBody,
     HostName,
+    Released,
 )
-from mb_workflow.b_core.d_domain_model.issue import IssueStatusName
+from mb_workflow.b_core.d_domain_model.issue import IssueStatusName, StatusType
 from mb_workflow.b_core.d_domain_model.workspace import WorktreeName
 
 
@@ -41,3 +42,20 @@ def test_an_unclaimed_ticket_is_held_by_no_one() -> None:
 )
 def test_a_claim_on_a_finished_ticket_is_released(status: IssueStatusName) -> None:
     assert Claims((Claim.fake(),)).holding(status) is None
+
+
+@pytest.mark.parametrize(
+    ("status_type", "released"),
+    [
+        (StatusType.triage, False),
+        (StatusType.backlog, False),
+        (StatusType.unstarted, False),
+        (StatusType.started, False),
+        (StatusType.completed, True),
+        (StatusType.canceled, True),
+    ],
+)
+def test_a_claim_is_released_once_its_status_type_closes_the_ticket(
+    status_type: StatusType, released: bool
+) -> None:
+    assert Released.of_type(status_type) == Released(released)

@@ -22,9 +22,12 @@ from mb_workflow.b_core.d_domain_model.flow import StateName, StateNames, Workfl
 from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
     IssueIdentifier,
+    IssueStatus,
+    IssueStatuses,
     IssueStatusName,
     LabelName,
     LabelNames,
+    StatusType,
 )
 from mb_workflow.b_core.d_domain_model.pool import Limit, PoolLimits, PoolTickets, Priority
 from mb_workflow.b_core.d_domain_model.workspace import (
@@ -68,14 +71,32 @@ def in_progress(identifier: IssueIdentifier, status: IssueStatusName) -> Tracked
     )
 
 
+def workflow_statuses(*closing: IssueStatus) -> IssueStatuses:
+    final = {StateName(state.name) for state in WorkflowChart.final_states}
+    return IssueStatuses(
+        (
+            *(
+                IssueStatus(
+                    name=IssueStatusName(state.root),
+                    type=StatusType.completed if state in final else StatusType.started,
+                )
+                for state in StateNames.of_chart(WorkflowChart).root
+            ),
+            *closing,
+        )
+    )
+
+
 def pool_of(
     *tickets: TrackedIssue,
     labels: LabelNames | None = None,
     elsewhere: tuple[TrackedIssue, ...] = (),
+    statuses: IssueStatuses | None = None,
 ) -> FakeTicketTracker:
     return FakeTicketTracker(
         LabelNames((LabelName("claimed"),)) if labels is None else labels,
         (*tickets, *elsewhere),
+        statuses=workflow_statuses() if statuses is None else statuses,
         views={PoolSettings.fake().view: tuple(ticket.issue.identifier for ticket in tickets)},
     )
 
@@ -201,11 +222,18 @@ def test_labelled_tickets_in_progress_count_toward_the_total() -> None:
     assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
 
 
-@pytest.mark.parametrize("status", ["Merged", "Canceled", "Duplicate"])
-def test_labelled_tickets_that_are_finished_do_not_count(status: str) -> None:
+@pytest.mark.parametrize(
+    "closing",
+    [
+        IssueStatus(name=IssueStatusName("Shipped"), type=StatusType.completed),
+        IssueStatus(name=IssueStatusName("Won't do"), type=StatusType.canceled),
+    ],
+)
+def test_labelled_tickets_that_are_closed_do_not_count(closing: IssueStatus) -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
-        elsewhere=(in_progress(IssueIdentifier("MB-10"), IssueStatusName(status)),),
+        elsewhere=(in_progress(IssueIdentifier("MB-10"), closing.name),),
+        statuses=workflow_statuses(closing),
     )
     assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-1"),)
 

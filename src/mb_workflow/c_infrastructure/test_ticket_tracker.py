@@ -38,6 +38,8 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueDetail,
     IssueFilter,
     IssueIdentifier,
+    IssueStatus,
+    IssueStatuses,
     IssueStatusName,
     IssueTitle,
     IssueUpdate,
@@ -49,7 +51,8 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Project,
     ProjectName,
     Projects,
-    StatusNames,
+    StatusType,
+    StatusTypes,
 )
 from mb_workflow.b_core.d_domain_model.pool import (
     Blocker,
@@ -547,7 +550,13 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
             for planted in seeds()
         ),
         Projects.fake(),
-        StatusNames((*StatusNames.fake().root, *StatusNames.closed().root)),
+        IssueStatuses(
+            (
+                *IssueStatuses.fake().root,
+                IssueStatus(name=IssueStatusName("Canceled"), type=StatusType.canceled),
+                IssueStatus(name=IssueStatusName("Duplicate"), type=StatusType.canceled),
+            )
+        ),
         backlog.assignee,
         views={backlog.view: tuple(backlog.identifier(seed) for seed in Seed)},
     )
@@ -626,7 +635,7 @@ def test_reading_an_unknown_view_is_refused(tracker: TicketTracker) -> None:
 
 
 def labelled_seeds(
-    tracker: TicketTracker, backlog: Backlog, label: LabelName, excluding: StatusNames
+    tracker: TicketTracker, backlog: Backlog, label: LabelName, excluding: StatusTypes
 ) -> set[Seed]:
     listed = tracker.labelled_issues(label, excluding).identifiers()
     return {seed for seed in Seed if backlog.identifier(seed) in listed}
@@ -634,24 +643,29 @@ def labelled_seeds(
 
 def test_the_issues_carrying_a_label_are_listed(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.add_label(backlog.identifier(Seed.recent), LabelName("d-grill"))
-    assert labelled_seeds(tracker, backlog, LabelName("d-grill"), StatusNames(())) == {
+    assert labelled_seeds(tracker, backlog, LabelName("d-grill"), StatusTypes(())) == {
         Seed.recent,
         Seed.done,
     }
 
 
-def test_labelled_issues_in_an_excluded_status_are_left_out(
+def test_labelled_issues_of_an_excluded_status_type_are_left_out(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    tracker.add_label(backlog.identifier(Seed.recent), LabelName("d-grill"))
-    excluding = StatusNames((IssueStatusName("Done"), IssueStatusName("Canceled")))
+    for seed in (Seed.recent, Seed.old):
+        tracker.add_label(backlog.identifier(seed), LabelName("d-grill"))
+    tracker.update_issue(
+        backlog.identifier(Seed.old),
+        IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("Canceled")}),
+    )
+    excluding = StatusTypes((StatusType.completed, StatusType.canceled))
     assert labelled_seeds(tracker, backlog, LabelName("d-grill"), excluding) == {Seed.recent}
 
 
 def test_a_labelled_issue_is_found_whatever_the_label_case(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    assert labelled_seeds(tracker, backlog, LabelName("D-Grill"), StatusNames(())) == {Seed.done}
+    assert labelled_seeds(tracker, backlog, LabelName("D-Grill"), StatusTypes(())) == {Seed.done}
 
 
 def test_reads_an_issue_back_as_it_was_given(tracker: TicketTracker, backlog: Backlog) -> None:

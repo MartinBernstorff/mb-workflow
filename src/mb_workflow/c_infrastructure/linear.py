@@ -43,7 +43,7 @@ from mb_workflow.d_lib.models import Payload, Value
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from mb_workflow.b_core.d_domain_model.issue import IssueFilter, IssueUpdate, StatusNames
+    from mb_workflow.b_core.d_domain_model.issue import IssueFilter, IssueUpdate, StatusTypes
     from mb_workflow.b_core.d_domain_model.pool import ViewSlug
 
 
@@ -479,13 +479,11 @@ class Linear(TicketTracker):
         )
 
     @override
-    def labelled_issues(self, label: LabelName, excluding: StatusNames) -> Issues:
+    def labelled_issues(self, label: LabelName, excluding: StatusTypes) -> Issues:
         return self._issues_matching(
             {
                 "labels": {"some": {"name": {"eqIgnoreCase": label.root}}},
-                "and": [
-                    {"state": {"name": {"neqIgnoreCase": status.root}}} for status in excluding.root
-                ],
+                "state": {"type": {"nin": [status_type.value for status_type in excluding.root]}},
             }
         )
 

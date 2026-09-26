@@ -9,11 +9,11 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     IssueIdentifier,
+    IssueStatuses,
     IssueStatusName,
     LabelName,
     LabelNames,
     Projects,
-    StatusNames,
 )
 from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit, TicketEditError
 
@@ -23,7 +23,7 @@ def tracking() -> FakeTicketTracker:
         LabelNames((LabelName.fake(), LabelName("Backend"))),
         (TrackedIssue.fake(),),
         Projects.fake(),
-        StatusNames.fake(),
+        IssueStatuses.fake(),
         Assignee.fake(),
     )
 
