@@ -1,9 +1,9 @@
 import pytest
 
 from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
-from mb_workflow.b_core.c_secondary_ports.issue_tracker import (
-    FakeIssueTracker,
-    IssueTrackerError,
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+    FakeTicketTracker,
+    TicketTrackerError,
     TrackedIssue,
 )
 from mb_workflow.b_core.d_domain_model.issue import (
@@ -18,8 +18,8 @@ from mb_workflow.b_core.d_domain_model.issue import (
 from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit, TicketEditError
 
 
-def tracking() -> FakeIssueTracker:
-    return FakeIssueTracker(
+def tracking() -> FakeTicketTracker:
+    return FakeTicketTracker(
         LabelNames((LabelName.fake(), LabelName("Backend"))),
         (TrackedIssue.fake(),),
         Projects.fake(),
@@ -54,7 +54,7 @@ def test_editing_a_ticket_swaps_labels() -> None:
 
 
 def test_editing_an_unknown_ticket_fails() -> None:
-    with pytest.raises(IssueTrackerError):
+    with pytest.raises(TicketTrackerError):
         edit_ticket(tracking(), IssueIdentifier("E-404"), TicketEdit.fake())
 
 

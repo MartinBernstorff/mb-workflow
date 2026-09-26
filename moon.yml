@@ -19,7 +19,7 @@ tasks:
 
   # Serial, because every test rewrites the same seeded issues in the integration-test workspace.
   test-linear-live:
-    script: "uv run pytest -m linear_live --numprocesses=0 src/mb_workflow/c_infrastructure/test_issue_tracker.py"
+    script: "uv run pytest -m linear_live --numprocesses=0 src/mb_workflow/c_infrastructure/test_ticket_tracker.py"
     inputs:
       - "pyproject.toml"
       - "uv.lock"

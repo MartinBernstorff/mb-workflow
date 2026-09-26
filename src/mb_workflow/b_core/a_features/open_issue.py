@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTrackerError
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
@@ -19,7 +19,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.workspace import OpenedWorktree
 
@@ -83,12 +83,12 @@ class OpenRequest(Model):
         return self.model_copy(update={"prompt": PromptPrefix.of(state).applied(self.prompt)})
 
 
-def open_workspace(manager: WorkspaceManager, tracker: IssueTracker, request: OpenRequest) -> None:
+def open_workspace(manager: WorkspaceManager, tracker: TicketTracker, request: OpenRequest) -> None:
     # Assignment is a convenience, not the point of opening a workspace, so never fail the run over it.
     if request.issue is not None:
         try:
             tracker.assign(request.issue, request.assignee)
-        except IssueTrackerError as error:
+        except TicketTrackerError as error:
             logger.warning(
                 "Could not assign %s to %s: %s",
                 request.issue.root,
@@ -107,12 +107,12 @@ def open_workspace(manager: WorkspaceManager, tracker: IssueTracker, request: Op
     send_prompt(manager, opened, prompting)
 
 
-def issue_state(tracker: IssueTracker, issue: IssueIdentifier | None) -> IssueState | None:
+def issue_state(tracker: TicketTracker, issue: IssueIdentifier | None) -> IssueState | None:
     if issue is None:
         return None
     try:
         read = tracker.read_issue(issue)
-    except IssueTrackerError as error:
+    except TicketTrackerError as error:
         logger.warning("Could not read the state of %s: %s", issue.root, error)
         return None
     state = read.state()

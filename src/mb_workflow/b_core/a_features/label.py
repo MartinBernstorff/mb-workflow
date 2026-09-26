@@ -6,7 +6,7 @@ from mb_workflow.b_core.d_domain_model.issue import LabelName
 from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.issue_tracker import IssueTracker
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
     from mb_workflow.b_core.d_domain_model.workspace import Worktree
@@ -38,7 +38,7 @@ def issue_from_workspace(worktree: Worktree) -> IssueIdentifier:
     return worktree.issue
 
 
-def change_label(manager: WorkspaceManager, tracker: IssueTracker, request: LabelRequest) -> None:
+def change_label(manager: WorkspaceManager, tracker: TicketTracker, request: LabelRequest) -> None:
     issue = issue_from_workspace(manager.current())
     if request.change == LabelChange.remove:
         remove_label(tracker, issue, request.label)
@@ -47,7 +47,7 @@ def change_label(manager: WorkspaceManager, tracker: IssueTracker, request: Labe
     logger.info("Added %s to %s.", request.label.root, issue.root)
 
 
-def remove_label(tracker: IssueTracker, issue: IssueIdentifier, label: LabelName) -> None:
+def remove_label(tracker: TicketTracker, issue: IssueIdentifier, label: LabelName) -> None:
     current = tracker.read_issue(issue).labels
     remaining = current.without(label)
     if remaining == current:
