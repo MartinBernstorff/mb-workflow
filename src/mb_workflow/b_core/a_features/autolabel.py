@@ -269,9 +269,9 @@ class Outcome(Model):
         return Failed(len(self.failed) > 0)
 
     def chosen(self) -> tuple[IssueIdentifier, ...]:
-        if not self.dry_run.root:
-            return self.labelled
-        return self.selection.labellable().identifiers()
+        if self.dry_run.root:
+            return self.selection.labellable().identifiers()
+        return self.labelled
 
     def summary(self) -> SummaryLine:
         chosen = self.chosen()

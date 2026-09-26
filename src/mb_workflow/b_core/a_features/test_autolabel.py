@@ -325,7 +325,7 @@ def test_a_status_the_pattern_misses_is_kept() -> None:
     assert not Exclusions.fake().excludes_status(StatusName.fake()).root
 
 
-def request(dry_run: DryRun) -> AutolabelRequest:
+def request_with(dry_run: DryRun) -> AutolabelRequest:
     return AutolabelRequest.fake().model_copy(update={"dry_run": dry_run})
 
 
@@ -337,7 +337,7 @@ def test_an_applied_sweep_labels_the_survivors_on_the_tracker(tmp_path: Path) ->
             for issue in default_issues().root
         ),
     )
-    _ = sweep(tracker, request(DryRun(False)), LedgerPath(tmp_path / "ledger.txt"))
+    _ = sweep(tracker, request_with(DryRun(False)), LedgerPath(tmp_path / "ledger.txt"))
     assert tracker.read_issue(IssueIdentifier("E-4")).labels == LabelNames.fake()
 
 
@@ -350,7 +350,7 @@ def test_an_applied_sweep_records_what_it_labelled(tmp_path: Path) -> None:
         ),
     )
     ledger_path = LedgerPath(tmp_path / "ledger.txt")
-    _ = sweep(tracker, request(DryRun(False)), ledger_path)
+    _ = sweep(tracker, request_with(DryRun(False)), ledger_path)
     assert ledger_path.read() == Ledger(tuple(IssueIdentifier(f"E-{n}") for n in (4, 10, 11)))
 
 
@@ -362,18 +362,12 @@ def test_a_dry_sweep_leaves_the_tracker_untouched(tmp_path: Path) -> None:
             for issue in default_issues().root
         ),
     )
-    _ = sweep(tracker, request(DryRun(True)), LedgerPath(tmp_path / "ledger.txt"))
+    _ = sweep(tracker, request_with(DryRun(True)), LedgerPath(tmp_path / "ledger.txt"))
     assert tracker.read_issue(IssueIdentifier("E-4")).labels == LabelNames(())
 
 
 def test_sweeping_for_a_label_the_tracker_lacks_is_refused(tmp_path: Path) -> None:
-    tracker = FakeIssueTracker(
-        LabelNames.fake(),
-        tuple(
-            TrackedIssue(issue=issue, creator=Creator.fake(), created_on=CreatedOn.fake())
-            for issue in default_issues().root
-        ),
-    )
-    unknown = request(DryRun(False)).model_copy(update={"label": LabelName("Frontend")})
+    tracker = FakeIssueTracker(LabelNames.fake(), ())
+    unknown = AutolabelRequest.fake().model_copy(update={"label": LabelName("Frontend")})
     with pytest.raises(UnknownLabelError, match="Frontend"):
         _ = sweep(tracker, unknown, LedgerPath(tmp_path / "ledger.txt"))
