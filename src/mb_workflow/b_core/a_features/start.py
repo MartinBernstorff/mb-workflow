@@ -84,7 +84,7 @@ def start_ticket(
     # Resolve the state before touching anything, so a ticket with no work left is neither claimed, assigned nor opened.
     status = tracker.read_issue(request.ticket).status
     state = state_of(WorkflowChart, status)
-    prompt = request.prompt_for(action_in(state))
+    prompt = request.prompt_for(action_in(request.ticket, state))
 
     name = WorktreeName.of_issue(request.ticket)
     holder = ClaimHolder(host=request.host, worktree=name)
@@ -99,6 +99,12 @@ def start_ticket(
             take_over=request.take_over,
             settle=request.settle,
         ),
+    )
+    logger.info(
+        "Claimed %s for worktree %s on %s.",
+        request.ticket.root,
+        holder.worktree.root,
+        holder.host.root,
     )
     label_claim_or_withdraw(
         claims,
@@ -116,8 +122,9 @@ def start_ticket(
             workspace.assignee.root,
             error,
         )
+    else:
+        logger.info("Assigned %s to %s.", request.ticket.root, workspace.assignee.root)
 
-    logger.info("Creating worktree with name: %s", name.root)
     opened = manager.create_for_issue(
         workspace.orca_project,
         name,
@@ -125,20 +132,24 @@ def start_ticket(
         None if prompt is None else AgentName.claude(),
         board.status_for(state),
     )
-    logger.info("Created %s", opened.worktree.path.root)
+    logger.info("Created worktree %s.", opened.worktree.path.root)
 
     if prompt is not None:
         send_prompt(manager, opened, prompt, request.idle_timeout, request.submit)
 
 
-def action_in(state: StateName) -> Skill | AwaitingHuman:
+def action_in(ticket: IssueIdentifier, state: StateName) -> Skill | AwaitingHuman:
     action = next_action(WorkflowChart, state)
     if isinstance(action, Finished):
         raise FlowError(f"The ticket is {state.root}, so there is no work left in it.")
     if isinstance(action, AwaitingHuman):
         logger.warning(
-            "The ticket is in %s, which waits for a human, so no prompt is typed.", state.root
+            "%s is in %s, which waits for a human, so no prompt is typed.",
+            ticket.root,
+            state.root,
         )
+    else:
+        logger.info("%s is in %s, so the next step is %s.", ticket.root, state.root, action.root)
     return action
 
 
@@ -158,3 +169,4 @@ def send_prompt(
         logger.warning("Agent terminal never went idle; typing the prompt anyway.")
 
     manager.send_text(opened.terminal, prompt, submit)
+    logger.info("%s %s.", "Submitted" if submit.root else "Typed", prompt.root)

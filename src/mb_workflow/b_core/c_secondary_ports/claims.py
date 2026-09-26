@@ -111,6 +111,7 @@ def label_claim_or_withdraw(
             f"Could not label {request.ticket.root} as {request.label.root}, so the claim was"
             f" withdrawn. Create the label or change claims.label. {error}"
         ) from error
+    logger.info("Labelled %s as %s.", request.ticket.root, request.label.root)
 
 
 class LabelledClaim(Model):

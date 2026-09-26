@@ -49,9 +49,11 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 )
 
 
-def tracking(status: IssueStatusName) -> FakeTicketTracker:
+def tracking(
+    status: IssueStatusName, tracker: type[FakeTicketTracker] = FakeTicketTracker
+) -> FakeTicketTracker:
     issue = Issue.fake().model_copy(update={"status": status})
-    return FakeTicketTracker(
+    return tracker(
         LabelNames((*LabelNames.fake().root, LabelName("claimed"))),
         (TrackedIssue.fake().model_copy(update={"issue": issue}),),
     )
