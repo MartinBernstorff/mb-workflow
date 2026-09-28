@@ -5,8 +5,10 @@ from mb_workflow.b_core.d_domain_model.config import (
     LinearTracker,
     PoolSettings,
     Settings,
+    TicketTracker,
     WorkspaceSettings,
 )
+from mb_workflow.b_core.d_domain_model.issue import ProjectName, TeamKey
 from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
 
@@ -34,6 +36,22 @@ def test_a_linear_configuration_reports_no_project_tag() -> None:
     report = ConfigReport.of(config)
     assert "tracker: linear" in report.root
     assert "project tag" not in report.root
+
+
+def test_a_linear_configuration_reports_the_team_and_project_it_creates_tickets_in() -> None:
+    config = Configuration(
+        settings=Settings(
+            issues=LinearTracker(
+                tracker=TicketTracker.linear, team=TeamKey("MB"), project=ProjectName("mb-workflow")
+            ),
+            workspace=WorkspaceSettings.fake(),
+            ticket_statuses=TicketStatuses.fake(),
+        ),
+        origin=ConfigPath.fake(),
+    )
+    report = ConfigReport.of(config).root
+    assert "team: MB" in report
+    assert "project: mb-workflow" in report
 
 
 def test_a_configured_pool_reports_its_view() -> None:

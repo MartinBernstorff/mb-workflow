@@ -5,8 +5,9 @@ from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
-from mb_workflow.b_core.d_domain_model.issue import Assignee, LabelName
+from mb_workflow.b_core.d_domain_model.issue import Assignee, LabelName, ProjectName, TeamKey
 from mb_workflow.b_core.d_domain_model.pool import PoolLimits, ViewSlug
+from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDefaults
 from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
 from mb_workflow.d_lib.models import Model, Value
@@ -47,10 +48,15 @@ class ConfigFileName(Value[str]):
 
 class LinearTracker(Model):
     tracker: Literal[TicketTracker.linear]
+    team: TeamKey | None = None
+    project: ProjectName | None = None
 
     @staticmethod
     def fake() -> LinearTracker:
-        return LinearTracker(tracker=TicketTracker.linear)
+        return LinearTracker(tracker=TicketTracker.linear, team=None, project=ProjectName.fake())
+
+    def ticket_defaults(self) -> TicketDefaults:
+        return TicketDefaults(team=self.team, project=self.project)
 
 
 class TodoistTracker(Model):
@@ -125,6 +131,11 @@ class Settings(Model):
         if self.pool is not None and not isinstance(self.issues, LinearTracker):
             raise ValueError("[pool] needs the linear tracker.")
         return self
+
+    def ticket_defaults(self) -> TicketDefaults:
+        if not isinstance(self.issues, LinearTracker):
+            raise InvalidConfigError("Creating a ticket needs the linear tracker.")
+        return self.issues.ticket_defaults()
 
     def required_pool(self) -> PoolSettings:
         if self.pool is None:

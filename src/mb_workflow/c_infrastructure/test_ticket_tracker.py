@@ -31,6 +31,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     Cleared,
     CreatedAfter,
+    CreatedIssue,
     CreatedOn,
     Creator,
     GroupedLabels,
@@ -50,11 +51,14 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Milestone,
     MilestoneName,
     MilestoneNames,
+    NewIssue,
     Project,
     ProjectName,
     Projects,
     StatusType,
     StatusTypes,
+    Team,
+    TeamKey,
 )
 from mb_workflow.b_core.d_domain_model.pool import PoolTicket, Priority, ViewSlug
 from mb_workflow.c_infrastructure.credentials import CredentialsDirectory, RepositorySlug
@@ -63,13 +67,14 @@ from mb_workflow.c_infrastructure.linear import (
     Linear,
     MilestonePayload,
     ProjectId,
+    TeamId,
 )
 from mb_workflow.c_infrastructure.linear_claims import LinearClaims
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.d_lib.models import Model, Payload, Value
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Generator
 
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
 
@@ -161,6 +166,7 @@ class Backlog(Model):
     creator: Creator
     assignee: Assignee
     view: ViewSlug
+    team: TeamKey
 
     def identifier(self, seed: Seed) -> IssueIdentifier:
         return self.identifiers[seed]
@@ -184,12 +190,6 @@ class Backlog(Model):
         return tuple(seed for seed in Seed if self.identifier(seed) in swept)
 
 
-class TeamId(Value[str]):
-    @staticmethod
-    def fake() -> TeamId:
-        return TeamId("6f3c5a4e-1f0b-4b8e-9d7a-2c1e0f9b8a7d")
-
-
 class WorkspaceKey(Value[str]):
     @staticmethod
     def fake() -> WorkspaceKey:
@@ -204,26 +204,27 @@ class Organization(Payload):
         return Organization(url_key=WorkspaceKey.fake())
 
 
-class Team(Payload):
+class WorkspaceTeam(Payload):
     id: TeamId
+    key: TeamKey
 
     @staticmethod
-    def fake() -> Team:
-        return Team(id=TeamId.fake())
+    def fake() -> WorkspaceTeam:
+        return WorkspaceTeam(id=TeamId.fake(), key=TeamKey.fake())
 
 
 class Workspace(Payload):
     organization: Organization
-    teams: tuple[Team, ...] = Field(validation_alias=AliasPath("teams", "nodes"))
+    teams: tuple[WorkspaceTeam, ...] = Field(validation_alias=AliasPath("teams", "nodes"))
 
     @staticmethod
     def fake() -> Workspace:
-        return Workspace(organization=Organization.fake(), teams=(Team.fake(),))
+        return Workspace(organization=Organization.fake(), teams=(WorkspaceTeam.fake(),))
 
     @staticmethod
     def of(client: LinearClient) -> Workspace:
         return Workspace.model_validate(
-            client.execute("{ organization { urlKey } teams { nodes { id } } }")
+            client.execute("{ organization { urlKey } teams { nodes { id key } } }")
         )
 
 
@@ -238,6 +239,7 @@ def fake_backlog() -> Backlog:
         creator=Creator.fake(),
         assignee=Assignee.fake(),
         view=ViewSlug.fake(),
+        team=TeamKey.fake(),
     )
 
 
@@ -442,19 +444,20 @@ def ensure_view(client: LinearClient) -> ViewSlug:
 # Seeded once per session; reset() restores whatever a test changes.
 @pytest.fixture(scope="session")
 def linear_backlog(linear_client: LinearClient) -> Backlog:
-    team = Workspace.of(linear_client).teams[0].id
+    team = Workspace.of(linear_client).teams[0]
     ensure_labels(linear_client, workspace_labels())
-    _ = ensure_project(linear_client, team, Project.fake())
+    _ = ensure_project(linear_client, team.id, Project.fake())
     viewer = linear_client.viewer().viewer
     if viewer is None or viewer.email is None:
         pytest.fail("Linear did not say who the API key belongs to.")
     backlog = Backlog(
         identifiers={
-            planted.seed: ensure_issue(linear_client, team, planted) for planted in seeds()
+            planted.seed: ensure_issue(linear_client, team.id, planted) for planted in seeds()
         },
         creator=Creator(viewer.email),
         assignee=Assignee(viewer.email),
         view=ensure_view(linear_client),
+        team=team.key,
     )
     for planted in seeds():
         for blocker in planted.blocked_by:
@@ -550,6 +553,7 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
         ),
         backlog.assignee,
         views={backlog.view: tuple(backlog.identifier(seed) for seed in Seed)},
+        teams=(Team(key=backlog.team, projects=(ProjectName.fake(),)),),
     )
 
 
@@ -1003,6 +1007,138 @@ def test_moving_to_an_unknown_status_is_refused(tracker: TicketTracker, backlog:
             backlog.identifier(Seed.recent),
             IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("No such status")}),
         )
+
+
+# Created issues go to the trash afterwards, so they never join the seeds' labels or view.
+@pytest.fixture
+def creating(
+    kind: TrackerKind, tracker: TicketTracker, request: pytest.FixtureRequest
+) -> Generator[Callable[[NewIssue], CreatedIssue]]:
+    made: list[IssueIdentifier] = []
+
+    def create(new: NewIssue) -> CreatedIssue:
+        created = tracker.create_issue(new)
+        made.append(created.identifier)
+        return created
+
+    yield create
+    if kind == TrackerKind.linear:
+        client: LinearClient = request.getfixturevalue("linear_client")
+        for identifier in made:
+            _ = client.execute(
+                "mutation($id: String!) { issueDelete(id: $id) { success } }",
+                {"id": identifier.root},
+            )
+
+
+def new_issue(title: IssueTitle) -> NewIssue:
+    return NewIssue(
+        team=None,
+        title=title,
+        description=None,
+        labels=LabelNames(()),
+        assignee=None,
+        project=ProjectName.fake(),
+        status=IssueStatusName.fake(),
+        milestone=None,
+        blocks=(),
+        blocked_by=(),
+    )
+
+
+def test_a_created_issue_reads_back_as_it_was_given(
+    tracker: TicketTracker,
+    backlog: Backlog,
+    creating: Callable[[NewIssue], CreatedIssue],
+) -> None:
+    new = new_issue(IssueTitle("created: full")).model_copy(
+        update={
+            "description": IssueDescription.fake(),
+            "labels": LabelNames((LabelName("backend"),)),
+            "assignee": backlog.assignee,
+            "status": IssueStatusName("in progress"),
+            "milestone": Milestone.fake(),
+        }
+    )
+    identifier = creating(new).identifier
+    assert tracker.read_issue_detail(identifier) == IssueDetail(
+        issue=Issue(
+            identifier=identifier,
+            status=IssueStatusName("In Progress"),
+            project=ProjectName.fake(),
+            labels=LabelNames((LabelName("Backend"),)),
+            grouped=GroupedLabels(()),
+            assigned=Assigned(True),
+        ),
+        title=IssueTitle("created: full"),
+        description=IssueDescription.fake(),
+        assignee=backlog.assignee,
+        milestone=MilestoneName.fake(),
+    )
+
+
+def test_a_created_issue_links_to_itself(creating: Callable[[NewIssue], CreatedIssue]) -> None:
+    created = creating(new_issue(IssueTitle("created: link")))
+    assert created.identifier.root in created.url.root
+
+
+def test_an_issue_created_in_a_named_team_needs_no_project(
+    tracker: TicketTracker, backlog: Backlog, creating: Callable[[NewIssue], CreatedIssue]
+) -> None:
+    new = new_issue(IssueTitle("created: team")).model_copy(
+        update={"team": backlog.team, "project": None}
+    )
+    assert tracker.read_issue(creating(new).identifier).project is None
+
+
+def test_creating_an_issue_without_a_team_or_project_is_refused(
+    creating: Callable[[NewIssue], CreatedIssue],
+) -> None:
+    with pytest.raises(TicketTrackerError, match="team or a project"):
+        _ = creating(new_issue(IssueTitle("created: nowhere")).model_copy(update={"project": None}))
+
+
+def test_creating_an_issue_in_an_unknown_team_is_refused(
+    creating: Callable[[NewIssue], CreatedIssue],
+) -> None:
+    new = new_issue(IssueTitle("created: unknown team")).model_copy(
+        update={"team": TeamKey("NOSUCHTEAM")}
+    )
+    with pytest.raises(TicketTrackerError, match="NOSUCHTEAM"):
+        _ = creating(new)
+
+
+def test_creating_an_issue_in_an_unknown_project_is_refused(
+    creating: Callable[[NewIssue], CreatedIssue],
+) -> None:
+    new = new_issue(IssueTitle("created: unknown project")).model_copy(
+        update={"project": ProjectName("No such project")}
+    )
+    with pytest.raises(TicketTrackerError, match="No such project"):
+        _ = creating(new)
+
+
+def test_creating_an_issue_with_an_unknown_status_is_refused(
+    creating: Callable[[NewIssue], CreatedIssue],
+) -> None:
+    new = new_issue(IssueTitle("created: unknown status")).model_copy(
+        update={"status": IssueStatusName("No such status")}
+    )
+    with pytest.raises(TicketTrackerError, match="No such status"):
+        _ = creating(new)
+
+
+def test_a_created_issue_blocks_and_is_blocked_by_the_issues_it_names(
+    tracker: TicketTracker, creating: Callable[[NewIssue], CreatedIssue]
+) -> None:
+    blocked = creating(new_issue(IssueTitle("created: blocked"))).identifier
+    blocker = creating(new_issue(IssueTitle("created: blocker"))).identifier
+    middle = creating(
+        new_issue(IssueTitle("created: middle")).model_copy(
+            update={"blocks": (blocked,), "blocked_by": (blocker,)}
+        )
+    ).identifier
+    assert (tracker.blockers(middle), tracker.blockers(blocked)) == ((blocker,), (middle,))
 
 
 def rival_of(holder: ClaimHolder) -> ClaimHolder:

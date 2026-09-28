@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, ClaimId, Claims
     from mb_workflow.b_core.d_domain_model.issue import (
         Assignee,
+        CreatedIssue,
         Issue,
         IssueDetail,
         IssueFilter,
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
         LabelGroupName,
         LabelName,
         LabelNames,
+        NewIssue,
         StatusTypes,
     )
     from mb_workflow.b_core.d_domain_model.pool import PoolTickets, ViewSlug
@@ -118,6 +120,14 @@ class LazyLinear(TicketTracker):
     @override
     def update_issue(self, issue: IssueIdentifier, update: IssueUpdate) -> None:
         self._tracker().update_issue(issue, update)
+
+    @override
+    def create_issue(self, new: NewIssue) -> CreatedIssue:
+        return self._tracker().create_issue(new)
+
+    @override
+    def blockers(self, issue: IssueIdentifier) -> tuple[IssueIdentifier, ...]:
+        return self._tracker().blockers(issue)
 
     @override
     def viewer(self) -> Assignee:

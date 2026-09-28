@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from enum import StrEnum
 from typing import TYPE_CHECKING, override
 
 from linear_python_client import (
@@ -18,6 +19,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
     Cleared,
+    CreatedIssue,
     GroupedLabel,
     GroupedLabels,
     Issue,
@@ -27,12 +29,15 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issues,
     IssueStatusName,
     IssueTitle,
+    IssueUrl,
     LabelGroupName,
     LabelName,
     LabelNames,
     Milestone,
     MilestoneName,
+    NewIssue,
     ProjectName,
+    TeamKey,
 )
 from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority
 from mb_workflow.d_lib.models import Payload, Value
@@ -295,6 +300,169 @@ class UpdateLookup(Payload):
         if found is None:
             raise TicketTrackerError(f"No status is named {status.root}.")
         return found.id
+
+
+class TeamId(Value[str]):
+    @staticmethod
+    def fake() -> TeamId:
+        return TeamId("6f3c5a4e-1f0b-4b8e-9d7a-2c1e0f9b8a7d")
+
+
+class TeamRecord(Payload):
+    id: TeamId
+    key: TeamKey
+    states: tuple[StateRecord, ...] = Field(
+        default=(), validation_alias=AliasPath("states", "nodes")
+    )
+
+    @staticmethod
+    def fake() -> TeamRecord:
+        return TeamRecord(id=TeamId.fake(), key=TeamKey.fake(), states=(StateRecord.fake(),))
+
+    def state_id(self, status: IssueStatusName) -> StateId:
+        found = next((known for known in self.states if known.name.names(status).root), None)
+        if found is None:
+            raise TicketTrackerError(f"{self.key.root} has no status named {status.root}.")
+        return found.id
+
+
+class TeamProjectRecord(ProjectRecord):
+    teams: tuple[TeamRecord, ...] = Field(default=(), validation_alias=AliasPath("teams", "nodes"))
+
+    @override
+    @staticmethod
+    def fake() -> TeamProjectRecord:
+        return TeamProjectRecord(
+            id=ProjectId.fake(),
+            name=ProjectName.fake(),
+            milestones=(MilestoneRecord.fake(),),
+            teams=(TeamRecord.fake(),),
+        )
+
+
+# Resolves every name a new issue carries in one read, the team coming from the project if unnamed.
+class CreationLookup(UpdateLookup):
+    projects: tuple[TeamProjectRecord, ...] = Field(
+        default=(), validation_alias=AliasPath("project", "nodes")
+    )
+    teams: tuple[TeamRecord, ...] = Field(default=(), validation_alias=AliasPath("team", "nodes"))
+
+    @override
+    @staticmethod
+    def fake() -> CreationLookup:
+        return CreationLookup(
+            labels=(LabelRecord.fake(),),
+            users=(UserRecord.fake(),),
+            projects=(TeamProjectRecord.fake(),),
+            teams=(TeamRecord.fake(),),
+        )
+
+    def creation(self, new: NewIssue) -> IssueCreation:
+        project = self._project(new.project) if new.project is not None else None
+        team = self._team(new.team, project)
+        return IssueCreation(
+            team_id=team.id,
+            title=new.title,
+            description=new.description,
+            label_ids=self.label_ids(new.labels),
+            assignee_id=self.user_id(new.assignee) if new.assignee is not None else None,
+            project_id=project.id if project is not None else None,
+            state_id=team.state_id(new.status),
+            project_milestone_id=(
+                project.milestone(new.milestone.name)
+                if project is not None and new.milestone is not None
+                else None
+            ),
+        )
+
+    def _project(self, name: ProjectName) -> TeamProjectRecord:
+        if not self.projects:
+            raise TicketTrackerError(f"No project is named {name.root}.")
+        return self.projects[0]
+
+    def _team(self, key: TeamKey | None, project: TeamProjectRecord | None) -> TeamRecord:
+        if key is not None:
+            if not self.teams:
+                raise TicketTrackerError(f"No team has the key {key.root}.")
+            return self.teams[0]
+        if project is None:
+            raise TicketTrackerError("Name a team or a project to create the issue in.")
+        if len(project.teams) != 1:
+            raise TicketTrackerError(
+                f"{project.name.root} belongs to several teams. Set [issues] team to pick one."
+            )
+        return project.teams[0]
+
+
+class IssueCreation(Payload):
+    team_id: TeamId
+    title: IssueTitle
+    description: IssueDescription | None
+    label_ids: tuple[LabelId, ...]
+    assignee_id: UserId | None
+    project_id: ProjectId | None
+    state_id: StateId
+    project_milestone_id: MilestoneId | None
+
+    @staticmethod
+    def fake() -> IssueCreation:
+        return IssueCreation(
+            team_id=TeamId.fake(),
+            title=IssueTitle.fake(),
+            description=None,
+            label_ids=(),
+            assignee_id=None,
+            project_id=None,
+            state_id=StateId.fake(),
+            project_milestone_id=None,
+        )
+
+
+class CreatedIssueRead(Payload):
+    identifier: IssueIdentifier = Field(
+        validation_alias=AliasPath("issueCreate", "issue", "identifier")
+    )
+    url: IssueUrl = Field(validation_alias=AliasPath("issueCreate", "issue", "url"))
+
+    @staticmethod
+    def fake() -> CreatedIssueRead:
+        return CreatedIssueRead(identifier=IssueIdentifier.fake(), url=IssueUrl.fake())
+
+    def created(self) -> CreatedIssue:
+        return CreatedIssue(identifier=self.identifier, url=self.url)
+
+
+class RelationType(StrEnum):
+    blocks = "blocks"
+    duplicate = "duplicate"
+    related = "related"
+    similar = "similar"
+
+
+class InverseRelation(Payload):
+    type: RelationType
+    identifier: IssueIdentifier = Field(validation_alias=AliasPath("issue", "identifier"))
+
+    @staticmethod
+    def fake() -> InverseRelation:
+        return InverseRelation(type=RelationType.blocks, identifier=IssueIdentifier.fake())
+
+
+class InverseRelationsRead(Payload):
+    relations: tuple[InverseRelation, ...] = Field(
+        validation_alias=AliasPath("issue", "inverseRelations", "nodes")
+    )
+
+    @staticmethod
+    def fake() -> InverseRelationsRead:
+        return InverseRelationsRead(relations=(InverseRelation.fake(),))
+
+    def blockers(self) -> tuple[IssueIdentifier, ...]:
+        return tuple(
+            relation.identifier
+            for relation in self.relations
+            if relation.type == RelationType.blocks
+        )
 
 
 class IssuePayload(Payload):
@@ -669,6 +837,95 @@ class Linear(TicketTracker):
                     "input": wanted.model_dump(mode="json", by_alias=True, exclude_unset=True),
                 },
             )
+
+    @override
+    def create_issue(self, new: NewIssue) -> CreatedIssue:
+        creation = self._creation_lookup(new).creation(new)
+        with translated_errors():
+            data = self._client.execute(
+                "mutation($input: IssueCreateInput!) {"
+                " issueCreate(input: $input) { issue { identifier url } } }",
+                {"input": creation.model_dump(mode="json", by_alias=True, exclude_none=True)},
+            )
+        created = CreatedIssueRead.model_validate(data).created()
+        for blocked in new.blocks:
+            self._relate(blocker=created.identifier, blocked=blocked)
+        for blocker in new.blocked_by:
+            self._relate(blocker=blocker, blocked=created.identifier)
+        return created
+
+    @override
+    def blockers(self, issue: IssueIdentifier) -> tuple[IssueIdentifier, ...]:
+        with translated_errors():
+            data = self._client.execute(
+                """
+                query($id: String!) {
+                  issue(id: $id) {
+                    inverseRelations(first: 250) { nodes { type issue { identifier } } }
+                  }
+                }
+                """,
+                {"id": issue.root},
+            )
+        return InverseRelationsRead.model_validate(data).blockers()
+
+    def _relate(self, *, blocker: IssueIdentifier, blocked: IssueIdentifier) -> None:
+        with translated_errors():
+            _ = self._client.execute(
+                "mutation($input: IssueRelationCreateInput!) {"
+                " issueRelationCreate(input: $input) { success } }",
+                {
+                    "input": {
+                        "issueId": blocker.root,
+                        "relatedIssueId": blocked.root,
+                        "type": RelationType.blocks.value,
+                    }
+                },
+            )
+
+    def _creation_lookup(self, new: NewIssue) -> CreationLookup:
+        with translated_errors():
+            data = self._client.execute(
+                """
+                query(
+                  $labels: IssueLabelFilter, $withLabels: Boolean!
+                  $user: UserFilter, $withUser: Boolean!
+                  $project: ProjectFilter, $withProject: Boolean!
+                  $team: TeamFilter, $withTeam: Boolean!
+                ) {
+                  issueLabels(first: 250, filter: $labels) @include(if: $withLabels) {
+                    nodes { id name }
+                  }
+                  users(first: 1, filter: $user) @include(if: $withUser) { nodes { id } }
+                  project: projects(first: 1, filter: $project) @include(if: $withProject) {
+                    nodes {
+                      id
+                      name
+                      projectMilestones { nodes { id name } }
+                      teams(first: 2) { nodes { id key states(first: 100) { nodes { id name } } } }
+                    }
+                  }
+                  team: teams(first: 1, filter: $team) @include(if: $withTeam) {
+                    nodes { id key states(first: 100) { nodes { id name } } }
+                  }
+                }
+                """,
+                {
+                    "labels": {
+                        "or": [{"name": {"eqIgnoreCase": label.root}} for label in new.labels.root]
+                    },
+                    "withLabels": bool(new.labels.root),
+                    "user": {"email": {"eq": new.assignee.root}} if new.assignee else None,
+                    "withUser": new.assignee is not None,
+                    "project": {"name": {"eqIgnoreCase": new.project.root}}
+                    if new.project
+                    else None,
+                    "withProject": new.project is not None,
+                    "team": {"key": {"eqIgnoreCase": new.team.root}} if new.team else None,
+                    "withTeam": new.team is not None,
+                },
+            )
+        return CreationLookup.model_validate(data)
 
     @override
     def viewer(self) -> Assignee:

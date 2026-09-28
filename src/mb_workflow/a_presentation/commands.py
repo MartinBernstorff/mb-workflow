@@ -16,6 +16,7 @@ from mb_workflow.b_core.a_features.autolabel import (
     UnknownLabelError,
     label_eligible_issues,
 )
+from mb_workflow.b_core.a_features.create_ticket import create_ticket
 from mb_workflow.b_core.a_features.drain import DrainRequest, drain_pool
 from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
@@ -76,6 +77,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.claim import HostName
     from mb_workflow.b_core.d_domain_model.issue import CreatedAfter, IssueIdentifier
     from mb_workflow.b_core.d_domain_model.pull_request import MergedSince, ReviewRequest
+    from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDraft
     from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit
     from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus
 
@@ -270,6 +272,22 @@ def ticket_view(issue: IssueIdentifier) -> ExitCode:
 def ticket_edit(issue: IssueIdentifier, edit: TicketEdit) -> ExitCode:
     edit_ticket(linear(), issue, edit)
     write(Output(f"{issue.root}\n"))
+    return ExitCode(0)
+
+
+@guarded
+def ticket_create(
+    draft: TicketDraft, directory: WorkingDirectory, name: ConfigFileName
+) -> ExitCode:
+    settings = Configuration.resolved(directory, name).settings
+    created = create_ticket(
+        tracker=linear(),
+        draft=draft,
+        defaults=settings.ticket_defaults(),
+        flow_labels=flow_labels_of_chart(),
+        statuses=settings.ticket_statuses,
+    )
+    write(Output(f"{created.identifier.root} {created.url.root}\n"))
     return ExitCode(0)
 
 
