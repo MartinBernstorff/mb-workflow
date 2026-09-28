@@ -25,6 +25,7 @@ class ConfigReport(Value[str]):
         return ConfigReport(
             "\n".join(
                 (
+                    f"origin: {config.origin.root}",
                     *issues,
                     f"status store: {settings.status.store}",
                     f"orca project: {settings.workspace.orca_project.root}",
@@ -38,7 +39,11 @@ class ConfigReport(Value[str]):
                             f"pool limits: {settings.pool.limits.summary().root}",
                         )
                     ),
-                    f"origin: {config.origin.root}",
+                    "ticket statuses:",
+                    *(
+                        f"  {state.root}: {status.root}"
+                        for state, status in settings.ticket_statuses.root.items()
+                    ),
                 )
             )
         )

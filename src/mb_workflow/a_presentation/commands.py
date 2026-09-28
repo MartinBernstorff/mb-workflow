@@ -20,6 +20,7 @@ from mb_workflow.b_core.a_features.create_ticket import create_ticket
 from mb_workflow.b_core.a_features.drain import DrainRequest, drain_pool
 from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
+from mb_workflow.b_core.a_features.init_config import Overwrite, init_config
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
 from mb_workflow.b_core.a_features.review_workspaces import create_workspaces
 from mb_workflow.b_core.a_features.seed_labels import seed_flow_labels
@@ -43,12 +44,14 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceMana
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.b_core.d_domain_model.config import (
     ClaimSettings,
+    ConfigExistsError,
     ConfigFileName,
     Configuration,
     InvalidConfigError,
     MissingConfigError,
     WorkingDirectory,
 )
+from mb_workflow.b_core.d_domain_model.config_template import ConfigTemplate
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError, StateNames, WorkflowChart
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
@@ -91,6 +94,7 @@ FAILURES = (
     CalledProcessError,
     ClaimRefusedError,
     CodeReviewError,
+    ConfigExistsError,
     FlowError,
     InvalidConfigError,
     InvalidCredentialsError,
@@ -292,7 +296,20 @@ def ticket_create(
 
 
 @guarded
-def flow_config(directory: WorkingDirectory, name: ConfigFileName) -> ExitCode:
+def init(directory: WorkingDirectory, name: ConfigFileName, overwrite: Overwrite) -> ExitCode:
+    outcome = init_config(directory, name, ConfigTemplate.default(), overwrite)
+    if outcome.shadowed is not None:
+        logger.warning(
+            "%s now takes precedence over %s in this directory.",
+            outcome.written.root,
+            outcome.shadowed.root,
+        )
+    write(Output(f"{outcome.written.root}\n"))
+    return ExitCode(0)
+
+
+@guarded
+def config(directory: WorkingDirectory, name: ConfigFileName) -> ExitCode:
     write(Output(f"{show_config(directory, name).root}\n"))
     return ExitCode(0)
 
