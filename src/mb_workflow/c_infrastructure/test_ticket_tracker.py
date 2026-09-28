@@ -109,13 +109,20 @@ class SeededIssue(Model):
     def title(self) -> IssueTitle:
         return IssueTitle(f"contract: {self.seed.value}")
 
-    def detail(self, identifier: IssueIdentifier) -> IssueDetail:
+    def detail(
+        self,
+        identifier: IssueIdentifier,
+        blocks: frozenset[IssueIdentifier],
+        blocked_by: frozenset[IssueIdentifier],
+    ) -> IssueDetail:
         return IssueDetail(
             issue=self.issue(identifier),
             title=self.title(),
             description=self.description,
             assignee=None,
             milestone=None,
+            blocks=blocks,
+            blocked_by=blocked_by,
         )
 
 
@@ -176,7 +183,13 @@ class Backlog(Model):
 
     def detail(self, seed: Seed) -> IssueDetail:
         planted = next(planted for planted in seeds() if planted.seed == seed)
-        return planted.detail(self.identifier(seed))
+        return planted.detail(
+            self.identifier(seed),
+            blocks=frozenset(
+                self.identifier(other.seed) for other in seeds() if seed in other.blocked_by
+            ),
+            blocked_by=frozenset(self.identifier(blocker) for blocker in planted.blocked_by),
+        )
 
     def ticket(self, seed: Seed) -> PoolTicket:
         planted = next(planted for planted in seeds() if planted.seed == seed)
@@ -757,6 +770,21 @@ def test_viewing_an_issue_carries_its_title_and_description(
     assert tracker.read_issue_detail(backlog.identifier(Seed.recent)) == backlog.detail(Seed.recent)
 
 
+def test_viewing_an_issue_carries_the_issues_it_blocks(
+    tracker: TicketTracker, backlog: Backlog
+) -> None:
+    assert tracker.read_issue_detail(backlog.identifier(Seed.old)).blocks == frozenset(
+        {backlog.identifier(Seed.recent)}
+    )
+
+
+def test_viewing_an_issue_leaves_out_relations_that_do_not_block(
+    tracker: TicketTracker, backlog: Backlog
+) -> None:
+    detail = tracker.read_issue_detail(backlog.identifier(Seed.newest))
+    assert (detail.blocks, detail.blocked_by) == (frozenset(), frozenset())
+
+
 def test_an_issue_without_a_description_carries_none(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
@@ -1074,6 +1102,8 @@ def test_a_created_issue_reads_back_as_it_was_given(
         description=IssueDescription.fake(),
         assignee=backlog.assignee,
         milestone=MilestoneName.fake(),
+        blocks=frozenset(),
+        blocked_by=frozenset(),
     )
 
 

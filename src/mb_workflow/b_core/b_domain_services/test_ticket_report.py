@@ -3,6 +3,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
     IssueDescription,
     IssueDetail,
+    IssueIdentifier,
     LabelName,
     LabelNames,
 )
@@ -43,3 +44,15 @@ def test_labels_are_joined_by_commas() -> None:
 def test_an_empty_description_reports_no_body() -> None:
     blank = IssueDetail.fake().model_copy(update={"description": IssueDescription("")})
     assert TicketReport.of(blank).root.endswith("labels: d-implement\n")
+
+
+def test_relations_are_reported_after_the_labels_in_identifier_order() -> None:
+    related = IssueDetail.fake().model_copy(
+        update={
+            "blocks": frozenset({IssueIdentifier("E-3"), IssueIdentifier("E-2")}),
+            "blocked_by": frozenset({IssueIdentifier("E-1")}),
+        }
+    )
+    assert "labels: d-implement\nblocks: E-2, E-3\nblocked by: E-1\n" in (
+        TicketReport.of(related).root
+    )
