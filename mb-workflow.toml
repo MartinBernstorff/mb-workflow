@@ -1,5 +1,6 @@
 [issues]
 tracker = "linear"
+team = "MB"
 
 [workspace]
 orca_project = "github:martinbernstorff/mb-workflow"

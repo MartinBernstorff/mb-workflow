@@ -17,7 +17,11 @@ class ConfigReport(Value[str]):
                     f"project tag: {todoist.project_tag.root}",
                 )
             case LinearTracker() as linear:
-                issues = (f"tracker: {linear.tracker}",)
+                issues = (
+                    f"tracker: {linear.tracker}",
+                    *(() if linear.team is None else (f"team: {linear.team.root}",)),
+                    *(() if linear.project is None else (f"project: {linear.project.root}",)),
+                )
         return ConfigReport(
             "\n".join(
                 (

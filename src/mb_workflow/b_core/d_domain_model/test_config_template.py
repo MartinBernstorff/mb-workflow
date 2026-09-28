@@ -22,6 +22,8 @@ def test_uncommenting_the_template_yields_a_valid_configuration() -> None:
 
 
 def test_the_commented_todoist_block_is_a_valid_tracker() -> None:
-    text = uncommented(ConfigTemplate.default()).root.replace('tracker = "linear"\n', "", 1)
+    text = uncommented(ConfigTemplate.default()).root.replace(
+        'tracker = "linear"\nteam = "<linear-team-key>"\nproject = "<linear-project-name>"\n', "", 1
+    )
     issues = tomllib.loads(text)["issues"]
     assert isinstance(TodoistTracker.model_validate(issues), TodoistTracker)

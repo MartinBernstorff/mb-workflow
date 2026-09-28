@@ -324,6 +324,64 @@ class IssueUpdate(Model):
         )
 
 
+class TeamKey(IssueText):
+    @staticmethod
+    def fake() -> TeamKey:
+        return TeamKey("E")
+
+
+class Team(Model):
+    key: TeamKey
+    projects: tuple[ProjectName, ...]
+
+    @staticmethod
+    def fake() -> Team:
+        return Team(key=TeamKey.fake(), projects=(ProjectName.fake(),))
+
+
+class NewIssue(Model):
+    team: TeamKey | None
+    title: IssueTitle
+    description: IssueDescription | None
+    labels: LabelNames
+    assignee: Assignee | None
+    project: ProjectName | None
+    status: IssueStatusName
+    milestone: Milestone | None
+    blocks: tuple[IssueIdentifier, ...]
+    blocked_by: tuple[IssueIdentifier, ...]
+
+    @staticmethod
+    def fake() -> NewIssue:
+        return NewIssue(
+            team=None,
+            title=IssueTitle.fake(),
+            description=IssueDescription.fake(),
+            labels=LabelNames.fake(),
+            assignee=Assignee.fake(),
+            project=ProjectName.fake(),
+            status=IssueStatusName.fake(),
+            milestone=Milestone.fake(),
+            blocks=(),
+            blocked_by=(),
+        )
+
+
+class IssueUrl(Value[str]):
+    @staticmethod
+    def fake() -> IssueUrl:
+        return IssueUrl("https://linear.app/flowbase/issue/E-4289/add-widget")
+
+
+class CreatedIssue(Model):
+    identifier: IssueIdentifier
+    url: IssueUrl
+
+    @staticmethod
+    def fake() -> CreatedIssue:
+        return CreatedIssue(identifier=IssueIdentifier.fake(), url=IssueUrl.fake())
+
+
 class Creator(Value[str]):
     @staticmethod
     def fake() -> Creator:

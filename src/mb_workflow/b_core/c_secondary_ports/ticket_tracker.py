@@ -1,3 +1,4 @@
+from itertools import count
 from typing import TYPE_CHECKING, Protocol, override
 
 from mb_workflow.b_core.d_domain_model.claim import Released
@@ -5,6 +6,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
     Cleared,
+    CreatedIssue,
     CreatedOn,
     Creator,
     GroupedLabel,
@@ -20,15 +22,19 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueStatusName,
     IssueTitle,
     IssueUpdate,
+    IssueUrl,
     LabelName,
     LabelNames,
     Milestone,
     MilestoneName,
+    NewIssue,
     Project,
     ProjectName,
     Projects,
     StatusNames,
     StatusTypes,
+    Team,
+    TeamKey,
 )
 from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority, ViewSlug
 from mb_workflow.d_lib.models import Model
@@ -67,6 +73,10 @@ class TicketTracker(Protocol):
     def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None: ...
 
     def update_issue(self, issue: IssueIdentifier, update: IssueUpdate) -> None: ...
+
+    def create_issue(self, new: NewIssue) -> CreatedIssue: ...
+
+    def blockers(self, issue: IssueIdentifier) -> tuple[IssueIdentifier, ...]: ...
 
     def viewer(self) -> Assignee: ...
 
@@ -108,6 +118,7 @@ class FakeTicketTracker(TicketTracker):
         *,
         views: dict[ViewSlug, tuple[IssueIdentifier, ...]] | None = None,
         groups: dict[LabelGroupName, LabelNames] | None = None,
+        teams: tuple[Team, ...] = (Team.fake(),),
     ) -> None:
         self._labels = labels
         self._issues = {tracked.issue.identifier: tracked for tracked in issues}
@@ -116,6 +127,7 @@ class FakeTicketTracker(TicketTracker):
         self._viewer = viewer
         self._views = dict(views or {})
         self._groups = dict(groups or {})
+        self._teams = teams
 
     @override
     def workspace_labels(self) -> LabelNames:
@@ -241,8 +253,65 @@ class FakeTicketTracker(TicketTracker):
         )
 
     @override
+    def create_issue(self, new: NewIssue) -> CreatedIssue:
+        _ = self._team(new.team, new.project)
+        for blocker in new.blocked_by:
+            _ = self._tracked(blocker)
+        blocked = tuple(self._tracked(issue) for issue in new.blocks)
+        identifier = next(
+            candidate
+            for candidate in (IssueIdentifier(f"E-{n}") for n in count(len(self._issues) + 1))
+            if candidate not in self._issues
+        )
+        self._issues[identifier] = TrackedIssue(
+            issue=Issue(
+                identifier=identifier,
+                status=self._status_named(new.status).name,
+                project=self._moved(None, new.project),
+                labels=self._spelled(new.labels),
+                grouped=GroupedLabels(()),
+                assigned=Assigned(new.assignee is not None),
+            ),
+            title=new.title,
+            description=new.description,
+            assignee=new.assignee,
+            milestone=self._pinned(None, new.milestone),
+            creator=Creator(self._viewer.root),
+            created_on=CreatedOn.fake(),
+            priority=Priority.no_priority,
+            blocked_by=new.blocked_by,
+        )
+        for tracked in blocked:
+            self._issues[tracked.issue.identifier] = tracked.model_copy(
+                update={"blocked_by": (*tracked.blocked_by, identifier)}
+            )
+        return CreatedIssue(
+            identifier=identifier, url=IssueUrl(f"https://linear.app/fake/issue/{identifier.root}")
+        )
+
+    @override
+    def blockers(self, issue: IssueIdentifier) -> tuple[IssueIdentifier, ...]:
+        return self._tracked(issue).blocked_by
+
+    @override
     def viewer(self) -> Assignee:
         return self._viewer
+
+    def _team(self, key: TeamKey | None, project: ProjectName | None) -> Team:
+        if key is not None:
+            found = next((team for team in self._teams if team.key.names(key).root), None)
+            if found is None:
+                raise TicketTrackerError(f"No team has the key {key.root}.")
+            return found
+        if project is None:
+            raise TicketTrackerError("Name a team or a project to create the issue in.")
+        spelled = self._project(project).name
+        owners = tuple(team for team in self._teams if spelled in team.projects)
+        if len(owners) != 1:
+            raise TicketTrackerError(
+                f"{spelled.root} belongs to several teams. Set [issues] team to pick one."
+            )
+        return owners[0]
 
     def _spelled(self, labels: LabelNames) -> LabelNames:
         unknown = self._labels.unmatched(labels)

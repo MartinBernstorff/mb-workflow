@@ -22,8 +22,15 @@ from mb_workflow.b_core.d_domain_model.config import (
     WorkspaceSettings,
 )
 from mb_workflow.b_core.d_domain_model.flow import StateName
-from mb_workflow.b_core.d_domain_model.issue import Assignee, IssueStatusName, LabelName
+from mb_workflow.b_core.d_domain_model.issue import (
+    Assignee,
+    IssueStatusName,
+    LabelName,
+    ProjectName,
+    TeamKey,
+)
 from mb_workflow.b_core.d_domain_model.pool import Limit, PoolLimits, ViewSlug
+from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDefaults
 from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
 
@@ -110,7 +117,7 @@ def test_a_configuration_in_a_parent_is_not_merged_into_the_nearest_one(tmp_path
     )
 
     assert resolved.settings == Settings(
-        issues=LinearTracker.fake(),
+        issues=LinearTracker(tracker=TicketTracker.linear),
         workspace=WorkspaceSettings.fake(),
         ticket_statuses=TicketStatuses.fake(),
     )
@@ -137,6 +144,30 @@ def test_a_malformed_configuration_file_names_itself(tmp_path: Path) -> None:
 def test_a_linear_configuration_names_only_its_tracker() -> None:
     settings = settings_with_fake_workspace(issues={"tracker": "linear"})
     assert settings.issues == LinearTracker(tracker=TicketTracker.linear)
+
+
+def test_a_linear_configuration_without_a_team_or_project_creates_tickets_without_defaults() -> (
+    None
+):
+    settings = settings_with_fake_workspace(issues={"tracker": "linear"})
+    assert settings.ticket_defaults() == TicketDefaults(team=None, project=None)
+
+
+def test_a_linear_configuration_names_the_team_and_project_tickets_are_created_in() -> None:
+    settings = settings_with_fake_workspace(
+        issues={"tracker": "linear", "team": "MB", "project": "mb-workflow"}
+    )
+    assert settings.ticket_defaults() == TicketDefaults(
+        team=TeamKey("MB"), project=ProjectName("mb-workflow")
+    )
+
+
+def test_creating_a_ticket_outside_linear_is_refused() -> None:
+    settings = settings_with_fake_workspace(
+        issues={"tracker": "todoist", "project_tag": "it-mb-workflow"}
+    )
+    with pytest.raises(InvalidConfigError, match="linear"):
+        _ = settings.ticket_defaults()
 
 
 def test_a_todoist_configuration_names_its_project_tag() -> None:

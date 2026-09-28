@@ -17,6 +17,8 @@ class ConfigTemplate(Value[str]):
                 (
                     "[issues]",
                     'tracker = "linear"',
+                    '# team = "<linear-team-key>"',
+                    '# project = "<linear-project-name>"',
                     '# tracker = "todoist"',
                     '# project_tag = "<todoist-project-tag>"',
                     "",
