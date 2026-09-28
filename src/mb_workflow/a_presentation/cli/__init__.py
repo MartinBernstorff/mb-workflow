@@ -9,6 +9,7 @@ from mb_workflow.a_presentation.cli.ticket import ticket_app
 from mb_workflow.a_presentation.diagram import DiagramPath, diagram
 from mb_workflow.b_core.a_features.autolabel import AutolabelRequest, DryRun
 from mb_workflow.b_core.a_features.drain import DrainRequest
+from mb_workflow.b_core.a_features.init_config import Overwrite
 from mb_workflow.b_core.a_features.label import LabelChange, LabelRequest
 from mb_workflow.b_core.a_features.start import StartRequest
 from mb_workflow.b_core.a_features.teardown import TeardownRequest
@@ -238,11 +239,24 @@ def unclaim_ticket(
     raise typer.Exit(code=commands.ticket_unclaim(IssueIdentifier(ticket)).root)
 
 
-@flow_app.command("config")
-def flow_config(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
+@app.command("init")
+def init(
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing config file."),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     raise typer.Exit(
-        code=commands.flow_config(WorkingDirectory(Path.cwd()), ConfigFileName.default()).root
+        code=commands.init(
+            WorkingDirectory(Path.cwd()), ConfigFileName.default(), Overwrite(force)
+        ).root
+    )
+
+
+@app.command("config")
+def config(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    raise typer.Exit(
+        code=commands.config(WorkingDirectory(Path.cwd()), ConfigFileName.default()).root
     )
 
 

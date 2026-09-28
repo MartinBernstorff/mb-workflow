@@ -20,6 +20,10 @@ class InvalidConfigError(Exception):
     pass
 
 
+class ConfigExistsError(Exception):
+    pass
+
+
 class TicketTracker(StrEnum):
     linear = "linear"
     todoist = "todoist"
@@ -160,11 +164,24 @@ class SearchedDirectories(Value[tuple[Path, ...]]):
         start = directory.root.resolve()
         return SearchedDirectories((start, *start.parents))
 
+    @staticmethod
+    def above(directory: WorkingDirectory) -> SearchedDirectories:
+        return SearchedDirectories(tuple(directory.root.resolve().parents))
+
+    def find(self, name: ConfigFileName) -> ConfigPath | None:
+        return next(
+            (
+                ConfigPath(directory / name.root)
+                for directory in self.root
+                if (directory / name.root).is_file()
+            ),
+            None,
+        )
+
     def locate(self, name: ConfigFileName) -> ConfigPath:
-        for directory in self.root:
-            candidate = directory / name.root
-            if candidate.is_file():
-                return ConfigPath(candidate)
+        found = self.find(name)
+        if found is not None:
+            return found
         listed = ", ".join(str(directory) for directory in self.root)
         raise MissingConfigError(f"No {name.root} found. Searched {listed}.")
 

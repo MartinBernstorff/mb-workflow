@@ -10,15 +10,24 @@ from mb_workflow.b_core.d_domain_model.config import (
 from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
 
-def test_reports_the_resolved_tracker_and_the_file_it_came_from() -> None:
+def test_reports_the_file_it_came_from_and_every_resolved_setting() -> None:
     assert ConfigReport.of(Configuration.fake()).root == (
+        "origin: /Users/me/orca/workspaces/mb-workflow/mb-workflow.toml\n"
         "tracker: todoist\n"
         "project tag: it-mb-workflow\n"
         "status store: orca\n"
         "orca project: github:flowbasedk/flowbase\n"
         "assignee: mab@flowbase.io\n"
         "claim label: claimed\n"
-        "origin: /Users/me/orca/workspaces/mb-workflow/mb-workflow.toml"
+        "ticket statuses:\n"
+        "  Grilling: Maturing\n"
+        "  Speccing: Maturing\n"
+        "  Specced: Todo\n"
+        "  Implementing: In Progress\n"
+        "  QA: In Progress\n"
+        "  Review: In Review\n"
+        "  Merging: Ready For Release\n"
+        "  Merged: Done"
     )
 
 
