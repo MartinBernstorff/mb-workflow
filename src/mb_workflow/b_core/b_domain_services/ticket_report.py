@@ -16,6 +16,11 @@ class TicketReport(Value[str]):
             f"status: {issue.status.root}",
             *((f"project: {issue.project.root}",) if issue.project is not None else ()),
             *((f"labels: {', '.join(label.root for label in labels)}",) if labels else ()),
+            *(
+                f"{name}: {', '.join(sorted(related.root for related in issues))}"
+                for name, issues in (("blocks", detail.blocks), ("blocked by", detail.blocked_by))
+                if issues
+            ),
         )
         description = detail.description.root if detail.description is not None else ""
         body = ("", description) if description else ()

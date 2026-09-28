@@ -240,6 +240,8 @@ class IssueDetail(Model):
     description: IssueDescription | None
     assignee: Assignee | None
     milestone: MilestoneName | None
+    blocks: frozenset[IssueIdentifier]
+    blocked_by: frozenset[IssueIdentifier]
 
     @staticmethod
     def fake() -> IssueDetail:
@@ -249,6 +251,8 @@ class IssueDetail(Model):
             description=IssueDescription.fake(),
             assignee=None,
             milestone=MilestoneName.fake(),
+            blocks=frozenset(),
+            blocked_by=frozenset(),
         )
 
 

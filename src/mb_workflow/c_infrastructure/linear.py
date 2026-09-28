@@ -448,6 +448,15 @@ class InverseRelation(Payload):
         return InverseRelation(type=RelationType.blocks, identifier=IssueIdentifier.fake())
 
 
+class Relation(Payload):
+    type: RelationType
+    identifier: IssueIdentifier = Field(validation_alias=AliasPath("relatedIssue", "identifier"))
+
+    @staticmethod
+    def fake() -> Relation:
+        return Relation(type=RelationType.blocks, identifier=IssueIdentifier.fake())
+
+
 class InverseRelationsRead(Payload):
     relations: tuple[InverseRelation, ...] = Field(
         validation_alias=AliasPath("issue", "inverseRelations", "nodes")
@@ -522,6 +531,10 @@ class IssueDetailPayload(IssuePayload):
     title: IssueTitle
     description: IssueDescription | None = None
     milestone: MilestonePayload | None = Field(default=None, validation_alias="projectMilestone")
+    relations: tuple[Relation, ...] = Field(validation_alias=AliasPath("relations", "nodes"))
+    inverse_relations: tuple[InverseRelation, ...] = Field(
+        validation_alias=AliasPath("inverseRelations", "nodes")
+    )
 
     @override
     @staticmethod
@@ -533,6 +546,8 @@ class IssueDetailPayload(IssuePayload):
             labels=(LabelPayload.fake(),),
             title=IssueTitle.fake(),
             description=IssueDescription.fake(),
+            relations=(Relation.fake(),),
+            inverse_relations=(InverseRelation.fake(),),
         )
 
     def detail(self) -> IssueDetail:
@@ -542,6 +557,16 @@ class IssueDetailPayload(IssuePayload):
             description=self.description,
             assignee=self.assignee.email if self.assignee is not None else None,
             milestone=self.milestone.name if self.milestone is not None else None,
+            blocks=frozenset(
+                relation.identifier
+                for relation in self.relations
+                if relation.type == RelationType.blocks
+            ),
+            blocked_by=frozenset(
+                relation.identifier
+                for relation in self.inverse_relations
+                if relation.type == RelationType.blocks
+            ),
         )
 
 
@@ -774,6 +799,8 @@ class Linear(TicketTracker):
                     labels { nodes { name parent { name } } }
                     assignee { email }
                     projectMilestone { name }
+                    relations(first: 250) { nodes { type relatedIssue { identifier } } }
+                    inverseRelations(first: 250) { nodes { type issue { identifier } } }
                   }
                 }
                 """,

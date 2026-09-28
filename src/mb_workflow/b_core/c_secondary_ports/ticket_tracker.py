@@ -189,6 +189,12 @@ class FakeTicketTracker(TicketTracker):
             description=tracked.description,
             assignee=tracked.assignee,
             milestone=tracked.milestone,
+            blocks=frozenset(
+                identifier
+                for identifier, other in self._issues.items()
+                if issue in other.blocked_by
+            ),
+            blocked_by=frozenset(tracked.blocked_by),
         )
 
     @override
