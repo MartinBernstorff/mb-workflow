@@ -92,7 +92,7 @@ def approve(
 @app.command("reject")
 @app.command("r")
 def reject(
-    comment: str = typer.Argument("", help="Review body."),
+    comment: str = typer.Argument("See comments", help="Review body."),
     status: str = typer.Option(REVIEWING, "--status"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
