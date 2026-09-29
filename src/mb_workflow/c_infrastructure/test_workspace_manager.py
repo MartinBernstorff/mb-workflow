@@ -111,7 +111,9 @@ def manager(kind: ManagerKind, board: Board) -> Generator[WorkspaceManager]:
 
 
 def for_review(manager: WorkspaceManager, board: Board) -> Worktree:
-    return manager.create_for_review(board.repo, contract_pr(), WorkspaceStatus.fake())
+    return manager.create_for_review(
+        board.repo, contract_pr(), WorkspaceStatus.fake(), None
+    ).worktree
 
 
 def test_the_current_worktree_is_among_those_listed(
@@ -144,7 +146,7 @@ def test_creating_in_a_column_the_board_lacks_is_refused(
     manager: WorkspaceManager, board: Board
 ) -> None:
     with pytest.raises(WorkspaceManagerError):
-        _ = manager.create_for_review(board.repo, contract_pr(), board.unlisted())
+        _ = manager.create_for_review(board.repo, contract_pr(), board.unlisted(), None)
 
 
 def test_an_issue_worktree_is_linked_to_its_issue(manager: WorkspaceManager, board: Board) -> None:

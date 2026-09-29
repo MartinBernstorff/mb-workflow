@@ -5,28 +5,22 @@ from typing import TYPE_CHECKING
 import typer
 
 from mb_workflow.a_presentation import commands
+from mb_workflow.a_presentation.cli.group import AlphabeticalGroup
 from mb_workflow.a_presentation.cli.ticket import ticket_app
 from mb_workflow.a_presentation.diagram import DiagramPath, diagram
-from mb_workflow.b_core.a_features.autolabel import AutolabelRequest, DryRun
+from mb_workflow.b_core.a_features.autolabel import DryRun
 from mb_workflow.b_core.a_features.drain import DrainRequest
 from mb_workflow.b_core.a_features.init_config import Overwrite
-from mb_workflow.b_core.a_features.label import LabelChange, LabelRequest
+from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt
 from mb_workflow.b_core.a_features.start import StartRequest
 from mb_workflow.b_core.a_features.teardown import TeardownRequest
 from mb_workflow.b_core.b_domain_services.flow_report import AsJson
 from mb_workflow.b_core.b_domain_services.flow_transition import Force
-from mb_workflow.b_core.d_domain_model.autolabel import ExcludePattern, Exclusions
 from mb_workflow.b_core.d_domain_model.claim import HostName, TakeOver
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
 from mb_workflow.b_core.d_domain_model.flow import EventName
-from mb_workflow.b_core.d_domain_model.issue import (
-    CreatedAfter,
-    CreatedWithin,
-    Creator,
-    IssueIdentifier,
-    LabelName,
-)
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.pull_request import (
     Lookback,
     MergedSince,
@@ -36,6 +30,7 @@ from mb_workflow.b_core.d_domain_model.pull_request import (
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
     Submit,
+    TerminalText,
     TimeoutMs,
     WorkspaceStatus,
     WorktreeName,
@@ -46,40 +41,50 @@ from mb_workflow.d_lib.logging import LogLevel, configure
 if TYPE_CHECKING:
     from mb_workflow.a_presentation.console import ExitCode
 
-app = typer.Typer(no_args_is_help=True)
-linear_app = typer.Typer(no_args_is_help=True)
-app.add_typer(linear_app, name="linear")
-flow_app = typer.Typer(no_args_is_help=True)
+app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
+config_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
+app.add_typer(config_app, name="config")
+flow_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
 app.add_typer(flow_app, name="flow")
+review_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
+app.add_typer(review_app, name="review")
+app.add_typer(review_app, name="r", hidden=True)
 app.add_typer(ticket_app, name="ticket")
+workspace_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
+app.add_typer(workspace_app, name="workspace")
 
 REVIEWING = "status-8"
 FORCING = "Write the target state without checking the event is legal from the current one."
 
 
-# Typer collapses a single-command app into the root command unless a callback exists.
-@app.callback()
-def root() -> None: ...
-
-
-@app.command("review-workspaces")
-def review_workspaces(
+@workspace_app.command("create-reviews")
+def workspace_create_reviews(
+    *,
+    prompt: str = typer.Argument(
+        "", help="Prompt to submit to a Claude agent in each newly created workspace."
+    ),
     status: str = typer.Option(REVIEWING, "--status"),
     merged_within_days: int = typer.Option(30, "--merged-within-days"),
     lock: str = typer.Option("review-workspaces", "--lock"),
+    idle_timeout_ms: int = typer.Option(60000, "--idle-timeout-ms"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     since = MergedSince.of(Lookback(merged_within_days), Today.now())
+    review_prompt = (
+        ReviewPrompt(text=TerminalText(prompt), idle_timeout=TimeoutMs(idle_timeout_ms))
+        if prompt
+        else None
+    )
     raise typer.Exit(
         code=commands.review_workspaces(
-            WorkspaceStatus(status), since, LockName(lock), HostName.of_machine()
+            WorkspaceStatus(status), since, LockName(lock), HostName.of_machine(), review_prompt
         ).root
     )
 
 
-@app.command("approve")
-@app.command("a")
+@review_app.command("approve")
+@review_app.command("a", hidden=True)
 def approve(
     comment: str = typer.Argument("", help="Review body."),
     status: str = typer.Option(REVIEWING, "--status"),
@@ -90,8 +95,8 @@ def approve(
     raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
 
-@app.command("reject")
-@app.command("r")
+@review_app.command("reject")
+@review_app.command("r", hidden=True)
 def reject(
     comment: str = typer.Argument("See comments", help="Review body."),
     status: str = typer.Option(REVIEWING, "--status"),
@@ -102,8 +107,8 @@ def reject(
     raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
 
-@app.command("comment")
-@app.command("c")
+@review_app.command("comment")
+@review_app.command("c", hidden=True)
 def comment(
     comment: str = typer.Argument("", help="Review body."),
     status: str = typer.Option(REVIEWING, "--status"),
@@ -114,55 +119,8 @@ def comment(
     raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
 
-@linear_app.command("label")
-@linear_app.command("l")
-def label(
-    name: str = typer.Argument(..., help="Linear label to add to the linked issue."),
-    quiet: bool = typer.Option(False, "--quiet", "-q"),
-) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    request = LabelRequest(label=LabelName(name), change=LabelChange.add)
-    raise typer.Exit(code=commands.relabel(request).root)
-
-
-@linear_app.command("unlabel")
-@linear_app.command("ul")
-def unlabel(
-    name: str = typer.Argument(..., help="Linear label to remove from the linked issue."),
-    quiet: bool = typer.Option(False, "--quiet", "-q"),
-) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    request = LabelRequest(label=LabelName(name), change=LabelChange.remove)
-    raise typer.Exit(code=commands.relabel(request).root)
-
-
-@linear_app.command("autolabel")
-def linear_autolabel(
-    *,
-    name: str = typer.Argument(..., help="Linear label to add to the swept issues."),
-    creator: str = typer.Option(..., "--creator"),
-    exclude_projects: str = typer.Option("", "--exclude-projects"),
-    exclude_statuses: str = typer.Option("", "--exclude-statuses"),
-    created_within_days: int = typer.Option(30, "--created-within-days"),
-    apply: bool = typer.Option(False, "--apply"),
-    quiet: bool = typer.Option(False, "--quiet", "-q"),
-) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    request = AutolabelRequest(
-        label=LabelName(name),
-        creator=Creator(creator),
-        exclusions=Exclusions(
-            projects=ExcludePattern(exclude_projects) if exclude_projects else None,
-            statuses=ExcludePattern(exclude_statuses) if exclude_statuses else None,
-        ),
-        dry_run=DryRun(not apply),
-    )
-    window = CreatedAfter.of(CreatedWithin(created_within_days), Today.now())
-    raise typer.Exit(code=commands.linear_autolabel(request, window).root)
-
-
-@app.command("start")
-def start_ticket(
+@workspace_app.command("start")
+def workspace_start(
     *,
     ticket: str = typer.Argument(..., help="Ticket to start, e.g. MB-33."),
     submit: bool = typer.Option(
@@ -189,8 +147,8 @@ def start_ticket(
     )
 
 
-@app.command("drain")
-def drain(
+@workspace_app.command("drain")
+def workspace_drain(
     *,
     dry_run: bool = typer.Option(
         False,
@@ -217,8 +175,8 @@ def drain(
     )
 
 
-@app.command("teardown")
-def teardown(
+@workspace_app.command("teardown")
+def workspace_teardown(
     worktree: str = typer.Argument(..., help="Worktree to tear down, e.g. MB-35."),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
@@ -230,17 +188,8 @@ def teardown(
     )
 
 
-@app.command("unclaim")
-def unclaim_ticket(
-    ticket: str = typer.Argument(..., help="Ticket whose stuck claim to release, e.g. MB-36."),
-    quiet: bool = typer.Option(False, "--quiet", "-q"),
-) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.ticket_unclaim(IssueIdentifier(ticket)).root)
-
-
-@app.command("init")
-def init(
+@config_app.command("init")
+def config_init(
     force: bool = typer.Option(False, "--force", help="Overwrite an existing config file."),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
@@ -252,8 +201,8 @@ def init(
     )
 
 
-@app.command("config")
-def config(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
+@config_app.command("show")
+def config_show(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     raise typer.Exit(
         code=commands.config(WorkingDirectory(Path.cwd()), ConfigFileName.default()).root

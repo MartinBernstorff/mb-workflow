@@ -4,9 +4,17 @@ from pathlib import Path
 import typer
 
 from mb_workflow.a_presentation import commands
+from mb_workflow.a_presentation.cli.group import AlphabeticalGroup
+from mb_workflow.b_core.a_features.autolabel import AutolabelRequest, DryRun
+from mb_workflow.b_core.a_features.label import LabelChange, LabelRequest
+from mb_workflow.b_core.d_domain_model.autolabel import ExcludePattern, Exclusions
+from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
+    CreatedAfter,
+    CreatedWithin,
+    Creator,
     IssueDescription,
     IssueIdentifier,
     IssueStatusName,
@@ -20,7 +28,7 @@ from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDraft
 from mb_workflow.b_core.d_domain_model.ticket_edit import RemoveMilestone, TicketEdit
 from mb_workflow.d_lib.logging import LogLevel, configure
 
-ticket_app = typer.Typer(no_args_is_help=True)
+ticket_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
 
 
 @ticket_app.command("view")
@@ -121,3 +129,64 @@ def ticket_edit(
         remove_milestone=RemoveMilestone(remove_milestone),
     )
     raise typer.Exit(code=commands.ticket_edit(IssueIdentifier(issue), edit).root)
+
+
+@ticket_app.command("label")
+@ticket_app.command("l", hidden=True)
+def label(
+    name: str = typer.Argument(..., help="Linear label to add to the linked issue."),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    request = LabelRequest(label=LabelName(name), change=LabelChange.add)
+    raise typer.Exit(code=commands.relabel(request).root)
+
+
+@ticket_app.command("unlabel")
+@ticket_app.command("ul", hidden=True)
+def unlabel(
+    name: str = typer.Argument(..., help="Linear label to remove from the linked issue."),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    request = LabelRequest(label=LabelName(name), change=LabelChange.remove)
+    raise typer.Exit(code=commands.relabel(request).root)
+
+
+@ticket_app.command("autolabel")
+def autolabel(
+    *,
+    name: str = typer.Argument(..., help="Linear label to add to the swept issues."),
+    creator: str = typer.Option(..., "--creator"),
+    exclude_projects: str = typer.Option("", "--exclude-projects"),
+    exclude_statuses: str = typer.Option("", "--exclude-statuses"),
+    created_within_days: int = typer.Option(30, "--created-within-days"),
+    apply: bool = typer.Option(False, "--apply"),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    request = AutolabelRequest(
+        label=LabelName(name),
+        creator=Creator(creator),
+        exclusions=Exclusions(
+            projects=ExcludePattern(exclude_projects) if exclude_projects else None,
+            statuses=ExcludePattern(exclude_statuses) if exclude_statuses else None,
+        ),
+        dry_run=DryRun(not apply),
+    )
+    window = CreatedAfter.of(CreatedWithin(created_within_days), Today.now())
+    raise typer.Exit(code=commands.linear_autolabel(request, window).root)
+
+
+@ticket_app.command("unclaim")
+def unclaim(
+    ticket: str = typer.Argument(..., help="Ticket whose stuck claim to release, e.g. MB-36."),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Delete every claim on the ticket, whichever worktree or host placed it, and its claim label."""
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    raise typer.Exit(
+        code=commands.ticket_unclaim(
+            IssueIdentifier(ticket), WorkingDirectory(Path.cwd()), ConfigFileName.default()
+        ).root
+    )

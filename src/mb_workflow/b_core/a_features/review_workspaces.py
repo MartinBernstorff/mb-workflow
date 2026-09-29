@@ -1,6 +1,7 @@
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, Protocol
 
+from mb_workflow.b_core.a_features.start import PromptUndeliveredError, send_prompt
 from mb_workflow.b_core.a_features.teardown import release_and_remove
 from mb_workflow.b_core.b_domain_services.worktree_reconciliation import obsolete, uncovered
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
@@ -11,7 +12,15 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
 )
 from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.b_core.d_domain_model.pull_request import CheckoutDirectory, PrNumber
-from mb_workflow.b_core.d_domain_model.workspace import DisplayName, WorktreeName, WorktreePath
+from mb_workflow.b_core.d_domain_model.workspace import (
+    AgentName,
+    DisplayName,
+    Submit,
+    TerminalText,
+    TimeoutMs,
+    WorktreeName,
+    WorktreePath,
+)
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
@@ -62,6 +71,15 @@ class CreatedWorkspace(Model):
     @staticmethod
     def fake() -> CreatedWorkspace:
         return CreatedWorkspace(name=WorktreeName.fake(), path=WorktreePath.fake())
+
+
+class ReviewPrompt(Model):
+    text: TerminalText
+    idle_timeout: TimeoutMs
+
+    @staticmethod
+    def fake() -> ReviewPrompt:
+        return ReviewPrompt(text=TerminalText("/review-mine"), idle_timeout=TimeoutMs.fake())
 
 
 class Unchanged(Value[bool]):
@@ -120,6 +138,7 @@ def create_workspaces(
     narrator: Narrator,
     status: WorkspaceStatus,
     since: MergedSince,
+    prompt: ReviewPrompt | None,
 ) -> Outcome:
     with lock.held():
         return reconcile_workspaces(
@@ -132,6 +151,7 @@ def create_workspaces(
             narrator=narrator,
             status=status,
             since=since,
+            prompt=prompt,
         )
 
 
@@ -146,6 +166,7 @@ def reconcile_workspaces(
     narrator: Narrator,
     status: WorkspaceStatus,
     since: MergedSince,
+    prompt: ReviewPrompt | None,
 ) -> Outcome:
     worktrees = manager.worktrees()
     current = manager.current()
@@ -195,11 +216,22 @@ def reconcile_workspaces(
     for pr in missing.root:
         try:
             narrator.creating(pr.number)
-            path = manager.create_for_review(repo, pr.number, status).path
+            opened = manager.create_for_review(
+                repo, pr.number, status, None if prompt is None else AgentName.claude()
+            )
+            path = opened.worktree.path
             set_display_name_or_warn(manager, path, DisplayName.of_pr(pr.title))
             narrator.checking_out(path)
             review.checkout(pr.number, CheckoutDirectory(path.root))
-        except (CalledProcessError, CodeReviewError, WorkspaceManagerError, ValueError) as error:
+            if prompt is not None:
+                send_prompt(manager, opened, prompt.text, prompt.idle_timeout, Submit(True))
+        except (
+            CalledProcessError,
+            CodeReviewError,
+            PromptUndeliveredError,
+            WorkspaceManagerError,
+            ValueError,
+        ) as error:
             failure = Failure(
                 subject=FailureSubject.of_pr(pr.number), reason=FailureReason(str(error))
             )
