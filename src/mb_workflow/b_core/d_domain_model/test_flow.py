@@ -56,6 +56,7 @@ def test_the_chart_holds_every_transition_the_work_can_take() -> None:
                 edge(QA, EventName("implement"), IMPLEMENTING),
                 edge(QA, EventName("ready"), REVIEW),
                 edge(QA, EventName("merge"), MERGING),
+                edge(QA, EventName("resolve-review"), IMPLEMENTING),
                 edge(REVIEW, EventName("resolve-review"), IMPLEMENTING),
                 edge(REVIEW, EventName("qa"), QA),
                 edge(REVIEW, EventName("merge"), MERGING),
@@ -125,6 +126,12 @@ def test_the_chart_names_every_event_it_holds() -> None:
 
 def test_a_legal_event_leads_to_the_state_the_chart_names() -> None:
     assert Edges.of_chart(WorkflowChart).target_from(QA, EventName("ready")) == REVIEW
+
+
+def test_resolving_a_review_from_qa_returns_the_work_to_implementing() -> None:
+    assert (
+        Edges.of_chart(WorkflowChart).target_from(QA, EventName("resolve-review")) == IMPLEMENTING
+    )
 
 
 def test_an_illegal_event_names_the_current_state_and_the_events_legal_from_it() -> None:

@@ -73,7 +73,9 @@ class WorkflowChart(StateChart[ChartModel]):
     ready = Event(qa.to(review), id="ready", name="ready")
     merge = Event(qa.to(merging) | review.to(merging), id="merge", name="merge")
     to_merged = Event(review.to(merged) | merging.to(merged), id="merged", name="merged")
-    resolve_review = Event(review.to(implementing), id="resolve-review", name="resolve-review")
+    resolve_review = Event(
+        review.to(implementing) | qa.to(implementing), id="resolve-review", name="resolve-review"
+    )
 
 
 class EventName(Value[str]):
