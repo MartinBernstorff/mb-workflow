@@ -5,14 +5,24 @@ from mb_workflow.b_core.c_secondary_ports.claims import withdraw_claims
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
+    from mb_workflow.b_core.d_domain_model.config import ClaimSettings
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 
 logger = logging.getLogger(__name__)
 
 
-def unclaim_ticket(registry: ClaimRegistry, ticket: IssueIdentifier) -> None:
+def unclaim_ticket(
+    *,
+    registry: ClaimRegistry,
+    tracker: TicketTracker,
+    claim_settings: ClaimSettings,
+    ticket: IssueIdentifier,
+) -> None:
     held = registry.claims(ticket)
-    if not held.root:
+    if held.root:
+        withdraw_claims(registry, ticket, held)
+    else:
         logger.info("%s has no claim.", ticket.root)
-        return
-    withdraw_claims(registry, ticket, held)
+    tracker.remove_label(ticket, claim_settings.label)
+    logger.info("Removed the %s label from %s.", claim_settings.label.root, ticket.root)

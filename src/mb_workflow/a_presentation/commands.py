@@ -266,8 +266,15 @@ def teardown(
 
 
 @guarded
-def ticket_unclaim(ticket: IssueIdentifier) -> ExitCode:
-    unclaim_ticket(LinearClaims.connected(linear_key()), ticket)
+def ticket_unclaim(
+    ticket: IssueIdentifier, directory: WorkingDirectory, name: ConfigFileName
+) -> ExitCode:
+    unclaim_ticket(
+        registry=LinearClaims.connected(linear_key()),
+        tracker=linear(),
+        claim_settings=Configuration.resolved(directory, name).settings.claims,
+        ticket=ticket,
+    )
     return ExitCode(0)
 
 

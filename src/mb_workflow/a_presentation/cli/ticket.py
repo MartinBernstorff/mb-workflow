@@ -183,6 +183,10 @@ def unclaim(
     ticket: str = typer.Argument(..., help="Ticket whose stuck claim to release, e.g. MB-36."),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    """Delete every claim on the ticket, whichever worktree or host placed it."""
+    """Delete every claim on the ticket, whichever worktree or host placed it, and its claim label."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.ticket_unclaim(IssueIdentifier(ticket)).root)
+    raise typer.Exit(
+        code=commands.ticket_unclaim(
+            IssueIdentifier(ticket), WorkingDirectory(Path.cwd()), ConfigFileName.default()
+        ).root
+    )
