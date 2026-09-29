@@ -11,6 +11,7 @@ from mb_workflow.b_core.a_features.autolabel import AutolabelRequest, DryRun
 from mb_workflow.b_core.a_features.drain import DrainRequest
 from mb_workflow.b_core.a_features.init_config import Overwrite
 from mb_workflow.b_core.a_features.label import LabelChange, LabelRequest
+from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt
 from mb_workflow.b_core.a_features.start import StartRequest
 from mb_workflow.b_core.a_features.teardown import TeardownRequest
 from mb_workflow.b_core.b_domain_services.flow_report import AsJson
@@ -36,6 +37,7 @@ from mb_workflow.b_core.d_domain_model.pull_request import (
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
     Submit,
+    TerminalText,
     TimeoutMs,
     WorkspaceStatus,
     WorktreeName,
@@ -64,16 +66,26 @@ def root() -> None: ...
 
 @app.command("review-workspaces")
 def review_workspaces(
+    *,
+    prompt: str = typer.Argument(
+        "", help="Prompt to submit to a Claude agent in each newly created workspace."
+    ),
     status: str = typer.Option(REVIEWING, "--status"),
     merged_within_days: int = typer.Option(30, "--merged-within-days"),
     lock: str = typer.Option("review-workspaces", "--lock"),
+    idle_timeout_ms: int = typer.Option(60000, "--idle-timeout-ms"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     since = MergedSince.of(Lookback(merged_within_days), Today.now())
+    review_prompt = (
+        ReviewPrompt(text=TerminalText(prompt), idle_timeout=TimeoutMs(idle_timeout_ms))
+        if prompt
+        else None
+    )
     raise typer.Exit(
         code=commands.review_workspaces(
-            WorkspaceStatus(status), since, LockName(lock), HostName.of_machine()
+            WorkspaceStatus(status), since, LockName(lock), HostName.of_machine(), review_prompt
         ).root
     )
 

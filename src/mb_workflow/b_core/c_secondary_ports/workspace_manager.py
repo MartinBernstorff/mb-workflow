@@ -38,8 +38,8 @@ class WorkspaceManager(Protocol):
     def worktrees(self) -> Worktrees: ...
 
     def create_for_review(
-        self, repo: RepoId, pr: PrNumber, status: WorkspaceStatus
-    ) -> Worktree: ...
+        self, repo: RepoId, pr: PrNumber, status: WorkspaceStatus, agent: AgentName | None
+    ) -> OpenedWorktree: ...
 
     def create_for_issue(
         self,
@@ -86,12 +86,15 @@ class FakeWorkspaceManager(WorkspaceManager):
         return self._worktrees
 
     @override
-    def create_for_review(self, repo: RepoId, pr: PrNumber, status: WorkspaceStatus) -> Worktree:
-        return self._add(
+    def create_for_review(
+        self, repo: RepoId, pr: PrNumber, status: WorkspaceStatus, agent: AgentName | None
+    ) -> OpenedWorktree:
+        worktree = self._add(
             Worktree.bare(repo, self._unused_path(WorktreeName.of(pr))).model_copy(
                 update={"pull_request": pr, "status": self._column(status)}
             )
         )
+        return self._opened(worktree, agent)
 
     @override
     def create_for_issue(
@@ -110,11 +113,7 @@ class FakeWorkspaceManager(WorkspaceManager):
                 update={"issue": issue, "status": column}
             )
         )
-        if agent is None:
-            return OpenedWorktree(worktree=worktree, terminal=None)
-        terminal = TerminalHandle(f"terminal-{len(self._terminals) + 1}")
-        self._terminals[terminal] = ()
-        return OpenedWorktree(worktree=worktree, terminal=terminal)
+        return self._opened(worktree, agent)
 
     @override
     def remove(self, path: WorktreePath) -> None:
@@ -144,6 +143,13 @@ class FakeWorkspaceManager(WorkspaceManager):
         return tuple(
             text for typed in self._terminals.values() for text, submit in typed if submit.root
         )
+
+    def _opened(self, worktree: Worktree, agent: AgentName | None) -> OpenedWorktree:
+        if agent is None:
+            return OpenedWorktree(worktree=worktree, terminal=None)
+        terminal = TerminalHandle(f"terminal-{len(self._terminals) + 1}")
+        self._terminals[terminal] = ()
+        return OpenedWorktree(worktree=worktree, terminal=terminal)
 
     def _typed_into(self, terminal: TerminalHandle) -> tuple[tuple[TerminalText, Submit], ...]:
         typed = self._terminals.get(terminal)

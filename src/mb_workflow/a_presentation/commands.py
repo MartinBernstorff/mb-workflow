@@ -22,7 +22,7 @@ from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
 from mb_workflow.b_core.a_features.init_config import Overwrite, init_config
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
-from mb_workflow.b_core.a_features.review_workspaces import create_workspaces
+from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt, create_workspaces
 from mb_workflow.b_core.a_features.seed_labels import seed_flow_labels
 from mb_workflow.b_core.a_features.show_config import show_config
 from mb_workflow.b_core.a_features.show_flow import show_flow
@@ -150,7 +150,11 @@ def workspace_board(orca: Orca) -> WorkspaceBoard:
 
 @guarded
 def review_workspaces(
-    status: WorkspaceStatus, since: MergedSince, lock: LockName, host: HostName
+    status: WorkspaceStatus,
+    since: MergedSince,
+    lock: LockName,
+    host: HostName,
+    prompt: ReviewPrompt | None,
 ) -> ExitCode:
     # Review-workspaces predates the config file, so a repo without one still has its worktrees reconciled.
     try:
@@ -171,6 +175,7 @@ def review_workspaces(
         narrator=LoggingNarrator(),
         status=status,
         since=since,
+        prompt=prompt,
     )
     log_review_workspaces_outcome(outcome)
     return ExitCode.of(outcome.failed_any())

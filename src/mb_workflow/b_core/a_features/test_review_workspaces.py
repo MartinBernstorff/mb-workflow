@@ -9,6 +9,7 @@ from mb_workflow.b_core.a_features.review_workspaces import (
     FailureSubject,
     Narrator,
     Outcome,
+    ReviewPrompt,
     Unchanged,
     create_workspaces,
 )
@@ -96,8 +97,10 @@ def run_review_workspaces(
     review: CodeForge,
     manager: FakeWorkspaceManager,
     lock: FakeRunLock | None = None,
+    *,
     status: WorkspaceStatus = WorkspaceStatus.fake(),
     claims: FakeClaimRegistry | None = None,
+    prompt: ReviewPrompt | None = None,
 ) -> Outcome:
     return create_workspaces(
         review=review,
@@ -110,6 +113,7 @@ def run_review_workspaces(
         narrator=SilentNarrator(),
         status=status,
         since=MergedSince.fake(),
+        prompt=prompt,
     )
 
 
@@ -142,6 +146,22 @@ def test_the_new_workspace_is_named_after_the_pr_title(here: WorktreePath) -> No
     created = manager.worktrees().at(path)
     assert created is not None
     assert created.display_name == DisplayName.of_pr(PrTitle.fake())
+
+
+def test_the_prompt_is_submitted_in_the_new_workspace(here: WorktreePath) -> None:
+    _ = create_review_directory(here)
+    manager = standing_in(here)
+    _ = run_review_workspaces(
+        FakeCodeReview(PullRequests.fake()), manager, prompt=ReviewPrompt.fake()
+    )
+    assert manager.submitted_texts() == (ReviewPrompt.fake().text,)
+
+
+def test_without_a_prompt_nothing_is_typed(here: WorktreePath) -> None:
+    _ = create_review_directory(here)
+    manager = standing_in(here)
+    _ = run_review_workspaces(FakeCodeReview(PullRequests.fake()), manager)
+    assert manager.typed_texts() == ()
 
 
 def test_a_refused_display_name_is_not_a_failed_creation(here: WorktreePath) -> None:

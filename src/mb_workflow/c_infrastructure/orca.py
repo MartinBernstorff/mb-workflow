@@ -249,28 +249,29 @@ class Orca(WorkspaceManager):
         return self._parsed(Command(("orca", "worktree", "list", "--json")), WorktreeList.parse)
 
     @override
-    def create_for_review(self, repo: RepoId, pr: PrNumber, status: WorkspaceStatus) -> Worktree:
-        return self._single(
-            Command(
-                (
-                    "orca",
-                    "worktree",
-                    "create",
-                    "--repo",
-                    f"id:{repo.root}",
-                    "--name",
-                    WorktreeName.of(pr).root,
-                    "--no-parent",
-                    "--issue",
-                    str(pr.root),
-                    "--comment",
-                    WorktreeComment.of(pr).root,
-                    "--workspace-status",
-                    status.root,
-                    "--json",
-                )
-            )
-        ).worktree.worktree()
+    def create_for_review(
+        self, repo: RepoId, pr: PrNumber, status: WorkspaceStatus, agent: AgentName | None
+    ) -> OpenedWorktree:
+        command = [
+            "orca",
+            "worktree",
+            "create",
+            "--repo",
+            f"id:{repo.root}",
+            "--name",
+            WorktreeName.of(pr).root,
+            "--no-parent",
+            "--issue",
+            str(pr.root),
+            "--comment",
+            WorktreeComment.of(pr).root,
+            "--workspace-status",
+            status.root,
+            "--json",
+        ]
+        if agent is not None:
+            command += ["--agent", agent.root]
+        return self._single(Command(tuple(command))).opened()
 
     @override
     def create_for_issue(
