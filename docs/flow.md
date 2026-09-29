@@ -21,6 +21,7 @@ stateDiagram-v2
     qa --> implementing : implement
     qa --> review : ready
     qa --> merging : merge
+    qa --> implementing : resolve-review
     review --> qa : qa
     review --> merging : merge
     review --> merged : merged
