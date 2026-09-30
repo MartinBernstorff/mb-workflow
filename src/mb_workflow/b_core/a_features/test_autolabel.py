@@ -23,6 +23,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
     IssueIdentifier,
     IssueStatusName,
+    LabelGroupName,
     LabelName,
     LabelNames,
     ProjectName,
@@ -139,6 +140,19 @@ def test_a_sweep_leaves_issues_created_before_the_window_alone() -> None:
     after = CreatedAfter(CreatedOn.fake().root + timedelta(days=1))
     _ = label_eligible_issues(issues, seeded_ledger_store(), request_with(DryRun(False)), after)
     assert issues.read_issue(IssueIdentifier("E-4")).labels == LabelNames(())
+
+
+def test_a_sweep_skips_an_issue_carrying_another_label_of_the_group() -> None:
+    frontend = LabelName("frontend")
+    unlabelled = unlabelled_tracked_issue(IssueIdentifier("E-4"), ProjectName("Editor Bugs"))
+    issue = unlabelled.issue.model_copy(update={"labels": LabelNames((frontend,))})
+    issues = FakeTicketTracker(
+        LabelNames((LabelName.fake(), frontend)),
+        (unlabelled.model_copy(update={"issue": issue}),),
+        groups={LabelGroupName("area"): LabelNames((LabelName.fake(), frontend))},
+    )
+    _ = apply_labels(issues, FakeLedgerStore())
+    assert issues.read_issue(IssueIdentifier("E-4")).labels == LabelNames((frontend,))
 
 
 def test_sweeping_for_a_label_the_tracker_lacks_is_refused() -> None:

@@ -85,7 +85,10 @@ def label_eligible_issues(
     logger.info("Sweeping %s issues created since %s", len(issues.root), window.root.isoformat())
 
     criteria = AutoLabelCriteria(
-        label=request.label, exclusions=request.exclusions, ledger=recorded
+        label=request.label,
+        exclusions=request.exclusions,
+        ledger=recorded,
+        group=tracker.label_group(request.label),
     )
     outcome = add_label_to_eligible(tracker, Selection.of(issues, criteria), request)
 

@@ -6,6 +6,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueIdentifier,
     IssueStatusName,
     IssueText,
+    LabelGroupName,
     LabelName,
     ProjectName,
 )
@@ -17,6 +18,7 @@ class SkipReason(StrEnum):
     excluded_project = "excluded project"
     already_recorded = "already recorded"
     already_labelled = "already labelled"
+    labelled_in_group = "labelled in group"
 
 
 class SkipCount(Value[int]):
@@ -85,11 +87,15 @@ class AutoLabelCriteria(Model):
     label: LabelName
     exclusions: Exclusions
     ledger: Ledger
+    group: LabelGroupName | None
 
     @staticmethod
     def fake() -> AutoLabelCriteria:
         return AutoLabelCriteria(
-            label=LabelName.fake(), exclusions=Exclusions.fake(), ledger=Ledger.fake()
+            label=LabelName.fake(),
+            exclusions=Exclusions.fake(),
+            ledger=Ledger.fake(),
+            group=LabelGroupName.fake(),
         )
 
     def skipped(self, issue: Issue) -> SkipReason | None:
@@ -101,4 +107,6 @@ class AutoLabelCriteria(Model):
             return SkipReason.already_recorded
         if issue.labels.has(self.label).root:
             return SkipReason.already_labelled
+        if self.group is not None and len(issue.grouped.in_group(self.group).root) > 0:
+            return SkipReason.labelled_in_group
         return None

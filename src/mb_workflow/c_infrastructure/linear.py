@@ -191,6 +191,18 @@ class LabelGroupRead(Payload):
         return LabelGroupRead(groups=(LabelGroupRecord.fake(),))
 
 
+class LabelParentRead(Payload):
+    labels: tuple[LabelPayload, ...] = Field(validation_alias=AliasPath("issueLabels", "nodes"))
+
+    @staticmethod
+    def fake() -> LabelParentRead:
+        return LabelParentRead(labels=(LabelPayload.fake(),))
+
+    def group(self) -> LabelGroupName | None:
+        parent = self.labels[0].parent if self.labels else None
+        return parent.name if parent is not None else None
+
+
 class CreatedLabel(Payload):
     id: LabelId = Field(validation_alias=AliasPath("issueLabelCreate", "issueLabel", "id"))
 
@@ -657,6 +669,21 @@ class Linear(TicketTracker):
     def group_labels(self, group: LabelGroupName) -> LabelNames:
         found = self._found_group(group)
         return found.labels() if found is not None else LabelNames(())
+
+    @override
+    def label_group(self, label: LabelName) -> LabelGroupName | None:
+        with translated_errors():
+            data = self._client.execute(
+                """
+                query($name: String!) {
+                  issueLabels(first: 1, filter: { name: { eqIgnoreCase: $name }, isGroup: { eq: false } }) {
+                    nodes { name parent { name } }
+                  }
+                }
+                """,
+                {"name": label.root},
+            )
+        return LabelParentRead.model_validate(data).group()
 
     @override
     def create_group_labels(self, group: LabelGroupName, labels: LabelNames) -> None:

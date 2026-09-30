@@ -78,5 +78,6 @@ def test_a_selection_that_skipped_nothing_tallies_no_skips() -> None:
         label=LabelName("Backend"),
         exclusions=Exclusions(projects=None, statuses=None),
         ledger=Ledger(()),
+        group=None,
     )
     assert Selection.of(default_issues(), unexcluded).skips() == ()
