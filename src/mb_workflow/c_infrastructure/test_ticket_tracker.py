@@ -631,6 +631,15 @@ def test_a_group_that_does_not_exist_lists_no_labels(groupless: TicketTracker) -
     assert groupless.group_labels(LabelGroupName.fake()) == LabelNames(())
 
 
+def test_a_grouped_label_names_its_group(groupless: TicketTracker) -> None:
+    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((GRILLING, QA)))
+    assert groupless.label_group(QA) == LabelGroupName.fake()
+
+
+def test_an_ungrouped_label_names_no_group(tracker: TicketTracker) -> None:
+    assert tracker.label_group(LabelName("d-grill")) is None
+
+
 def test_an_issue_carries_a_label_of_a_group(groupless: TicketTracker, backlog: Backlog) -> None:
     groupless.create_group_labels(LabelGroupName.fake(), LabelNames((GRILLING, QA)))
     groupless.set_labels(backlog.identifier(Seed.done), LabelNames((LabelName("d-grill"), QA)))

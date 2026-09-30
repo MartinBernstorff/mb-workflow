@@ -78,6 +78,10 @@ class LazyLinear(TicketTracker):
         return self._tracker().group_labels(group)
 
     @override
+    def label_group(self, label: LabelName) -> LabelGroupName | None:
+        return self._tracker().label_group(label)
+
+    @override
     def create_group_labels(self, group: LabelGroupName, labels: LabelNames) -> None:
         self._tracker().create_group_labels(group, labels)
 

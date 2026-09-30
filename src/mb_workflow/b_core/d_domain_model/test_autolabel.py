@@ -7,9 +7,13 @@ from mb_workflow.b_core.d_domain_model.autolabel import (
     SkipReason,
 )
 from mb_workflow.b_core.d_domain_model.issue import (
+    GroupedLabel,
+    GroupedLabels,
     Issue,
     IssueIdentifier,
     IssueStatusName,
+    LabelGroupName,
+    LabelName,
     LabelNames,
     ProjectName,
 )
@@ -67,6 +71,26 @@ def test_an_issue_in_the_ledger_is_skipped() -> None:
 def test_an_issue_already_carrying_the_label_is_skipped() -> None:
     issue = unlabelled().model_copy(update={"labels": LabelNames.fake()})
     assert criteria().skipped(issue) == SkipReason.already_labelled
+
+
+def carrying(group: LabelGroupName) -> Issue:
+    held = GroupedLabel(group=group, label=LabelName("frontend"))
+    return unlabelled().model_copy(
+        update={"labels": LabelNames((held.label,)), "grouped": GroupedLabels((held,))}
+    )
+
+
+def test_an_issue_carrying_another_label_of_the_group_is_skipped() -> None:
+    assert criteria().skipped(carrying(LabelGroupName.fake())) == SkipReason.labelled_in_group
+
+
+def test_a_label_of_another_group_does_not_skip_the_issue() -> None:
+    assert criteria().skipped(carrying(LabelGroupName("area"))) is None
+
+
+def test_an_ungrouped_label_ignores_the_groups_an_issue_carries() -> None:
+    ungrouped = criteria().model_copy(update={"group": None})
+    assert ungrouped.skipped(carrying(LabelGroupName.fake())) is None
 
 
 def test_an_absent_pattern_excludes_nothing() -> None:

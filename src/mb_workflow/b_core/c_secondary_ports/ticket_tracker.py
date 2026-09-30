@@ -52,6 +52,8 @@ class TicketTracker(Protocol):
 
     def group_labels(self, group: LabelGroupName) -> LabelNames: ...
 
+    def label_group(self, label: LabelName) -> LabelGroupName | None: ...
+
     def create_group_labels(self, group: LabelGroupName, labels: LabelNames) -> None: ...
 
     def list_issues(self, wanted: IssueFilter) -> Issues: ...
@@ -136,6 +138,17 @@ class FakeTicketTracker(TicketTracker):
     @override
     def group_labels(self, group: LabelGroupName) -> LabelNames:
         return self._groups.get(group, LabelNames(()))
+
+    @override
+    def label_group(self, label: LabelName) -> LabelGroupName | None:
+        return next(
+            (
+                group
+                for group, members in self._groups.items()
+                if members.matching(label) is not None
+            ),
+            None,
+        )
 
     @override
     def create_group_labels(self, group: LabelGroupName, labels: LabelNames) -> None:
