@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator
 
     from mb_workflow.b_core.d_domain_model.workspace import (
+        Activate,
         AgentName,
         ProjectSelector,
         Submit,
@@ -281,6 +282,8 @@ class Orca(WorkspaceManager):
         issue: IssueIdentifier | None,
         agent: AgentName | None,
         status: WorkspaceStatus | None,
+        *,
+        activate: Activate,
     ) -> OpenedWorktree:
         command = [
             "orca",
@@ -290,7 +293,6 @@ class Orca(WorkspaceManager):
             project.root,
             "--name",
             name.root,
-            "--activate",
             "--no-parent",
             "--json",
         ]
@@ -300,6 +302,8 @@ class Orca(WorkspaceManager):
             command += ["--agent", agent.root]
         if status is not None:
             command += ["--workspace-status", status.root]
+        if activate.root:
+            command += ["--activate"]
         return self._single(Command(tuple(command))).opened()
 
     @override
