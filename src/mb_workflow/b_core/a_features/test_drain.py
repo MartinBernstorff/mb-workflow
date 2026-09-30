@@ -196,6 +196,13 @@ def test_starts_the_top_ready_ticket_and_submits_its_prompt() -> None:
     assert manager.submitted_texts() == (TerminalText("/implement MB-2"),)
 
 
+def test_started_tickets_open_in_the_background() -> None:
+    manager = fake_manager()
+    _ = draining(standard_pool(), manager=manager)
+    assert opened_issues(manager)
+    assert manager.activated() == ()
+
+
 def test_starts_every_ready_ticket_in_pick_order_while_the_total_allows() -> None:
     manager = fake_manager()
     outcome = draining(standard_pool(), manager=manager)

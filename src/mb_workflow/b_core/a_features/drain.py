@@ -12,7 +12,7 @@ from mb_workflow.b_core.c_secondary_ports.claims import (
 )
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, Released, TakeOver
 from mb_workflow.b_core.d_domain_model.pool import Occupancy, PoolTicket, PoolTickets
-from mb_workflow.b_core.d_domain_model.workspace import Submit, TimeoutMs, WorktreeName
+from mb_workflow.b_core.d_domain_model.workspace import Activate, Submit, TimeoutMs, WorktreeName
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
@@ -53,6 +53,7 @@ class DrainRequest(Model):
             idle_timeout=self.idle_timeout,
             host=self.host,
             take_over=TakeOver(False),
+            activate=Activate(False),
         )
 
 

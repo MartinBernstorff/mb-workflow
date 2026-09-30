@@ -108,6 +108,12 @@ class Submit(Value[bool]):
         return Submit(False)
 
 
+class Activate(Value[bool]):
+    @staticmethod
+    def fake() -> Activate:
+        return Activate(True)
+
+
 class TimeoutMs(Value[int]):
     @staticmethod
     def fake() -> TimeoutMs:

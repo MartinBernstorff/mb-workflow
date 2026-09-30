@@ -25,6 +25,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
 from mb_workflow.b_core.d_domain_model.flow_labels import state_of
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.workspace import (
+    Activate,
     AgentName,
     DisplayName,
     Submit,
@@ -57,6 +58,7 @@ class StartRequest(Model):
     idle_timeout: TimeoutMs
     host: HostName
     take_over: TakeOver
+    activate: Activate
 
     @staticmethod
     def fake() -> StartRequest:
@@ -66,6 +68,7 @@ class StartRequest(Model):
             idle_timeout=TimeoutMs.fake(),
             host=HostName.fake(),
             take_over=TakeOver.fake(),
+            activate=Activate.fake(),
         )
 
     def prompt_for(self, action: Skill | AwaitingHuman) -> TerminalText | None:
@@ -135,6 +138,7 @@ def start_ticket(
         request.ticket,
         None if prompt is None else AgentName.claude(),
         board.status_for(state),
+        activate=request.activate,
     )
     logger.info("Created worktree %s.", opened.worktree.path.root)
     set_display_name_or_warn(manager, opened.worktree.path, DisplayName.of_issue(detail.title))

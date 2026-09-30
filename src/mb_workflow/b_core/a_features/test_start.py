@@ -42,6 +42,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelNames,
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
+    Activate,
     DisplayName,
     ProjectSelector,
     Submit,
@@ -142,6 +143,16 @@ def test_types_the_prompt_without_submitting_it_by_default() -> None:
     starting = started(StateName("Specced"), StartRequest.fake())
     assert starting.typed_texts() == (TerminalText("/implement E-4289"),)
     assert starting.submitted_texts() == ()
+
+
+def test_activates_the_worktree_when_asked_to() -> None:
+    manager = started(StateName("Specced"), StartRequest.fake())
+    assert manager.activated() == (opened_in(manager).path,)
+
+
+def test_leaves_the_worktree_in_the_background_when_not_asked_to_activate_it() -> None:
+    background = StartRequest.fake().model_copy(update={"activate": Activate(False)})
+    assert started(StateName("Specced"), background).activated() == ()
 
 
 def test_submits_the_prompt_when_asked_to() -> None:

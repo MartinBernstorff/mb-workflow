@@ -11,6 +11,7 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueTitle
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
 from mb_workflow.b_core.d_domain_model.workspace import (
+    Activate,
     DisplayName,
     ProjectSelector,
     RepoId,
@@ -151,7 +152,12 @@ def test_creating_in_a_column_the_board_lacks_is_refused(
 
 def test_an_issue_worktree_is_linked_to_its_issue(manager: WorkspaceManager, board: Board) -> None:
     opened = manager.create_for_issue(
-        board.project, contract_name(), IssueIdentifier.fake(), None, None
+        board.project,
+        contract_name(),
+        IssueIdentifier.fake(),
+        None,
+        None,
+        activate=Activate(False),
     )
     listed = manager.worktrees().at(opened.worktree.path)
     assert listed is not None
@@ -162,7 +168,12 @@ def test_an_issue_worktree_is_created_in_its_column(
     manager: WorkspaceManager, board: Board
 ) -> None:
     opened = manager.create_for_issue(
-        board.project, contract_name(), None, None, board.other_column()
+        board.project,
+        contract_name(),
+        None,
+        None,
+        board.other_column(),
+        activate=Activate(False),
     )
     listed = manager.worktrees().at(opened.worktree.path)
     assert listed is not None
@@ -173,14 +184,19 @@ def test_creating_an_issue_worktree_in_a_column_the_board_lacks_is_refused(
     manager: WorkspaceManager, board: Board
 ) -> None:
     with pytest.raises(WorkspaceManagerError):
-        _ = manager.create_for_issue(board.project, contract_name(), None, None, board.unlisted())
+        _ = manager.create_for_issue(
+            board.project, contract_name(), None, None, board.unlisted(), activate=Activate(False)
+        )
 
 
 def test_a_worktree_opened_without_an_agent_has_no_terminal(
     manager: WorkspaceManager, board: Board
 ) -> None:
     assert (
-        manager.create_for_issue(board.project, contract_name(), None, None, None).terminal is None
+        manager.create_for_issue(
+            board.project, contract_name(), None, None, None, activate=Activate(False)
+        ).terminal
+        is None
     )
 
 
@@ -194,14 +210,19 @@ def test_opening_under_an_unknown_project_is_refused(
             None,
             None,
             None,
+            activate=Activate(False),
         )
 
 
 def test_a_taken_name_puts_the_second_worktree_elsewhere(
     manager: WorkspaceManager, board: Board
 ) -> None:
-    first = manager.create_for_issue(board.project, contract_name(), None, None, None)
-    second = manager.create_for_issue(board.project, contract_name(), None, None, None)
+    first = manager.create_for_issue(
+        board.project, contract_name(), None, None, None, activate=Activate(False)
+    )
+    second = manager.create_for_issue(
+        board.project, contract_name(), None, None, None, activate=Activate(False)
+    )
     assert first.worktree.path != second.worktree.path
     assert manager.worktrees().at(first.worktree.path) is not None
     assert manager.worktrees().at(second.worktree.path) is not None
@@ -239,7 +260,9 @@ def test_setting_a_status_the_board_has_no_column_for_is_refused(
 def test_a_display_name_set_on_a_worktree_is_listed_back(
     manager: WorkspaceManager, board: Board
 ) -> None:
-    opened = manager.create_for_issue(board.project, contract_name(), None, None, None)
+    opened = manager.create_for_issue(
+        board.project, contract_name(), None, None, None, activate=Activate(False)
+    )
     manager.set_display_name(opened.worktree.path, DisplayName.of_issue(IssueTitle.fake()))
     listed = manager.worktrees().at(opened.worktree.path)
     assert listed is not None

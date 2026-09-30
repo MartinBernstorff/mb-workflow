@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
     from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
     from mb_workflow.b_core.d_domain_model.workspace import (
+        Activate,
         AgentName,
         Submit,
         TerminalText,
@@ -48,6 +49,8 @@ class WorkspaceManager(Protocol):
         issue: IssueIdentifier | None,
         agent: AgentName | None,
         status: WorkspaceStatus | None,
+        *,
+        activate: Activate,
     ) -> OpenedWorktree: ...
 
     def remove(self, path: WorktreePath) -> None: ...
@@ -76,6 +79,7 @@ class FakeWorkspaceManager(WorkspaceManager):
         self._project = project
         self._repo = repo
         self._terminals: dict[TerminalHandle, tuple[tuple[TerminalText, Submit], ...]] = {}
+        self._activated: tuple[WorktreePath, ...] = ()
 
     @override
     def current(self) -> Worktree:
@@ -104,6 +108,8 @@ class FakeWorkspaceManager(WorkspaceManager):
         issue: IssueIdentifier | None,
         agent: AgentName | None,
         status: WorkspaceStatus | None,
+        *,
+        activate: Activate,
     ) -> OpenedWorktree:
         if project != self._project:
             raise WorkspaceManagerError(f"No project is selected by {project.root}.")
@@ -113,6 +119,8 @@ class FakeWorkspaceManager(WorkspaceManager):
                 update={"issue": issue, "status": column}
             )
         )
+        if activate.root:
+            self._activated = (*self._activated, worktree.path)
         return self._opened(worktree, agent)
 
     @override
@@ -135,6 +143,9 @@ class FakeWorkspaceManager(WorkspaceManager):
     @override
     def send_text(self, terminal: TerminalHandle, text: TerminalText, submit: Submit) -> None:
         self._terminals[terminal] = (*self._typed_into(terminal), (text, submit))
+
+    def activated(self) -> tuple[WorktreePath, ...]:
+        return self._activated
 
     def typed_texts(self) -> tuple[TerminalText, ...]:
         return tuple(text for typed in self._terminals.values() for text, _ in typed)

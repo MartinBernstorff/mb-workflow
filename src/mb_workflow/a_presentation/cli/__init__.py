@@ -29,6 +29,7 @@ from mb_workflow.b_core.d_domain_model.pull_request import (
     ReviewRequest,
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
+    Activate,
     Submit,
     TerminalText,
     TimeoutMs,
@@ -139,6 +140,7 @@ def workspace_start(
         idle_timeout=TimeoutMs(idle_timeout_ms),
         host=HostName.of_machine(),
         take_over=TakeOver(force),
+        activate=Activate(True),
     )
     raise typer.Exit(
         code=commands.ticket_start(
