@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from mb_workflow.a_presentation.autolabel_report import log_outcome
 from mb_workflow.a_presentation.console import ExitCode, Output, write
-from mb_workflow.a_presentation.drain_report import log_drain_outcome, pick_listing
+from mb_workflow.a_presentation.drain_report import log_drain_outcome, log_skips, pick_listing
 from mb_workflow.a_presentation.review_workspaces_report import (
     LoggingNarrator,
     log_review_workspaces_outcome,
@@ -244,6 +244,7 @@ def drain(
         pool=pool,
         request=request,
     )
+    log_skips(outcome)
     if request.dry_run.root:
         write(pick_listing(outcome.picked, flow_labels_of_chart()))
     else:

@@ -25,6 +25,11 @@ def state_cell(state: StateName | None) -> Output:
     return Output("-" if state is None else state.root)
 
 
+def log_skips(outcome: DrainOutcome) -> None:
+    for skip in outcome.skipped:
+        logger.info("Skipped %s: %s.", skip.ticket.issue.identifier.root, skip.refusal.root)
+
+
 def log_drain_outcome(outcome: DrainOutcome) -> None:
     if not outcome.picked.root:
         logger.info("Started no ticket; %s were ready.", len(outcome.ready.root))
