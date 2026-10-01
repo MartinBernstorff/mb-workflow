@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.a_features.autolabel import DryRun
+from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
 from mb_workflow.b_core.a_features.start import StartRequest, start_ticket
 from mb_workflow.b_core.b_domain_services.pick_order import in_pick_order
 from mb_workflow.b_core.c_secondary_ports.claims import (
@@ -11,7 +11,13 @@ from mb_workflow.b_core.c_secondary_ports.claims import (
     require_claim_label,
 )
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, Released, TakeOver
-from mb_workflow.b_core.d_domain_model.pool import Occupancy, PoolTicket, PoolTickets
+from mb_workflow.b_core.d_domain_model.pool import (
+    Occupancy,
+    PoolLimits,
+    PoolTicket,
+    PoolTickets,
+    Refusal,
+)
 from mb_workflow.b_core.d_domain_model.workspace import Activate, Submit, TimeoutMs, WorktreeName
 from mb_workflow.d_lib.models import Model, Value
 
@@ -57,13 +63,35 @@ class DrainRequest(Model):
         )
 
 
+class Skip(Model):
+    ticket: PoolTicket
+    refusal: Refusal
+
+    @staticmethod
+    def fake() -> Skip:
+        return Skip(ticket=PoolTicket.fake(), refusal=Refusal.fake())
+
+
 class DrainOutcome(Model):
     ready: PoolTickets
     picked: PoolTickets
+    skipped: tuple[Skip, ...]
 
     @staticmethod
     def fake() -> DrainOutcome:
-        return DrainOutcome(ready=PoolTickets.fake(), picked=PoolTickets.fake())
+        return DrainOutcome(
+            ready=PoolTickets.fake(), picked=PoolTickets.fake(), skipped=(Skip.fake(),)
+        )
+
+
+# Checked before claiming, so a misspelt limit never lets a pass run uncapped.
+def require_limited_labels(tracker: TicketTracker, limits: PoolLimits) -> None:
+    unknown = tracker.workspace_labels().unmatched(limits.limited_labels())
+    if unknown.root:
+        listed = ", ".join(label.root for label in unknown.root)
+        raise UnknownLabelError(
+            f"No label is named {listed}. Create the label or change [pool.limits.labels]."
+        )
 
 
 def drain_pool(
@@ -82,6 +110,7 @@ def drain_pool(
 ) -> DrainOutcome:
     with lock.held():
         require_claim_label(tracker, claim_settings.label)
+        require_limited_labels(tracker, pool.limits)
         ready = in_pick_order(
             tracker.unblocked_view_tickets(pool.view).ready(claim_settings.label, flow_labels),
             tie_break,
@@ -90,11 +119,16 @@ def drain_pool(
             tracker.labelled_issues(claim_settings.label, Released.types()), flow_labels
         )
         picked: list[PoolTicket] = []
+        skipped: list[Skip] = []
         for ticket in ready.root:
             if pool.limits.filled(occupancy).root:
                 break
-            state = ticket.flow_state(flow_labels)
-            if state is None or not pool.limits.admits(occupancy, state).root:
+            slot = ticket.slot(flow_labels)
+            if slot is None:
+                continue
+            refusal = pool.limits.refusal(occupancy, slot)
+            if refusal is not None:
+                skipped.append(Skip(ticket=ticket, refusal=refusal))
                 continue
             if (
                 request.dry_run.root
@@ -111,8 +145,8 @@ def drain_pool(
             ):
                 picked.append(ticket)
             # A ticket lost to another host is now in progress there, so it fills a slot too.
-            occupancy = occupancy.with_ticket_in(state)
-        return DrainOutcome(ready=ready, picked=PoolTickets(tuple(picked)))
+            occupancy = occupancy.with_slot(slot)
+        return DrainOutcome(ready=ready, picked=PoolTickets(tuple(picked)), skipped=tuple(skipped))
 
 
 class Started(Value[bool]):

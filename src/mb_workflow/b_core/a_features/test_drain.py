@@ -2,7 +2,7 @@ from typing import override
 
 import pytest
 
-from mb_workflow.b_core.a_features.autolabel import DryRun
+from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
 from mb_workflow.b_core.a_features.drain import DrainOutcome, DrainRequest, drain_pool
 from mb_workflow.b_core.c_secondary_ports.claims import (
     ClaimRefusedError,
@@ -30,7 +30,13 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelNames,
     StatusType,
 )
-from mb_workflow.b_core.d_domain_model.pool import Limit, PoolLimits, PoolTickets, Priority
+from mb_workflow.b_core.d_domain_model.pool import (
+    Limit,
+    PoolLimits,
+    PoolTickets,
+    Priority,
+    Refusal,
+)
 from mb_workflow.b_core.d_domain_model.workspace import (
     ProjectSelector,
     TerminalText,
@@ -67,12 +73,13 @@ def in_progress(
     identifier: IssueIdentifier,
     state: StateName,
     status: IssueStatusName = IssueStatusName("In Progress"),
+    labels: LabelNames = LabelNames(()),
 ) -> TrackedIssue:
     return pooled(
         identifier,
         Priority.medium,
         state=state,
-        labels=LabelNames((LabelName("claimed"),)),
+        labels=LabelNames((LabelName("claimed"), *labels.root)),
         status=status,
     )
 
@@ -98,6 +105,20 @@ def pool_of(
         views={PoolSettings.fake().view: tuple(ticket.issue.identifier for ticket in tickets)},
         groups={FlowLabels.fake().group: FlowLabels.fake().labels},
     )
+
+
+def refactors() -> LabelNames:
+    return LabelNames((LabelName("refactor"),))
+
+
+def pool_capping_refactors_at(limit: Limit) -> PoolSettings:
+    return PoolSettings.fake().model_copy(
+        update={"limits": PoolLimits(labels={LabelName("refactor"): limit})}
+    )
+
+
+def labels_with_refactor() -> LabelNames:
+    return LabelNames((LabelName("claimed"), LabelName("Refactor"), *FlowLabels.fake().labels.root))
 
 
 def pool_with_total(total: Limit) -> PoolSettings:
@@ -367,7 +388,7 @@ def test_a_pool_with_no_ready_ticket_starts_nothing() -> None:
         pool_of(pooled(IssueIdentifier("MB-3"), Priority.urgent, state=StateName("QA"))),
         manager=manager,
     )
-    assert outcome == DrainOutcome(ready=PoolTickets(()), picked=PoolTickets(()))
+    assert outcome == DrainOutcome(ready=PoolTickets(()), picked=PoolTickets(()), skipped=())
     assert manager.worktrees() == Worktrees.fake()
 
 
@@ -377,3 +398,48 @@ def test_a_pass_is_refused_while_another_holds_the_lock() -> None:
     with lock.held(), pytest.raises(AlreadyRunningError):
         _ = draining(standard_pool(), claims=claims, lock=lock)
     assert holders(claims, IssueIdentifier("MB-2")) == ()
+
+
+def test_a_ticket_whose_label_is_full_is_skipped_for_the_next() -> None:
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-1"), Priority.low),
+        pooled(IssueIdentifier("MB-2"), Priority.urgent, labels=refactors()),
+        labels=labels_with_refactor(),
+        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Review"), labels=refactors()),),
+    )
+    assert picked(draining(tracker, pool=pool_capping_refactors_at(Limit(1)))) == (
+        IssueIdentifier("MB-1"),
+    )
+
+
+def test_a_ticket_started_in_the_pass_fills_its_label() -> None:
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-1"), Priority.low, labels=refactors()),
+        pooled(IssueIdentifier("MB-2"), Priority.urgent, labels=refactors()),
+        pooled(IssueIdentifier("MB-3"), Priority.no_priority),
+        labels=labels_with_refactor(),
+    )
+    assert picked(draining(tracker, pool=pool_capping_refactors_at(Limit(1)))) == (
+        IssueIdentifier("MB-2"),
+        IssueIdentifier("MB-3"),
+    )
+
+
+def test_the_outcome_names_each_skipped_ticket_and_why() -> None:
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-1"), Priority.low, labels=refactors()),
+        pooled(IssueIdentifier("MB-2"), Priority.urgent, labels=refactors()),
+        labels=labels_with_refactor(),
+    )
+    outcome = draining(tracker, pool=pool_capping_refactors_at(Limit(1)))
+    assert tuple((skip.ticket.issue.identifier, skip.refusal) for skip in outcome.skipped) == (
+        (IssueIdentifier("MB-1"), Refusal("label refactor is at its limit of 1")),
+    )
+
+
+def test_a_limited_label_the_tracker_lacks_refuses_the_pass() -> None:
+    tracker = pool_of(pooled(IssueIdentifier("MB-1"), Priority.low))
+    claims = FakeClaimRegistry()
+    with pytest.raises(UnknownLabelError, match="refactor"):
+        _ = draining(tracker, claims=claims, pool=pool_capping_refactors_at(Limit(1)))
+    assert holders(claims, IssueIdentifier("MB-1")) == ()
