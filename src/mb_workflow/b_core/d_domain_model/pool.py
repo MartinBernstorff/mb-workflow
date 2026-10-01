@@ -73,6 +73,9 @@ class PoolTicket(Model):
     def flow_state(self, flow_labels: FlowLabels) -> StateName | None:
         return state_of(WorkflowChart, flow_labels, self.issue.grouped)
 
+    def slot(self, flow_labels: FlowLabels) -> Slot | None:
+        return Slot.of(self.issue, flow_labels)
+
     def ready(self, claim_label: LabelName, flow_labels: FlowLabels) -> Ready:
         return Ready(
             self.flow_state(flow_labels) in PoolTicket.ready_states().root
@@ -100,12 +103,6 @@ class Limit(Value[NonNegativeInt]):
         return Limit(4)
 
 
-class Admitted(Value[bool]):
-    @staticmethod
-    def fake() -> Admitted:
-        return Admitted(True)
-
-
 class Filled(Value[bool]):
     @staticmethod
     def fake() -> Filled:
@@ -118,21 +115,44 @@ class TicketCount(Value[NonNegativeInt]):
         return TicketCount(1)
 
 
-class Occupancy(Value[tuple[StateName, ...]]):
+class Slot(Model):
+    state: StateName
+    labels: LabelNames
+
+    @staticmethod
+    def fake() -> Slot:
+        return Slot(state=StateName("Implementing"), labels=LabelNames(()))
+
+    @staticmethod
+    def of(issue: Issue, flow_labels: FlowLabels) -> Slot | None:
+        state = state_of(WorkflowChart, flow_labels, issue.grouped)
+        return None if state is None else Slot(state=state, labels=issue.labels)
+
+
+class Occupancy(Value[tuple[Slot, ...]]):
     @staticmethod
     def fake() -> Occupancy:
-        return Occupancy((StateName("Implementing"),))
+        return Occupancy((Slot.fake(),))
 
     @staticmethod
     def of(issues: Issues, flow_labels: FlowLabels) -> Occupancy:
-        states = (state_of(WorkflowChart, flow_labels, issue.grouped) for issue in issues.root)
-        return Occupancy(tuple(state for state in states if state is not None))
+        slots = (Slot.of(issue, flow_labels) for issue in issues.root)
+        return Occupancy(tuple(slot for slot in slots if slot is not None))
 
-    def with_ticket_in(self, state: StateName) -> Occupancy:
-        return Occupancy((*self.root, state))
+    def with_slot(self, slot: Slot) -> Occupancy:
+        return Occupancy((*self.root, slot))
 
     def count_in(self, state: StateName) -> TicketCount:
-        return TicketCount(sum(1 for held in self.root if held == state))
+        return TicketCount(sum(1 for slot in self.root if slot.state == state))
+
+    def count_labelled(self, label: LabelName) -> TicketCount:
+        return TicketCount(sum(1 for slot in self.root if slot.labels.matching(label) is not None))
+
+
+class Refusal(Value[str]):
+    @staticmethod
+    def fake() -> Refusal:
+        return Refusal("Grilling is at its limit of 1")
 
 
 class LimitSummary(Value[str]):
@@ -160,22 +180,31 @@ def chart_state_named(name: StateName) -> StateName | None:
 class PoolLimits(Model):
     total: Limit = Limit(4)
     states: dict[StateName, Limit] = Field(default_factory=default_state_limits)
+    labels: dict[LabelName, Limit] = Field(default_factory=dict)
 
     @staticmethod
     def fake() -> PoolLimits:
         return PoolLimits()
 
-    # [pool.limits] lists state limits flat beside total, and they only override the defaults.
+    # State limits in [pool.limits.states] only override the defaults.
     @model_validator(mode="before")
     @classmethod
-    def gather_state_limits(cls, data: JsonValue) -> JsonValue:
-        if not isinstance(data, dict) or "states" in data:
+    def join_default_state_limits(cls, data: JsonValue) -> JsonValue:
+        if not isinstance(data, dict):
             return data
-        states: dict[str, JsonValue] = {
+        stray = [key for key in data if key not in cls.model_fields]
+        if stray:
+            raise ValueError(
+                f"{', '.join(stray)} is no pool limit. State limits sit under"
+                " [pool.limits.states], label limits under [pool.limits.labels]."
+            )
+        states = data.get("states", {})
+        if not isinstance(states, dict):
+            return data
+        defaults: dict[str, JsonValue] = {
             name.root: limit.root for name, limit in default_state_limits().items()
         }
-        states.update({key: limit for key, limit in data.items() if key != "total"})
-        return {**{key: data[key] for key in ("total",) if key in data}, "states": states}
+        return {**data, "states": {**defaults, **states}}
 
     @field_validator("states")
     @classmethod
@@ -191,12 +220,16 @@ class PoolLimits(Model):
             spelled[known] = limit
         return spelled
 
+    def limited_labels(self) -> LabelNames:
+        return LabelNames(tuple(self.labels))
+
     def summary(self) -> LimitSummary:
         return LimitSummary(
             ", ".join(
                 (
                     f"total {self.total.root}",
                     *(f"{name.root} {limit.root}" for name, limit in self.states.items()),
+                    *(f"label {name.root} {limit.root}" for name, limit in self.labels.items()),
                 )
             )
         )
@@ -204,8 +237,16 @@ class PoolLimits(Model):
     def filled(self, occupancy: Occupancy) -> Filled:
         return Filled(len(occupancy.root) >= self.total.root)
 
-    def admits(self, occupancy: Occupancy, state: StateName) -> Admitted:
+    def refusal(self, occupancy: Occupancy, slot: Slot) -> Refusal | None:
         if self.filled(occupancy).root:
-            return Admitted(False)
-        limit = self.states.get(state)
-        return Admitted(limit is None or occupancy.count_in(state).root < limit.root)
+            return Refusal(f"the pool is at its total of {self.total.root}")
+        state_limit = self.states.get(slot.state)
+        if state_limit is not None and occupancy.count_in(slot.state).root >= state_limit.root:
+            return Refusal(f"{slot.state.root} is at its limit of {state_limit.root}")
+        for label, limit in self.labels.items():
+            if (
+                slot.labels.matching(label) is not None
+                and occupancy.count_labelled(label).root >= limit.root
+            ):
+                return Refusal(f"label {label.root} is at its limit of {limit.root}")
+        return None

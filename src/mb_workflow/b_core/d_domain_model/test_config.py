@@ -311,12 +311,13 @@ def test_the_pool_limits_table_sets_the_limits(tmp_path: Path) -> None:
         'Implementing = "In Progress"\nQA = "In Progress"\nReview = "In Review"\n'
         'Merging = "Ready For Release"\nMerged = "Done"\n'
         '[pool]\nview = "4efb86b38740"\n'
-        "[pool.limits]\ntotal = 6\nQA = 2\n"
+        "[pool.limits]\ntotal = 6\n[pool.limits.states]\nQA = 2\n[pool.limits.labels]\nrefactor = 1\n"
     )
     resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake())
     assert resolved.settings.required_pool().limits == PoolLimits(
         total=Limit(6),
         states={StateName("Grilling"): Limit(1), StateName("QA"): Limit(2)},
+        labels={LabelName("refactor"): Limit(1)},
     )
 
 
@@ -328,7 +329,7 @@ def test_a_limit_on_a_state_outside_the_chart_is_a_config_error(tmp_path: Path) 
         'Implementing = "In Progress"\nQA = "In Progress"\nReview = "In Review"\n'
         'Merging = "Ready For Release"\nMerged = "Done"\n'
         '[pool]\nview = "4efb86b38740"\n'
-        "[pool.limits]\nTodo = 1\n"
+        "[pool.limits.states]\nTodo = 1\n"
     )
     with pytest.raises(InvalidConfigError, match="Todo"):
         _ = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake())
