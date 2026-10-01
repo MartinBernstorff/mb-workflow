@@ -11,7 +11,7 @@ from mb_workflow.b_core.c_secondary_ports.claims import (
     require_claim_label,
 )
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, Released, TakeOver
-from mb_workflow.b_core.d_domain_model.pool import Occupancy, PoolTicket, PoolTickets
+from mb_workflow.b_core.d_domain_model.pool import Occupancy, PoolTicket, PoolTickets, Priority
 from mb_workflow.b_core.d_domain_model.workspace import Activate, Submit, TimeoutMs, WorktreeName
 from mb_workflow.d_lib.models import Model, Value
 
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
         WorkspaceSettings,
     )
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
-    from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
+    from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName
 
 logger = logging.getLogger(__name__)
 
@@ -82,20 +82,48 @@ def drain_pool(
 ) -> DrainOutcome:
     with lock.held():
         require_claim_label(tracker, claim_settings.label)
-        ready = in_pick_order(
-            tracker.unblocked_view_tickets(pool.view).ready(claim_settings.label, flow_labels),
-            tie_break,
-        )
+        listed = tracker.unblocked_view_tickets(pool.view)
+        for ticket in listed.root:
+            if not ticket.ready(claim_settings.label, flow_labels).root:
+                log_unready(ticket, claim_settings.label, flow_labels)
+        ready = in_pick_order(listed.ready(claim_settings.label, flow_labels), tie_break)
         occupancy = Occupancy.of(
             tracker.labelled_issues(claim_settings.label, Released.types()), flow_labels
         )
         picked: list[PoolTicket] = []
-        for ticket in ready.root:
-            if pool.limits.filled(occupancy).root:
+        for position, ticket in enumerate(ready.root):
+            urgent = ticket.priority == Priority.urgent
+            # Urgent tickets sort first, so stopping here never passes one over.
+            if not urgent and pool.limits.filled(occupancy).root:
+                logger.info(
+                    "The pool is full at %s tickets; leaving %s unstarted.",
+                    pool.limits.total.root,
+                    ", ".join(left.issue.identifier.root for left in ready.root[position:]),
+                )
                 break
             state = ticket.flow_state(flow_labels)
-            if state is None or not pool.limits.admits(occupancy, state).root:
+            if state is None:
+                logger.info("Skipping %s: it has no flow state.", ticket.issue.identifier.root)
                 continue
+            if not pool.limits.admits(occupancy, state).root:
+                if not urgent:
+                    logger.info(
+                        "Skipping %s: %s is at its limit of %s.",
+                        ticket.issue.identifier.root,
+                        state.root,
+                        pool.limits.states[state].root,
+                    )
+                    continue
+                logger.info(
+                    "%s is urgent, so it starts despite the limits.", ticket.issue.identifier.root
+                )
+            logger.info(
+                "%s %s (%s, %s).",
+                "Would start" if request.dry_run.root else "Starting",
+                ticket.issue.identifier.root,
+                ticket.priority.name,
+                state.root,
+            )
             if (
                 request.dry_run.root
                 or try_start_ticket(
@@ -113,6 +141,19 @@ def drain_pool(
             # A ticket lost to another host is now in progress there, so it fills a slot too.
             occupancy = occupancy.with_ticket_in(state)
         return DrainOutcome(ready=ready, picked=PoolTickets(tuple(picked)))
+
+
+def log_unready(ticket: PoolTicket, claim_label: LabelName, flow_labels: FlowLabels) -> None:
+    if ticket.issue.labels.matching(claim_label) is not None:
+        logger.info("Skipping %s: it is already claimed.", ticket.issue.identifier.root)
+        return
+    state = ticket.flow_state(flow_labels)
+    if state is None:
+        logger.info("Skipping %s: it has no flow state.", ticket.issue.identifier.root)
+        return
+    logger.info(
+        "Skipping %s: no agent works tickets in %s.", ticket.issue.identifier.root, state.root
+    )
 
 
 class Started(Value[bool]):
