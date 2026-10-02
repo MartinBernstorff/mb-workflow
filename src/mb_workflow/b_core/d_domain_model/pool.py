@@ -43,6 +43,12 @@ class Ready(Value[bool]):
         return Ready(True)
 
 
+class SkipsLimits(Value[bool]):
+    @staticmethod
+    def fake() -> SkipsLimits:
+        return SkipsLimits(False)
+
+
 class PoolTicket(Model):
     issue: Issue
     priority: Priority
@@ -81,6 +87,9 @@ class PoolTicket(Model):
             self.flow_state(flow_labels) in PoolTicket.ready_states().root
             and self.issue.labels.matching(claim_label) is None
         )
+
+    def skips_limits(self, skip_limits_label: LabelName) -> SkipsLimits:
+        return SkipsLimits(self.issue.labels.matching(skip_limits_label) is not None)
 
 
 class PoolTickets(Value[tuple[PoolTicket, ...]]):

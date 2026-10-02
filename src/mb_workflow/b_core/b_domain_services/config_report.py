@@ -37,6 +37,7 @@ class ConfigReport(Value[str]):
                         else (
                             f"pool view: {settings.pool.view.root}",
                             f"pool limits: {settings.pool.limits.summary().root}",
+                            f"pool skip-limits label: {settings.pool.skip_limits_label.root}",
                         )
                     ),
                     "ticket statuses:",
