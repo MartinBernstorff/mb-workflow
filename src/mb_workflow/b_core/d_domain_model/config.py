@@ -100,6 +100,7 @@ class ClaimSettings(Model):
 class PoolSettings(Model):
     view: ViewSlug
     limits: PoolLimits = PoolLimits()
+    skip_limits_label: LabelName = LabelName("skip-limits")
 
     @staticmethod
     def fake() -> PoolSettings:

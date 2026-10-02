@@ -163,7 +163,7 @@ def workspace_drain(
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    """Start ready tickets in pick order until a pool limit is reached. Urgent tickets ignore the limits."""
+    """Start ready tickets in pick order until a pool limit is reached. Tickets labelled skip-limits ignore the limits."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     request = DrainRequest(
         dry_run=DryRun(dry_run),

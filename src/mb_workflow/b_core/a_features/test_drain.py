@@ -98,7 +98,7 @@ def pool_of(
     closing: tuple[IssueStatus, ...] = (),
 ) -> FakeTicketTracker:
     return FakeTicketTracker(
-        LabelNames((LabelName("claimed"), *FlowLabels.fake().labels.root))
+        LabelNames((LabelName("claimed"), skip_limits().root[0], *FlowLabels.fake().labels.root))
         if labels is None
         else labels,
         (*tickets, *elsewhere),
@@ -106,6 +106,10 @@ def pool_of(
         views={PoolSettings.fake().view: tuple(ticket.issue.identifier for ticket in tickets)},
         groups={FlowLabels.fake().group: FlowLabels.fake().labels},
     )
+
+
+def skip_limits() -> LabelNames:
+    return LabelNames((PoolSettings.fake().skip_limits_label,))
 
 
 def refactors() -> LabelNames:
@@ -119,7 +123,14 @@ def pool_capping_refactors_at(limit: Limit) -> PoolSettings:
 
 
 def labels_with_refactor() -> LabelNames:
-    return LabelNames((LabelName("claimed"), LabelName("Refactor"), *FlowLabels.fake().labels.root))
+    return LabelNames(
+        (
+            LabelName("claimed"),
+            LabelName("Refactor"),
+            *skip_limits().root,
+            *FlowLabels.fake().labels.root,
+        )
+    )
 
 
 def pool_with_total(total: Limit) -> PoolSettings:
@@ -399,11 +410,11 @@ def test_a_pass_is_refused_while_another_holds_the_lock() -> None:
     assert holders(claims, IssueIdentifier("MB-2")) == ()
 
 
-def test_an_urgent_ticket_starts_past_the_total() -> None:
+def test_a_ticket_labelled_skip_limits_starts_past_the_total() -> None:
     tracker = pool_of(
-        pooled(IssueIdentifier("MB-1"), Priority.high),
-        pooled(IssueIdentifier("MB-2"), Priority.urgent),
-        pooled(IssueIdentifier("MB-3"), Priority.urgent),
+        pooled(IssueIdentifier("MB-1"), Priority.urgent),
+        pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()),
+        pooled(IssueIdentifier("MB-3"), Priority.low, labels=skip_limits()),
     )
     assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (
         IssueIdentifier("MB-3"),
@@ -411,20 +422,75 @@ def test_an_urgent_ticket_starts_past_the_total() -> None:
     )
 
 
-def test_an_urgent_ticket_starts_in_a_full_state() -> None:
+def test_a_ticket_labelled_skip_limits_starts_in_a_full_state() -> None:
     tracker = pool_of(
-        pooled(IssueIdentifier("MB-2"), Priority.urgent, state=StateName("Grilling")),
+        pooled(
+            IssueIdentifier("MB-2"), Priority.low, state=StateName("Grilling"), labels=skip_limits()
+        ),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Grilling")),),
     )
     assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
 
 
-def test_urgent_tickets_count_toward_the_limits_of_the_rest() -> None:
+def test_tickets_labelled_skip_limits_count_toward_the_limits_of_the_rest() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.high),
-        pooled(IssueIdentifier("MB-2"), Priority.urgent),
+        pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()),
     )
     assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-2"),)
+
+
+def test_a_started_ticket_loses_its_skip_limits_label() -> None:
+    tracker = pool_of(pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()))
+    _ = draining(tracker)
+    assert (
+        tracker.read_issue(IssueIdentifier("MB-2")).labels.matching(
+            PoolSettings.fake().skip_limits_label
+        )
+        is None
+    )
+
+
+def test_a_dry_run_keeps_the_skip_limits_label() -> None:
+    tracker = pool_of(pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()))
+    dry = DrainRequest.fake().model_copy(update={"dry_run": DryRun(True)})
+    _ = draining(tracker, request=dry)
+    assert (
+        tracker.read_issue(IssueIdentifier("MB-2")).labels.matching(
+            PoolSettings.fake().skip_limits_label
+        )
+        is not None
+    )
+
+
+def test_a_ticket_another_host_wins_keeps_its_skip_limits_label() -> None:
+    tracker = pool_of(pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()))
+    _ = draining(tracker, claims=RacedRegistry(IssueIdentifier("MB-2")))
+    assert (
+        tracker.read_issue(IssueIdentifier("MB-2")).labels.matching(
+            PoolSettings.fake().skip_limits_label
+        )
+        is not None
+    )
+
+
+def test_an_urgent_ticket_keeps_to_the_limits() -> None:
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-2"), Priority.urgent, state=StateName("Grilling")),
+        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Grilling")),),
+    )
+    assert picked(draining(tracker)) == ()
+
+
+def test_a_skip_limits_label_the_tracker_lacks_refuses_the_pass() -> None:
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-1"), Priority.low),
+        labels=LabelNames((LabelName("claimed"), *FlowLabels.fake().labels.root)),
+    )
+    claims = FakeClaimRegistry()
+    with pytest.raises(UnknownLabelError, match="skip-limits"):
+        _ = draining(tracker, claims=claims)
+    assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
 def drain_logged(
@@ -464,15 +530,20 @@ def test_the_log_names_each_ticket_started(caplog: pytest.LogCaptureFixture) -> 
     assert "Starting MB-1 (low, Specced)." in log
 
 
-def test_the_log_says_an_urgent_ticket_overrode_the_limits(
+def test_the_log_says_a_ticket_labelled_skip_limits_overrode_the_limits(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     tracker = pool_of(
-        pooled(IssueIdentifier("MB-2"), Priority.urgent, state=StateName("Grilling")),
+        pooled(
+            IssueIdentifier("MB-2"), Priority.low, state=StateName("Grilling"), labels=skip_limits()
+        ),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Grilling")),),
     )
     drain_logged(caplog, tracker)
-    assert "MB-2 is urgent, so it starts although Grilling is at its limit of 1." in caplog.text
+    assert (
+        "MB-2 is labelled skip-limits, so it starts although Grilling is at its limit of 1."
+        in caplog.text
+    )
 
 
 def test_a_ticket_whose_label_is_full_is_skipped_for_the_next() -> None:
@@ -520,9 +591,13 @@ def test_a_limited_label_the_tracker_lacks_refuses_the_pass() -> None:
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
-def test_an_urgent_ticket_starts_past_its_label_limit() -> None:
+def test_a_ticket_labelled_skip_limits_starts_past_its_label_limit() -> None:
     tracker = pool_of(
-        pooled(IssueIdentifier("MB-2"), Priority.urgent, labels=refactors()),
+        pooled(
+            IssueIdentifier("MB-2"),
+            Priority.low,
+            labels=LabelNames((*refactors().root, *skip_limits().root)),
+        ),
         labels=labels_with_refactor(),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Review"), labels=refactors()),),
     )

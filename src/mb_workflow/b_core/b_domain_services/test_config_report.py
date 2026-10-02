@@ -87,3 +87,16 @@ def test_a_configured_pool_reports_its_limits() -> None:
         origin=ConfigPath.fake(),
     )
     assert "pool limits: total 4, Grilling 1" in ConfigReport.of(config).root
+
+
+def test_a_configured_pool_reports_its_skip_limits_label() -> None:
+    config = Configuration(
+        settings=Settings(
+            issues=LinearTracker.fake(),
+            workspace=WorkspaceSettings.fake(),
+            pool=PoolSettings.fake(),
+            ticket_statuses=TicketStatuses.fake(),
+        ),
+        origin=ConfigPath.fake(),
+    )
+    assert "pool skip-limits label: skip-limits" in ConfigReport.of(config).root

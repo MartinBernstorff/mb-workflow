@@ -282,6 +282,14 @@ def test_a_configured_pool_names_its_view() -> None:
     assert settings.pool == PoolSettings(view=ViewSlug("4efb86b38740"))
 
 
+def test_a_configured_skip_limits_label_is_read() -> None:
+    settings = settings_with_fake_workspace(
+        issues={"tracker": "linear"},
+        pool={"view": "4efb86b38740", "skip_limits_label": "expedite"},
+    )
+    assert settings.required_pool().skip_limits_label == LabelName("expedite")
+
+
 def test_a_pool_outside_linear_is_refused() -> None:
     with pytest.raises(ValueError, match="pool"):
         _ = settings_with_fake_workspace(

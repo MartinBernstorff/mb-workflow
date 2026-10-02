@@ -16,7 +16,6 @@ from mb_workflow.b_core.d_domain_model.pool import (
     PoolLimits,
     PoolTicket,
     PoolTickets,
-    Priority,
     Refusal,
 )
 from mb_workflow.b_core.d_domain_model.workspace import Activate, Submit, TimeoutMs, WorktreeName
@@ -95,6 +94,13 @@ def require_limited_labels(tracker: TicketTracker, limits: PoolLimits) -> None:
         )
 
 
+def require_skip_limits_label(tracker: TicketTracker, label: LabelName) -> None:
+    if tracker.workspace_labels().matching(label) is None:
+        raise UnknownLabelError(
+            f"No label is named {label.root}. Create the label or change [pool] skip_limits_label."
+        )
+
+
 def drain_pool(
     *,
     tracker: TicketTracker,
@@ -112,20 +118,23 @@ def drain_pool(
     with lock.held():
         require_claim_label(tracker, claim_settings.label)
         require_limited_labels(tracker, pool.limits)
+        require_skip_limits_label(tracker, pool.skip_limits_label)
         listed = tracker.unblocked_view_tickets(pool.view)
         for ticket in listed.root:
             if not ticket.ready(claim_settings.label, flow_labels).root:
                 log_unready(ticket, claim_settings.label, flow_labels)
-        ready = in_pick_order(listed.ready(claim_settings.label, flow_labels), tie_break)
+        ready = in_pick_order(
+            listed.ready(claim_settings.label, flow_labels), pool.skip_limits_label, tie_break
+        )
         occupancy = Occupancy.of(
             tracker.labelled_issues(claim_settings.label, Released.types()), flow_labels
         )
         picked: list[PoolTicket] = []
         skipped: list[Skip] = []
         for position, ticket in enumerate(ready.root):
-            urgent = ticket.priority == Priority.urgent
-            # Urgent tickets sort first, so stopping here never passes one over.
-            if not urgent and pool.limits.filled(occupancy).root:
+            skips_limits = ticket.skips_limits(pool.skip_limits_label).root
+            # Tickets that skip the limits sort first, so stopping here never passes one over.
+            if not skips_limits and pool.limits.filled(occupancy).root:
                 logger.info(
                     "The pool is full at %s tickets; leaving %s unstarted.",
                     pool.limits.total.root,
@@ -138,12 +147,13 @@ def drain_pool(
                 continue
             refusal = pool.limits.refusal(occupancy, slot)
             if refusal is not None:
-                if not urgent:
+                if not skips_limits:
                     skipped.append(Skip(ticket=ticket, refusal=refusal))
                     continue
                 logger.info(
-                    "%s is urgent, so it starts although %s.",
+                    "%s is labelled %s, so it starts although %s.",
                     ticket.issue.identifier.root,
+                    pool.skip_limits_label.root,
                     refusal.root,
                 )
             logger.info(
@@ -153,20 +163,21 @@ def drain_pool(
                 ticket.priority.name,
                 slot.state.root,
             )
-            if (
-                request.dry_run.root
-                or try_start_ticket(
-                    tracker=tracker,
-                    claims=claims,
-                    manager=manager,
-                    board=board,
-                    workspace=workspace,
-                    claim_settings=claim_settings,
-                    flow_labels=flow_labels,
-                    request=request.start_request(ticket.issue.identifier),
-                ).root
-            ):
+            if request.dry_run.root:
                 picked.append(ticket)
+            elif try_start_ticket(
+                tracker=tracker,
+                claims=claims,
+                manager=manager,
+                board=board,
+                workspace=workspace,
+                claim_settings=claim_settings,
+                flow_labels=flow_labels,
+                request=request.start_request(ticket.issue.identifier),
+            ).root:
+                picked.append(ticket)
+                if skips_limits:
+                    tracker.remove_label(ticket.issue.identifier, pool.skip_limits_label)
             # A ticket lost to another host is now in progress there, so it fills a slot too.
             occupancy = occupancy.with_slot(slot)
         return DrainOutcome(ready=ready, picked=PoolTickets(tuple(picked)), skipped=tuple(skipped))
