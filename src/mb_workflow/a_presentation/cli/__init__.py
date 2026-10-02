@@ -179,12 +179,14 @@ def workspace_drain(
 
 @workspace_app.command("teardown")
 def workspace_teardown(
-    worktree: str = typer.Argument(..., help="Worktree to tear down, e.g. MB-35."),
+    worktree: str | None = typer.Argument(
+        None, help="Worktree to tear down, e.g. MB-35. Defaults to the current worktree."
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    """Release the worktree's claim on its ticket, then remove the worktree."""
+    """Delete every claim on the worktree's ticket and its claim label, then remove the worktree."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    request = TeardownRequest(worktree=WorktreeName(worktree), host=HostName.of_machine())
+    request = TeardownRequest(worktree=None if worktree is None else WorktreeName(worktree))
     raise typer.Exit(
         code=commands.teardown(request, WorkingDirectory(Path.cwd()), ConfigFileName.default()).root
     )

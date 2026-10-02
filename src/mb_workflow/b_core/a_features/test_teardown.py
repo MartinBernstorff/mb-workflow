@@ -95,19 +95,36 @@ def test_removes_the_claimed_label() -> None:
     assert tracker.read_issue(IssueIdentifier.fake()).labels == Issue.fake().labels
 
 
-def test_leaves_a_claim_held_from_another_host() -> None:
+def test_withdraws_a_claim_held_from_another_host_and_removes_the_label() -> None:
     elsewhere = ClaimHolder(
         host=HostName("elsewhere.local"), worktree=WorktreeName.of_issue(IssueIdentifier.fake())
     )
     claims = claimed_by(elsewhere)
+    tracker = tracker_with_the_claimed_label()
     teardown_worktree(
         manager=managing(Worktree.fake()),
         claims=claims,
-        tracker=tracker_with_the_claimed_label(),
+        tracker=tracker,
         claim_settings=ClaimSettings.fake(),
         request=TeardownRequest.fake(),
     )
-    assert holder_of_ticket(claims) == elsewhere
+    assert holder_of_ticket(claims) is None
+    assert tracker.read_issue(IssueIdentifier.fake()).labels == Issue.fake().labels
+
+
+def test_tears_down_the_current_worktree_when_none_is_named() -> None:
+    current = Worktree.fake()
+    manager = FakeWorkspaceManager(Worktrees((current,)), current.path)
+    claims = claimed_by(ClaimHolder.fake())
+    teardown_worktree(
+        manager=manager,
+        claims=claims,
+        tracker=tracker_with_the_claimed_label(),
+        claim_settings=ClaimSettings.fake(),
+        request=TeardownRequest(worktree=None),
+    )
+    assert holder_of_ticket(claims) is None
+    assert manager.worktrees().at(current.path) is None
 
 
 def test_removes_a_worktree_linked_to_no_ticket() -> None:
