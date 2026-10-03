@@ -2,21 +2,24 @@
 
 ## Running tasks
 
-Always go through moon, never the underlying tool. Moon runs the task's dependencies and caches aggressively — `moon run test`, not `pytest`.
+Always go through moon, never the underlying tool. Moon runs the task's dependencies and caches aggressively — `moon run :test`, not `pytest`.
+
+Each app lives in `apps/`. There is no default project, so every task needs a scope: `moon run :test` runs it in every app, `moon run mb-workflow:test` in one.
 
 | Task | Purpose |
 | --- | --- |
-| `moon run test` | pytest over `src/` |
-| `moon run types` | pyrefly type check |
-| `moon run modularity` | tach module-boundary check |
-| `moon run noprim` | fails on primitives in signatures |
-| `moon run lint` | ruff lint |
-| `moon run lint-fix` | ruff lint with `--fix` |
-| `moon run format` | ruff format check |
-| `moon run format-fix` | ruff format, writing changes |
-| `moon run actionlint` | lint GitHub Actions workflows |
-| `moon run phase-1` | fast checks with auto-fix; what the pre-commit hook runs |
-| `moon run full` | every check, including tests, without auto-fix |
+| `test` | pytest in each app |
+| `types` | pyrefly type check |
+| `modularity` | tach module-boundary check |
+| `noprim` | fails on primitives in signatures |
+| `lint` | ruff lint |
+| `lint-fix` | ruff lint with `--fix` |
+| `format` | ruff format check |
+| `format-fix` | ruff format, writing changes |
+| `phase-1` | fast checks with auto-fix; the pre-commit hook runs `moon run :phase-1` |
+| `full` | every check, including tests, without auto-fix |
+
+mb-workflow also has `actionlint` (lints the GitHub Actions workflows), `diagram`, and the live tests.
 
 `moon ci` runs everything.
 
