@@ -257,7 +257,14 @@ def create_review_workspace(
     pr: PullRequest,
     status: WorkspaceStatus,
     prompt: ReviewPrompt | None,
-) -> Result[CreatedWorkspace, Exception]:
+) -> Result[
+    CreatedWorkspace,
+    CodeReviewError
+    | CalledProcessError
+    | PromptUndeliveredError
+    | WorkspaceManagerError
+    | ValueError,
+]:
     try:
         narrator.creating(pr.number)
         opened = manager.create_for_review(

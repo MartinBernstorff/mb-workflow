@@ -9,8 +9,7 @@ from safe_result import Err, Ok, Result, safe_with
 from mb_workflow.b_core.c_secondary_ports.code_review import (
     CodeForge,
     CodeReviewError,
-    refuse_incomplete,
-    refuse_missing,
+    CodeReviewRefusal,
 )
 from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames
 from mb_workflow.b_core.d_domain_model.pull_request import (
@@ -196,7 +195,7 @@ def pending_submission(pr: PrNumber, pending: ReviewId, request: ReviewRequest) 
 
 class GitHubFailure:
     @staticmethod
-    def converted[T](
+    def as_code_review_error[T](
         result: Result[T, CalledProcessError | ValidationError],
     ) -> Result[T, CodeReviewError]:
         match result:
@@ -217,7 +216,7 @@ class GitHub(CodeForge):
 
     @override
     def review_requested(self) -> Result[PullRequests, CodeReviewError]:
-        return GitHubFailure.converted(self._review_requested())
+        return GitHubFailure.as_code_review_error(self._review_requested())
 
     @safe_with(CalledProcessError, ValidationError)
     def _review_requested(self) -> PullRequests:
@@ -239,7 +238,7 @@ class GitHub(CodeForge):
 
     @override
     def merged_branches(self, since: MergedSince) -> Result[BranchNames, CodeReviewError]:
-        return GitHubFailure.converted(self._merged_branches(since))
+        return GitHubFailure.as_code_review_error(self._merged_branches(since))
 
     @safe_with(CalledProcessError, ValidationError)
     def _merged_branches(self, since: MergedSince) -> BranchNames:
@@ -265,9 +264,9 @@ class GitHub(CodeForge):
 
     @override
     def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> Result[None, CodeReviewError]:
-        match refuse_missing(into):
+        match CodeReviewRefusal.check_directory(into):
             case Ok():
-                return GitHubFailure.converted(self._checkout(pr, into))
+                return GitHubFailure.as_code_review_error(self._checkout(pr, into))
             case Err() as refused:
                 return refused
 
@@ -297,9 +296,9 @@ class GitHub(CodeForge):
 
     @override
     def submit(self, pr: PrNumber, request: ReviewRequest) -> Result[None, CodeReviewError]:
-        match refuse_incomplete(request):
+        match CodeReviewRefusal.check_complete(request):
             case Ok():
-                return GitHubFailure.converted(self._submit(pr, request))
+                return GitHubFailure.as_code_review_error(self._submit(pr, request))
             case Err() as refused:
                 return refused
 

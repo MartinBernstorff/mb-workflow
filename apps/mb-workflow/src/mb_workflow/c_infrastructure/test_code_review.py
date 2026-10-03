@@ -593,8 +593,8 @@ def test_submitting_completes_my_pending_review(
 def test_a_pending_review_is_completed_only_once(
     review: CodeForge, ledger: ReviewLedger, stage: Stage
 ) -> None:
-    _ = review.submit(stage.pending, remark())
-    _ = review.submit(stage.pending, remark())
+    assert review.submit(stage.pending, remark()) == Ok(None)
+    assert review.submit(stage.pending, remark()) == Ok(None)
     assert [submitted.drafted for submitted in ledger.submitted()] == [
         Drafted(True),
         Drafted(False),
@@ -638,10 +638,11 @@ def test_requesting_changes_carries_its_body(
 def test_a_decision_that_needs_a_body_is_refused_without_one(
     review: CodeForge, ledger: ReviewLedger, stage: Stage, decision: ReviewDecision
 ) -> None:
+    reason = "requires comment text"
     submitted = review.submit(stage.pending, ReviewRequest(decision=decision, body=ReviewBody("")))
     assert isinstance(submitted, Err)
     assert isinstance(submitted.error, CodeReviewError)
-    assert "requires comment text" in str(submitted.error)
+    assert reason in str(submitted.error)
     assert ledger.submitted() == ()
 
 

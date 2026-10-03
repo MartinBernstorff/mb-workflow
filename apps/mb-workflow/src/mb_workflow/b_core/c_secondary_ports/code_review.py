@@ -29,16 +29,18 @@ class CodeForge(Protocol):
     def submit(self, pr: PrNumber, request: ReviewRequest) -> Result[None, CodeReviewError]: ...
 
 
-def refuse_incomplete(request: ReviewRequest) -> Result[None, CodeReviewError]:
-    if not request.complete().root:
-        return Err(CodeReviewError(f"{request.decision.value} requires comment text"))
-    return Ok(None)
+class CodeReviewRefusal:
+    @staticmethod
+    def check_complete(request: ReviewRequest) -> Result[None, CodeReviewError]:
+        if not request.complete().root:
+            return Err(CodeReviewError(f"{request.decision.value} requires comment text"))
+        return Ok(None)
 
-
-def refuse_missing(into: CheckoutDirectory) -> Result[None, CodeReviewError]:
-    if not into.root.is_dir():
-        return Err(CodeReviewError(f"Cannot check out into {into.root}: not a directory"))
-    return Ok(None)
+    @staticmethod
+    def check_directory(into: CheckoutDirectory) -> Result[None, CodeReviewError]:
+        if not into.root.is_dir():
+            return Err(CodeReviewError(f"Cannot check out into {into.root}: not a directory"))
+        return Ok(None)
 
 
 class MergedOn(Value[date]):
@@ -105,7 +107,7 @@ class FakeCodeReview(CodeForge):
 
     @override
     def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> Result[None, CodeReviewError]:
-        match refuse_missing(into):
+        match CodeReviewRefusal.check_directory(into):
             case Ok():
                 self._checkouts[into] = pr
                 return Ok(None)
@@ -114,7 +116,7 @@ class FakeCodeReview(CodeForge):
 
     @override
     def submit(self, pr: PrNumber, request: ReviewRequest) -> Result[None, CodeReviewError]:
-        match refuse_incomplete(request):
+        match CodeReviewRefusal.check_complete(request):
             case Ok():
                 drafted = Drafted(pr in self._pending)
                 self._pending.discard(pr)
@@ -131,18 +133,21 @@ class FakeCodeReview(CodeForge):
 
 
 class UnreachableCodeReview(CodeForge):
+    def __init__(self) -> None:
+        self._unreachable = CodeReviewError("The code review is unreachable.")
+
     @override
     def review_requested(self) -> Result[PullRequests, CodeReviewError]:
-        return Err(CodeReviewError("The code review is unreachable."))
+        return Err(self._unreachable)
 
     @override
     def merged_branches(self, since: MergedSince) -> Result[BranchNames, CodeReviewError]:
-        return Err(CodeReviewError("The code review is unreachable."))
+        return Err(self._unreachable)
 
     @override
     def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> Result[None, CodeReviewError]:
-        return Err(CodeReviewError("The code review is unreachable."))
+        return Err(self._unreachable)
 
     @override
     def submit(self, pr: PrNumber, request: ReviewRequest) -> Result[None, CodeReviewError]:
-        return Err(CodeReviewError("The code review is unreachable."))
+        return Err(self._unreachable)

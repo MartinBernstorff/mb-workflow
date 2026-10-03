@@ -259,6 +259,7 @@ def test_a_workspace_that_cannot_be_created_is_reported_as_failed(here: Worktree
 
 
 def test_a_checkout_that_is_refused_is_reported_as_failed(here: WorktreePath) -> None:
+    # No review directory is created, so the code review refuses to check out into it.
     outcome = run_review_workspaces(FakeCodeReview(PullRequests.fake()), standing_in(here))
     assert [failure.subject for failure in outcome.failed] == [
         FailureSubject.of_pr(PrNumber.fake())
