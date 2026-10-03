@@ -1011,10 +1011,7 @@ class Linear(TicketTracker):
                         "input": wanted.model_dump(mode="json", by_alias=True, exclude_unset=True),
                     },
                 )
-        for blocked in update.blocks:
-            self._relate(blocker=issue, blocked=blocked)
-        for blocker in update.blocked_by:
-            self._relate(blocker=blocker, blocked=issue)
+        self._relate_all(issue, blocks=update.blocks, blocked_by=update.blocked_by)
 
     @override
     def create_issue(self, new: NewIssue) -> CreatedIssue:
@@ -1026,10 +1023,7 @@ class Linear(TicketTracker):
                 {"input": creation.model_dump(mode="json", by_alias=True, exclude_none=True)},
             )
         created = CreatedIssueRead.model_validate(data).created()
-        for blocked in new.blocks:
-            self._relate(blocker=created.identifier, blocked=blocked)
-        for blocker in new.blocked_by:
-            self._relate(blocker=blocker, blocked=created.identifier)
+        self._relate_all(created.identifier, blocks=new.blocks, blocked_by=new.blocked_by)
         return created
 
     @override
@@ -1046,6 +1040,18 @@ class Linear(TicketTracker):
                 {"id": issue.root},
             )
         return InverseRelationsRead.model_validate(data).blockers()
+
+    def _relate_all(
+        self,
+        issue: IssueIdentifier,
+        *,
+        blocks: tuple[IssueIdentifier, ...],
+        blocked_by: tuple[IssueIdentifier, ...],
+    ) -> None:
+        for blocked in blocks:
+            self._relate(blocker=issue, blocked=blocked)
+        for blocker in blocked_by:
+            self._relate(blocker=blocker, blocked=issue)
 
     def _relate(self, *, blocker: IssueIdentifier, blocked: IssueIdentifier) -> None:
         with translated_errors():

@@ -78,7 +78,7 @@ class TicketEdit(Model):
         )
 
     def checked(
-        self, flow_labels: FlowLabels
+        self, flow_labels: FlowLabels, issue: IssueIdentifier
     ) -> Result[TicketEdit, TicketEditError | FlowLabelOptionError | UnknownStateError]:
         if self == TicketEdit.nothing():
             return Err(TicketEditError("Specify at least one field to edit."))
@@ -86,6 +86,8 @@ class TicketEdit(Model):
             return Err(TicketEditError("Specify only one of --body and --body-file."))
         if self.milestone is not None and self.remove_milestone.root:
             return Err(TicketEditError("Specify only one of --milestone and --remove-milestone."))
+        if issue in self.related_issues():
+            return Err(TicketEditError(f"{issue.root} cannot block or be blocked by itself."))
         match flow_labels.checked_label_options(
             LabelNames((*self.add_labels.root, *self.remove_labels.root))
         ):
@@ -120,13 +122,17 @@ class TicketEdit(Model):
             project=project,
             status=statuses.of(self.state) if self.state is not None else None,
             milestone=self._milestone(current, project),
-            blocks=tuple(issue for issue in self.add_blocks if issue not in current.blocks),
-            blocked_by=tuple(
-                issue for issue in self.add_blocked_by if issue not in current.blocked_by
-            ),
+            blocks=TicketEdit._unheld(self.add_blocks, current.blocks),
+            blocked_by=TicketEdit._unheld(self.add_blocked_by, current.blocked_by),
         )
 
-    def related(self) -> tuple[IssueIdentifier, ...]:
+    @staticmethod
+    def _unheld(
+        added: tuple[IssueIdentifier, ...], held: frozenset[IssueIdentifier]
+    ) -> tuple[IssueIdentifier, ...]:
+        return tuple(issue for issue in dict.fromkeys(added) if issue not in held)
+
+    def related_issues(self) -> tuple[IssueIdentifier, ...]:
         return (*self.add_blocks, *self.add_blocked_by)
 
     # The state is set without consulting the chart's moves, as the manual override of `mw flow`.

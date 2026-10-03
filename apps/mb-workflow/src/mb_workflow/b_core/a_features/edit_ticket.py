@@ -22,12 +22,12 @@ class TicketEditor:
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
     ) -> Result[None, TicketEditError | FlowLabelOptionError | UnknownStateError]:
-        match edit.checked(flow_labels):
+        match edit.checked(flow_labels, issue):
             case Ok(checked):
                 if checked.state is not None:
                     FlowLabelCheck.require(tracker, flow_labels, tracker.team_of(issue))
                 # Linear relates the issues after updating the fields, so an unknown one must be caught beforehand.
-                for related in checked.related():
+                for related in checked.related_issues():
                     _ = tracker.read_issue(related)
                 current = tracker.read_issue_detail(issue)
                 tracker.update_issue(
