@@ -17,7 +17,7 @@ def test_a_dry_run_cannot_watch() -> None:
 
 def test_a_command_run_without_its_required_arguments_shows_its_help() -> None:
     command_with_required_argument = ["ticket", "view"]
-    usage = "Usage: root ticket view [OPTIONS] {issue}"
+    usage = "root ticket view [OPTIONS] {issue}"
     error = "Missing argument"
     result = CliRunner().invoke(app, command_with_required_argument)
     assert usage in result.output
