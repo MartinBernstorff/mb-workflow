@@ -65,36 +65,32 @@ def test_each_skipped_ticket_is_logged_with_its_reason(caplog: pytest.LogCapture
 
 
 def test_each_unready_ticket_is_logged_with_its_reason(caplog: pytest.LogCaptureFixture) -> None:
-    unready = Unready(ticket=PoolTicket.fake(), reason=UnreadyReason("it is already claimed"))
+    reason = UnreadyReason("it is already claimed")
+    unready = Unready(ticket=PoolTicket.fake(), reason=reason)
     with caplog.at_level(logging.INFO):
         log_pass(DrainOutcome.fake().model_copy(update={"unready": (unready,)}))
-    assert (
-        f"Skipped {PoolTicket.fake().issue.identifier.root}: it is already claimed."
-        in caplog.messages
-    )
+    assert f"Skipped {PoolTicket.fake().issue.identifier.root}: {reason.root}." in caplog.messages
 
 
 def test_a_full_pool_is_logged_with_the_tickets_it_left(caplog: pytest.LogCaptureFixture) -> None:
-    full = PoolFull(total=Limit(1), left=PoolTickets.fake())
+    total = Limit(1)
+    full = PoolFull(total=total, left=PoolTickets.fake())
     with caplog.at_level(logging.INFO):
         log_pass(DrainOutcome.fake().model_copy(update={"full": full}))
-    assert (
-        f"The pool is full at 1 tickets; leaving {PoolTicket.fake().issue.identifier.root} unstarted."
-        in caplog.messages
-    )
+    left = PoolTicket.fake().issue.identifier.root
+    assert f"The pool is full at {total.root} tickets; leaving {left} unstarted." in caplog.messages
 
 
 def test_an_unchanged_pass_logs_one_line(caplog: pytest.LogCaptureFixture) -> None:
     quiet = DrainOutcome.fake().model_copy(update={"picked": PoolTickets(())})
     with caplog.at_level(logging.INFO):
         LoggingDrainNarrator().passed(quiet, Changed(False))
-    assert caplog.messages == [f"No change; {len(quiet.ready.root)} ready."]
+    assert caplog.messages == ["No change; 1 ready."]
 
 
 def test_a_changed_pass_logs_in_full(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.INFO):
         LoggingDrainNarrator().passed(DrainOutcome.fake(), Changed(True))
-    assert (
-        f"Skipped {PoolTicket.fake().issue.identifier.root}: {Refusal.fake().root}."
-        in caplog.messages
-    )
+    identifier = PoolTicket.fake().issue.identifier.root
+    assert f"Skipped {identifier}: {Refusal.fake().root}." in caplog.messages
+    assert f"Started {identifier}." in caplog.messages

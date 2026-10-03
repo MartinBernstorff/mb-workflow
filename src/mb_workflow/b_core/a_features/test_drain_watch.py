@@ -79,17 +79,29 @@ class FlakyTracker(FakeTicketTracker):
         return super().unblocked_view_tickets(view)
 
 
+# Requests a stop while listing the view, as if Ctrl-C arrived mid-pass.
+class SignallingTracker(FakeTicketTracker):
+    stop: FakeStopSignal | None = None
+
+    def signal_on_listing(self, stop: FakeStopSignal) -> None:
+        self.stop = stop
+
+    @override
+    def unblocked_view_tickets(self, view: ViewSlug) -> PoolTickets:
+        if self.stop is not None:
+            self.stop.signal()
+        return super().unblocked_view_tickets(view)
+
+
 def watching(
     tracker: FakeTicketTracker,
+    stop: FakeStopSignal,
     *,
-    passes: WaitCount,
     manager: FakeWorkspaceManager | None = None,
     lock: FakeRunLock | None = None,
     settings: DrainSettingsSource | None = None,
     narrator: RecordingNarrator | None = None,
-    stop: FakeStopSignal | None = None,
-) -> FakeStopSignal:
-    stop = stop or FakeStopSignal(passes)
+) -> None:
     watch_pool(
         tracker=tracker,
         claims=FakeClaimRegistry(),
@@ -103,13 +115,13 @@ def watching(
         narrator=narrator or RecordingNarrator(),
         request=WatchRequest.fake(),
     )
-    return stop
 
 
 def test_runs_passes_until_the_stop_signal() -> None:
     passes = WaitCount(3)
     narrator = RecordingNarrator()
-    stop = watching(standard_pool(), passes=passes, narrator=narrator)
+    stop = FakeStopSignal(passes)
+    watching(standard_pool(), stop, narrator=narrator)
     assert stop.requested() == Stopped(True)
     assert len(narrator.passes) == passes.root
 
@@ -118,23 +130,37 @@ def test_a_stop_requested_before_the_first_pass_runs_none() -> None:
     narrator = RecordingNarrator()
     stop = FakeStopSignal()
     stop.signal()
-    _ = watching(standard_pool(), passes=WaitCount(3), narrator=narrator, stop=stop)
+    watching(standard_pool(), stop, narrator=narrator)
     assert narrator.passes == []
+
+
+def test_a_stop_during_a_pass_lets_the_pass_finish_then_ends_the_watch() -> None:
+    manager = fake_manager()
+    stop = FakeStopSignal()
+    tracker = standard_pool(SignallingTracker)
+    assert isinstance(tracker, SignallingTracker)
+    tracker.signal_on_listing(stop)
+    started = (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
+    watching(tracker, stop, manager=manager)
+    assert opened_issues(manager) == started
+    assert stop.waits() == WaitCount(0)
 
 
 def test_a_raised_limit_applies_from_the_next_pass() -> None:
     manager = fake_manager()
     settings = SequencedSettings(pool_with_total(Limit(1)), pool_with_total(Limit(2)))
-    _ = watching(standard_pool(), passes=WaitCount(2), manager=manager, settings=settings)
-    assert opened_issues(manager) == (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
+    started = (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
+    watching(standard_pool(), FakeStopSignal(WaitCount(2)), manager=manager, settings=settings)
+    assert opened_issues(manager) == started
 
 
 def test_a_pass_skips_while_another_drain_holds_the_lock() -> None:
     lock = FakeRunLock()
     manager = fake_manager()
     passes = WaitCount(2)
+    stop = FakeStopSignal(passes)
     with lock.held():
-        stop = watching(standard_pool(), passes=passes, manager=manager, lock=lock)
+        watching(standard_pool(), stop, manager=manager, lock=lock)
     assert opened_issues(manager) == ()
     assert stop.waits() == passes
 
@@ -144,8 +170,9 @@ def test_a_tracker_failure_is_retried_on_the_next_pass() -> None:
     tracker = standard_pool(FlakyTracker)
     assert isinstance(tracker, FlakyTracker)
     tracker.fail_next_listing()
-    _ = watching(tracker, passes=WaitCount(2), manager=manager)
-    assert opened_issues(manager) == (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
+    started = (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
+    watching(tracker, FakeStopSignal(WaitCount(2)), manager=manager)
+    assert opened_issues(manager) == started
 
 
 def test_an_unknown_label_ends_the_watch() -> None:
@@ -155,22 +182,20 @@ def test_an_unknown_label_ends_the_watch() -> None:
     )
     stop = FakeStopSignal(WaitCount(3))
     with pytest.raises(UnknownLabelError):
-        _ = watching(tracker, passes=WaitCount(3), stop=stop)
+        watching(tracker, stop)
     assert stop.waits() == WaitCount(0)
 
 
 def test_a_config_without_a_pool_ends_the_watch() -> None:
     stop = FakeStopSignal(WaitCount(3))
     with pytest.raises(InvalidConfigError):
-        _ = watching(
-            standard_pool(), passes=WaitCount(3), settings=MissingPoolSettings(), stop=stop
-        )
+        watching(standard_pool(), stop, settings=MissingPoolSettings())
     assert stop.waits() == WaitCount(0)
 
 
 def test_only_passes_that_differ_from_the_last_count_as_changed() -> None:
     narrator = RecordingNarrator()
-    _ = watching(standard_pool(), passes=WaitCount(3), narrator=narrator)
+    watching(standard_pool(), FakeStopSignal(WaitCount(3)), narrator=narrator)
     assert tuple(changed for _, changed in narrator.passes) == (
         Changed(True),
         Changed(True),

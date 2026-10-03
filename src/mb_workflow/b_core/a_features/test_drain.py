@@ -46,8 +46,12 @@ from mb_workflow.b_core.d_domain_model.pool import (
     Refusal,
 )
 from mb_workflow.b_core.d_domain_model.workspace import (
+    Activate,
+    AgentName,
+    OpenedWorktree,
     ProjectSelector,
     TerminalText,
+    WorkspaceStatus,
     WorkspaceStatuses,
     WorktreeName,
     WorktreePath,
@@ -361,6 +365,32 @@ def test_a_start_that_fails_after_claiming_releases_the_claim() -> None:
     assert tracker.read_issue(IssueIdentifier("MB-2")).labels == LabelNames((LabelName("Specced"),))
 
 
+# Raises as a second stop signal would, after the workspace call begins.
+class InterruptedManager(FakeWorkspaceManager):
+    @override
+    def create_for_issue(
+        self,
+        project: ProjectSelector,
+        name: WorktreeName,
+        issue: IssueIdentifier | None,
+        agent: AgentName | None,
+        status: WorkspaceStatus | None,
+        *,
+        activate: Activate,
+    ) -> OpenedWorktree:
+        raise SystemExit(143)
+
+
+def test_a_start_interrupted_by_a_second_stop_signal_releases_the_claim() -> None:
+    claims = FakeClaimRegistry()
+    manager = InterruptedManager(
+        Worktrees.fake(), WorktreePath.fake(), WorkspaceStatuses(()), project=ProjectSelector.fake()
+    )
+    with pytest.raises(SystemExit):
+        _ = draining(standard_pool(), manager=manager, claims=claims)
+    assert holders(claims, IssueIdentifier("MB-2")) == ()
+
+
 def test_a_start_that_fails_tries_no_other_ticket() -> None:
     claims = FakeClaimRegistry()
     with pytest.raises(WorkspaceManagerError):
@@ -409,6 +439,8 @@ def test_a_pool_with_no_ready_ticket_starts_nothing() -> None:
     )
     assert outcome.ready == PoolTickets(())
     assert outcome.picked == PoolTickets(())
+    assert outcome.skipped == ()
+    assert outcome.full is None
     assert manager.worktrees() == Worktrees.fake()
 
 
@@ -516,13 +548,16 @@ def test_the_outcome_says_why_a_ticket_in_the_view_is_not_ready() -> None:
         pooled(IssueIdentifier("MB-3"), Priority.high, state=StateName("QA")),
         pooled(IssueIdentifier("MB-4"), Priority.high, state=None),
     )
+    claimed = UnreadyReason("it is already claimed")
+    unworked = UnreadyReason("no agent works tickets in QA")
+    stateless = UnreadyReason("it has no flow state")
     outcome = draining(tracker)
     assert tuple(
         (unready.ticket.issue.identifier, unready.reason) for unready in outcome.unready
     ) == (
-        (IssueIdentifier("MB-2"), UnreadyReason("it is already claimed")),
-        (IssueIdentifier("MB-3"), UnreadyReason("no agent works tickets in QA")),
-        (IssueIdentifier("MB-4"), UnreadyReason("it has no flow state")),
+        (IssueIdentifier("MB-2"), claimed),
+        (IssueIdentifier("MB-3"), unworked),
+        (IssueIdentifier("MB-4"), stateless),
     )
 
 
