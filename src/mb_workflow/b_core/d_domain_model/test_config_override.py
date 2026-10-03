@@ -32,6 +32,17 @@ def test_an_override_merges_tables_at_every_depth() -> None:
     )
 
 
+def test_an_override_key_replaces_the_repo_key_whatever_its_casing() -> None:
+    mine = SettingsTable({"qa": 3})
+    assert SettingsTable({"QA": 2}).merged(mine) == mine
+
+
+def test_keys_differing_in_casing_within_the_override_are_both_kept() -> None:
+    mine = {"QA": 1, "qa": 2}
+    merged = SettingsTable({"QA": 3}).merged(SettingsTable(mine))
+    assert merged == SettingsTable(mine)
+
+
 def test_a_table_may_replace_a_value_of_another_shape() -> None:
     merged = SettingsTable({"pool": "none"}).merged(SettingsTable({"pool": {"view": "x"}}))
     assert merged == SettingsTable({"pool": {"view": "x"}})
