@@ -1,7 +1,5 @@
 projects:
-  root: "."
-
-defaultProject: "root"
+  - "apps/*"
 
 vcs:
   defaultBranch: "main"

@@ -1,6 +1,6 @@
-language: "python"
-stack: "backend"
-layer: "application"
+# Inherited by every Python app under apps/. An app's moon.yml only adds or overrides tasks.
+inheritedBy:
+  languages: ["python"]
 
 fileGroups:
   sources:
@@ -14,54 +14,16 @@ tasks:
       - "uv.lock"
       - "pytest.toml"
       - "@group(sources)"
-      - "raise-baseline/*.txt"
     options:
-      outputStyle: "buffer-only-failure"
-
-  # Serial, because every test rewrites the same seeded issues in the integration-test workspace.
-  test-linear-live:
-    script: "uv run pytest -m linear_live --numprocesses=0 src/mb_workflow/c_infrastructure/test_ticket_tracker.py"
-    inputs:
-      - "pyproject.toml"
-      - "uv.lock"
-      - "pytest.toml"
-      - "@group(sources)"
-    options:
-      cache: false
-      runInCI: false
-      outputStyle: "buffer-only-failure"
-
-  test-github-live:
-    script: "uv run pytest -m github_live --numprocesses=0 src/mb_workflow/c_infrastructure/test_code_review.py"
-    inputs:
-      - "pyproject.toml"
-      - "uv.lock"
-      - "pytest.toml"
-      - "@group(sources)"
-    options:
-      cache: false
-      runInCI: false
-      outputStyle: "buffer-only-failure"
-
-  # Serial, because every test rewrites the same seeded worktrees in the integration-test project.
-  test-orca-live:
-    script: "uv run pytest -m orca_live --numprocesses=0 src/mb_workflow/c_infrastructure/test_workspace_manager.py"
-    inputs:
-      - "pyproject.toml"
-      - "uv.lock"
-      - "pytest.toml"
-      - "@group(sources)"
-    options:
-      cache: false
-      runInCI: false
       outputStyle: "buffer-only-failure"
 
   types:
-    script: "uv run pyrefly check"
+    script: "uv run pyrefly check src"
     inputs:
       - "pyproject.toml"
       - "uv.lock"
       - "pyrefly.toml"
+      - "/pyrefly.toml"
       - "@group(sources)"
     options:
       outputStyle: "buffer-only-failure"
@@ -92,6 +54,7 @@ tasks:
       - "pyproject.toml"
       - "uv.lock"
       - "ruff.toml"
+      - "/ruff.toml"
       - "@group(sources)"
     options:
       outputStyle: "buffer-only-failure"
@@ -108,6 +71,7 @@ tasks:
       - "pyproject.toml"
       - "uv.lock"
       - "ruff.toml"
+      - "/ruff.toml"
       - "@group(sources)"
     options:
       outputStyle: "buffer-only-failure"
@@ -117,27 +81,6 @@ tasks:
     options:
       cache: false
       runInCI: false
-
-  actionlint:
-    script: "uv run actionlint"
-    inputs:
-      - ".github/workflows/*.yml"
-    options:
-      outputStyle: "buffer-only-failure"
-
-  diagram:
-    script: "mkdir -p docs && uv run mw flow diagram --quiet --output docs/flow.svg && uv run mw flow diagram --quiet --output docs/flow.md"
-    inputs:
-      - "pyproject.toml"
-      - "uv.lock"
-      - "src/mb_workflow/a_presentation/diagram.py"
-      - "src/mb_workflow/b_core/d_domain_model/flow.py"
-    outputs:
-      - "docs/flow.svg"
-      - "docs/flow.md"
-    options:
-      runInCI: false
-      outputStyle: "buffer-only-failure"
 
   install:
     script: "uv tool install --force --reinstall ."
@@ -150,11 +93,9 @@ tasks:
     deps:
       - "lint-fix"
       - "format-fix"
-      - "diagram"
       - "types"
       - "modularity"
       - "noprim"
-      - "actionlint"
     inputs: []
     options:
       runDepsInParallel: false
@@ -167,7 +108,6 @@ tasks:
       - "types"
       - "modularity"
       - "noprim"
-      - "actionlint"
       - "test"
     inputs: []
     options:
