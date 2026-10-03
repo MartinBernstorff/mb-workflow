@@ -1,5 +1,5 @@
 import pytest
-from safe_result import Err
+from safe_result import Err, Ok
 
 from mb_workflow.b_core.d_domain_model.flow import StateName, UnknownStateError
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
@@ -9,6 +9,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
     IssueDescription,
     IssueDetail,
+    IssueIdentifier,
     IssueStatusName,
     IssueUpdate,
     LabelName,
@@ -34,7 +35,7 @@ def viewer() -> Assignee:
 
 
 def test_an_empty_edit_is_refused() -> None:
-    refused = TicketEdit.nothing().checked(FlowLabels.fake())
+    refused = TicketEdit.nothing().checked(FlowLabels.fake(), IssueIdentifier.fake())
     assert isinstance(refused, Err)
     assert isinstance(refused.error, TicketEditError)
 
@@ -71,7 +72,7 @@ def test_a_body_and_a_body_file_together_are_refused() -> None:
     edit = TicketEdit.nothing().model_copy(
         update={"body": IssueDescription("a"), "body_file": IssueDescription("b")}
     )
-    refused = edit.checked(FlowLabels.fake())
+    refused = edit.checked(FlowLabels.fake(), IssueIdentifier.fake())
     assert isinstance(refused, Err)
     assert isinstance(refused.error, TicketEditError)
 
@@ -218,7 +219,7 @@ def test_setting_and_removing_the_milestone_together_are_refused() -> None:
     edit = TicketEdit.nothing().model_copy(
         update={"milestone": MilestoneName.fake(), "remove_milestone": RemoveMilestone(True)}
     )
-    refused = edit.checked(FlowLabels.fake())
+    refused = edit.checked(FlowLabels.fake(), IssueIdentifier.fake())
     assert isinstance(refused, Err)
     assert isinstance(refused.error, TicketEditError)
 
@@ -241,12 +242,12 @@ def test_a_state_sets_its_flow_label_and_status() -> None:
 def test_a_state_is_spelled_as_the_chart_spells_it() -> None:
     review = StateName("Review")
     edit = TicketEdit.nothing().model_copy(update={"state": StateName("rEVIEW")})
-    assert edit.checked(FlowLabels.fake()).unwrap().state == review
+    assert edit.checked(FlowLabels.fake(), IssueIdentifier.fake()).unwrap().state == review
 
 
 def test_an_unknown_state_is_refused() -> None:
     edit = TicketEdit.nothing().model_copy(update={"state": StateName("Nowhere")})
-    refused = edit.checked(FlowLabels.fake())
+    refused = edit.checked(FlowLabels.fake(), IssueIdentifier.fake())
     assert isinstance(refused, Err)
     assert isinstance(refused.error, UnknownStateError)
 
@@ -255,6 +256,49 @@ def test_an_unknown_state_is_refused() -> None:
 def test_a_flow_label_in_a_label_option_is_refused(option: str) -> None:
     edit = TicketEdit.nothing().model_copy(update={option: LabelNames((LabelName("specced"),))})
     state_option = "--state"
-    refused = edit.checked(FlowLabels.fake())
+    refused = edit.checked(FlowLabels.fake(), IssueIdentifier.fake())
     assert isinstance(refused, Err)
     assert state_option in str(refused.error)
+
+
+def test_an_edit_with_only_relations_is_accepted() -> None:
+    edit = TicketEdit.nothing().model_copy(update={"add_blocks": (IssueIdentifier("E-1"),)})
+    assert isinstance(edit.checked(FlowLabels.fake(), IssueIdentifier.fake()), Ok)
+
+
+def test_a_ticket_relating_to_itself_is_refused() -> None:
+    edit = TicketEdit.nothing().model_copy(update={"add_blocked_by": (IssueIdentifier.fake(),)})
+    refused = edit.checked(FlowLabels.fake(), IssueIdentifier.fake())
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, TicketEditError)
+
+
+def test_added_relations_carry_into_the_update() -> None:
+    blocked = IssueIdentifier("E-1")
+    blocker = IssueIdentifier("E-2")
+    edit = TicketEdit.nothing().model_copy(
+        update={"add_blocks": (blocked,), "add_blocked_by": (blocker,)}
+    )
+    update = edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake())
+    assert (update.blocks, update.blocked_by) == ((blocked,), (blocker,))
+
+
+def test_relations_the_ticket_already_holds_are_not_added_again() -> None:
+    held_blocked = IssueIdentifier("E-1")
+    held_blocker = IssueIdentifier("E-2")
+    new_blocked = IssueIdentifier("E-3")
+    current = IssueDetail.fake().model_copy(
+        update={"blocks": frozenset({held_blocked}), "blocked_by": frozenset({held_blocker})}
+    )
+    edit = TicketEdit.nothing().model_copy(
+        update={"add_blocks": (held_blocked, new_blocked), "add_blocked_by": (held_blocker,)}
+    )
+    update = edit.update(current, viewer(), FlowLabels.fake(), TicketStatuses.fake())
+    assert (update.blocks, update.blocked_by) == ((new_blocked,), ())
+
+
+def test_a_relation_named_twice_is_added_once() -> None:
+    blocked = IssueIdentifier("E-1")
+    edit = TicketEdit.nothing().model_copy(update={"add_blocks": (blocked, blocked)})
+    update = edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake())
+    assert update.blocks == (blocked,)

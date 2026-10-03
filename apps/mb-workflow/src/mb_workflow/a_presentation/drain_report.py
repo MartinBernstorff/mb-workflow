@@ -14,11 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 class DrainReport:
+    # Only ready tickets are listed, and a ready ticket's flow labels always name its state.
     @staticmethod
     def pick_listing(ready: PoolTickets, flow_labels: FlowLabels) -> Output:
         return Output(
             "".join(
-                f"{ticket.issue.identifier.root}\t{ticket.priority.name}\t{DrainReport.state_cell(ticket.flow_state(flow_labels)).root}\n"
+                f"{ticket.issue.identifier.root}\t{ticket.priority.name}\t{DrainReport.state_cell(ticket.flow_state(flow_labels).unwrap_or(None)).root}\n"
                 for ticket in ready.root
             )
         )

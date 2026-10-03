@@ -117,6 +117,12 @@ def ticket_edit(
     remove_milestone: bool = typer.Option(
         False, "--remove-milestone", help="Remove the milestone."
     ),
+    add_blocks: list[str] = typer.Option(
+        [], "--add-blocks", help="Mark the ticket as blocking an issue."
+    ),
+    add_blocked_by: list[str] = typer.Option(
+        [], "--add-blocked-by", help="Mark the ticket as blocked by an issue."
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
@@ -133,6 +139,8 @@ def ticket_edit(
         state=StateName.from_nullable(state),
         milestone=MilestoneName.from_nullable(milestone),
         remove_milestone=RemoveMilestone(remove_milestone),
+        add_blocks=tuple(map(IssueIdentifier, add_blocks)),
+        add_blocked_by=tuple(map(IssueIdentifier, add_blocked_by)),
     )
     raise typer.Exit(
         code=commands.ticket_edit(

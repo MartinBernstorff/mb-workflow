@@ -10,7 +10,7 @@ from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
-    set_display_name_or_warn,
+    WorkspaceNaming,
 )
 from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.b_core.d_domain_model.pull_request import CheckoutDirectory, PrNumber
@@ -28,7 +28,7 @@ from mb_workflow.d_lib.models import Model, Value
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
     from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
-    from mb_workflow.b_core.c_secondary_ports.run_lock import RunLock
+    from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, RunLock
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.claim import HostName
@@ -145,20 +145,24 @@ def create_workspaces(
     status: WorkspaceStatus,
     since: MergedSince,
     prompt: ReviewPrompt | None,
-) -> Result[Outcome, CodeReviewError]:
-    with lock.held():
-        return reconcile_workspaces(
-            review=review,
-            manager=manager,
-            claims=claims,
-            tracker=tracker,
-            claim_settings=claim_settings,
-            host=host,
-            narrator=narrator,
-            status=status,
-            since=since,
-            prompt=prompt,
-        )
+) -> Result[Outcome, AlreadyRunningError | CodeReviewError]:
+    match lock.acquire():
+        case Ok(held):
+            with held:
+                return reconcile_workspaces(
+                    review=review,
+                    manager=manager,
+                    claims=claims,
+                    tracker=tracker,
+                    claim_settings=claim_settings,
+                    host=host,
+                    narrator=narrator,
+                    status=status,
+                    since=since,
+                    prompt=prompt,
+                )
+        case Err() as refused:
+            return refused
 
 
 def reconcile_workspaces(
@@ -268,7 +272,7 @@ def create_review_workspace(
         repo, pr.number, status, None if prompt is None else AgentName.claude()
     )
     path = opened.worktree.path
-    set_display_name_or_warn(manager, path, DisplayName.of_pr(pr.title))
+    WorkspaceNaming.set_display_name_or_warn(manager, path, DisplayName.of_pr(pr.title))
     narrator.checking_out(path)
     review.checkout(pr.number, CheckoutDirectory(path.root)).unwrap()
     if prompt is not None:

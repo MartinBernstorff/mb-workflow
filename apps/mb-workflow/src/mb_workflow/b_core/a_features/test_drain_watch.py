@@ -1,3 +1,4 @@
+import logging
 from typing import TYPE_CHECKING, override
 
 import pytest
@@ -14,6 +15,7 @@ from mb_workflow.b_core.a_features.drain_watch import (
 from mb_workflow.b_core.a_features.test_drain import (
     fake_board,
     fake_manager,
+    in_progress,
     opened_issues,
     pool_of,
     pool_with_total,
@@ -29,6 +31,7 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
 )
 from mb_workflow.b_core.c_secondary_ports.tie_break import ReversingTieBreak
 from mb_workflow.b_core.d_domain_model.config import InvalidConfigError, PoolSettings
+from mb_workflow.b_core.d_domain_model.flow import StateName
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, LabelNames
 from mb_workflow.b_core.d_domain_model.pool import Limit, PoolTickets, Priority
@@ -154,15 +157,19 @@ def test_a_raised_limit_applies_from_the_next_pass() -> None:
     assert opened_issues(manager) == started
 
 
-def test_a_pass_skips_while_another_drain_holds_the_lock() -> None:
+def test_a_pass_skips_while_another_drain_holds_the_lock(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     lock = FakeRunLock()
     manager = fake_manager()
     passes = WaitCount(2)
     stop = FakeStopSignal(passes)
-    with lock.held():
+    skipped = "Skipped this pass"
+    with caplog.at_level(logging.INFO), lock.acquire().unwrap():
         watching(standard_pool(), stop, manager=manager, lock=lock)
     assert opened_issues(manager) == ()
     assert stop.waits() == passes
+    assert caplog.text.count(skipped) == passes.root
 
 
 def test_a_tracker_failure_is_retried_on_the_next_pass() -> None:
@@ -173,6 +180,25 @@ def test_a_tracker_failure_is_retried_on_the_next_pass() -> None:
     started = (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
     watching(tracker, FakeStopSignal(WaitCount(2)), manager=manager)
     assert opened_issues(manager) == started
+
+
+def test_a_pass_refused_over_conflicting_flow_labels_is_retried_on_the_next_pass() -> None:
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-1"), Priority.low),
+        elsewhere=(
+            in_progress(
+                IssueIdentifier("MB-10"),
+                StateName("Grilling"),
+                labels=LabelNames((LabelName("QA"),)),
+            ),
+        ),
+    )
+    narrator = RecordingNarrator()
+    passes = WaitCount(2)
+    stop = FakeStopSignal(passes)
+    watching(tracker, stop, narrator=narrator)
+    assert narrator.passes == []
+    assert stop.waits() == passes
 
 
 def test_an_unknown_label_ends_the_watch() -> None:

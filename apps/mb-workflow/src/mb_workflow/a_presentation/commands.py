@@ -40,12 +40,11 @@ from mb_workflow.b_core.a_features.start import (
     TicketStart,
 )
 from mb_workflow.b_core.a_features.teardown import TeardownRequest, teardown_worktree
-from mb_workflow.b_core.a_features.transition import transition
+from mb_workflow.b_core.a_features.transition import LinkedTicketTransition
 from mb_workflow.b_core.a_features.unclaim import unclaim_ticket
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRefusedError
-from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
@@ -63,7 +62,7 @@ from mb_workflow.b_core.d_domain_model.config_override import (
     ProjectOverride,
 )
 from mb_workflow.b_core.d_domain_model.config_template import ConfigTemplate
-from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError, StateNames, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import EventName, StateNames, WorkflowChart
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
 from mb_workflow.b_core.d_domain_model.workspace import UnlinkedWorktreeError
@@ -105,12 +104,10 @@ logger = logging.getLogger(__name__)
 # so every command below shares this set rather than repeating its own.
 FAILURES = (
     AlreadyLinkedError,
-    AlreadyRunningError,
     BoardError,
     CalledProcessError,
     ClaimRefusedError,
     ConfigExistsError,
-    FlowError,
     InvalidConfigError,
     InvalidCredentialsError,
     InvalidOverrideError,
@@ -249,7 +246,7 @@ def ticket_start(
     settings = resolved_configuration(directory, name).settings
     orca = Orca(here())
     key = linear_key()
-    TicketStart.start_ticket(
+    match TicketStart.start_ticket(
         manager=orca,
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
@@ -259,8 +256,12 @@ def ticket_start(
         flow_labels=flow_labels_of_chart(),
         statuses=settings.ticket_statuses,
         request=request,
-    )
-    return ExitCode(0)
+    ):
+        case Ok():
+            return ExitCode(0)
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
 
 
 @guarded
@@ -270,7 +271,7 @@ def ticket_link(
     settings = resolved_configuration(directory, name).settings
     orca = Orca(here())
     key = linear_key()
-    TicketLinking.link_ticket(
+    match TicketLinking.link_ticket(
         manager=orca,
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
@@ -279,8 +280,12 @@ def ticket_link(
         claim_settings=settings.claims,
         flow_labels=flow_labels_of_chart(),
         request=request,
-    )
-    return ExitCode(0)
+    ):
+        case Ok():
+            return ExitCode(0)
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
 
 
 @guarded
@@ -291,7 +296,7 @@ def drain(
     pool = settings.required_pool()
     orca = Orca(here())
     key = linear_key()
-    outcome = Drain.drain_pool(
+    attempted = Drain.drain_pool(
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
         manager=orca,
@@ -305,12 +310,17 @@ def drain(
         pool=pool,
         request=request,
     )
-    DrainReport.log_pass(outcome)
-    if request.dry_run.root:
-        write(DrainReport.pick_listing(outcome.picked, flow_labels_of_chart()))
-    else:
-        DrainReport.log_drain_outcome(outcome)
-    return ExitCode(0)
+    match attempted:
+        case Ok(outcome):
+            DrainReport.log_pass(outcome)
+            if request.dry_run.root:
+                write(DrainReport.pick_listing(outcome.picked, flow_labels_of_chart()))
+            else:
+                DrainReport.log_drain_outcome(outcome)
+            return ExitCode(0)
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
 
 
 class ConfiguredDrainSettings(DrainSettingsSource):
@@ -449,7 +459,7 @@ def flow_event(
     event: EventName, force: Force, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
     orca = Orca(here())
-    moved_to = transition(
+    match LinkedTicketTransition.move_linked_ticket(
         store=workspace_board(orca),
         tracker=linear(),
         manager=orca,
@@ -457,9 +467,13 @@ def flow_event(
         statuses=resolved_configuration(directory, name).settings.ticket_statuses,
         event=event,
         force=force,
-    )
-    logger.info("Moved to %s.", moved_to.root)
-    return ExitCode(0)
+    ):
+        case Ok(moved_to):
+            logger.info("Moved to %s.", moved_to.root)
+            return ExitCode(0)
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
 
 
 @guarded
