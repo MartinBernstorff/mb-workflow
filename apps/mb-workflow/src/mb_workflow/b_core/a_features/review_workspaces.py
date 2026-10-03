@@ -1,11 +1,12 @@
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, Protocol
 
-from safe_result import Err, Ok, Result
+from safe_result import Err, Ok, Result, safe_with
 
 from mb_workflow.b_core.a_features.start import PromptUndeliveredError, TicketStart
 from mb_workflow.b_core.a_features.teardown import release_and_remove
 from mb_workflow.b_core.b_domain_services.worktree_reconciliation import obsolete, uncovered
+from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
@@ -26,7 +27,7 @@ from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
-    from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge, CodeReviewError
+    from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
     from mb_workflow.b_core.c_secondary_ports.run_lock import RunLock
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
@@ -248,6 +249,10 @@ def reconcile_workspaces(
     return Ok(Outcome(created=tuple(created), removed=tuple(removed), failed=tuple(failed)))
 
 
+# The other ports still raise, so their errors become values here, alongside the code review's.
+@safe_with(
+    CodeReviewError, CalledProcessError, PromptUndeliveredError, WorkspaceManagerError, ValueError
+)
 def create_review_workspace(
     *,
     review: CodeForge,
@@ -257,35 +262,15 @@ def create_review_workspace(
     pr: PullRequest,
     status: WorkspaceStatus,
     prompt: ReviewPrompt | None,
-) -> Result[
-    CreatedWorkspace,
-    CodeReviewError
-    | CalledProcessError
-    | PromptUndeliveredError
-    | WorkspaceManagerError
-    | ValueError,
-]:
-    try:
-        narrator.creating(pr.number)
-        opened = manager.create_for_review(
-            repo, pr.number, status, None if prompt is None else AgentName.claude()
-        )
-        path = opened.worktree.path
-        set_display_name_or_warn(manager, path, DisplayName.of_pr(pr.title))
-        narrator.checking_out(path)
-        match review.checkout(pr.number, CheckoutDirectory(path.root)):
-            case Ok():
-                if prompt is not None:
-                    TicketStart.send_prompt(
-                        manager, opened, prompt.text, prompt.idle_timeout, Submit(True)
-                    )
-                return Ok(CreatedWorkspace(name=WorktreeName.of(pr.number), path=path))
-            case Err() as refused:
-                return refused
-    except (
-        CalledProcessError,
-        PromptUndeliveredError,
-        WorkspaceManagerError,
-        ValueError,
-    ) as error:
-        return Err(error)
+) -> CreatedWorkspace:
+    narrator.creating(pr.number)
+    opened = manager.create_for_review(
+        repo, pr.number, status, None if prompt is None else AgentName.claude()
+    )
+    path = opened.worktree.path
+    set_display_name_or_warn(manager, path, DisplayName.of_pr(pr.title))
+    narrator.checking_out(path)
+    review.checkout(pr.number, CheckoutDirectory(path.root)).unwrap()
+    if prompt is not None:
+        TicketStart.send_prompt(manager, opened, prompt.text, prompt.idle_timeout, Submit(True))
+    return CreatedWorkspace(name=WorktreeName.of(pr.number), path=path)
