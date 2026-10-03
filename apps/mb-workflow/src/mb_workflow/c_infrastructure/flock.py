@@ -51,7 +51,7 @@ class FlockRunLock(RunLock):
         path = self._path.root
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w") as handle:
-            if FlockRunLock.taken(handle).is_err():
+            if FlockRunLock.acquire_exclusive(handle).is_err():
                 yield Err(AlreadyRunningError(f"another run holds {path}"))
                 return
             logger.debug("Holding %s", path)
@@ -63,5 +63,5 @@ class FlockRunLock(RunLock):
 
     @staticmethod
     @safe_with(BlockingIOError)
-    def taken(handle: TextIO) -> None:
+    def acquire_exclusive(handle: TextIO) -> None:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)

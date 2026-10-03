@@ -33,9 +33,10 @@ def test_a_free_lock_lets_the_run_proceed(lock: RunLock) -> None:
 
 
 def test_a_second_holder_is_refused_while_the_first_holds_the_lock(lock: RunLock) -> None:
+    refusal = "another run holds"
     with lock.held(), lock.held() as second:
         assert isinstance(second.error, AlreadyRunningError)
-        assert "another run holds" in str(second.error)
+        assert refusal in str(second.error)
 
 
 def test_a_refused_holder_leaves_the_lock_with_the_first(lock: RunLock) -> None:
