@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, FakeRunLock
+from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
 from mb_workflow.c_infrastructure.flock import FlockRunLock, LockName, LockPath
 
 if TYPE_CHECKING:
@@ -57,6 +58,17 @@ def test_the_lock_is_released_when_the_run_raises(lock: RunLock) -> None:
 
 def test_the_lock_lives_in_the_cache_under_its_name() -> None:
     assert LockPath.of(LockName.fake()).root.name == "review-workspaces.lock"
+
+
+def test_a_project_lock_lives_in_the_cache_under_the_project() -> None:
+    path = LockPath.of_project(LockName("drain"), ProjectSelector("github:owner/repo")).root
+    assert path.parts[-2:] == ("github-owner-repo", "drain.lock")
+
+
+def test_projects_get_separate_locks() -> None:
+    assert LockPath.of_project(LockName("drain"), ProjectSelector("github:owner/one")) != (
+        LockPath.of_project(LockName("drain"), ProjectSelector("github:owner/two"))
+    )
 
 
 def test_a_separate_flock_on_the_same_path_is_refused(tmp_path: Path) -> None:

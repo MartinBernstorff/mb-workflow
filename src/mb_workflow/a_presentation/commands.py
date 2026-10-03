@@ -282,7 +282,7 @@ def drain(
         claims=LinearClaims.connected(key),
         manager=orca,
         board=workspace_board(orca),
-        lock=FlockRunLock(LockPath.of(lock)),
+        lock=FlockRunLock(LockPath.of_project(lock, settings.workspace.orca_project)),
         tie_break=RandomTieBreak(),
         workspace=settings.workspace,
         claim_settings=settings.claims,
@@ -319,6 +319,8 @@ class ConfiguredDrainSettings(DrainSettingsSource):
 def drain_watch(
     request: WatchRequest, lock: LockName, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
+    # The lock is taken once for the whole watch, so it uses the project configured at startup.
+    project = resolved_configuration(directory, name).settings.workspace.orca_project
     orca = Orca(here())
     key = linear_key()
     with SignalStop.installed(PollSeconds(0.2)) as stop:
@@ -327,7 +329,7 @@ def drain_watch(
             claims=LinearClaims.connected(key),
             manager=orca,
             board=workspace_board(orca),
-            lock=FlockRunLock(LockPath.of(lock)),
+            lock=FlockRunLock(LockPath.of_project(lock, project)),
             tie_break=RandomTieBreak(),
             flow_labels=flow_labels_of_chart(),
             settings=ConfiguredDrainSettings(directory, name),
