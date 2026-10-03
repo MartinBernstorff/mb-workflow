@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from mb_workflow.d_lib.logging import Activity, LogLevel
+from mb_workflow.d_lib.logging import FORMATTER, Activity, LogLevel
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -28,6 +28,13 @@ def test_http_loggers_hide_info_but_show_warnings(name: str) -> None:
     logger = logging.getLogger(name)
     assert not logger.isEnabledFor(logging.INFO)
     assert logger.isEnabledFor(logging.WARNING)
+
+
+def test_a_log_line_starts_with_the_time_of_day() -> None:
+    message = "Claiming MB-57"
+    record = logging.LogRecord(__name__, logging.INFO, __file__, 0, message, None, None)
+
+    assert re.fullmatch(rf"\d{{2}}:\d{{2}}:\d{{2}} {message}", FORMATTER.format(record))
 
 
 def test_an_activity_logs_its_start_before_the_work_and_its_finish_after(
