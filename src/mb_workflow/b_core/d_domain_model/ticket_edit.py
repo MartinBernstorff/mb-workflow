@@ -2,12 +2,17 @@ from typing import TYPE_CHECKING
 
 from safe_result import Err, Ok, Result
 
+from mb_workflow.b_core.d_domain_model.flow import (
+    AcceptedStates,
+    StateName,
+    UnknownStateError,
+    WorkflowChart,
+)
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     Cleared,
     IssueDescription,
     IssueDetail,
-    IssueStatusName,
     IssueTitle,
     IssueUpdate,
     LabelNames,
@@ -19,6 +24,7 @@ from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabelOptionError, FlowLabels
+    from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
 
 class TicketEditError(ValueError):
@@ -41,7 +47,7 @@ class TicketEdit(Model):
     remove_assignee: Assignee | None
     add_project: ProjectName | None
     remove_project: ProjectName | None
-    status: IssueStatusName | None
+    state: StateName | None
     milestone: MilestoneName | None
     remove_milestone: RemoveMilestone
 
@@ -61,14 +67,14 @@ class TicketEdit(Model):
             remove_assignee=None,
             add_project=None,
             remove_project=None,
-            status=None,
+            state=None,
             milestone=None,
             remove_milestone=RemoveMilestone(False),
         )
 
     def checked(
         self, flow_labels: FlowLabels
-    ) -> Result[TicketEdit, TicketEditError | FlowLabelOptionError]:
+    ) -> Result[TicketEdit, TicketEditError | FlowLabelOptionError | UnknownStateError]:
         if self == TicketEdit.nothing():
             return Err(TicketEditError("Specify at least one field to edit."))
         if self.body is not None and self.body_file is not None:
@@ -79,24 +85,47 @@ class TicketEdit(Model):
             LabelNames((*self.add_labels.root, *self.remove_labels.root))
         ):
             case Ok():
-                return Ok(self)
+                return self._with_state_spelled_as_chart()
+            case Err() as failed:
+                return failed
+
+    def _with_state_spelled_as_chart(self) -> Result[TicketEdit, UnknownStateError]:
+        if self.state is None:
+            return Ok(self)
+        match AcceptedStates.of_chart(WorkflowChart).named_ignoring_case(self.state):
+            case Ok(state):
+                return Ok(self.model_copy(update={"state": state}))
             case Err() as failed:
                 return failed
 
     # Expects an edit that passed checked.
-    def update(self, current: IssueDetail, viewer: Assignee) -> IssueUpdate:
+    def update(
+        self,
+        current: IssueDetail,
+        viewer: Assignee,
+        flow_labels: FlowLabels,
+        statuses: TicketStatuses,
+    ) -> IssueUpdate:
         project = self._project(current)
         return IssueUpdate(
             title=self.title,
             description=self.body if self.body is not None else self.body_file,
-            labels=self._labels(current),
+            labels=self._labels(current, flow_labels),
             assignee=self._assignee(current, viewer),
             project=project,
-            status=self.status,
+            status=statuses.of(self.state) if self.state is not None else None,
             milestone=self._milestone(current, project),
         )
 
-    def _labels(self, current: IssueDetail) -> LabelNames | None:
+    # The state is set without consulting the chart's moves, as the manual override of `mw flow`.
+    def _labels(self, current: IssueDetail, flow_labels: FlowLabels) -> LabelNames | None:
+        edited = self._edited_labels(current)
+        if self.state is None:
+            return edited
+        held = current.issue.labels if edited is None else edited
+        return flow_labels.relabelled(held, self.state)
+
+    def _edited_labels(self, current: IssueDetail) -> LabelNames | None:
         if not self.add_labels.root and not self.remove_labels.root:
             return None
         kept = LabelNames(

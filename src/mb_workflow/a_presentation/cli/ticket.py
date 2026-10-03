@@ -9,6 +9,7 @@ from mb_workflow.b_core.a_features.autolabel import AutolabelRequest, DryRun
 from mb_workflow.b_core.d_domain_model.autolabel import ExcludePattern, Exclusions
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
+from mb_workflow.b_core.d_domain_model.flow import AcceptedStates, StateName, WorkflowChart
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     CreatedAfter,
@@ -16,7 +17,6 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Creator,
     IssueDescription,
     IssueIdentifier,
-    IssueStatusName,
     IssueTitle,
     LabelName,
     LabelNames,
@@ -105,7 +105,14 @@ def ticket_edit(
     remove_project: str | None = typer.Option(
         None, "--remove-project", help="Remove from a project."
     ),
-    state: str | None = typer.Option(None, "--state", "-s", help="Move to a workflow state."),
+    state: str | None = typer.Option(
+        None,
+        "--state",
+        "-s",
+        help="Move to a flow state, ignoring case and the chart's allowed moves: "
+        + ", ".join(state.root for state in AcceptedStates.of_chart(WorkflowChart).root)
+        + ".",
+    ),
     milestone: str | None = typer.Option(None, "--milestone", "-m", help="Set the milestone."),
     remove_milestone: bool = typer.Option(
         False, "--remove-milestone", help="Remove the milestone."
@@ -123,11 +130,15 @@ def ticket_edit(
         remove_assignee=Assignee.from_nullable(remove_assignee),
         add_project=ProjectName.from_nullable(add_project),
         remove_project=ProjectName.from_nullable(remove_project),
-        status=IssueStatusName.from_nullable(state),
+        state=StateName.from_nullable(state),
         milestone=MilestoneName.from_nullable(milestone),
         remove_milestone=RemoveMilestone(remove_milestone),
     )
-    raise typer.Exit(code=commands.ticket_edit(IssueIdentifier(issue), edit).root)
+    raise typer.Exit(
+        code=commands.ticket_edit(
+            IssueIdentifier(issue), edit, WorkingDirectory(Path.cwd()), ConfigFileName.default()
+        ).root
+    )
 
 
 @ticket_app.command("autolabel")
