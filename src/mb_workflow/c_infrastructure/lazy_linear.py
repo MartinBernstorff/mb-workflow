@@ -91,6 +91,12 @@ class LazyLinear(TicketTracker):
         self._tracker().create_group_labels(group, labels, team)
 
     @override
+    def recolor_group_labels(
+        self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
+    ) -> None:
+        self._tracker().recolor_group_labels(group, labels, team)
+
+    @override
     def team_named(self, name: TeamName) -> TeamKey:
         return self._tracker().team_named(name)
 

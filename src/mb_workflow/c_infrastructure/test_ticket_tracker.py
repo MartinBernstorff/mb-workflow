@@ -31,6 +31,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
     Cleared,
+    ColoredLabel,
     ColoredLabels,
     CreatedAfter,
     CreatedIssue,
@@ -47,6 +48,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueStatusName,
     IssueTitle,
     IssueUpdate,
+    LabelColor,
     LabelGroupName,
     LabelName,
     LabelNames,
@@ -676,6 +678,28 @@ def test_a_created_group_reads_back_the_colors_of_its_labels(
     assert set(groupless.group_labels(LabelGroupName.fake(), backlog.team).root) == set(
         created.root
     )
+
+
+def test_a_recolored_label_reads_back_its_new_color(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
+    )
+    yellow = ColoredLabels((ColoredLabel(name=QA, color=LabelColor.yellow()),))
+    groupless.recolor_group_labels(LabelGroupName.fake(), yellow, backlog.team)
+    assert groupless.group_labels(LabelGroupName.fake(), backlog.team) == yellow
+
+
+def test_recoloring_a_label_the_group_lacks_is_refused(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
+    )
+    yellow = ColoredLabels((ColoredLabel(name=GRILLING, color=LabelColor.yellow()),))
+    with pytest.raises(TicketTrackerError, match=GRILLING.root):
+        groupless.recolor_group_labels(LabelGroupName.fake(), yellow, backlog.team)
 
 
 def test_a_group_that_does_not_exist_lists_no_labels(groupless: TicketTracker) -> None:

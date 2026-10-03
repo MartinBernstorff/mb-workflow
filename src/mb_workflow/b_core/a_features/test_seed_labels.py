@@ -67,14 +67,14 @@ def test_seeding_a_team_leaves_other_teams_without_flow_labels() -> None:
 
 def test_seeding_reports_the_labels_it_created() -> None:
     seeded = seed_flow_labels(SeedingTrackers.empty(), FlowLabels.fake(), TeamName.fake())
-    assert seeded == SeededTeam(created=FlowLabels.fake().labels, miscolored=LabelNames(()))
+    assert seeded == SeededTeam(created=FlowLabels.fake().labels, recolored=LabelNames(()))
 
 
 def test_seeding_again_creates_nothing() -> None:
     tracker = SeedingTrackers.empty()
     _ = seed_flow_labels(tracker, FlowLabels.fake(), TeamName.fake())
     seeded = seed_flow_labels(tracker, FlowLabels.fake(), TeamName.fake())
-    assert seeded == SeededTeam(created=LabelNames(()), miscolored=LabelNames(()))
+    assert seeded == SeededTeam(created=LabelNames(()), recolored=LabelNames(()))
 
 
 def test_seeding_adds_only_the_labels_the_team_group_lacks() -> None:
@@ -86,7 +86,17 @@ def test_seeding_adds_only_the_labels_the_team_group_lacks() -> None:
     assert tracker.group_labels(wanted.group, TeamKey.fake()).label_names() == wanted.labels
 
 
-def test_seeding_reports_team_labels_in_the_wrong_color() -> None:
+def test_seeding_recolors_team_labels_in_the_wrong_color() -> None:
+    wanted = FlowLabels.fake()
+    tracker = SeedingTrackers.empty()
+    grey = ColoredLabels((ColoredLabel(name=LabelName("Grilling"), color=LabelColor.grey()),))
+    tracker.create_group_labels(wanted.group, grey, TeamKey.fake())
+    _ = seed_flow_labels(tracker, wanted, TeamName.fake())
+    held = tracker.group_labels(wanted.group, TeamKey.fake())
+    assert wanted.miscolored(held) == LabelNames(())
+
+
+def test_seeding_reports_the_labels_it_recolored() -> None:
     wanted = FlowLabels.fake()
     tracker = SeedingTrackers.empty()
     grilling = LabelName("Grilling")
@@ -94,7 +104,17 @@ def test_seeding_reports_team_labels_in_the_wrong_color() -> None:
     tracker.create_group_labels(wanted.group, grey, TeamKey.fake())
     seeded = seed_flow_labels(tracker, wanted, TeamName.fake())
     assert isinstance(seeded, SeededTeam)
-    assert seeded.miscolored == LabelNames((grilling,))
+    assert seeded.recolored == LabelNames((grilling,))
+
+
+def test_seeding_recolors_workspace_labels_a_team_relies_on() -> None:
+    wanted = FlowLabels.fake()
+    tracker = SeedingTrackers.empty()
+    qa = LabelName("QA")
+    yellow = ColoredLabels((ColoredLabel(name=qa, color=LabelColor.yellow()),))
+    tracker.create_group_labels(wanted.group, yellow, None)
+    _ = seed_flow_labels(tracker, wanted, TeamName.fake())
+    assert wanted.miscolored(tracker.group_labels(wanted.group, None)) == LabelNames(())
 
 
 def test_a_complete_workspace_flow_group_covers_the_team() -> None:
@@ -109,7 +129,7 @@ def test_a_complete_workspace_flow_group_leaves_the_team_without_labels() -> Non
     assert tracker.group_labels(FlowLabels.fake().group, TeamKey.fake()) == ColoredLabels(())
 
 
-def test_a_covering_workspace_group_reports_its_labels_in_the_wrong_color() -> None:
+def test_a_covering_workspace_group_recolors_and_reports_its_labels_in_the_wrong_color() -> None:
     wanted = FlowLabels.fake()
     tracker = SeedingTrackers.empty()
     qa = LabelName("QA")
@@ -118,7 +138,8 @@ def test_a_covering_workspace_group_reports_its_labels_in_the_wrong_color() -> N
     yellow = ColoredLabels((ColoredLabel(name=qa, color=LabelColor.yellow()),))
     tracker.create_group_labels(wanted.group, yellow, None)
     covered = seed_flow_labels(tracker, wanted, TeamName.fake())
-    assert covered == CoveredByWorkspace(group=wanted.group, miscolored=LabelNames((qa,)))
+    assert covered == CoveredByWorkspace(group=wanted.group, recolored=LabelNames((qa,)))
+    assert wanted.miscolored(tracker.group_labels(wanted.group, None)) == LabelNames(())
 
 
 def test_an_incomplete_workspace_flow_group_gets_the_rest_in_the_team() -> None:

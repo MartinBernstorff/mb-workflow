@@ -63,6 +63,10 @@ class TicketTracker(Protocol):
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None: ...
 
+    def recolor_group_labels(
+        self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
+    ) -> None: ...
+
     def team_named(self, name: TeamName) -> TeamKey: ...
 
     def team_of(self, issue: IssueIdentifier) -> TeamKey: ...
@@ -194,6 +198,31 @@ class FakeTicketTracker(TicketTracker):
             self._labels = LabelNames((*self._labels.root, *labels.label_names().root))
         else:
             self._team_groups[(team, group)] = held
+
+    @override
+    def recolor_group_labels(
+        self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
+    ) -> None:
+        held = self.group_labels(group, team)
+        unknown = held.label_names().unmatched(labels.label_names())
+        if unknown.root:
+            raise TicketTrackerError(
+                f"The {group.root} group holds no label named"
+                f" {', '.join(label.root for label in unknown.root)}."
+            )
+        colors = {label.name.root.casefold(): label.color for label in labels.root}
+        recolored = ColoredLabels(
+            tuple(
+                ColoredLabel(
+                    name=label.name, color=colors.get(label.name.root.casefold(), label.color)
+                )
+                for label in held.root
+            )
+        )
+        if team is None:
+            self._groups[group] = recolored
+        else:
+            self._team_groups[(team, group)] = recolored
 
     @override
     def team_named(self, name: TeamName) -> TeamKey:

@@ -399,11 +399,9 @@ def flow_seed_labels(team: TeamName) -> ExitCode:
             wanted.group.root,
             team.root,
         )
-    if seeded.miscolored.root:
-        logger.warning(
-            "%s have the wrong color. The entry labels %s should be yellow, the rest grey."
-            " Recolor them in Linear.",
-            ", ".join(label.root for label in seeded.miscolored.root),
-            ", ".join(label.root for label in wanted.entry.root),
+    if seeded.recolored.root:
+        logger.info(
+            "Recolored %s, so entry labels are yellow and the rest grey.",
+            ", ".join(label.root for label in seeded.recolored.root),
         )
     return ExitCode(0)

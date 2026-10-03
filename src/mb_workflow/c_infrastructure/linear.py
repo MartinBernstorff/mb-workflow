@@ -751,6 +751,32 @@ class Linear(TicketTracker):
             )
 
     @override
+    def recolor_group_labels(
+        self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
+    ) -> None:
+        found = self._found_group(group, team)
+        children = found.children if found is not None else ()
+        for label in labels.root:
+            child = next(
+                (
+                    child
+                    for child in children
+                    if child.name.root.casefold() == label.name.root.casefold()
+                ),
+                None,
+            )
+            if child is None:
+                raise TicketTrackerError(
+                    f"The {group.root} group holds no label named {label.name.root}."
+                )
+            with translated_errors():
+                _ = self._client.execute(
+                    "mutation($id: String!, $input: IssueLabelUpdateInput!) {"
+                    " issueLabelUpdate(id: $id, input: $input) { success } }",
+                    {"id": child.id.root, "input": {"color": label.color.root}},
+                )
+
+    @override
     def team_named(self, name: TeamName) -> TeamKey:
         found = self._found_team({"name": {"eqIgnoreCase": name.root}})
         if found is None:
