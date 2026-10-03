@@ -209,7 +209,8 @@ def test_a_ticket_without_a_flow_label_is_neither_claimed_assigned_nor_opened() 
     manager = fake_manager()
     tracker = tracking(None)
     claims = FakeClaimRegistry()
-    with pytest.raises(FlowError, match=r"--state.*Grilling, Speccing, Specced"):
+    startable = r"--state.*Grilling, Speccing, Specced"
+    with pytest.raises(FlowError, match=startable):
         starting(manager, tracker, StartRequest.fake(), claims)
     assert manager.worktrees() == Worktrees.fake()
     assert tracker.read_issue(IssueIdentifier.fake()).assigned == Assigned(False)
@@ -223,10 +224,11 @@ def starting_in(state: StateName) -> StartRequest:
 def test_a_ticket_without_a_flow_label_started_in_a_state_gets_its_label_and_status() -> None:
     manager = fake_manager()
     tracker = tracking(None)
-    starting(manager, tracker, starting_in(StateName("Specced")))
+    specced = StateName("Specced")
+    starting(manager, tracker, starting_in(specced))
     issue = tracker.read_issue(IssueIdentifier.fake())
-    assert issue.labels.has(LabelName("Specced")).root
-    assert issue.status == TicketStatuses.fake().of(StateName("Specced"))
+    assert issue.labels.has(LabelName(specced.root)).root
+    assert issue.status == TicketStatuses.fake().of(specced)
     assert manager.typed_texts() == (TerminalText("/implement E-4289"),)
 
 
@@ -244,8 +246,9 @@ def test_a_ticket_with_a_flow_label_started_in_a_state_is_not_claimed() -> None:
 def test_a_ticket_started_in_a_state_with_no_work_is_not_claimed() -> None:
     tracker = tracking(None)
     claims = FakeClaimRegistry()
-    with pytest.raises(FlowError, match="Merged"):
-        starting(fake_manager(), tracker, starting_in(StateName("Merged")), claims)
+    merged = StateName("Merged")
+    with pytest.raises(FlowError, match=merged.root):
+        starting(fake_manager(), tracker, starting_in(merged), claims)
     assert tracker.read_issue(IssueIdentifier.fake()).labels == labelled(None)
     assert claims.claims(IssueIdentifier.fake()) == Claims(())
 

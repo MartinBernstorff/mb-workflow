@@ -2,6 +2,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.b_domain_services.flow_label_check import require_flow_labels
+from mb_workflow.b_core.b_domain_services.flow_transition import put_in_state
 from mb_workflow.b_core.b_domain_services.next_action import next_action
 from mb_workflow.b_core.c_secondary_ports.claims import (
     ClaimRequest,
@@ -25,7 +26,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
     WorkflowChart,
 )
 from mb_workflow.b_core.d_domain_model.flow_labels import state_of
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueUpdate
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.workspace import (
     Activate,
     AgentName,
@@ -81,6 +82,27 @@ class StartRequest(Model):
             return None
         return TerminalText(f"{action.root} {self.ticket.root}")
 
+    def state_given(self, labelled_state: StateName | None) -> StateName:
+        if labelled_state is not None:
+            if self.state is not None:
+                raise FlowError(
+                    f"{self.ticket.root} is already in {labelled_state.root};"
+                    " move it with `mw flow` instead of --state."
+                )
+            return labelled_state
+        startable = startable_states()
+        listed = ", ".join(state.root for state in startable)
+        if self.state is None:
+            raise FlowError(
+                f"{self.ticket.root} carries no flow label, so it is not in the flow."
+                f" Pass --state with one of {listed}."
+            )
+        if self.state not in startable:
+            raise FlowError(
+                f"Cannot start a ticket in {self.state.root}. Pass --state with one of {listed}."
+            )
+        return self.state
+
 
 def start_ticket(
     *,
@@ -96,20 +118,26 @@ def start_ticket(
 ) -> None:
     # Resolve the state before touching anything, so a ticket with no work left is neither claimed, assigned nor opened.
     detail = tracker.read_issue_detail(request.ticket)
-    labelled = state_of(WorkflowChart, flow_labels, detail.issue.grouped)
-    state = starting_state(request, labelled)
-    if labelled is None:
-        require_flow_labels(tracker, flow_labels)
+    labelled_state = state_of(WorkflowChart, flow_labels, detail.issue.grouped)
+    state = request.state_given(labelled_state)
     prompt = request.prompt_for(action_in(request.ticket, state))
+    require_claim_label(tracker, claim_settings.label)
+
+    # Put an unlabelled ticket in the flow before claiming it, so a failed write leaves no claim behind.
+    status = detail.issue.status
+    if labelled_state is None:
+        require_flow_labels(tracker, flow_labels)
+        put_in_state(tracker, request.ticket, flow_labels, statuses, state)
+        status = statuses.of(state)
+        logger.info("Put %s in %s.", request.ticket.root, state.root)
 
     name = WorktreeName.of_issue(request.ticket)
     holder = ClaimHolder(host=request.host, worktree=name)
-    require_claim_label(tracker, claim_settings.label)
     claim_ticket(
         claims,
         ClaimRequest(
             ticket=request.ticket,
-            status=detail.issue.status,
+            status=status,
             holder=holder,
             take_over=request.take_over,
         ),
@@ -125,19 +153,6 @@ def start_ticket(
         tracker,
         LabelledClaim(ticket=request.ticket, holder=holder, label=claim_settings.label),
     )
-    if labelled is None:
-        tracker.update_issue(
-            request.ticket,
-            IssueUpdate.nothing().model_copy(
-                update={
-                    "labels": flow_labels.relabelled(
-                        tracker.read_issue(request.ticket).labels, state
-                    ),
-                    "status": statuses.of(state),
-                }
-            ),
-        )
-        logger.info("Put %s in %s.", request.ticket.root, state.root)
 
     # Assignment is a convenience, not the point of starting a ticket, so never fail the run over it.
     try:
@@ -165,28 +180,6 @@ def start_ticket(
 
     if prompt is not None:
         send_prompt(manager, opened, prompt, request.idle_timeout, request.submit)
-
-
-def starting_state(request: StartRequest, labelled: StateName | None) -> StateName:
-    if labelled is not None:
-        if request.state is not None:
-            raise FlowError(
-                f"{request.ticket.root} is already in {labelled.root};"
-                " move it with `mw flow` instead of --state."
-            )
-        return labelled
-    startable = startable_states()
-    if request.state is None:
-        raise FlowError(
-            f"{request.ticket.root} carries no flow label, so it is not in the flow."
-            f" Pass --state with one of {', '.join(state.root for state in startable)}."
-        )
-    if request.state not in startable:
-        raise FlowError(
-            f"Cannot start a ticket in {request.state.root}."
-            f" Pass --state with one of {', '.join(state.root for state in startable)}."
-        )
-    return request.state
 
 
 def startable_states() -> tuple[StateName, ...]:
