@@ -1,6 +1,8 @@
 import logging
 from typing import TYPE_CHECKING
 
+from safe_result import Err, Ok
+
 from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
 from mb_workflow.b_core.a_features.start import StartRequest, TicketStart
 from mb_workflow.b_core.b_domain_services.pick_order import in_pick_order
@@ -96,10 +98,13 @@ class Unready(Model):
     ) -> UnreadyReason:
         if ticket.issue.labels.matching(claim_label) is not None:
             return UnreadyReason("it is already claimed")
-        state = ticket.flow_state(flow_labels)
-        if state is None:
-            return UnreadyReason("it has no flow state")
-        return UnreadyReason(f"no agent works tickets in {state.root}")
+        match ticket.flow_state(flow_labels):
+            case Err(error):
+                return UnreadyReason(str(error))
+            case Ok(state):
+                if state is None:
+                    return UnreadyReason("it has no flow state")
+                return UnreadyReason(f"no agent works tickets in {state.root}")
 
 
 # The pass stopped at the total, leaving these ready tickets unstarted.
@@ -277,7 +282,7 @@ class Drain:
         request: StartRequest,
     ) -> Started:
         try:
-            TicketStart.start_ticket(
+            started = TicketStart.start_ticket(
                 manager=manager,
                 tracker=tracker,
                 claims=claims,
@@ -290,6 +295,10 @@ class Drain:
             )
         except ClaimLostError:
             logger.info("Another host holds %s; trying the next ticket.", request.ticket.root)
+            return Started(False)
+        # The ticket was ready when listed, so a refusal here means its labels changed since.
+        if isinstance(started, Err):
+            logger.warning("Not starting %s: %s", request.ticket.root, started.error)
             return Started(False)
         return Started(True)
 

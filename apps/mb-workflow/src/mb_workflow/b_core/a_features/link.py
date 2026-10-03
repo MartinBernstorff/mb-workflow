@@ -1,12 +1,14 @@
 import logging
 from typing import TYPE_CHECKING
 
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.b_domain_services.next_action import TicketState
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRequest
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import set_display_name_or_warn
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, TakeOver
-from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import FlowError, WorkflowChart
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.workspace import DisplayName, WorktreeName
 from mb_workflow.d_lib.models import Model
@@ -68,10 +70,13 @@ class TicketLinking:
         claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
         request: LinkRequest,
-    ) -> None:
+    ) -> Result[None, FlowError]:
         # Refuse before touching anything, so a refused link leaves no claim behind.
         detail = tracker.read_issue_detail(request.ticket)
-        state = TicketState.state_with_work_left(WorkflowChart, flow_labels, detail.issue)
+        with_work_left = TicketState.state_with_work_left(WorkflowChart, flow_labels, detail.issue)
+        if isinstance(with_work_left, Err):
+            return with_work_left
+        state = with_work_left.value
         here = manager.current()
         request.require_unlinked_or_forced(here)
 
@@ -96,3 +101,4 @@ class TicketLinking:
         logger.info("Linked %s to %s.", here.path.root, request.ticket.root)
         manager.set_status(here.path, board.status_for(state))
         set_display_name_or_warn(manager, here.path, DisplayName.of_issue(detail.title))
+        return Ok(None)

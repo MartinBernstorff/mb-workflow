@@ -90,14 +90,16 @@ def chart_labels(chart: type[WorkflowChart]) -> LabelNames:
 
 def state_of(
     chart: type[WorkflowChart], flow_labels: FlowLabels, held: GroupedLabels
-) -> StateName | None:
+) -> Result[StateName | None, FlowError]:
     found = held.in_group(flow_labels.group).root
     if not found:
-        return None
+        return Ok(None)
     if len(found) > 1:
         listed = ", ".join(label.root for label in found)
-        raise FlowError(f"The ticket carries the flow labels {listed}, but may carry only one.")
+        return Err(
+            FlowError(f"The ticket carries the flow labels {listed}, but may carry only one.")
+        )
     known = chart_labels(chart).matching(found[0])
     if known is None:
-        raise FlowError(f"{found[0].root} is no state of the chart.")
-    return StateName(known.root)
+        return Err(FlowError(f"{found[0].root} is no state of the chart."))
+    return Ok(StateName(known.root))

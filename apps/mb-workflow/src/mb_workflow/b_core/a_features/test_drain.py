@@ -564,6 +564,21 @@ def test_the_outcome_says_why_a_ticket_in_the_view_is_not_ready() -> None:
     )
 
 
+def test_a_ticket_with_two_flow_labels_is_not_ready_and_the_outcome_says_why() -> None:
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-1"), Priority.low),
+        pooled(IssueIdentifier("MB-2"), Priority.high, labels=LabelNames((LabelName("QA"),))),
+    )
+    conflicting = UnreadyReason(
+        "The ticket carries the flow labels Specced, QA, but may carry only one."
+    )
+    outcome = draining(tracker)
+    assert picked(outcome) == (IssueIdentifier("MB-1"),)
+    assert tuple(
+        (unready.ticket.issue.identifier, unready.reason) for unready in outcome.unready
+    ) == ((IssueIdentifier("MB-2"), conflicting),)
+
+
 def test_the_outcome_names_the_tickets_left_when_the_pool_fills() -> None:
     total = Limit(1)
     outcome = draining(standard_pool(), pool=pool_with_total(total))

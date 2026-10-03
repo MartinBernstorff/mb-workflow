@@ -1,7 +1,15 @@
 from typing import TYPE_CHECKING
 
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.b_domain_services.flow_label_check import FlowLabelCheck
-from mb_workflow.b_core.d_domain_model.flow import Edges, EventName, StateName, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import (
+    Edges,
+    EventName,
+    FlowError,
+    StateName,
+    WorkflowChart,
+)
 from mb_workflow.b_core.d_domain_model.issue import IssueUpdate
 from mb_workflow.d_lib.models import Value
 
@@ -29,12 +37,15 @@ def transition(
     statuses: TicketStatuses,
     event: EventName,
     force: Force,
-) -> StateName:
+) -> Result[StateName, FlowError]:
     edges = Edges.of_chart(chart)
-    target = edges.target_of(event) if force.root else edges.target_from(store.read(), event)
-    put_in_state(tracker, issue, wanted, statuses, target)
-    store.write(target)
-    return target
+    match edges.target_of(event) if force.root else edges.target_from(store.read(), event):
+        case Ok(target):
+            put_in_state(tracker, issue, wanted, statuses, target)
+            store.write(target)
+            return Ok(target)
+        case Err() as illegal:
+            return illegal
 
 
 def put_in_state(

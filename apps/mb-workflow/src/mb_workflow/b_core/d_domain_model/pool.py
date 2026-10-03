@@ -1,4 +1,5 @@
 from enum import IntEnum
+from typing import TYPE_CHECKING
 
 from pydantic import Field, JsonValue, NonNegativeInt, field_validator, model_validator
 
@@ -21,6 +22,11 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelNames,
 )
 from mb_workflow.d_lib.models import Model, Value
+
+if TYPE_CHECKING:
+    from safe_result import Result
+
+    from mb_workflow.b_core.d_domain_model.flow import FlowError
 
 
 class ViewSlug(Value[str]):
@@ -77,7 +83,7 @@ class PoolTicket(Model):
             )
         )
 
-    def flow_state(self, flow_labels: FlowLabels) -> StateName | None:
+    def flow_state(self, flow_labels: FlowLabels) -> Result[StateName | None, FlowError]:
         return state_of(WorkflowChart, flow_labels, self.issue.grouped)
 
     def slot(self, flow_labels: FlowLabels) -> Slot | None:
@@ -85,7 +91,7 @@ class PoolTicket(Model):
 
     def ready(self, claim_label: LabelName, flow_labels: FlowLabels) -> Ready:
         return Ready(
-            self.flow_state(flow_labels) in PoolTicket.ready_states().root
+            self.flow_state(flow_labels).unwrap_or(None) in PoolTicket.ready_states().root
             and self.issue.labels.matching(claim_label) is None
         )
 
@@ -135,7 +141,8 @@ class Slot(Model):
 
     @staticmethod
     def of(issue: Issue, flow_labels: FlowLabels) -> Slot | None:
-        state = state_of(WorkflowChart, flow_labels, issue.grouped)
+        # A ticket whose flow labels name no single state fills no slot, like one without a flow label.
+        state = state_of(WorkflowChart, flow_labels, issue.grouped).unwrap_or(None)
         return None if state is None else Slot(state=state, labels=issue.labels)
 
 

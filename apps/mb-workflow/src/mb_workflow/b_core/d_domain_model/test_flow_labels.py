@@ -1,4 +1,7 @@
+import re
+
 import pytest
+from safe_result import Err, Ok
 
 from mb_workflow.b_core.d_domain_model.flow import FlowError, StateName, WorkflowChart
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, state_of
@@ -131,34 +134,38 @@ def test_a_flow_label_gives_the_state_of_its_name(state: str) -> None:
             *in_flow(LabelName(state)).root,
         )
     )
-    assert state_of(WorkflowChart, FlowLabels.fake(), held) == StateName(state)
+    assert state_of(WorkflowChart, FlowLabels.fake(), held) == Ok(StateName(state))
 
 
 def test_a_flow_label_in_another_case_gives_the_state_as_the_chart_spells_it() -> None:
-    assert state_of(
-        WorkflowChart, FlowLabels.fake(), in_flow(LabelName("implementing"))
-    ) == StateName("Implementing")
+    assert state_of(WorkflowChart, FlowLabels.fake(), in_flow(LabelName("implementing"))) == Ok(
+        StateName("Implementing")
+    )
 
 
 def test_the_flow_group_is_found_whatever_its_case() -> None:
     held = GroupedLabels((GroupedLabel(group=LabelGroupName("Flow"), label=QA),))
-    assert state_of(WorkflowChart, FlowLabels.fake(), held) == StateName("QA")
+    assert state_of(WorkflowChart, FlowLabels.fake(), held) == Ok(StateName("QA"))
 
 
 def test_a_ticket_without_a_flow_label_has_no_state() -> None:
-    assert state_of(WorkflowChart, FlowLabels.fake(), GroupedLabels(())) is None
+    assert state_of(WorkflowChart, FlowLabels.fake(), GroupedLabels(())) == Ok(None)
 
 
 def test_a_label_named_as_a_state_outside_the_flow_group_does_not_count() -> None:
     held = GroupedLabels((GroupedLabel(group=LabelGroupName("team"), label=QA),))
-    assert state_of(WorkflowChart, FlowLabels.fake(), held) is None
+    assert state_of(WorkflowChart, FlowLabels.fake(), held) == Ok(None)
 
 
 def test_a_ticket_with_two_flow_labels_is_a_clear_error() -> None:
-    with pytest.raises(FlowError, match="Grilling, QA"):
-        _ = state_of(WorkflowChart, FlowLabels.fake(), in_flow(GRILLING, QA))
+    refused = state_of(WorkflowChart, FlowLabels.fake(), in_flow(GRILLING, QA))
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, FlowError)
+    assert re.search("Grilling, QA", str(refused.error))
 
 
 def test_a_flow_label_that_names_no_state_is_a_clear_error() -> None:
-    with pytest.raises(FlowError, match="Marinating is no state of the chart"):
-        _ = state_of(WorkflowChart, FlowLabels.fake(), in_flow(LabelName("Marinating")))
+    refused = state_of(WorkflowChart, FlowLabels.fake(), in_flow(LabelName("Marinating")))
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, FlowError)
+    assert re.search("Marinating is no state of the chart", str(refused.error))
