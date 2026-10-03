@@ -9,6 +9,8 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracke
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     DisplayNameRefusingWorkspaceManager,
     FakeWorkspaceManager,
+    LinkRefusingWorkspaceManager,
+    WorkspaceManagerError,
 )
 from mb_workflow.b_core.d_domain_model.claim import (
     Claim,
@@ -41,12 +43,17 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 )
 
 
-def tracking(state: StateName | None) -> FakeTicketTracker:
+def tracking(state: StateName | None, assignee: Assignee | None = None) -> FakeTicketTracker:
     flow = () if state is None else (LabelName(state.root),)
-    issue = Issue.fake().model_copy(update={"labels": LabelNames((*LabelNames.fake().root, *flow))})
+    issue = Issue.fake().model_copy(
+        update={
+            "labels": LabelNames((*LabelNames.fake().root, *flow)),
+            "assigned": Assigned(assignee is not None),
+        }
+    )
     return FakeTicketTracker(
         LabelNames((*LabelNames.fake().root, LabelName("claimed"), *FlowLabels.fake().labels.root)),
-        (TrackedIssue.fake().model_copy(update={"issue": issue}),),
+        (TrackedIssue.fake().model_copy(update={"issue": issue, "assignee": assignee}),),
         groups={FlowLabels.fake().group: FlowLabels.fake().labels},
     )
 
@@ -230,3 +237,36 @@ def test_force_leaves_the_previous_tickets_claim_alone() -> None:
     claims = claimed_by(previous_holder, previous)
     linking(managing(here_linked_to(previous)), tracking(StateName.fake()), claims, forcing())
     assert holders(claims, previous) == (previous_holder,)
+
+
+def refusing_to_link() -> LinkRefusingWorkspaceManager:
+    return LinkRefusingWorkspaceManager(
+        here_linked_to(None), WorktreePath.fake(), fake_board_statuses()
+    )
+
+
+def test_a_refused_link_leaves_neither_claim_nor_claim_label() -> None:
+    tracker = tracking(StateName.fake())
+    claims = FakeClaimRegistry()
+    with pytest.raises(WorkspaceManagerError):
+        linking(refusing_to_link(), tracker, claims, LinkRequest.fake())
+    assert claims.claims(IssueIdentifier.fake()) == Claims(())
+    labels = tracker.read_issue(IssueIdentifier.fake()).labels
+    assert not labels.has(ClaimSettings.fake().label).root
+
+
+def test_a_refused_link_restores_the_previous_assignee() -> None:
+    previous = Assignee("previous@flowbase.io")
+    tracker = tracking(StateName.fake(), assignee=previous)
+    with pytest.raises(WorkspaceManagerError):
+        linking(refusing_to_link(), tracker, FakeClaimRegistry(), LinkRequest.fake())
+    assert tracker.read_issue_detail(IssueIdentifier.fake()).assignee == previous
+
+
+# The board lacks the state's column, so setting the status fails after linking.
+def test_a_refused_status_leaves_no_claim() -> None:
+    manager = FakeWorkspaceManager(here_linked_to(None), WorktreePath.fake(), WorkspaceStatuses(()))
+    claims = FakeClaimRegistry()
+    with pytest.raises(WorkspaceManagerError):
+        linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake())
+    assert claims.claims(IssueIdentifier.fake()) == Claims(())
