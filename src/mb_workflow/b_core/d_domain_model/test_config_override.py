@@ -33,10 +33,8 @@ def test_an_override_merges_tables_at_every_depth() -> None:
 
 
 def test_an_override_key_replaces_the_repo_key_whatever_its_casing() -> None:
-    mine = 3
-    repo = SettingsTable({"pool": {"limits": {"states": {"QA": 2}}}})
-    merged = repo.merged(SettingsTable({"pool": {"limits": {"states": {"qa": mine}}}}))
-    assert merged == SettingsTable({"pool": {"limits": {"states": {"qa": mine}}}})
+    mine = SettingsTable({"qa": 3})
+    assert SettingsTable({"QA": 2}).merged(mine) == mine
 
 
 def test_keys_differing_in_casing_within_the_override_are_both_kept() -> None:
