@@ -6,7 +6,6 @@ import typer
 from mb_workflow.a_presentation import commands
 from mb_workflow.a_presentation.cli.group import AlphabeticalGroup
 from mb_workflow.b_core.a_features.autolabel import AutolabelRequest, DryRun
-from mb_workflow.b_core.a_features.label import LabelChange, LabelRequest
 from mb_workflow.b_core.d_domain_model.autolabel import ExcludePattern, Exclusions
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
@@ -129,28 +128,6 @@ def ticket_edit(
         remove_milestone=RemoveMilestone(remove_milestone),
     )
     raise typer.Exit(code=commands.ticket_edit(IssueIdentifier(issue), edit).root)
-
-
-@ticket_app.command("label")
-@ticket_app.command("l", hidden=True)
-def label(
-    name: str = typer.Argument(..., help="Linear label to add to the linked issue."),
-    quiet: bool = typer.Option(False, "--quiet", "-q"),
-) -> None:
-    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    request = LabelRequest(label=LabelName(name), change=LabelChange.add)
-    raise typer.Exit(code=commands.relabel(request).root)
-
-
-@ticket_app.command("unlabel")
-@ticket_app.command("ul", hidden=True)
-def unlabel(
-    name: str = typer.Argument(..., help="Linear label to remove from the linked issue."),
-    quiet: bool = typer.Option(False, "--quiet", "-q"),
-) -> None:
-    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    request = LabelRequest(label=LabelName(name), change=LabelChange.remove)
-    raise typer.Exit(code=commands.relabel(request).root)
 
 
 @ticket_app.command("autolabel")

@@ -1,7 +1,6 @@
 import pytest
 
-from mb_workflow.b_core.a_features.label import UnlinkedWorktreeError
-from mb_workflow.b_core.a_features.transition import transition
+from mb_workflow.b_core.a_features.transition import UnlinkedWorktreeError, transition
 from mb_workflow.b_core.b_domain_services.flow_transition import Force
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracker, TrackedIssue
