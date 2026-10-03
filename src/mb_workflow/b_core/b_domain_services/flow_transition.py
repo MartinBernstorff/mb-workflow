@@ -32,7 +32,6 @@ def transition(
 ) -> StateName:
     edges = Edges.of_chart(chart)
     target = edges.target_of(event) if force.root else edges.target_from(store.read(), event)
-    require_flow_labels(tracker, wanted)
     put_in_state(tracker, issue, wanted, statuses, target)
     store.write(target)
     return target
@@ -45,6 +44,7 @@ def put_in_state(
     statuses: TicketStatuses,
     state: StateName,
 ) -> None:
+    require_flow_labels(tracker, wanted, tracker.team_of(issue))
     labels = wanted.relabelled(tracker.read_issue(issue).labels, state)
     tracker.update_issue(
         issue,

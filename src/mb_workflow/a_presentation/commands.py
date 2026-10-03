@@ -23,7 +23,7 @@ from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, f
 from mb_workflow.b_core.a_features.init_config import Overwrite, init_config
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
 from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt, create_workspaces
-from mb_workflow.b_core.a_features.seed_labels import seed_flow_labels
+from mb_workflow.b_core.a_features.seed_labels import WorkspaceCovers, seed_flow_labels
 from mb_workflow.b_core.a_features.show_config import show_config
 from mb_workflow.b_core.a_features.show_flow import show_flow
 from mb_workflow.b_core.a_features.start import (
@@ -84,7 +84,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_report import AsJson
     from mb_workflow.b_core.b_domain_services.flow_transition import Force
     from mb_workflow.b_core.d_domain_model.claim import HostName
-    from mb_workflow.b_core.d_domain_model.issue import CreatedAfter, IssueIdentifier
+    from mb_workflow.b_core.d_domain_model.issue import CreatedAfter, IssueIdentifier, TeamName
     from mb_workflow.b_core.d_domain_model.pull_request import MergedSince, ReviewRequest
     from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDraft
     from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit
@@ -376,15 +376,26 @@ def flow_event(
 
 
 @guarded
-def flow_seed_labels() -> ExitCode:
+def flow_seed_labels(team: TeamName) -> ExitCode:
     wanted = flow_labels_of_chart()
-    created = seed_flow_labels(linear(), wanted)
-    if created.root:
+    created = seed_flow_labels(linear(), wanted, team)
+    if isinstance(created, WorkspaceCovers):
         logger.info(
-            "Created %s in the %s label group.",
+            "The workspace already has a %s label group, which covers %s. Created nothing.",
+            created.group.root,
+            team.root,
+        )
+    elif created.root:
+        logger.info(
+            "Created %s in the %s label group of %s.",
             ", ".join(label.root for label in created.root),
             wanted.group.root,
+            team.root,
         )
     else:
-        logger.info("The %s label group already holds every flow label.", wanted.group.root)
+        logger.info(
+            "The %s label group of %s already holds every flow label.",
+            wanted.group.root,
+            team.root,
+        )
     return ExitCode(0)

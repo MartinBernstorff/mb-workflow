@@ -1,7 +1,6 @@
 import logging
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.b_domain_services.flow_label_check import require_flow_labels
 from mb_workflow.b_core.b_domain_services.flow_transition import put_in_state
 from mb_workflow.b_core.b_domain_services.next_action import next_action
 from mb_workflow.b_core.c_secondary_ports.claims import (
@@ -126,7 +125,6 @@ def start_ticket(
     # Put an unlabelled ticket in the flow before claiming it, so a failed write leaves no claim behind.
     status = detail.issue.status
     if labelled_state is None:
-        require_flow_labels(tracker, flow_labels)
         put_in_state(tracker, request.ticket, flow_labels, statuses, state)
         status = statuses.of(state)
         logger.info("Put %s in %s.", request.ticket.root, state.root)

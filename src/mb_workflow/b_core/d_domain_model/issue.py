@@ -334,13 +334,20 @@ class TeamKey(IssueText):
         return TeamKey("E")
 
 
+class TeamName(IssueText):
+    @staticmethod
+    def fake() -> TeamName:
+        return TeamName("Engineering")
+
+
 class Team(Model):
     key: TeamKey
+    name: TeamName
     projects: tuple[ProjectName, ...]
 
     @staticmethod
     def fake() -> Team:
-        return Team(key=TeamKey.fake(), projects=(ProjectName.fake(),))
+        return Team(key=TeamKey.fake(), name=TeamName.fake(), projects=(ProjectName.fake(),))
 
 
 class NewIssue(Model):

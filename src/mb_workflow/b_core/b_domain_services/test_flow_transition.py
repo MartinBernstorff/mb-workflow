@@ -19,6 +19,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelName,
     LabelNames,
     StatusType,
+    TeamKey,
 )
 from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
@@ -101,14 +102,14 @@ def test_forcing_writes_the_target_state_without_validating() -> None:
 def test_a_refused_ticket_write_leaves_the_board_where_it_was() -> None:
     wanted = FlowLabels.fake()
     store = FakeStatusStore(StateName("Implementing"))
-    # The group lists the flow labels, but the workspace does not know them, so the write refuses.
+    # The ticket holds a label the tracker does not know, so the write refuses.
     tracker = FakeTicketTracker(
-        LabelNames.fake(),
+        wanted.labels,
         (TrackedIssue.fake(),),
         statuses=mapped_statuses(),
         groups={wanted.group: wanted.labels},
     )
-    with pytest.raises(TicketTrackerError, match="No label is named QA"):
+    with pytest.raises(TicketTrackerError, match=f"No label is named {LabelName.fake().root}"):
         _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
     assert store.read() == StateName("Implementing")
     assert tracker.read_issue(IssueIdentifier.fake()).status == IssueStatusName.fake()
@@ -135,3 +136,44 @@ def test_missing_flow_labels_point_to_seed_labels_and_leave_the_board_alone() ->
     with pytest.raises(MissingFlowLabelsError, match="mw flow seed-labels"):
         _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
     assert store.read() == StateName("Implementing")
+
+
+def tracker_with_team_groups(
+    issue_team: TeamKey, team_groups: dict[TeamKey, LabelNames], workspace: LabelNames
+) -> FakeTicketTracker:
+    wanted = FlowLabels.fake()
+    issue = Issue.fake().model_copy(update={"labels": LabelNames(())})
+    return FakeTicketTracker(
+        workspace,
+        (TrackedIssue.fake().model_copy(update={"issue": issue, "team": issue_team}),),
+        statuses=mapped_statuses(),
+        groups={wanted.group: workspace} if workspace.root else None,
+        team_groups={(team, wanted.group): labels for team, labels in team_groups.items()},
+    )
+
+
+def test_a_transition_writes_the_flow_label_of_the_tickets_own_team() -> None:
+    ops = TeamKey("OPS")
+    labels = FlowLabels.fake().labels
+    tracker = tracker_with_team_groups(ops, {TeamKey.fake(): labels, ops: labels}, LabelNames(()))
+    store = FakeStatusStore(StateName("Implementing"))
+    _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
+    assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames((LabelName("QA"),))
+
+
+def test_a_transition_falls_back_to_workspace_flow_labels() -> None:
+    tracker = tracker_with_team_groups(TeamKey("OPS"), {}, FlowLabels.fake().labels)
+    store = FakeStatusStore(StateName("Implementing"))
+    _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
+    assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames((LabelName("QA"),))
+
+
+def test_another_teams_flow_labels_leave_the_ticket_and_the_board_alone() -> None:
+    tracker = tracker_with_team_groups(
+        TeamKey("OPS"), {TeamKey.fake(): FlowLabels.fake().labels}, LabelNames(())
+    )
+    store = FakeStatusStore(StateName("Implementing"))
+    with pytest.raises(MissingFlowLabelsError):
+        _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
+    assert store.read() == StateName("Implementing")
+    assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames(())

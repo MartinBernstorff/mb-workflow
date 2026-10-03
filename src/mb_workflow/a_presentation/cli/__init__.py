@@ -21,7 +21,7 @@ from mb_workflow.b_core.d_domain_model.claim import HostName, TakeOver
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
 from mb_workflow.b_core.d_domain_model.flow import EventName, StateName
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, TeamName
 from mb_workflow.b_core.d_domain_model.pull_request import (
     Lookback,
     MergedSince,
@@ -243,10 +243,15 @@ def flow_show(
 
 
 @flow_app.command("seed-labels")
-def flow_seed_labels(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
-    """Create the flow label group in Linear, with one label per flow state."""
+def flow_seed_labels(
+    team: str = typer.Option(
+        ..., "--team", help="Name of the Linear team to create the labels in."
+    ),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Create the flow label group in a Linear team, with one label per flow state."""
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
-    raise typer.Exit(code=commands.flow_seed_labels().root)
+    raise typer.Exit(code=commands.flow_seed_labels(TeamName(team)).root)
 
 
 def flow_event(event: EventName, force: Force) -> ExitCode:

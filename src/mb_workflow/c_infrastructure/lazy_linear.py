@@ -27,6 +27,8 @@ if TYPE_CHECKING:
         LabelNames,
         NewIssue,
         StatusTypes,
+        TeamKey,
+        TeamName,
     )
     from mb_workflow.b_core.d_domain_model.pool import PoolTickets, ViewSlug
     from mb_workflow.c_infrastructure.linear import LinearApiKey
@@ -74,16 +76,26 @@ class LazyLinear(TicketTracker):
         return self._tracker().workspace_labels()
 
     @override
-    def group_labels(self, group: LabelGroupName) -> LabelNames:
-        return self._tracker().group_labels(group)
+    def group_labels(self, group: LabelGroupName, team: TeamKey | None) -> LabelNames:
+        return self._tracker().group_labels(group, team)
 
     @override
     def label_group(self, label: LabelName) -> LabelGroupName | None:
         return self._tracker().label_group(label)
 
     @override
-    def create_group_labels(self, group: LabelGroupName, labels: LabelNames) -> None:
-        self._tracker().create_group_labels(group, labels)
+    def create_group_labels(
+        self, group: LabelGroupName, labels: LabelNames, team: TeamKey | None
+    ) -> None:
+        self._tracker().create_group_labels(group, labels, team)
+
+    @override
+    def team_named(self, name: TeamName) -> TeamKey:
+        return self._tracker().team_named(name)
+
+    @override
+    def team_of(self, issue: IssueIdentifier) -> TeamKey:
+        return self._tracker().team_of(issue)
 
     @override
     def list_issues(self, wanted: IssueFilter) -> Issues:

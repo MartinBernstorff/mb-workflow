@@ -1,15 +1,30 @@
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.b_domain_services.flow_label_check import missing_flow_labels
+from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
+from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
-    from mb_workflow.b_core.d_domain_model.issue import LabelNames
+    from mb_workflow.b_core.d_domain_model.issue import LabelNames, TeamName
 
 
-def seed_flow_labels(tracker: TicketTracker, wanted: FlowLabels) -> LabelNames:
-    missing = missing_flow_labels(tracker, wanted)
+class WorkspaceCovers(Model):
+    group: LabelGroupName
+
+    @staticmethod
+    def fake() -> WorkspaceCovers:
+        return WorkspaceCovers(group=LabelGroupName.fake())
+
+
+# A workspace-level group already serves every team, so seeding a team beside it would only shadow it.
+def seed_flow_labels(
+    tracker: TicketTracker, wanted: FlowLabels, team: TeamName
+) -> LabelNames | WorkspaceCovers:
+    key = tracker.team_named(team)
+    if tracker.group_labels(wanted.group, None).root:
+        return WorkspaceCovers(group=wanted.group)
+    missing = wanted.missing(tracker.group_labels(wanted.group, key))
     if missing.root:
-        tracker.create_group_labels(wanted.group, missing)
+        tracker.create_group_labels(wanted.group, missing, key)
     return missing
