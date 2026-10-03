@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import override
+from typing import TYPE_CHECKING, override
 
 import pytest
 
@@ -59,6 +59,9 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     WorktreePath,
     Worktrees,
 )
+
+if TYPE_CHECKING:
+    from safe_result import Result
 
 
 def pooled(
@@ -213,10 +216,23 @@ def draining(
     *,
     manager: FakeWorkspaceManager | None = None,
     claims: FakeClaimRegistry | None = None,
-    lock: FakeRunLock | None = None,
     pool: PoolSettings | None = None,
     request: DrainRequest | None = None,
 ) -> DrainOutcome:
+    return attempting_drain(
+        tracker, manager=manager, claims=claims, pool=pool, request=request
+    ).unwrap()
+
+
+def attempting_drain(
+    tracker: FakeTicketTracker,
+    *,
+    manager: FakeWorkspaceManager | None = None,
+    claims: FakeClaimRegistry | None = None,
+    lock: FakeRunLock | None = None,
+    pool: PoolSettings | None = None,
+    request: DrainRequest | None = None,
+) -> Result[DrainOutcome, AlreadyRunningError]:
     return Drain.drain_pool(
         tracker=tracker,
         claims=claims or FakeClaimRegistry(),
@@ -450,8 +466,9 @@ def test_a_pool_with_no_ready_ticket_starts_nothing() -> None:
 def test_a_pass_is_refused_while_another_holds_the_lock() -> None:
     lock = FakeRunLock()
     claims = FakeClaimRegistry()
-    with lock.held(), pytest.raises(AlreadyRunningError):
-        _ = draining(standard_pool(), claims=claims, lock=lock)
+    with lock.held():
+        refused = attempting_drain(standard_pool(), claims=claims, lock=lock)
+    assert isinstance(refused.error, AlreadyRunningError)
     assert holders(claims, IssueIdentifier("MB-2")) == ()
 
 

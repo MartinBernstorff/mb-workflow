@@ -1,6 +1,8 @@
 import logging
 from typing import TYPE_CHECKING
 
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
 from mb_workflow.b_core.a_features.start import StartRequest, TicketStart
 from mb_workflow.b_core.b_domain_services.pick_order import in_pick_order
@@ -21,7 +23,7 @@ from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
-    from mb_workflow.b_core.c_secondary_ports.run_lock import RunLock
+    from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, RunLock
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.tie_break import TieBreak
@@ -178,8 +180,44 @@ class Drain:
         statuses: TicketStatuses,
         pool: PoolSettings,
         request: DrainRequest,
+    ) -> Result[DrainOutcome, AlreadyRunningError]:
+        with lock.held() as acquired:
+            match acquired:
+                case Ok():
+                    return Ok(
+                        Drain.drain_holding_lock(
+                            tracker=tracker,
+                            claims=claims,
+                            manager=manager,
+                            board=board,
+                            tie_break=tie_break,
+                            workspace=workspace,
+                            claim_settings=claim_settings,
+                            flow_labels=flow_labels,
+                            statuses=statuses,
+                            pool=pool,
+                            request=request,
+                        )
+                    )
+                case Err() as refused:
+                    return refused
+
+    @staticmethod
+    def drain_holding_lock(
+        *,
+        tracker: TicketTracker,
+        claims: ClaimRegistry,
+        manager: WorkspaceManager,
+        board: WorkspaceStatusStore,
+        tie_break: TieBreak,
+        workspace: WorkspaceSettings,
+        claim_settings: ClaimSettings,
+        flow_labels: FlowLabels,
+        statuses: TicketStatuses,
+        pool: PoolSettings,
+        request: DrainRequest,
     ) -> DrainOutcome:
-        with lock.held(), Activity("Draining the pool").logged(logger):
+        with Activity("Draining the pool").logged(logger):
             Claiming.require_claim_label(tracker, claim_settings.label)
             Drain.require_limited_labels(tracker, pool.limits)
             Drain.require_skip_limits_label(tracker, pool.skip_limits_label)

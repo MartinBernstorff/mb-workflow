@@ -3,6 +3,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 import pytest
+from safe_result import Ok
 
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, FakeRunLock
 from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
@@ -27,33 +28,36 @@ def lock(request: pytest.FixtureRequest, tmp_path: Path) -> RunLock:
 
 
 def test_a_free_lock_lets_the_run_proceed(lock: RunLock) -> None:
-    entered = False
-    with lock.held():
-        entered = True
-    assert entered
+    with lock.held() as acquired:
+        assert acquired == Ok(None)
 
 
 def test_a_second_holder_is_refused_while_the_first_holds_the_lock(lock: RunLock) -> None:
-    with (
-        lock.held(),
-        pytest.raises(AlreadyRunningError, match="another run holds"),
-        lock.held(),
-    ):
-        pytest.fail("the second run should not have entered")
+    with lock.held(), lock.held() as second:
+        assert isinstance(second.error, AlreadyRunningError)
+        assert "another run holds" in str(second.error)
+
+
+def test_a_refused_holder_leaves_the_lock_with_the_first(lock: RunLock) -> None:
+    with lock.held():
+        with lock.held():
+            pass
+        with lock.held() as third:
+            assert isinstance(third.error, AlreadyRunningError)
 
 
 def test_the_lock_is_free_again_once_the_run_ends(lock: RunLock) -> None:
     with lock.held():
         pass
-    with lock.held():
-        pass
+    with lock.held() as acquired:
+        assert acquired == Ok(None)
 
 
 def test_the_lock_is_released_when_the_run_raises(lock: RunLock) -> None:
     with pytest.raises(ValueError, match="boom"), lock.held():
         raise ValueError("boom")
-    with lock.held():
-        pass
+    with lock.held() as acquired:
+        assert acquired == Ok(None)
 
 
 def test_the_lock_lives_in_the_cache_under_its_name() -> None:
@@ -77,12 +81,8 @@ def test_projects_get_separate_locks() -> None:
 
 def test_a_separate_flock_on_the_same_path_is_refused(tmp_path: Path) -> None:
     path = LockPath(tmp_path / "review-workspaces.lock")
-    with (
-        FlockRunLock(path).held(),
-        pytest.raises(AlreadyRunningError),
-        FlockRunLock(path).held(),
-    ):
-        pytest.fail("the second run should not have entered")
+    with FlockRunLock(path).held(), FlockRunLock(path).held() as second:
+        assert isinstance(second.error, AlreadyRunningError)
 
 
 def test_logs_taking_and_releasing_the_flock(

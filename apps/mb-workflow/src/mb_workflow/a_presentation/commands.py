@@ -46,7 +46,6 @@ from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRefusedError
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
-from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
@@ -106,7 +105,6 @@ logger = logging.getLogger(__name__)
 # so every command below shares this set rather than repeating its own.
 FAILURES = (
     AlreadyLinkedError,
-    AlreadyRunningError,
     BoardError,
     CalledProcessError,
     ClaimRefusedError,
@@ -190,7 +188,7 @@ def review_workspaces(
     except MissingConfigError:
         claim_settings = ClaimSettings()
     shell = here()
-    outcome = create_workspaces(
+    attempted = create_workspaces(
         review=GitHub(shell),
         manager=Orca(shell),
         claims=LazyLinearClaims(linear_key),
@@ -203,8 +201,13 @@ def review_workspaces(
         since=since,
         prompt=prompt,
     )
-    log_review_workspaces_outcome(outcome)
-    return ExitCode.of(outcome.failed_any())
+    match attempted:
+        case Ok(outcome):
+            log_review_workspaces_outcome(outcome)
+            return ExitCode.of(outcome.failed_any())
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
 
 
 @guarded
@@ -276,7 +279,7 @@ def drain(
     pool = settings.required_pool()
     orca = Orca(here())
     key = linear_key()
-    outcome = Drain.drain_pool(
+    attempted = Drain.drain_pool(
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
         manager=orca,
@@ -290,12 +293,17 @@ def drain(
         pool=pool,
         request=request,
     )
-    DrainReport.log_pass(outcome)
-    if request.dry_run.root:
-        write(DrainReport.pick_listing(outcome.picked, flow_labels_of_chart()))
-    else:
-        DrainReport.log_drain_outcome(outcome)
-    return ExitCode(0)
+    match attempted:
+        case Ok(outcome):
+            DrainReport.log_pass(outcome)
+            if request.dry_run.root:
+                write(DrainReport.pick_listing(outcome.picked, flow_labels_of_chart()))
+            else:
+                DrainReport.log_drain_outcome(outcome)
+            return ExitCode(0)
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
 
 
 class ConfiguredDrainSettings(DrainSettingsSource):

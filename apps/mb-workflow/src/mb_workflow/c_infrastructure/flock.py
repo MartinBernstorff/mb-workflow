@@ -3,7 +3,9 @@ import logging
 import re
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, TextIO, override
+
+from safe_result import Err, Ok, Result, safe_with
 
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, RunLock
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
@@ -45,17 +47,21 @@ class FlockRunLock(RunLock):
 
     @override
     @contextmanager
-    def held(self) -> Generator[None]:
+    def held(self) -> Generator[Result[None, AlreadyRunningError]]:
         path = self._path.root
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w") as handle:
-            try:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as error:
-                raise AlreadyRunningError(f"another run holds {path}") from error
+            if FlockRunLock.taken(handle).is_err():
+                yield Err(AlreadyRunningError(f"another run holds {path}"))
+                return
             logger.debug("Holding %s", path)
             try:
-                yield
+                yield Ok(None)
             finally:
                 fcntl.flock(handle, fcntl.LOCK_UN)
                 logger.debug("Released %s", path)
+
+    @staticmethod
+    @safe_with(BlockingIOError)
+    def taken(handle: TextIO) -> None:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)

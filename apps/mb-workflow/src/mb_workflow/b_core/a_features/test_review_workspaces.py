@@ -46,6 +46,8 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from safe_result import Result
+
     from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
 
 
@@ -96,12 +98,25 @@ def create_review_directory(here: WorktreePath) -> WorktreePath:
 def run_review_workspaces(
     review: CodeForge,
     manager: FakeWorkspaceManager,
-    lock: FakeRunLock | None = None,
     *,
     status: WorkspaceStatus = WorkspaceStatus.fake(),
     claims: FakeClaimRegistry | None = None,
     prompt: ReviewPrompt | None = None,
 ) -> Outcome:
+    return attempting_review_workspaces(
+        review, manager, status=status, claims=claims, prompt=prompt
+    ).unwrap()
+
+
+def attempting_review_workspaces(
+    review: CodeForge,
+    manager: FakeWorkspaceManager,
+    lock: FakeRunLock | None = None,
+    *,
+    status: WorkspaceStatus = WorkspaceStatus.fake(),
+    claims: FakeClaimRegistry | None = None,
+    prompt: ReviewPrompt | None = None,
+) -> Result[Outcome, AlreadyRunningError]:
     return create_workspaces(
         review=review,
         manager=manager,
@@ -235,8 +250,9 @@ def test_a_workspace_that_cannot_be_created_is_reported_as_failed(here: Worktree
 def test_a_run_is_refused_while_another_holds_the_lock(here: WorktreePath) -> None:
     lock = FakeRunLock()
     manager = standing_in(here)
-    with lock.held(), pytest.raises(AlreadyRunningError):
-        _ = run_review_workspaces(FakeCodeReview(PullRequests.fake()), manager, lock)
+    with lock.held():
+        refused = attempting_review_workspaces(FakeCodeReview(PullRequests.fake()), manager, lock)
+    assert isinstance(refused.error, AlreadyRunningError)
     assert len(manager.worktrees().root) == 1
 
 
