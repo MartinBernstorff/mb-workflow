@@ -1,10 +1,11 @@
 import logging
 from typing import TYPE_CHECKING, Protocol
 
+from safe_result import Err, Ok
+
 from mb_workflow.b_core.a_features.autolabel import UnknownLabelError
 from mb_workflow.b_core.a_features.drain import Drain, DrainRequest
 from mb_workflow.b_core.c_secondary_ports.claims import UnknownClaimLabelError
-from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError
 from mb_workflow.b_core.d_domain_model.clock import IntervalSeconds
 from mb_workflow.b_core.d_domain_model.config import (
     ClaimSettings,
@@ -96,7 +97,7 @@ class DrainWatch:
         while not stop.requested().root:
             try:
                 current = settings.current()
-                outcome = Drain.drain_pool(
+                attempted = Drain.drain_pool(
                     tracker=tracker,
                     claims=claims,
                     manager=manager,
@@ -110,8 +111,6 @@ class DrainWatch:
                     pool=current.pool,
                     request=request.drain,
                 )
-            except AlreadyRunningError as error:
-                logger.info("Skipped this pass: %s.", error)
             except DrainWatch.config_errors():
                 raise
             except Exception as error:
@@ -119,6 +118,10 @@ class DrainWatch:
                     "The pass failed; retrying in %s seconds. %s", request.interval.root, error
                 )
             else:
-                narrator.passed(outcome, outcome.changed_since(previous))
-                previous = outcome
+                match attempted:
+                    case Ok(outcome):
+                        narrator.passed(outcome, outcome.changed_since(previous))
+                        previous = outcome
+                    case Err(refusal):
+                        logger.info("Skipped this pass: %s.", refusal)
             stop.wait(request.interval)

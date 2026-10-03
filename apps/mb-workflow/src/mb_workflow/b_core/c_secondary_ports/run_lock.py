@@ -1,6 +1,8 @@
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Protocol, override
 
+from safe_result import Err, Ok, Result
+
 if TYPE_CHECKING:
     from collections.abc import Generator
     from contextlib import AbstractContextManager
@@ -10,8 +12,9 @@ class AlreadyRunningError(Exception):
     pass
 
 
+# Acquiring returns the held lock to enter, so a run cannot reach its body without the lock.
 class RunLock(Protocol):
-    def held(self) -> AbstractContextManager[None]: ...
+    def acquire(self) -> Result[AbstractContextManager[None], AlreadyRunningError]: ...
 
 
 class FakeRunLock(RunLock):
@@ -19,11 +22,14 @@ class FakeRunLock(RunLock):
         self._held = False
 
     @override
-    @contextmanager
-    def held(self) -> Generator[None]:
+    def acquire(self) -> Result[AbstractContextManager[None], AlreadyRunningError]:
         if self._held:
-            raise AlreadyRunningError("another run holds the lock")
+            return Err(AlreadyRunningError("another run holds the lock"))
         self._held = True
+        return Ok(self._released_on_exit())
+
+    @contextmanager
+    def _released_on_exit(self) -> Generator[None]:
         try:
             yield
         finally:

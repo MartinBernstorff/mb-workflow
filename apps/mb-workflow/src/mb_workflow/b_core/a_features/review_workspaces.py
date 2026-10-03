@@ -1,6 +1,8 @@
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, Protocol
 
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.a_features.start import PromptUndeliveredError, TicketStart
 from mb_workflow.b_core.a_features.teardown import release_and_remove
 from mb_workflow.b_core.b_domain_services.worktree_reconciliation import obsolete, uncovered
@@ -26,7 +28,7 @@ from mb_workflow.d_lib.models import Model, Value
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
     from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
-    from mb_workflow.b_core.c_secondary_ports.run_lock import RunLock
+    from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, RunLock
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.claim import HostName
@@ -139,20 +141,26 @@ def create_workspaces(
     status: WorkspaceStatus,
     since: MergedSince,
     prompt: ReviewPrompt | None,
-) -> Outcome:
-    with lock.held():
-        return reconcile_workspaces(
-            review=review,
-            manager=manager,
-            claims=claims,
-            tracker=tracker,
-            claim_settings=claim_settings,
-            host=host,
-            narrator=narrator,
-            status=status,
-            since=since,
-            prompt=prompt,
-        )
+) -> Result[Outcome, AlreadyRunningError]:
+    match lock.acquire():
+        case Ok(held):
+            with held:
+                return Ok(
+                    reconcile_workspaces(
+                        review=review,
+                        manager=manager,
+                        claims=claims,
+                        tracker=tracker,
+                        claim_settings=claim_settings,
+                        host=host,
+                        narrator=narrator,
+                        status=status,
+                        since=since,
+                        prompt=prompt,
+                    )
+                )
+        case Err() as refused:
+            return refused
 
 
 def reconcile_workspaces(
