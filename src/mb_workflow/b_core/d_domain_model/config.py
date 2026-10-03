@@ -3,8 +3,17 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, ValidationError, model_validator
+from safe_result import Err, Ok, Result, safe_with
 
+from mb_workflow.b_core.d_domain_model.config_override import (
+    NoOverrideFile,
+    OverrideFile,
+    ProjectOverride,
+    SettingKey,
+    SettingSources,
+    SettingsTable,
+)
 from mb_workflow.b_core.d_domain_model.issue import Assignee, LabelName, ProjectName, TeamKey
 from mb_workflow.b_core.d_domain_model.pool import PoolLimits, ViewSlug
 from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDefaults
@@ -130,6 +139,11 @@ class Settings(Model):
             ticket_statuses=TicketStatuses.fake(),
         )
 
+    @staticmethod
+    @safe_with(ValidationError)
+    def parsed(table: SettingsTable) -> Settings:
+        return Settings.model_validate(table.root)
+
     # The pool is a Linear view, so no other tracker can supply its tickets.
     @model_validator(mode="after")
     def pool_is_a_linear_view(self) -> Settings:
@@ -153,9 +167,9 @@ class ConfigPath(Value[Path]):
     def fake() -> ConfigPath:
         return ConfigPath(Path("/Users/me/orca/workspaces/mb-workflow/mb-workflow.toml"))
 
-    def settings(self) -> Settings:
+    def table(self) -> SettingsTable:
         try:
-            return Settings.model_validate(tomllib.loads(self.root.read_text()))
+            return SettingsTable(tomllib.loads(self.root.read_text()))
         except ValueError as error:
             raise InvalidConfigError(f"{self.root} is not valid. {error}") from error
 
@@ -174,11 +188,16 @@ class SearchedDirectories(Value[tuple[Path, ...]]):
     @staticmethod
     def of(directory: WorkingDirectory) -> SearchedDirectories:
         start = directory.root.resolve()
-        return SearchedDirectories((start, *start.parents))
+        upward = (start, *start.parents)
+        repository_root = next(
+            (index for index, candidate in enumerate(upward) if (candidate / ".git").exists()),
+            len(upward) - 1,
+        )
+        return SearchedDirectories(upward[: repository_root + 1])
 
     @staticmethod
     def above(directory: WorkingDirectory) -> SearchedDirectories:
-        return SearchedDirectories(tuple(directory.root.resolve().parents))
+        return SearchedDirectories(SearchedDirectories.of(directory).root[1:])
 
     def find(self, name: ConfigFileName) -> ConfigPath | None:
         return next(
@@ -201,12 +220,45 @@ class SearchedDirectories(Value[tuple[Path, ...]]):
 class Configuration(Model):
     settings: Settings
     origin: ConfigPath
+    table: SettingsTable
+    override: ProjectOverride
 
     @staticmethod
     def fake() -> Configuration:
-        return Configuration(settings=Settings.fake(), origin=ConfigPath.fake())
+        return Configuration(
+            settings=Settings.fake(),
+            origin=ConfigPath.fake(),
+            table=SettingsTable(
+                {
+                    **Settings.fake().model_dump(mode="json", exclude_none=True),
+                    "ticket_statuses": {
+                        state.root: status.root
+                        for state, status in TicketStatuses.fake().root.items()
+                    },
+                }
+            ),
+            override=NoOverrideFile.fake(),
+        )
 
     @staticmethod
-    def resolved(directory: WorkingDirectory, name: ConfigFileName) -> Configuration:
+    def resolved(
+        directory: WorkingDirectory, name: ConfigFileName, override: ProjectOverride
+    ) -> Result[Configuration, InvalidConfigError]:
         origin = SearchedDirectories.of(directory).locate(name)
-        return Configuration(settings=origin.settings(), origin=origin)
+        table = origin.table()
+        merged = table.merged(override.table) if isinstance(override, OverrideFile) else table
+        match Settings.parsed(merged):
+            case Ok(settings):
+                return Ok(
+                    Configuration(settings=settings, origin=origin, table=table, override=override)
+                )
+            case Err(error):
+                overridden = (
+                    f" with overrides from {override.path.root}"
+                    if isinstance(override, OverrideFile)
+                    else ""
+                )
+                return Err(InvalidConfigError(f"{origin.root}{overridden} is not valid. {error}"))
+
+    def sources_of(self, key: SettingKey) -> SettingSources:
+        return SettingSources.of(key, self.table, self.override)

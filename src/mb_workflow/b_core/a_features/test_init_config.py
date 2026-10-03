@@ -58,3 +58,15 @@ def test_reports_a_config_in_a_parent_directory_it_now_shadows(tmp_path: Path) -
     )
 
     assert outcome.shadowed == ConfigPath(parent.resolve())
+
+
+def test_ignores_a_config_above_the_repository_root(tmp_path: Path) -> None:
+    _ = (tmp_path / ConfigFileName.fake().root).write_text("")
+    repository = tmp_path / "repo"
+    (repository / ".git").mkdir(parents=True)
+
+    outcome = init_config(
+        WorkingDirectory(repository), ConfigFileName.fake(), ConfigTemplate.fake(), Overwrite(False)
+    )
+
+    assert outcome.shadowed is None

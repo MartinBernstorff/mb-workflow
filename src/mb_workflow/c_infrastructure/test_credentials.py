@@ -64,3 +64,13 @@ def test_a_credentials_file_without_a_linear_key_is_refused(tmp_path: Path) -> N
 
     with pytest.raises(InvalidCredentialsError):
         _ = path.credentials()
+
+
+def test_project_settings_beside_the_credentials_are_not_credentials(tmp_path: Path) -> None:
+    path = CredentialsDirectory(tmp_path).path_for(RepositorySlug.fake())
+    path.root.parent.mkdir(parents=True)
+    _ = path.root.write_text(
+        f'[linear]\napi_key = "{LinearApiKey.fake().root}"\n[workspace]\nassignee = "me@x.com"\n'
+    )
+
+    assert path.credentials() == ProjectCredentials.fake()

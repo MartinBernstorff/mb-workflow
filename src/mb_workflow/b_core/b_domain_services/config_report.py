@@ -1,5 +1,22 @@
 from mb_workflow.b_core.d_domain_model.config import Configuration, LinearTracker, TodoistTracker
+from mb_workflow.b_core.d_domain_model.config_override import (
+    NoOverrideFile,
+    OverrideFile,
+    OverridePath,
+    SettingKey,
+)
 from mb_workflow.d_lib.models import Value
+
+
+class ReportLine(Value[str]):
+    @staticmethod
+    def fake() -> ReportLine:
+        return ReportLine("assignee: mab@flowbase.io (repo)")
+
+    @staticmethod
+    def attributed(config: Configuration, key: SettingKey, line: ReportLine) -> ReportLine:
+        sources = "+".join(source.value for source in config.sources_of(key).root)
+        return ReportLine(f"{line.root} ({sources})")
 
 
 class ConfigReport(Value[str]):
@@ -10,40 +27,73 @@ class ConfigReport(Value[str]):
     @staticmethod
     def of(config: Configuration) -> ConfigReport:
         settings = config.settings
+        match config.override:
+            case OverrideFile() as found:
+                override = f"override file: {found.path.root}"
+            case NoOverrideFile(expected=OverridePath() as expected):
+                override = f"override file: none (no file at {expected.root})"
+            case NoOverrideFile():
+                override = "override file: none (no origin remote to name it after)"
         match settings.issues:
             case TodoistTracker() as todoist:
                 issues = (
-                    f"tracker: {todoist.tracker}",
-                    f"project tag: {todoist.project_tag.root}",
+                    (("issues", "tracker"), f"tracker: {todoist.tracker}"),
+                    (("issues", "project_tag"), f"project tag: {todoist.project_tag.root}"),
                 )
             case LinearTracker() as linear:
                 issues = (
-                    f"tracker: {linear.tracker}",
-                    *(() if linear.team is None else (f"team: {linear.team.root}",)),
-                    *(() if linear.project is None else (f"project: {linear.project.root}",)),
+                    (("issues", "tracker"), f"tracker: {linear.tracker}"),
+                    *(
+                        ()
+                        if linear.team is None
+                        else ((("issues", "team"), f"team: {linear.team.root}"),)
+                    ),
+                    *(
+                        ()
+                        if linear.project is None
+                        else ((("issues", "project"), f"project: {linear.project.root}"),)
+                    ),
                 )
+        pool = (
+            ()
+            if settings.pool is None
+            else (
+                (("pool", "view"), f"pool view: {settings.pool.view.root}"),
+                (("pool", "limits"), f"pool limits: {settings.pool.limits.summary().root}"),
+                (
+                    ("pool", "skip_limits_label"),
+                    f"pool skip-limits label: {settings.pool.skip_limits_label.root}",
+                ),
+            )
+        )
+        attributed = (
+            *issues,
+            (("status", "store"), f"status store: {settings.status.store}"),
+            (
+                ("workspace", "orca_project"),
+                f"orca project: {settings.workspace.orca_project.root}",
+            ),
+            (("workspace", "assignee"), f"assignee: {settings.workspace.assignee.root}"),
+            (("claims", "label"), f"claim label: {settings.claims.label.root}"),
+            *pool,
+        )
+        statuses = tuple(
+            (("ticket_statuses", state.root), f"  {state.root}: {status.root}")
+            for state, status in settings.ticket_statuses.root.items()
+        )
         return ConfigReport(
             "\n".join(
                 (
-                    f"origin: {config.origin.root}",
-                    *issues,
-                    f"status store: {settings.status.store}",
-                    f"orca project: {settings.workspace.orca_project.root}",
-                    f"assignee: {settings.workspace.assignee.root}",
-                    f"claim label: {settings.claims.label.root}",
+                    f"repo file: {config.origin.root}",
+                    override,
                     *(
-                        ()
-                        if settings.pool is None
-                        else (
-                            f"pool view: {settings.pool.view.root}",
-                            f"pool limits: {settings.pool.limits.summary().root}",
-                            f"pool skip-limits label: {settings.pool.skip_limits_label.root}",
-                        )
+                        ReportLine.attributed(config, SettingKey(key), ReportLine(text)).root
+                        for key, text in attributed
                     ),
                     "ticket statuses:",
                     *(
-                        f"  {state.root}: {status.root}"
-                        for state, status in settings.ticket_statuses.root.items()
+                        ReportLine.attributed(config, SettingKey(key), ReportLine(text)).root
+                        for key, text in statuses
                     ),
                 )
             )

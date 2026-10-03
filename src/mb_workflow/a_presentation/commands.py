@@ -51,6 +51,10 @@ from mb_workflow.b_core.d_domain_model.config import (
     MissingConfigError,
     WorkingDirectory,
 )
+from mb_workflow.b_core.d_domain_model.config_override import (
+    InvalidOverrideError,
+    ProjectOverride,
+)
 from mb_workflow.b_core.d_domain_model.config_template import ConfigTemplate
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError, StateNames, WorkflowChart
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
@@ -61,6 +65,7 @@ from mb_workflow.c_infrastructure.credentials import (
     MissingCredentialsError,
     RepositorySlug,
 )
+from mb_workflow.c_infrastructure.dev_environment import DevEnvironment
 from mb_workflow.c_infrastructure.flock import FlockRunLock, LockName, LockPath
 from mb_workflow.c_infrastructure.github import GitHub
 from mb_workflow.c_infrastructure.lazy_linear import LazyLinear, LazyLinearClaims
@@ -68,6 +73,7 @@ from mb_workflow.c_infrastructure.ledger_file import FileLedgerStore
 from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
 from mb_workflow.c_infrastructure.linear_claims import LinearClaims
 from mb_workflow.c_infrastructure.orca import Orca
+from mb_workflow.c_infrastructure.project_override import override_of_origin
 from mb_workflow.c_infrastructure.random_tie_break import RandomTieBreak
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.c_infrastructure.workspace_board import BoardError, WorkspaceBoard
@@ -98,6 +104,7 @@ FAILURES = (
     FlowError,
     InvalidConfigError,
     InvalidCredentialsError,
+    InvalidOverrideError,
     MissingConfigError,
     MissingCredentialsError,
     MissingFlowLabelsError,
@@ -136,6 +143,15 @@ def linear_key() -> LinearApiKey:
     return path.credentials().linear.api_key
 
 
+# Err values from loading the configuration are raised here, so guarded reports them like any failure.
+def user_override() -> ProjectOverride:
+    return override_of_origin(CredentialsDirectory.of_user(), here()).unwrap()
+
+
+def resolved_configuration(directory: WorkingDirectory, name: ConfigFileName) -> Configuration:
+    return Configuration.resolved(directory, name, user_override()).unwrap()
+
+
 def linear() -> Linear:
     return Linear.connected(linear_key())
 
@@ -158,7 +174,7 @@ def review_workspaces(
 ) -> ExitCode:
     # Review-workspaces predates the config file, so a repo without one still has its worktrees reconciled.
     try:
-        claim_settings = Configuration.resolved(
+        claim_settings = resolved_configuration(
             WorkingDirectory(Path.cwd()), ConfigFileName.default()
         ).settings.claims
     except MissingConfigError:
@@ -207,7 +223,7 @@ def linear_autolabel(request: AutolabelRequest, window: CreatedAfter) -> ExitCod
 def ticket_start(
     request: StartRequest, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
-    settings = Configuration.resolved(directory, name).settings
+    settings = resolved_configuration(directory, name).settings
     orca = Orca(here())
     key = linear_key()
     start_ticket(
@@ -227,7 +243,7 @@ def ticket_start(
 def drain(
     request: DrainRequest, lock: LockName, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
-    settings = Configuration.resolved(directory, name).settings
+    settings = resolved_configuration(directory, name).settings
     pool = settings.required_pool()
     orca = Orca(here())
     key = linear_key()
@@ -260,7 +276,7 @@ def teardown(
         manager=Orca(here()),
         claims=LazyLinearClaims(linear_key),
         tracker=LazyLinear(linear_key),
-        claim_settings=Configuration.resolved(directory, name).settings.claims,
+        claim_settings=resolved_configuration(directory, name).settings.claims,
         request=request,
     )
     return ExitCode(0)
@@ -273,7 +289,7 @@ def ticket_unclaim(
     unclaim_ticket(
         registry=LinearClaims.connected(linear_key()),
         tracker=linear(),
-        claim_settings=Configuration.resolved(directory, name).settings.claims,
+        claim_settings=resolved_configuration(directory, name).settings.claims,
         ticket=ticket,
     )
     return ExitCode(0)
@@ -296,7 +312,7 @@ def ticket_edit(issue: IssueIdentifier, edit: TicketEdit) -> ExitCode:
 def ticket_create(
     draft: TicketDraft, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
-    settings = Configuration.resolved(directory, name).settings
+    settings = resolved_configuration(directory, name).settings
     created = create_ticket(
         tracker=linear(),
         draft=draft,
@@ -323,7 +339,13 @@ def init(directory: WorkingDirectory, name: ConfigFileName, overwrite: Overwrite
 
 @guarded
 def config(directory: WorkingDirectory, name: ConfigFileName) -> ExitCode:
-    write(Output(f"{show_config(directory, name).root}\n"))
+    write(Output(f"{show_config(directory, name, user_override()).unwrap().root}\n"))
+    return ExitCode(0)
+
+
+@guarded
+def dev_setup() -> ExitCode:
+    DevEnvironment(here()).set_up()
     return ExitCode(0)
 
 
@@ -343,7 +365,7 @@ def flow_event(
         tracker=linear(),
         manager=orca,
         wanted=flow_labels_of_chart(),
-        statuses=Configuration.resolved(directory, name).settings.ticket_statuses,
+        statuses=resolved_configuration(directory, name).settings.ticket_statuses,
         event=event,
         force=force,
     )
