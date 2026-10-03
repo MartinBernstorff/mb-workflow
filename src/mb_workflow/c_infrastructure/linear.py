@@ -296,7 +296,9 @@ class UpdateLookup(Payload):
     states: tuple[StateRecord, ...] = Field(
         default=(), validation_alias=AliasPath("issue", "team", "states", "nodes")
     )
-    team: TeamKey | None = Field(default=None, validation_alias=AliasPath("issue", "team", "key"))
+    issue_team: TeamKey | None = Field(
+        default=None, validation_alias=AliasPath("issue", "team", "key")
+    )
 
     @staticmethod
     def fake() -> UpdateLookup:
@@ -306,7 +308,7 @@ class UpdateLookup(Payload):
             projects=(ProjectRecord.fake(),),
             milestone_projects=(ProjectRecord.fake(),),
             states=(StateRecord.fake(),),
-            team=TeamKey.fake(),
+            issue_team=TeamKey.fake(),
         )
 
     # Teams may each hold a label of the same name, so the issue's own team's one wins, then the workspace's.
@@ -989,7 +991,7 @@ class Linear(TicketTracker):
         if update.description is not None:
             changes["description"] = update.description
         if update.labels is not None:
-            changes["label_ids"] = found.label_ids(update.labels, found.team)
+            changes["label_ids"] = found.label_ids(update.labels, found.issue_team)
         if update.assignee is not None:
             changes["assignee_id"] = found.user_id(update.assignee)
         if update.project is not None:
@@ -1163,4 +1165,4 @@ class Linear(TicketTracker):
 
     def _label_ids(self, issue: IssueIdentifier, labels: LabelNames) -> tuple[LabelId, ...]:
         found = self._lookup(issue, IssueUpdate.nothing().model_copy(update={"labels": labels}))
-        return found.label_ids(labels, found.team)
+        return found.label_ids(labels, found.issue_team)
