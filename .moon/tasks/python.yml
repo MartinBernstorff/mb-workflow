@@ -22,6 +22,7 @@ tasks:
     inputs:
       - "pyproject.toml"
       - "uv.lock"
+      - "pyrefly.toml"
       - "/pyrefly.toml"
       - "@group(sources)"
     options:
