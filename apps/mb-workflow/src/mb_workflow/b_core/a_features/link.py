@@ -76,7 +76,6 @@ class StatusStep(SagaStep):
             return Err(error)
         return Ok(None)
 
-    # A worktree in no column stays in the new one, as the board cannot take a worktree out of every column.
     @override
     def revert(self) -> Result[None, Exception]:
         if self.worktree.status is None:
