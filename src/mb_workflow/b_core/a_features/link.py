@@ -1,13 +1,12 @@
 import logging
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.a_features.start import action_in
+from mb_workflow.b_core.b_domain_services.next_action import state_with_work_left
 from mb_workflow.b_core.b_domain_services.take_ticket import take_ticket
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRequest
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import set_display_name_or_warn
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, TakeOver
-from mb_workflow.b_core.d_domain_model.flow import FlowError, WorkflowChart
-from mb_workflow.b_core.d_domain_model.flow_labels import state_of
+from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.workspace import DisplayName, WorktreeName
 from mb_workflow.d_lib.models import Model
@@ -53,12 +52,9 @@ def link_ticket(
     flow_labels: FlowLabels,
     request: LinkRequest,
 ) -> None:
-    # Resolve the state and refuse before touching anything, so a refused link leaves no claim behind.
+    # Refuse before touching anything, so a refused link leaves no claim behind.
     detail = tracker.read_issue_detail(request.ticket)
-    state = state_of(WorkflowChart, flow_labels, detail.issue.grouped)
-    if state is None:
-        raise FlowError(f"{request.ticket.root} carries no flow label, so it is not in the flow.")
-    _ = action_in(request.ticket, state)
+    state = state_with_work_left(WorkflowChart, flow_labels, detail.issue)
     here = manager.current()
     require_unlinked_or_forced(here, request)
 
