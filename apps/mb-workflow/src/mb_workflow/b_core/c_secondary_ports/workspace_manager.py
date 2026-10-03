@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, NoReturn, Protocol, override
+from typing import TYPE_CHECKING, Protocol, override
 
 from mb_workflow.b_core.d_domain_model.workspace import (
     DisplayName,
@@ -204,28 +204,25 @@ class FakeWorkspaceManager(WorkspaceManager):
         return worktree
 
 
-# Raises, as the WorkspaceManager port signals a failure that way.
-def refuse(error: WorkspaceManagerError) -> NoReturn:
-    raise error
-
-
 class DisplayNameRefusingWorkspaceManager(FakeWorkspaceManager):
     @override
     def set_display_name(self, path: WorktreePath, name: DisplayName) -> None:
-        refuse(WorkspaceManagerError(f"Orca refused the display name {name.root}."))
+        raise WorkspaceManagerError(f"Orca refused the display name {name.root}.")
 
 
 class LinkRefusingWorkspaceManager(FakeWorkspaceManager):
     @override
     def set_linked_issue(self, path: WorktreePath, issue: IssueIdentifier) -> None:
-        refuse(WorkspaceManagerError(f"Orca refused to link {issue.root}."))
+        raise WorkspaceManagerError(f"Orca refused to link {issue.root}.")
 
 
-# The display name is cosmetic, so a refusal leaves the worktree under its directory name.
-def set_display_name_or_warn(
-    manager: WorkspaceManager, path: WorktreePath, name: DisplayName
-) -> None:
-    try:
-        manager.set_display_name(path, name)
-    except WorkspaceManagerError as error:
-        logger.warning("Could not name %s %s: %s", path.root, name.root, error)
+class WorkspaceNaming:
+    # The display name is cosmetic, so a refusal leaves the worktree under its directory name.
+    @staticmethod
+    def set_display_name_or_warn(
+        manager: WorkspaceManager, path: WorktreePath, name: DisplayName
+    ) -> None:
+        try:
+            manager.set_display_name(path, name)
+        except WorkspaceManagerError as error:
+            logger.warning("Could not name %s %s: %s", path.root, name.root, error)

@@ -9,7 +9,7 @@ from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRequest
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
-    set_display_name_or_warn,
+    WorkspaceNaming,
 )
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, TakeOver
 from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
@@ -63,20 +63,44 @@ class LinkRequest(Model):
 
 
 @dataclass(frozen=True)
-class LinkStep(SagaStep):
+class StatusStep(SagaStep):
     manager: WorkspaceManager
-    here: Worktree
-    ticket: IssueIdentifier
+    worktree: Worktree
     status: WorkspaceStatus
 
     @override
     def apply(self) -> Result[None, Exception]:
         try:
-            self.manager.set_linked_issue(self.here.path, self.ticket)
-            logger.info("Linked %s to %s.", self.here.path.root, self.ticket.root)
-            self.manager.set_status(self.here.path, self.status)
+            self.manager.set_status(self.worktree.path, self.status)
         except WorkspaceManagerError as error:
             return Err(error)
+        return Ok(None)
+
+    # A worktree in no column stays in the new one, as the board cannot take a worktree out of every column.
+    @override
+    def revert(self) -> Result[None, Exception]:
+        if self.worktree.status is None:
+            return Ok(None)
+        try:
+            self.manager.set_status(self.worktree.path, self.worktree.status)
+        except WorkspaceManagerError as error:
+            return Err(error)
+        return Ok(None)
+
+
+@dataclass(frozen=True)
+class LinkStep(SagaStep):
+    manager: WorkspaceManager
+    worktree: Worktree
+    ticket: IssueIdentifier
+
+    @override
+    def apply(self) -> Result[None, Exception]:
+        try:
+            self.manager.set_linked_issue(self.worktree.path, self.ticket)
+        except WorkspaceManagerError as error:
+            return Err(error)
+        logger.info("Linked %s to %s.", self.worktree.path.root, self.ticket.root)
         return Ok(None)
 
     # The last step of link, so no later failure ever reverts it.
@@ -121,6 +145,9 @@ class TicketLinking:
             ),
             previous=detail.assignee,
         )
-        link_step = LinkStep(manager, here, request.ticket, board.status_for(state))
-        Saga.run((*taking_steps, link_step)).unwrap()
-        set_display_name_or_warn(manager, here.path, DisplayName.of_issue(detail.title))
+        # Linking comes last, as Orca cannot unlink a worktree to revert it.
+        status_step = StatusStep(manager, here, board.status_for(state))
+        Saga.run((*taking_steps, status_step, LinkStep(manager, here, request.ticket))).unwrap()
+        WorkspaceNaming.set_display_name_or_warn(
+            manager, here.path, DisplayName.of_issue(detail.title)
+        )

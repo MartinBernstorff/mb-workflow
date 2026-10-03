@@ -263,10 +263,22 @@ def test_a_refused_link_restores_the_previous_assignee() -> None:
     assert tracker.read_issue_detail(IssueIdentifier.fake()).assignee == previous
 
 
-# The board lacks the state's column, so setting the status fails after linking.
-def test_a_refused_status_leaves_no_claim() -> None:
-    manager = FakeWorkspaceManager(here_linked_to(None), WorktreePath.fake(), WorkspaceStatuses(()))
+def test_a_refused_link_puts_the_worktree_back_in_its_column() -> None:
+    column = fake_board().status_for(StateName("Specced"))
+    here = Worktree.bare(RepoId.fake(), WorktreePath.fake()).model_copy(update={"status": column})
+    manager = LinkRefusingWorkspaceManager(
+        Worktrees((here,)), WorktreePath.fake(), fake_board_statuses()
+    )
+    with pytest.raises(WorkspaceManagerError):
+        linking(manager, tracking(StateName.fake()), FakeClaimRegistry(), LinkRequest.fake())
+    assert manager.current().status == column
+
+
+def test_a_refused_status_leaves_neither_claim_nor_link() -> None:
+    board_without_columns = WorkspaceStatuses(())
+    manager = FakeWorkspaceManager(here_linked_to(None), WorktreePath.fake(), board_without_columns)
     claims = FakeClaimRegistry()
     with pytest.raises(WorkspaceManagerError):
         linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake())
     assert claims.claims(IssueIdentifier.fake()) == Claims(())
+    assert manager.current().issue is None

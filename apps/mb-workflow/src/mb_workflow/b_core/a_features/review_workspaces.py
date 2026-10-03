@@ -8,7 +8,7 @@ from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
-    set_display_name_or_warn,
+    WorkspaceNaming,
 )
 from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.b_core.d_domain_model.pull_request import CheckoutDirectory, PrNumber
@@ -220,7 +220,7 @@ def reconcile_workspaces(
                 repo, pr.number, status, None if prompt is None else AgentName.claude()
             )
             path = opened.worktree.path
-            set_display_name_or_warn(manager, path, DisplayName.of_pr(pr.title))
+            WorkspaceNaming.set_display_name_or_warn(manager, path, DisplayName.of_pr(pr.title))
             narrator.checking_out(path)
             review.checkout(pr.number, CheckoutDirectory(path.root))
             if prompt is not None:
