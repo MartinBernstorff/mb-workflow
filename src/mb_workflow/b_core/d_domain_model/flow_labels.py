@@ -1,6 +1,15 @@
-from mb_workflow.b_core.d_domain_model.flow import FlowError, StateName, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import (
+    FlowError,
+    Phase,
+    StateName,
+    WorkflowChart,
+    WorkState,
+)
 from mb_workflow.b_core.d_domain_model.issue import (
+    ColoredLabel,
+    ColoredLabels,
     GroupedLabels,
+    LabelColor,
     LabelGroupName,
     LabelName,
     LabelNames,
@@ -11,6 +20,7 @@ from mb_workflow.d_lib.models import Model
 class FlowLabels(Model):
     group: LabelGroupName
     labels: LabelNames
+    entry: LabelNames
 
     @staticmethod
     def fake() -> FlowLabels:
@@ -18,7 +28,33 @@ class FlowLabels(Model):
 
     @staticmethod
     def of_chart(chart: type[WorkflowChart], group: LabelGroupName) -> FlowLabels:
-        return FlowLabels(group=group, labels=chart_labels(chart))
+        entry = LabelNames(
+            tuple(
+                LabelName(state.name)
+                for state in chart.states
+                if isinstance(state, WorkState) and state.phase == Phase.entry
+            )
+        )
+        return FlowLabels(group=group, labels=chart_labels(chart), entry=entry)
+
+    def colored(self, labels: LabelNames) -> ColoredLabels:
+        return ColoredLabels(
+            tuple(ColoredLabel(name=label, color=self._color_of(label)) for label in labels.root)
+        )
+
+    def miscolored(self, held: ColoredLabels) -> LabelNames:
+        return LabelNames(
+            tuple(
+                label.name
+                for label in held.root
+                if self.labels.matching(label.name) is not None
+                and not self._color_of(label.name).matches(label.color).root
+            )
+        )
+
+    # Entry labels stand out in yellow, so a ticket not yet ready for work is told apart at a glance.
+    def _color_of(self, label: LabelName) -> LabelColor:
+        return LabelColor.yellow() if self.entry.matching(label) is not None else LabelColor.grey()
 
     def missing(self, held: LabelNames) -> LabelNames:
         return held.unmatched(self.labels)

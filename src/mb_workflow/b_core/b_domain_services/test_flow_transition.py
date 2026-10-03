@@ -138,24 +138,29 @@ def test_missing_flow_labels_point_to_seed_labels_and_leave_the_board_alone() ->
     assert store.read() == StateName("Implementing")
 
 
-def tracker_with_team_groups(
-    issue_team: TeamKey, team_groups: dict[TeamKey, LabelNames], workspace: LabelNames
-) -> FakeTicketTracker:
-    wanted = FlowLabels.fake()
-    issue = Issue.fake().model_copy(update={"labels": LabelNames(())})
-    return FakeTicketTracker(
-        workspace,
-        (TrackedIssue.fake().model_copy(update={"issue": issue, "team": issue_team}),),
-        statuses=mapped_statuses(),
-        groups={wanted.group: workspace} if workspace.root else None,
-        team_groups={(team, wanted.group): labels for team, labels in team_groups.items()},
-    )
+# The ticket carries no labels, so only the flow label a transition writes is left on it.
+class TeamTrackers:
+    @staticmethod
+    def with_issue_in_team(
+        issue_team: TeamKey, team_groups: dict[TeamKey, LabelNames], workspace: LabelNames
+    ) -> FakeTicketTracker:
+        wanted = FlowLabels.fake()
+        issue = Issue.fake().model_copy(update={"labels": LabelNames(())})
+        return FakeTicketTracker(
+            workspace,
+            (TrackedIssue.fake().model_copy(update={"issue": issue, "team": issue_team}),),
+            statuses=mapped_statuses(),
+            groups={wanted.group: workspace} if workspace.root else None,
+            team_groups={(team, wanted.group): labels for team, labels in team_groups.items()},
+        )
 
 
 def test_a_transition_writes_the_flow_label_of_the_tickets_own_team() -> None:
     ops = TeamKey("OPS")
     labels = FlowLabels.fake().labels
-    tracker = tracker_with_team_groups(ops, {TeamKey.fake(): labels, ops: labels}, LabelNames(()))
+    tracker = TeamTrackers.with_issue_in_team(
+        ops, {TeamKey.fake(): labels, ops: labels}, LabelNames(())
+    )
     store = FakeStatusStore(StateName("Implementing"))
     _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
     qa = LabelName("QA")
@@ -163,7 +168,7 @@ def test_a_transition_writes_the_flow_label_of_the_tickets_own_team() -> None:
 
 
 def test_a_transition_falls_back_to_workspace_flow_labels() -> None:
-    tracker = tracker_with_team_groups(TeamKey("OPS"), {}, FlowLabels.fake().labels)
+    tracker = TeamTrackers.with_issue_in_team(TeamKey("OPS"), {}, FlowLabels.fake().labels)
     store = FakeStatusStore(StateName("Implementing"))
     _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
     qa = LabelName("QA")
@@ -171,7 +176,7 @@ def test_a_transition_falls_back_to_workspace_flow_labels() -> None:
 
 
 def test_another_teams_flow_labels_leave_the_ticket_and_the_board_alone() -> None:
-    tracker = tracker_with_team_groups(
+    tracker = TeamTrackers.with_issue_in_team(
         TeamKey("OPS"), {TeamKey.fake(): FlowLabels.fake().labels}, LabelNames(())
     )
     store = FakeStatusStore(StateName("Implementing"))

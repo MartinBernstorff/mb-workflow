@@ -378,17 +378,18 @@ def flow_event(
 @guarded
 def flow_seed_labels(team: TeamName) -> ExitCode:
     wanted = flow_labels_of_chart()
-    created = seed_flow_labels(linear(), wanted, team)
-    if isinstance(created, CoveredByWorkspace):
+    seeded = seed_flow_labels(linear(), wanted, team)
+    if isinstance(seeded, CoveredByWorkspace):
         logger.info(
-            "The workspace already has a %s label group, which covers %s. Created nothing.",
-            created.group.root,
+            "The workspace's %s label group holds every flow label, so it covers %s."
+            " Created nothing.",
+            seeded.group.root,
             team.root,
         )
-    elif created.root:
+    elif seeded.created.root:
         logger.info(
             "Created %s in the %s label group of %s.",
-            ", ".join(label.root for label in created.root),
+            ", ".join(label.root for label in seeded.created.root),
             wanted.group.root,
             team.root,
         )
@@ -397,5 +398,12 @@ def flow_seed_labels(team: TeamName) -> ExitCode:
             "The %s label group of %s already holds every flow label.",
             wanted.group.root,
             team.root,
+        )
+    if seeded.miscolored.root:
+        logger.warning(
+            "%s have the wrong color. The entry labels %s should be yellow, the rest grey."
+            " Recolor them in Linear.",
+            ", ".join(label.root for label in seeded.miscolored.root),
+            ", ".join(label.root for label in wanted.entry.root),
         )
     return ExitCode(0)

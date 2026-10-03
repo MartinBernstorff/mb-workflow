@@ -18,6 +18,8 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
     Cleared,
+    ColoredLabel,
+    ColoredLabels,
     CreatedIssue,
     GroupedLabel,
     GroupedLabels,
@@ -30,6 +32,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueTitle,
     IssueUpdate,
     IssueUrl,
+    LabelColor,
     LabelGroupName,
     LabelName,
     LabelNames,
@@ -171,18 +174,30 @@ class LabelRecord(Payload):
         return LabelRecord(id=LabelId.fake(), name=LabelName.fake(), team=None)
 
 
+class GroupedLabelRecord(Payload):
+    id: LabelId
+    name: LabelName
+    color: LabelColor
+
+    @staticmethod
+    def fake() -> GroupedLabelRecord:
+        return GroupedLabelRecord(id=LabelId.fake(), name=LabelName.fake(), color=LabelColor.fake())
+
+
 class LabelGroupRecord(Payload):
     id: LabelId
-    children: tuple[LabelRecord, ...] = Field(
+    children: tuple[GroupedLabelRecord, ...] = Field(
         default=(), validation_alias=AliasPath("children", "nodes")
     )
 
     @staticmethod
     def fake() -> LabelGroupRecord:
-        return LabelGroupRecord(id=LabelId.fake(), children=(LabelRecord.fake(),))
+        return LabelGroupRecord(id=LabelId.fake(), children=(GroupedLabelRecord.fake(),))
 
-    def labels(self) -> LabelNames:
-        return LabelNames(tuple(child.name for child in self.children))
+    def labels(self) -> ColoredLabels:
+        return ColoredLabels(
+            tuple(ColoredLabel(name=child.name, color=child.color) for child in self.children)
+        )
 
 
 class LabelGroupRead(Payload):
@@ -693,9 +708,9 @@ class Linear(TicketTracker):
             return LabelNames(tuple(LabelName(label.name) for label in labels if label.name))
 
     @override
-    def group_labels(self, group: LabelGroupName, team: TeamKey | None) -> LabelNames:
+    def group_labels(self, group: LabelGroupName, team: TeamKey | None) -> ColoredLabels:
         found = self._found_group(group, team)
-        return found.labels() if found is not None else LabelNames(())
+        return found.labels() if found is not None else ColoredLabels(())
 
     @override
     def label_group(self, label: LabelName) -> LabelGroupName | None:
@@ -714,7 +729,7 @@ class Linear(TicketTracker):
 
     @override
     def create_group_labels(
-        self, group: LabelGroupName, labels: LabelNames, team: TeamKey | None
+        self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None:
         found = self._found_group(group, team)
         owner = {"teamId": self._team_id(team).root} if team is not None else {}
@@ -726,7 +741,14 @@ class Linear(TicketTracker):
             )
         )
         for label in labels.root:
-            _ = self._created_label({"name": label.root, "parentId": parent.root, **owner})
+            _ = self._created_label(
+                {
+                    "name": label.name.root,
+                    "color": label.color.root,
+                    "parentId": parent.root,
+                    **owner,
+                }
+            )
 
     @override
     def team_named(self, name: TeamName) -> TeamKey:
@@ -768,7 +790,7 @@ class Linear(TicketTracker):
                     first: 1
                     filter: { name: { eqIgnoreCase: $name }, isGroup: { eq: true }, team: $team }
                   ) {
-                    nodes { id children(first: 250) { nodes { id name } } }
+                    nodes { id children(first: 250) { nodes { id name color } } }
                   }
                 }
                 """,

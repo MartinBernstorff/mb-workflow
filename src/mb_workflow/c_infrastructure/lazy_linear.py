@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, ClaimId, Claims
     from mb_workflow.b_core.d_domain_model.issue import (
         Assignee,
+        ColoredLabels,
         CreatedIssue,
         Issue,
         IssueDetail,
@@ -76,7 +77,7 @@ class LazyLinear(TicketTracker):
         return self._tracker().workspace_labels()
 
     @override
-    def group_labels(self, group: LabelGroupName, team: TeamKey | None) -> LabelNames:
+    def group_labels(self, group: LabelGroupName, team: TeamKey | None) -> ColoredLabels:
         return self._tracker().group_labels(group, team)
 
     @override
@@ -85,7 +86,7 @@ class LazyLinear(TicketTracker):
 
     @override
     def create_group_labels(
-        self, group: LabelGroupName, labels: LabelNames, team: TeamKey | None
+        self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None:
         self._tracker().create_group_labels(group, labels, team)
 

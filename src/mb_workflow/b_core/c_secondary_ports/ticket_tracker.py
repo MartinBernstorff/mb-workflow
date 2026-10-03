@@ -6,6 +6,8 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
     Cleared,
+    ColoredLabel,
+    ColoredLabels,
     CreatedIssue,
     CreatedOn,
     Creator,
@@ -23,6 +25,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueTitle,
     IssueUpdate,
     IssueUrl,
+    LabelColor,
     LabelName,
     LabelNames,
     Milestone,
@@ -52,12 +55,12 @@ class TicketTracker(Protocol):
     def workspace_labels(self) -> LabelNames: ...
 
     # A team of None reads or creates the group at workspace level, outside every team.
-    def group_labels(self, group: LabelGroupName, team: TeamKey | None) -> LabelNames: ...
+    def group_labels(self, group: LabelGroupName, team: TeamKey | None) -> ColoredLabels: ...
 
     def label_group(self, label: LabelName) -> LabelGroupName | None: ...
 
     def create_group_labels(
-        self, group: LabelGroupName, labels: LabelNames, team: TeamKey | None
+        self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None: ...
 
     def team_named(self, name: TeamName) -> TeamKey: ...
@@ -139,8 +142,12 @@ class FakeTicketTracker(TicketTracker):
         self._statuses = statuses
         self._viewer = viewer
         self._views = dict(views or {})
-        self._groups = dict(groups or {})
-        self._team_groups = dict(team_groups or {})
+        self._groups = {
+            group: FakeTicketTracker._uncolored(labels) for group, labels in (groups or {}).items()
+        }
+        self._team_groups = {
+            key: FakeTicketTracker._uncolored(labels) for key, labels in (team_groups or {}).items()
+        }
         self._teams = teams
 
     # Linear lists every label, a team's own ones included.
@@ -149,15 +156,19 @@ class FakeTicketTracker(TicketTracker):
         return LabelNames(
             (
                 *self._labels.root,
-                *(label for held in self._team_groups.values() for label in held.root),
+                *(
+                    label
+                    for held in self._team_groups.values()
+                    for label in held.label_names().root
+                ),
             )
         )
 
     @override
-    def group_labels(self, group: LabelGroupName, team: TeamKey | None) -> LabelNames:
+    def group_labels(self, group: LabelGroupName, team: TeamKey | None) -> ColoredLabels:
         if team is None:
-            return self._groups.get(group, LabelNames(()))
-        return self._team_groups.get((team, group), LabelNames(()))
+            return self._groups.get(group, ColoredLabels(()))
+        return self._team_groups.get((team, group), ColoredLabels(()))
 
     @override
     def label_group(self, label: LabelName) -> LabelGroupName | None:
@@ -168,19 +179,19 @@ class FakeTicketTracker(TicketTracker):
                     *self._groups.items(),
                     *((group, members) for (_, group), members in self._team_groups.items()),
                 )
-                if members.matching(label) is not None
+                if members.label_names().matching(label) is not None
             ),
             None,
         )
 
     @override
     def create_group_labels(
-        self, group: LabelGroupName, labels: LabelNames, team: TeamKey | None
+        self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None:
-        held = LabelNames((*self.group_labels(group, team).root, *labels.root))
+        held = ColoredLabels((*self.group_labels(group, team).root, *labels.root))
         if team is None:
             self._groups[group] = held
-            self._labels = LabelNames((*self._labels.root, *labels.root))
+            self._labels = LabelNames((*self._labels.root, *labels.label_names().root))
         else:
             self._team_groups[(team, group)] = held
 
@@ -445,12 +456,19 @@ class FakeTicketTracker(TicketTracker):
     # A team's group may share its name with a workspace group, yet Linear keeps the two apart.
     def _groups_of(self, team: TeamKey) -> tuple[tuple[LabelGroupName, LabelNames], ...]:
         return (
-            *self._groups.items(),
+            *((group, members.label_names()) for group, members in self._groups.items()),
             *(
-                (group, members)
+                (group, members.label_names())
                 for (owner, group), members in self._team_groups.items()
                 if owner.names(team).root
             ),
+        )
+
+    # Groups a test hands in hold labels of no particular color.
+    @staticmethod
+    def _uncolored(labels: LabelNames) -> ColoredLabels:
+        return ColoredLabels(
+            tuple(ColoredLabel(name=label, color=LabelColor.fake()) for label in labels.root)
         )
 
     # Linear reports each label's group on the issue, so the fake reads it from the groups it keeps.

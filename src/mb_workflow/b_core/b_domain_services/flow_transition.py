@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.b_domain_services.flow_label_check import require_flow_labels
+from mb_workflow.b_core.b_domain_services.flow_label_check import FlowLabelCheck
 from mb_workflow.b_core.d_domain_model.flow import Edges, EventName, StateName, WorkflowChart
 from mb_workflow.b_core.d_domain_model.issue import IssueUpdate
 from mb_workflow.d_lib.models import Value
@@ -44,7 +44,7 @@ def put_in_state(
     statuses: TicketStatuses,
     state: StateName,
 ) -> None:
-    require_flow_labels(tracker, wanted, tracker.team_of(issue))
+    FlowLabelCheck.require(tracker, wanted, tracker.team_of(issue))
     labels = wanted.relabelled(tracker.read_issue(issue).labels, state)
     tracker.update_issue(
         issue,
