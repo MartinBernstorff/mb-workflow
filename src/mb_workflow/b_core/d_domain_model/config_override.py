@@ -40,7 +40,7 @@ class SettingsTable(Value[dict[str, JsonValue]]):
     def empty() -> SettingsTable:
         return SettingsTable({})
 
-    # An override key replaces the key it matches ignoring case, as state and label names match.
+    # An override key replaces the repo key it matches ignoring case, so `qa` overrides `QA`.
     def merged(self, override: SettingsTable) -> SettingsTable:
         override_spelling = {
             repo_key: override_key
