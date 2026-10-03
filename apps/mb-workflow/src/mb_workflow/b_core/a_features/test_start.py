@@ -1,4 +1,7 @@
+import re
+
 import pytest
+from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.a_features.start import StartRequest, TicketStart
 from mb_workflow.b_core.c_secondary_ports.claims import (
@@ -120,8 +123,8 @@ def starting(
     *,
     workspace: WorkspaceSettings | None = None,
     claim_settings: ClaimSettings | None = None,
-) -> None:
-    TicketStart.start_ticket(
+) -> Result[None, FlowError]:
+    return TicketStart.start_ticket(
         manager=manager,
         tracker=tracker,
         claims=claims or FakeClaimRegistry(),
@@ -136,7 +139,7 @@ def starting(
 
 def started(state: StateName | None, request: StartRequest) -> FakeWorkspaceManager:
     manager = fake_manager()
-    starting(manager, tracking(state), request)
+    assert starting(manager, tracking(state), request) == Ok(None)
     return manager
 
 
@@ -155,7 +158,7 @@ def test_a_refused_display_name_still_opens_the_worktree() -> None:
     manager = DisplayNameRefusingWorkspaceManager(
         Worktrees.fake(), WorktreePath.fake(), fake_board_statuses()
     )
-    starting(manager, tracking(StateName("Specced")), StartRequest.fake())
+    assert starting(manager, tracking(StateName("Specced")), StartRequest.fake()) == Ok(None)
     assert opened_in(manager).issue == IssueIdentifier.fake()
 
 
@@ -199,7 +202,7 @@ def test_the_prompt_is_the_next_action_for_the_state_of_the_flow_label(
 def test_the_ticket_status_does_not_decide_the_state() -> None:
     manager = fake_manager()
     tracker = tracking(StateName("Specced"), status=IssueStatusName("Done"))
-    starting(manager, tracker, StartRequest.fake())
+    assert starting(manager, tracker, StartRequest.fake()) == Ok(None)
     assert manager.typed_texts() == (TerminalText("/implement E-4289"),)
 
 
@@ -219,8 +222,10 @@ def test_a_ticket_without_a_flow_label_is_neither_claimed_assigned_nor_opened() 
     tracker = tracking(None)
     claims = FakeClaimRegistry()
     startable = r"--state.*Grilling, Speccing, Specced"
-    with pytest.raises(FlowError, match=startable):
-        starting(manager, tracker, StartRequest.fake(), claims)
+    refused = starting(manager, tracker, StartRequest.fake(), claims)
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, FlowError)
+    assert re.search(startable, str(refused.error))
     assert manager.worktrees() == Worktrees.fake()
     assert tracker.read_issue(IssueIdentifier.fake()).assigned == Assigned(False)
     assert claims.claims(IssueIdentifier.fake()) == Claims(())
@@ -234,7 +239,7 @@ def test_a_ticket_without_a_flow_label_started_in_a_state_gets_its_label_and_sta
     manager = fake_manager()
     tracker = tracking(None)
     specced = StateName("Specced")
-    starting(manager, tracker, starting_in(specced))
+    assert starting(manager, tracker, starting_in(specced)) == Ok(None)
     issue = tracker.read_issue(IssueIdentifier.fake())
     assert issue.labels.has(LabelName(specced.root)).root
     assert issue.status == TicketStatuses.fake().of(specced)
@@ -244,7 +249,7 @@ def test_a_ticket_without_a_flow_label_started_in_a_state_gets_its_label_and_sta
 def test_a_state_typed_in_lowercase_puts_the_ticket_in_the_chart_state() -> None:
     tracker = tracking(None)
     specced = StateName("Specced")
-    starting(fake_manager(), tracker, starting_in(StateName("specced")))
+    assert starting(fake_manager(), tracker, starting_in(StateName("specced"))) == Ok(None)
     issue = tracker.read_issue(IssueIdentifier.fake())
     assert issue.labels.has(LabelName(specced.root)).root
     assert issue.status == TicketStatuses.fake().of(specced)
@@ -254,8 +259,10 @@ def test_a_ticket_with_a_flow_label_started_in_a_state_is_not_claimed() -> None:
     manager = fake_manager()
     tracker = tracking(StateName("Grilling"))
     claims = FakeClaimRegistry()
-    with pytest.raises(FlowError, match="mw flow"):
-        starting(manager, tracker, starting_in(StateName("Specced")), claims)
+    refused = starting(manager, tracker, starting_in(StateName("Specced")), claims)
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, FlowError)
+    assert re.search("mw flow", str(refused.error))
     assert tracker.read_issue(IssueIdentifier.fake()).labels == labelled(StateName("Grilling"))
     assert claims.claims(IssueIdentifier.fake()) == Claims(())
     assert manager.worktrees() == Worktrees.fake()
@@ -265,8 +272,10 @@ def test_a_ticket_started_in_a_state_with_no_work_is_not_claimed() -> None:
     tracker = tracking(None)
     claims = FakeClaimRegistry()
     refusal = r"No flow state is named merged\. Use one of Grilling, .*, Merging\.$"
-    with pytest.raises(UnknownStateError, match=refusal):
-        starting(fake_manager(), tracker, starting_in(StateName("merged")), claims)
+    refused = starting(fake_manager(), tracker, starting_in(StateName("merged")), claims)
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, UnknownStateError)
+    assert re.search(refusal, str(refused.error))
     assert tracker.read_issue(IssueIdentifier.fake()).labels == labelled(None)
     assert claims.claims(IssueIdentifier.fake()) == Claims(())
 
@@ -275,7 +284,7 @@ def test_a_ticket_the_tracker_cannot_read_is_not_opened() -> None:
     manager = fake_manager()
     unreadable = StartRequest.fake().model_copy(update={"ticket": IssueIdentifier("E-404")})
     with pytest.raises(TicketTrackerError):
-        starting(manager, tracking(StateName.fake()), unreadable)
+        _ = starting(manager, tracking(StateName.fake()), unreadable)
     assert manager.worktrees() == Worktrees.fake()
 
 
@@ -285,7 +294,9 @@ def test_opens_the_worktree_in_the_configured_project() -> None:
         Worktrees.fake(), WorktreePath.fake(), fake_board_statuses(), project=project
     )
     workspace = WorkspaceSettings.fake().model_copy(update={"orca_project": project})
-    starting(manager, tracking(StateName("Specced")), StartRequest.fake(), workspace=workspace)
+    assert starting(
+        manager, tracking(StateName("Specced")), StartRequest.fake(), workspace=workspace
+    ) == Ok(None)
     assert opened_in(manager).issue == IssueIdentifier.fake()
 
 
@@ -293,7 +304,7 @@ def test_assigns_the_ticket_to_the_configured_assignee() -> None:
     tracker = tracking(StateName("Specced"))
     assignee = Assignee("other@flowbase.io")
     workspace = WorkspaceSettings.fake().model_copy(update={"assignee": assignee})
-    starting(fake_manager(), tracker, StartRequest.fake(), workspace=workspace)
+    assert starting(fake_manager(), tracker, StartRequest.fake(), workspace=workspace) == Ok(None)
     assert tracker.read_issue_detail(IssueIdentifier.fake()).assignee == assignee
 
 
@@ -301,8 +312,10 @@ def test_a_merged_ticket_is_neither_opened_nor_assigned() -> None:
     manager = fake_manager()
     tracker = tracking(StateName("Merged"))
     claims = FakeClaimRegistry()
-    with pytest.raises(FlowError, match="no work left"):
-        starting(manager, tracker, StartRequest.fake(), claims)
+    refused = starting(manager, tracker, StartRequest.fake(), claims)
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, FlowError)
+    assert re.search("no work left", str(refused.error))
     assert manager.worktrees() == Worktrees.fake()
     assert tracker.read_issue(IssueIdentifier.fake()).assigned == Assigned(False)
     assert claims.claims(IssueIdentifier.fake()) == Claims(())
@@ -329,7 +342,9 @@ def holders(claims: FakeClaimRegistry) -> tuple[ClaimHolder, ...]:
 
 def test_claims_the_ticket_for_this_host_and_worktree() -> None:
     claims = FakeClaimRegistry()
-    starting(fake_manager(), tracking(StateName("Specced")), StartRequest.fake(), claims)
+    assert starting(
+        fake_manager(), tracking(StateName("Specced")), StartRequest.fake(), claims
+    ) == Ok(None)
     assert holders(claims) == (ours(),)
 
 
@@ -337,7 +352,7 @@ def test_a_ticket_claimed_by_another_holder_is_neither_opened_nor_assigned() -> 
     manager = fake_manager()
     tracker = tracking(StateName("Specced"))
     with pytest.raises(ClaimRefusedError, match=r"bob-mbp\.local"):
-        starting(manager, tracker, StartRequest.fake(), claimed_by_a_rival())
+        _ = starting(manager, tracker, StartRequest.fake(), claimed_by_a_rival())
     assert manager.worktrees() == Worktrees.fake()
     assert tracker.read_issue(IssueIdentifier.fake()).assigned == Assigned(False)
 
@@ -346,7 +361,7 @@ def test_force_takes_the_claim_over() -> None:
     manager = fake_manager()
     claims = claimed_by_a_rival()
     forcing = StartRequest.fake().model_copy(update={"take_over": TakeOver(True)})
-    starting(manager, tracking(StateName("Specced")), forcing, claims)
+    assert starting(manager, tracking(StateName("Specced")), forcing, claims) == Ok(None)
     assert holders(claims) == (ours(),)
     assert opened_in(manager).issue == IssueIdentifier.fake()
 
@@ -355,13 +370,17 @@ def test_a_ticket_this_worktree_already_claimed_is_not_claimed_twice() -> None:
     claims = FakeClaimRegistry(
         {IssueIdentifier.fake(): Claims((Claim(id=ClaimId("ours"), holder=ours()),))}
     )
-    starting(fake_manager(), tracking(StateName("Specced")), StartRequest.fake(), claims)
+    assert starting(
+        fake_manager(), tracking(StateName("Specced")), StartRequest.fake(), claims
+    ) == Ok(None)
     assert holders(claims) == (ours(),)
 
 
 def labels_after_starting(claim_settings: ClaimSettings, claims: FakeClaimRegistry) -> LabelNames:
     tracker = tracking(StateName("Specced"))
-    starting(fake_manager(), tracker, StartRequest.fake(), claims, claim_settings=claim_settings)
+    assert starting(
+        fake_manager(), tracker, StartRequest.fake(), claims, claim_settings=claim_settings
+    ) == Ok(None)
     return tracker.read_issue(IssueIdentifier.fake()).labels
 
 
@@ -374,7 +393,7 @@ def test_a_ticket_claimed_by_another_holder_is_not_labelled() -> None:
     tracker = tracking(StateName("Specced"))
     labelling = ClaimSettings(label=LabelName("claimed"))
     with pytest.raises(ClaimRefusedError):
-        starting(
+        _ = starting(
             fake_manager(),
             tracker,
             StartRequest.fake(),
@@ -389,7 +408,7 @@ def test_a_claim_label_the_tracker_lacks_fails_the_start_without_leaving_a_claim
     claims = FakeClaimRegistry()
     missing = ClaimSettings(label=LabelName("absent"))
     with pytest.raises(ClaimRefusedError, match="absent"):
-        starting(
+        _ = starting(
             manager,
             tracking(StateName("Specced")),
             StartRequest.fake(),
@@ -405,7 +424,7 @@ def test_a_forced_start_with_a_missing_claim_label_keeps_the_rivals_claim() -> N
     forcing = StartRequest.fake().model_copy(update={"take_over": TakeOver(True)})
     missing = ClaimSettings(label=LabelName("absent"))
     with pytest.raises(ClaimRefusedError, match="absent"):
-        starting(
+        _ = starting(
             fake_manager(),
             tracking(StateName("Specced")),
             forcing,
@@ -430,7 +449,7 @@ def test_a_failed_worktree_creation_leaves_neither_claim_nor_claim_label() -> No
     tracker = tracking(specced)
     claims = FakeClaimRegistry()
     with pytest.raises(WorkspaceManagerError):
-        starting(refusing_manager(), tracker, StartRequest.fake(), claims)
+        _ = starting(refusing_manager(), tracker, StartRequest.fake(), claims)
     assert claims.claims(IssueIdentifier.fake()) == Claims(())
     assert tracker.read_issue(IssueIdentifier.fake()).labels == labelled(specced)
 
@@ -439,14 +458,14 @@ def test_a_failed_worktree_creation_restores_the_previous_assignee() -> None:
     previous = Assignee("previous@flowbase.io")
     tracker = tracking(StateName("Specced"), assignee=previous)
     with pytest.raises(WorkspaceManagerError):
-        starting(refusing_manager(), tracker, StartRequest.fake())
+        _ = starting(refusing_manager(), tracker, StartRequest.fake())
     assert tracker.read_issue_detail(IssueIdentifier.fake()).assignee == previous
 
 
 def test_a_failed_worktree_creation_leaves_an_unassigned_ticket_unassigned() -> None:
     tracker = tracking(StateName("Specced"))
     with pytest.raises(WorkspaceManagerError):
-        starting(refusing_manager(), tracker, StartRequest.fake())
+        _ = starting(refusing_manager(), tracker, StartRequest.fake())
     assert tracker.read_issue(IssueIdentifier.fake()).assigned == Assigned(False)
 
 
@@ -454,7 +473,7 @@ def test_a_failed_forced_start_does_not_restore_the_rivals_claim() -> None:
     claims = claimed_by_a_rival()
     forcing = StartRequest.fake().model_copy(update={"take_over": TakeOver(True)})
     with pytest.raises(WorkspaceManagerError):
-        starting(refusing_manager(), tracking(StateName("Specced")), forcing, claims)
+        _ = starting(refusing_manager(), tracking(StateName("Specced")), forcing, claims)
     assert claims.claims(IssueIdentifier.fake()) == Claims(())
 
 
@@ -465,6 +484,6 @@ def test_a_failed_start_keeps_the_claim_and_label_this_worktree_already_held() -
         {IssueIdentifier.fake(): Claims((Claim(id=ClaimId("ours"), holder=ours()),))}
     )
     with pytest.raises(WorkspaceManagerError):
-        starting(refusing_manager(), tracker, StartRequest.fake(), claims)
+        _ = starting(refusing_manager(), tracker, StartRequest.fake(), claims)
     assert holders(claims) == (ours(),)
     assert tracker.read_issue(IssueIdentifier.fake()).labels.has(ClaimSettings.fake().label).root

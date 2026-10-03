@@ -3,6 +3,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 import pytest
+from safe_result import Err, Result
 
 from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
 from mb_workflow.b_core.a_features.drain import (
@@ -26,7 +27,7 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
 )
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, ClaimId, HostName
 from mb_workflow.b_core.d_domain_model.config import ClaimSettings, PoolSettings, WorkspaceSettings
-from mb_workflow.b_core.d_domain_model.flow import StateName, StateNames, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import FlowError, StateName, StateNames, WorkflowChart
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
@@ -224,6 +225,16 @@ def draining(
     ).unwrap()
 
 
+def draining_or_refused(
+    tracker: FakeTicketTracker,
+    *,
+    manager: FakeWorkspaceManager | None = None,
+    claims: FakeClaimRegistry | None = None,
+    pool: PoolSettings | None = None,
+) -> Result[DrainOutcome, AlreadyRunningError | FlowError]:
+    return DrainRuns.attempted(tracker, manager=manager, claims=claims, pool=pool)
+
+
 class DrainRuns:
     @staticmethod
     def attempted(
@@ -234,7 +245,7 @@ class DrainRuns:
         lock: FakeRunLock | None = None,
         pool: PoolSettings | None = None,
         request: DrainRequest | None = None,
-    ) -> Result[DrainOutcome, AlreadyRunningError]:
+    ) -> Result[DrainOutcome, AlreadyRunningError | FlowError]:
         return Drain.drain_pool(
             tracker=tracker,
             claims=claims or FakeClaimRegistry(),
@@ -581,6 +592,36 @@ def test_the_outcome_says_why_a_ticket_in_the_view_is_not_ready() -> None:
         (IssueIdentifier("MB-3"), unworked),
         (IssueIdentifier("MB-4"), stateless),
     )
+
+
+def test_a_ticket_in_the_view_with_two_flow_labels_refuses_the_pass() -> None:
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-1"), Priority.low),
+        pooled(IssueIdentifier("MB-2"), Priority.high, labels=LabelNames((LabelName("QA"),))),
+    )
+    claims = FakeClaimRegistry()
+    refused = draining_or_refused(tracker, claims=claims)
+    assert isinstance(refused, Err)
+    assert re.search("Specced, QA", str(refused.error))
+    assert holders(claims, IssueIdentifier("MB-1")) == ()
+
+
+def test_a_claimed_ticket_with_two_flow_labels_refuses_the_pass() -> None:
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-1"), Priority.low),
+        elsewhere=(
+            in_progress(
+                IssueIdentifier("MB-10"),
+                StateName("Grilling"),
+                labels=LabelNames((LabelName("QA"),)),
+            ),
+        ),
+    )
+    claims = FakeClaimRegistry()
+    refused = draining_or_refused(tracker, claims=claims)
+    assert isinstance(refused, Err)
+    assert re.search("Grilling, QA", str(refused.error))
+    assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
 def test_the_outcome_names_the_tickets_left_when_the_pool_fills() -> None:

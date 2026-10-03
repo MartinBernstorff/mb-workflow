@@ -40,7 +40,7 @@ from mb_workflow.b_core.a_features.start import (
     TicketStart,
 )
 from mb_workflow.b_core.a_features.teardown import TeardownRequest, teardown_worktree
-from mb_workflow.b_core.a_features.transition import transition
+from mb_workflow.b_core.a_features.transition import LinkedTicketTransition
 from mb_workflow.b_core.a_features.unclaim import unclaim_ticket
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
@@ -63,7 +63,7 @@ from mb_workflow.b_core.d_domain_model.config_override import (
     ProjectOverride,
 )
 from mb_workflow.b_core.d_domain_model.config_template import ConfigTemplate
-from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError, StateNames, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import EventName, StateNames, WorkflowChart
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
 from mb_workflow.b_core.d_domain_model.workspace import UnlinkedWorktreeError
@@ -110,7 +110,6 @@ FAILURES = (
     ClaimRefusedError,
     CodeReviewError,
     ConfigExistsError,
-    FlowError,
     InvalidConfigError,
     InvalidCredentialsError,
     InvalidOverrideError,
@@ -237,7 +236,7 @@ def ticket_start(
     settings = resolved_configuration(directory, name).settings
     orca = Orca(here())
     key = linear_key()
-    TicketStart.start_ticket(
+    match TicketStart.start_ticket(
         manager=orca,
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
@@ -247,8 +246,12 @@ def ticket_start(
         flow_labels=flow_labels_of_chart(),
         statuses=settings.ticket_statuses,
         request=request,
-    )
-    return ExitCode(0)
+    ):
+        case Ok():
+            return ExitCode(0)
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
 
 
 @guarded
@@ -258,7 +261,7 @@ def ticket_link(
     settings = resolved_configuration(directory, name).settings
     orca = Orca(here())
     key = linear_key()
-    TicketLinking.link_ticket(
+    match TicketLinking.link_ticket(
         manager=orca,
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
@@ -267,8 +270,12 @@ def ticket_link(
         claim_settings=settings.claims,
         flow_labels=flow_labels_of_chart(),
         request=request,
-    )
-    return ExitCode(0)
+    ):
+        case Ok():
+            return ExitCode(0)
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
 
 
 @guarded
@@ -442,7 +449,7 @@ def flow_event(
     event: EventName, force: Force, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
     orca = Orca(here())
-    moved_to = transition(
+    match LinkedTicketTransition.move_linked_ticket(
         store=workspace_board(orca),
         tracker=linear(),
         manager=orca,
@@ -450,9 +457,13 @@ def flow_event(
         statuses=resolved_configuration(directory, name).settings.ticket_statuses,
         event=event,
         force=force,
-    )
-    logger.info("Moved to %s.", moved_to.root)
-    return ExitCode(0)
+    ):
+        case Ok(moved_to):
+            logger.info("Moved to %s.", moved_to.root)
+            return ExitCode(0)
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
 
 
 @guarded

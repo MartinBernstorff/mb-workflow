@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, override
 
 from safe_result import Err, Ok, Result
 
-from mb_workflow.b_core.b_domain_services.flow_transition import put_in_state
-from mb_workflow.b_core.b_domain_services.next_action import next_action
+from mb_workflow.b_core.b_domain_services.flow_transition import FlowTransition
+from mb_workflow.b_core.b_domain_services.next_action import TicketState
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimRequest
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
@@ -21,8 +21,8 @@ from mb_workflow.b_core.d_domain_model.flow import (
     Skill,
     StateName,
     WorkflowChart,
+    WorkState,
 )
-from mb_workflow.b_core.d_domain_model.flow_labels import state_of
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.workspace import (
     Activate,
@@ -139,22 +139,26 @@ class StartRequest(Model):
             return None
         return TerminalText(f"{action.root} {self.ticket.root}")
 
-    def state_given(self, labelled_state: StateName | None) -> StateName:
+    def state_given(self, labelled_state: StateName | None) -> Result[StateName, FlowError]:
         if labelled_state is not None:
             if self.state is not None:
-                raise FlowError(
-                    f"{self.ticket.root} is already in {labelled_state.root};"
-                    " move it with `mw flow` instead of --state."
+                return Err(
+                    FlowError(
+                        f"{self.ticket.root} is already in {labelled_state.root};"
+                        " move it with `mw flow` instead of --state."
+                    )
                 )
-            return labelled_state
+            return Ok(labelled_state)
         startable = TicketStart.startable_states()
         if self.state is None:
             listed = ", ".join(state.root for state in startable.root)
-            raise FlowError(
-                f"{self.ticket.root} carries no flow label, so it is not in the flow."
-                f" Pass --state with one of {listed}."
+            return Err(
+                FlowError(
+                    f"{self.ticket.root} carries no flow label, so it is not in the flow."
+                    f" Pass --state with one of {listed}."
+                )
             )
-        return startable.named_ignoring_case(self.state).unwrap()
+        return startable.named_ignoring_case(self.state)
 
 
 class TicketStart:
@@ -170,19 +174,28 @@ class TicketStart:
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
         request: StartRequest,
-    ) -> None:
+    ) -> Result[None, FlowError]:
         with Activity(f"Reading {request.ticket.root}").logged(logger):
             detail = tracker.read_issue_detail(request.ticket)
-        labelled_state = state_of(WorkflowChart, flow_labels, detail.issue.grouped)
-        state = request.state_given(labelled_state)
-        prompt = request.prompt_for(TicketStart.action_in(request.ticket, state))
+        labelled = flow_labels.state_of(WorkflowChart, detail.issue.grouped)
+        if isinstance(labelled, Err):
+            return labelled
+        labelled_state = labelled.value
+        given = request.state_given(labelled_state)
+        if isinstance(given, Err):
+            return given
+        state = given.value
+        action = TicketStart.action_in(request.ticket, state)
+        if isinstance(action, Err):
+            return action
+        prompt = request.prompt_for(action.value)
         Claiming.require_claim_label(tracker, claim_settings.label)
 
         # Put an unlabelled ticket in the flow before claiming it, so a failed write leaves no claim behind.
         status = detail.issue.status
         if labelled_state is None:
             with Activity(f"Putting {request.ticket.root} in {state.root}").logged(logger):
-                put_in_state(tracker, request.ticket, flow_labels, statuses, state)
+                FlowTransition.put_in_state(tracker, request.ticket, flow_labels, statuses, state)
             status = statuses.of(state)
 
         name = WorktreeName.of_issue(request.ticket)
@@ -221,22 +234,28 @@ class TicketStart:
 
         if prompt is not None:
             TicketStart.send_prompt(manager, opened, prompt, request.idle_timeout, request.submit)
+        return Ok(None)
 
     @staticmethod
     def startable_states() -> AcceptedStates:
         return AcceptedStates(
             tuple(
-                state
-                for state in AcceptedStates.of_chart(WorkflowChart).root
-                if not isinstance(next_action(WorkflowChart, state), Finished)
+                StateName(state.name)
+                for state in WorkflowChart.states
+                if isinstance(state, WorkState) and not isinstance(state.action, Finished)
             )
         )
 
     @staticmethod
-    def action_in(ticket: IssueIdentifier, state: StateName) -> Skill | AwaitingHuman:
-        action = next_action(WorkflowChart, state)
+    def action_in(
+        ticket: IssueIdentifier, state: StateName
+    ) -> Result[Skill | AwaitingHuman, FlowError]:
+        found = TicketState.next_action(WorkflowChart, state)
+        if isinstance(found, Err):
+            return found
+        action = found.value
         if isinstance(action, Finished):
-            raise FlowError(f"The ticket is {state.root}, so there is no work left in it.")
+            return Err(FlowError(f"The ticket is {state.root}, so there is no work left in it."))
         if isinstance(action, AwaitingHuman):
             logger.warning(
                 "%s is in %s, which waits for a human, so no prompt is typed.",
@@ -247,7 +266,7 @@ class TicketStart:
             logger.info(
                 "%s is in %s, so the next step is %s.", ticket.root, state.root, action.root
             )
-        return action
+        return Ok(action)
 
     @staticmethod
     def send_prompt(

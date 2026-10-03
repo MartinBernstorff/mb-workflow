@@ -12,7 +12,7 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceNaming,
 )
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, TakeOver
-from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import FlowError, WorkflowChart
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.workspace import DisplayName, WorktreeName
 from mb_workflow.d_lib.models import Model
@@ -121,10 +121,13 @@ class TicketLinking:
         claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
         request: LinkRequest,
-    ) -> None:
+    ) -> Result[None, FlowError]:
         # Refuse before touching anything, so a refused link leaves no claim behind.
         detail = tracker.read_issue_detail(request.ticket)
-        state = TicketState.state_with_work_left(WorkflowChart, flow_labels, detail.issue)
+        with_work_left = TicketState.state_with_work_left(WorkflowChart, flow_labels, detail.issue)
+        if isinstance(with_work_left, Err):
+            return with_work_left
+        state = with_work_left.value
         here = manager.current()
         request.require_unlinked_or_forced(here)
 
@@ -150,3 +153,4 @@ class TicketLinking:
         WorkspaceNaming.set_display_name_or_warn(
             manager, here.path, DisplayName.of_issue(detail.title)
         )
+        return Ok(None)

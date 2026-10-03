@@ -139,19 +139,21 @@ class Edges(Value[frozenset[Edge]]):
     def events_from(self, state: StateName) -> EventNames:
         return EventNames.of(frozenset(edge.event for edge in self.root if edge.source == state))
 
-    def target_from(self, state: StateName, event: EventName) -> StateName:
+    def target_from(self, state: StateName, event: EventName) -> Result[StateName, FlowError]:
         for edge in self.root:
             if edge.source == state and edge.event == event:
-                return edge.target
+                return Ok(edge.target)
         legal = ", ".join(name.root for name in self.events_from(state).root)
-        raise FlowError(f"{event.root} is not legal from {state.root}. Legal: {legal or 'none'}.")
+        return Err(
+            FlowError(f"{event.root} is not legal from {state.root}. Legal: {legal or 'none'}.")
+        )
 
-    def target_of(self, event: EventName) -> StateName:
+    def target_of(self, event: EventName) -> Result[StateName, FlowError]:
         targets = {edge.target for edge in self.root if edge.event == event}
         if len(targets) == 1:
-            return targets.pop()
+            return Ok(targets.pop())
         known = ", ".join(name.root for name in self.events().root)
-        raise FlowError(f"{event.root} is no event of the chart. Its events: {known}.")
+        return Err(FlowError(f"{event.root} is no event of the chart. Its events: {known}."))
 
 
 class StateNames(Value[frozenset[StateName]]):

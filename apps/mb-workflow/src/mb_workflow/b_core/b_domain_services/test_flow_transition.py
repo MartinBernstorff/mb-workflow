@@ -1,7 +1,10 @@
+import re
+
 import pytest
+from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
-from mb_workflow.b_core.b_domain_services.flow_transition import Force, transition
+from mb_workflow.b_core.b_domain_services.flow_transition import FlowTransition, Force
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
@@ -42,8 +45,8 @@ def seeded_tracker(held: LabelNames) -> FakeTicketTracker:
 
 def transition_with_fake_flow_labels(
     store: FakeStatusStore, tracker: FakeTicketTracker, event: EventName, force: Force
-) -> StateName:
-    return transition(
+) -> Result[StateName, FlowError]:
+    return FlowTransition.move_ticket(
         chart=WorkflowChart,
         store=store,
         tracker=tracker,
@@ -59,7 +62,7 @@ def test_a_legal_event_writes_the_target_state_to_the_store() -> None:
     store = FakeStatusStore(StateName("Implementing"))
     tracker = seeded_tracker(LabelNames(()))
     target = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
-    assert target == StateName("QA")
+    assert target == Ok(StateName("QA"))
     assert store.read() == StateName("QA")
 
 
@@ -82,8 +85,10 @@ def test_a_legal_event_sets_the_ticket_to_the_status_the_target_state_maps_to() 
 def test_an_illegal_event_leaves_the_store_and_the_ticket_where_they_were() -> None:
     store = FakeStatusStore(StateName("Grilling"))
     tracker = seeded_tracker(LabelNames((LabelName("Grilling"),)))
-    with pytest.raises(FlowError, match="merge is not legal from Grilling"):
-        _ = transition_with_fake_flow_labels(store, tracker, EventName("merge"), Force(False))
+    refused = transition_with_fake_flow_labels(store, tracker, EventName("merge"), Force(False))
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, FlowError)
+    assert re.search("merge is not legal from Grilling", str(refused.error))
     assert store.read() == StateName("Grilling")
     assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames((LabelName("Grilling"),))
     assert tracker.read_issue(IssueIdentifier.fake()).status == IssueStatusName.fake()
@@ -93,7 +98,7 @@ def test_forcing_writes_the_target_state_without_validating() -> None:
     store = FakeStatusStore(StateName("Grilling"))
     tracker = seeded_tracker(LabelNames(()))
     target = transition_with_fake_flow_labels(store, tracker, EventName("merged"), Force(True))
-    assert target == StateName("Merged")
+    assert target == Ok(StateName("Merged"))
     assert store.read() == StateName("Merged")
     assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames((LabelName("Merged"),))
     assert tracker.read_issue(IssueIdentifier.fake()).status == IssueStatusName("Done")

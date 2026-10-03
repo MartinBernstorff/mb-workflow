@@ -33,6 +33,7 @@ if TYPE_CHECKING:
         PoolSettings,
         WorkspaceSettings,
     )
+    from mb_workflow.b_core.d_domain_model.flow import FlowError
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
@@ -98,10 +99,13 @@ class Unready(Model):
     ) -> UnreadyReason:
         if ticket.issue.labels.matching(claim_label) is not None:
             return UnreadyReason("it is already claimed")
-        state = ticket.flow_state(flow_labels)
-        if state is None:
-            return UnreadyReason("it has no flow state")
-        return UnreadyReason(f"no agent works tickets in {state.root}")
+        match ticket.flow_state(flow_labels):
+            case Err(error):
+                return UnreadyReason(str(error))
+            case Ok(state):
+                if state is None:
+                    return UnreadyReason("it has no flow state")
+                return UnreadyReason(f"no agent works tickets in {state.root}")
 
 
 # The pass stopped at the total, leaving these ready tickets unstarted.
@@ -180,24 +184,22 @@ class Drain:
         statuses: TicketStatuses,
         pool: PoolSettings,
         request: DrainRequest,
-    ) -> Result[DrainOutcome, AlreadyRunningError]:
+    ) -> Result[DrainOutcome, AlreadyRunningError | FlowError]:
         match lock.acquire():
             case Ok(held):
                 with held:
-                    return Ok(
-                        Drain.drain_holding_lock(
-                            tracker=tracker,
-                            claims=claims,
-                            manager=manager,
-                            board=board,
-                            tie_break=tie_break,
-                            workspace=workspace,
-                            claim_settings=claim_settings,
-                            flow_labels=flow_labels,
-                            statuses=statuses,
-                            pool=pool,
-                            request=request,
-                        )
+                    return Drain.drain_holding_lock(
+                        tracker=tracker,
+                        claims=claims,
+                        manager=manager,
+                        board=board,
+                        tie_break=tie_break,
+                        workspace=workspace,
+                        claim_settings=claim_settings,
+                        flow_labels=flow_labels,
+                        statuses=statuses,
+                        pool=pool,
+                        request=request,
                     )
             case Err() as refused:
                 return refused
@@ -216,13 +218,17 @@ class Drain:
         statuses: TicketStatuses,
         pool: PoolSettings,
         request: DrainRequest,
-    ) -> DrainOutcome:
+    ) -> Result[DrainOutcome, FlowError]:
         with Activity("Draining the pool").logged(logger):
             Claiming.require_claim_label(tracker, claim_settings.label)
             Drain.require_limited_labels(tracker, pool.limits)
             Drain.require_skip_limits_label(tracker, pool.skip_limits_label)
             with Activity(f"Listing the tickets in view {pool.view.root}").logged(logger):
-                listed = tracker.unblocked_view_tickets(pool.view)
+                found = tracker.unblocked_view_tickets(pool.view)
+            resolved = found.with_flow_states_resolved(flow_labels)
+            if isinstance(resolved, Err):
+                return resolved
+            listed = resolved.value
             unready = tuple(
                 Unready.of(ticket, claim_settings.label, flow_labels)
                 for ticket in listed.root
@@ -235,7 +241,10 @@ class Drain:
                 logger
             ):
                 in_progress = tracker.labelled_issues(claim_settings.label, Released.types())
-            occupancy = Occupancy.of(in_progress, flow_labels)
+            counted = Occupancy.of(in_progress, flow_labels)
+            if isinstance(counted, Err):
+                return counted
+            occupancy = counted.value
             picked: list[PoolTicket] = []
             skipped: list[Skip] = []
             full: PoolFull | None = None
@@ -247,7 +256,10 @@ class Drain:
                         total=pool.limits.total, left=PoolTickets(ready.root[position:])
                     )
                     break
-                slot = ticket.slot(flow_labels)
+                found = ticket.slot(flow_labels)
+                if isinstance(found, Err):
+                    return found
+                slot = found.value
                 if slot is None:
                     skipped.append(Skip(ticket=ticket, refusal=Refusal("it has no flow state")))
                     continue
@@ -293,12 +305,14 @@ class Drain:
                                 )
                 # A ticket lost to another host is now in progress there, so it fills a slot too.
                 occupancy = occupancy.with_slot(slot)
-            return DrainOutcome(
-                ready=ready,
-                picked=PoolTickets(tuple(picked)),
-                skipped=tuple(skipped),
-                unready=unready,
-                full=full,
+            return Ok(
+                DrainOutcome(
+                    ready=ready,
+                    picked=PoolTickets(tuple(picked)),
+                    skipped=tuple(skipped),
+                    unready=unready,
+                    full=full,
+                )
             )
 
     @staticmethod
@@ -315,7 +329,7 @@ class Drain:
         request: StartRequest,
     ) -> Started:
         try:
-            TicketStart.start_ticket(
+            started = TicketStart.start_ticket(
                 manager=manager,
                 tracker=tracker,
                 claims=claims,
@@ -328,6 +342,10 @@ class Drain:
             )
         except ClaimLostError:
             logger.info("Another host holds %s; trying the next ticket.", request.ticket.root)
+            return Started(False)
+        # The ticket was ready when listed, so a refusal here means its labels changed since.
+        if isinstance(started, Err):
+            logger.warning("Not starting %s: %s", request.ticket.root, started.error)
             return Started(False)
         return Started(True)
 
