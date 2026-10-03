@@ -116,7 +116,6 @@ class Claiming:
             ),
         )
 
-    # The label is how in-progress tickets are found, so a claim that cannot be labelled is refused.
     @staticmethod
     def label_claim(
         tracker: TicketTracker, request: LabelledClaim
