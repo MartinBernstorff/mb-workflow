@@ -1,15 +1,22 @@
 import logging
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, override
+
+from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.b_domain_services.next_action import TicketState
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRequest
-from mb_workflow.b_core.c_secondary_ports.workspace_manager import set_display_name_or_warn
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
+    WorkspaceManagerError,
+    WorkspaceNaming,
+)
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, TakeOver
 from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.workspace import DisplayName, WorktreeName
 from mb_workflow.d_lib.models import Model
+from mb_workflow.d_lib.saga import Saga, SagaStep
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
@@ -18,7 +25,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
-    from mb_workflow.b_core.d_domain_model.workspace import Worktree
+    from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus, Worktree
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +62,52 @@ class LinkRequest(Model):
         )
 
 
+@dataclass(frozen=True)
+class StatusStep(SagaStep):
+    manager: WorkspaceManager
+    worktree: Worktree
+    status: WorkspaceStatus
+
+    @override
+    def apply(self) -> Result[None, Exception]:
+        try:
+            self.manager.set_status(self.worktree.path, self.status)
+        except WorkspaceManagerError as error:
+            return Err(error)
+        return Ok(None)
+
+    @override
+    def revert(self) -> Result[None, Exception]:
+        if self.worktree.status is None:
+            return Ok(None)
+        try:
+            self.manager.set_status(self.worktree.path, self.worktree.status)
+        except WorkspaceManagerError as error:
+            return Err(error)
+        return Ok(None)
+
+
+@dataclass(frozen=True)
+class LinkStep(SagaStep):
+    manager: WorkspaceManager
+    worktree: Worktree
+    ticket: IssueIdentifier
+
+    @override
+    def apply(self) -> Result[None, Exception]:
+        try:
+            self.manager.set_linked_issue(self.worktree.path, self.ticket)
+        except WorkspaceManagerError as error:
+            return Err(error)
+        logger.info("Linked %s to %s.", self.worktree.path.root, self.ticket.root)
+        return Ok(None)
+
+    # The last step of link, so no later failure ever reverts it.
+    @override
+    def revert(self) -> Result[None, Exception]:
+        return Ok(None)
+
+
 class TicketLinking:
     # Does what start does for a worktree that already exists, minus typing the prompt.
     @staticmethod
@@ -76,7 +129,7 @@ class TicketLinking:
         request.require_unlinked_or_forced(here)
 
         # Named after the ticket, not the directory, as teardown and drain rebuild the holder that way.
-        TicketTaking.take_ticket(
+        taking_steps = TicketTaking.saga_steps(
             claims=claims,
             tracker=tracker,
             workspace=workspace,
@@ -91,8 +144,9 @@ class TicketLinking:
             ),
             previous=detail.assignee,
         )
-
-        manager.set_linked_issue(here.path, request.ticket)
-        logger.info("Linked %s to %s.", here.path.root, request.ticket.root)
-        manager.set_status(here.path, board.status_for(state))
-        set_display_name_or_warn(manager, here.path, DisplayName.of_issue(detail.title))
+        # Linking comes last, as Orca cannot unlink a worktree to revert it.
+        status_step = StatusStep(manager, here, board.status_for(state))
+        Saga.run((*taking_steps, status_step, LinkStep(manager, here, request.ticket))).unwrap()
+        WorkspaceNaming.set_display_name_or_warn(
+            manager, here.path, DisplayName.of_issue(detail.title)
+        )
