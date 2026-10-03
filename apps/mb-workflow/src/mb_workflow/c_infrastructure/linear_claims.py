@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, override
 
 from linear_python_client import LinearClient
 from pydantic import AliasPath, Field
+from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
@@ -13,7 +14,7 @@ from mb_workflow.b_core.d_domain_model.claim import (
     Claims,
     CommentBody,
 )
-from mb_workflow.c_infrastructure.linear import LinearApiKey, translated_errors
+from mb_workflow.c_infrastructure.linear import LinearApiKey, LinearCall
 from mb_workflow.d_lib.models import Payload, Value
 
 if TYPE_CHECKING:
@@ -110,13 +111,18 @@ class LinearClaims(ClaimRegistry):
         return LinearClaims(LinearClient(api_key=key.root))
 
     @override
-    def claims(self, ticket: IssueIdentifier) -> Claims:
-        return self._thread(ticket).claims()
+    def claims(self, ticket: IssueIdentifier) -> Result[Claims, TicketTrackerError]:
+        match self._thread(ticket):
+            case Ok(thread):
+                return Ok(thread.claims())
+            case Err() as failed:
+                return failed
 
     @override
     def post(self, ticket: IssueIdentifier, holder: ClaimHolder) -> ClaimId:
-        issue = self._thread(ticket).id
-        with translated_errors():
+        # Writes still raise; MB-130 returns their errors as values too.
+        issue = self._thread(ticket).unwrap().id
+        with LinearCall.translated_errors():
             data = self._client.execute(
                 "mutation($input: CommentCreateInput!) {"
                 " commentCreate(input: $input) { success comment { id } } }",
@@ -129,7 +135,7 @@ class LinearClaims(ClaimRegistry):
 
     @override
     def withdraw(self, ticket: IssueIdentifier, claim: ClaimId) -> None:
-        with translated_errors():
+        with LinearCall.translated_errors():
             data = self._client.execute(
                 "mutation($id: String!) { commentDelete(id: $id) { success } }",
                 {"id": claim.root},
@@ -137,9 +143,9 @@ class LinearClaims(ClaimRegistry):
         if not DeletedComment.model_validate(data).success.root:
             raise TicketTrackerError(f"Linear did not delete the claim {claim.root}.")
 
-    def _thread(self, ticket: IssueIdentifier) -> CommentThread:
-        with translated_errors():
-            data = self._client.execute(
+    def _thread(self, ticket: IssueIdentifier) -> Result[CommentThread, TicketTrackerError]:
+        match LinearCall.answered(
+            lambda: self._client.execute(
                 """
                 query($id: String!, $prefix: String!) {
                   issue(id: $id) {
@@ -152,4 +158,8 @@ class LinearClaims(ClaimRegistry):
                 """,
                 {"id": ticket.root, "prefix": ClaimHolder.claim_comment_prefix().root},
             )
-        return CommentThreadRead.model_validate(data).issue
+        ):
+            case Ok(data):
+                return Ok(CommentThreadRead.model_validate(data).issue)
+            case Err() as failed:
+                return failed

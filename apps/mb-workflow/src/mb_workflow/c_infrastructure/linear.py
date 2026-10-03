@@ -12,6 +12,7 @@ from linear_python_client import (
     LinearError,
 )
 from pydantic import AliasPath, Field, JsonValue
+from safe_result import Err, Ok, Result, safe_with
 
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker, TicketTrackerError
 from mb_workflow.b_core.d_domain_model.issue import (
@@ -47,7 +48,7 @@ from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Prio
 from mb_workflow.d_lib.models import Payload, Value
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Callable, Generator
 
     from mb_workflow.b_core.d_domain_model.issue import IssueFilter, StatusTypes
     from mb_workflow.b_core.d_domain_model.pool import ViewSlug
@@ -686,12 +687,23 @@ class ViewRead(Payload):
         return ViewRead(issues=PoolTicketPage.fake())
 
 
-@contextmanager
-def translated_errors() -> Generator[None]:
-    try:
-        yield
-    except LinearError as error:
-        raise TicketTrackerError(str(error)) from error
+class LinearCall:
+    @staticmethod
+    @contextmanager
+    def translated_errors() -> Generator[None]:
+        try:
+            yield
+        except LinearError as error:
+            raise TicketTrackerError(str(error)) from error
+
+    # Converts the client's exceptions at the edge, so a failed call comes back as a value.
+    @staticmethod
+    def answered[T](call: Callable[[], T]) -> Result[T, TicketTrackerError]:
+        match safe_with(LinearError)(call)():
+            case Ok(value):
+                return Ok(value)
+            case Err(error):
+                return Err(TicketTrackerError(str(error)))
 
 
 # The client's own issue queries leave out the project, which the sweep's exclusions read.
@@ -704,20 +716,31 @@ class Linear(TicketTracker):
         return Linear(LinearClient(api_key=key.root))
 
     @override
-    def workspace_labels(self) -> LabelNames:
-        with translated_errors():
-            labels = self._client.paginate(self._client.issue_labels, IssueLabelsRequest(first=250))
-            return LabelNames(tuple(LabelName(label.name) for label in labels if label.name))
+    def workspace_labels(self) -> Result[LabelNames, TicketTrackerError]:
+        match LinearCall.answered(
+            lambda: self._client.paginate(self._client.issue_labels, IssueLabelsRequest(first=250))
+        ):
+            case Ok(labels):
+                return Ok(
+                    LabelNames(tuple(LabelName(label.name) for label in labels if label.name))
+                )
+            case Err() as failed:
+                return failed
 
     @override
-    def group_labels(self, group: LabelGroupName, team: TeamKey | None) -> ColoredLabels:
-        found = self._found_group(group, team)
-        return found.labels() if found is not None else ColoredLabels(())
+    def group_labels(
+        self, group: LabelGroupName, team: TeamKey | None
+    ) -> Result[ColoredLabels, TicketTrackerError]:
+        match self._found_group(group, team):
+            case Ok(found):
+                return Ok(found.labels() if found is not None else ColoredLabels(()))
+            case Err() as failed:
+                return failed
 
     @override
-    def label_group(self, label: LabelName) -> LabelGroupName | None:
-        with translated_errors():
-            data = self._client.execute(
+    def label_group(self, label: LabelName) -> Result[LabelGroupName | None, TicketTrackerError]:
+        match LinearCall.answered(
+            lambda: self._client.execute(
                 """
                 query($name: String!) {
                   issueLabels(first: 1, filter: { name: { eqIgnoreCase: $name }, isGroup: { eq: false } }) {
@@ -727,13 +750,18 @@ class Linear(TicketTracker):
                 """,
                 {"name": label.root},
             )
-        return LabelParentRead.model_validate(data).group()
+        ):
+            case Ok(data):
+                return Ok(LabelParentRead.model_validate(data).group())
+            case Err() as failed:
+                return failed
 
     @override
     def create_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None:
-        found = self._found_group(group, team)
+        # Writes still raise; MB-130 returns their errors as values too.
+        found = self._found_group(group, team).unwrap()
         owner = {"teamId": self._team_id(team).root} if team is not None else {}
         parent = (
             found.id
@@ -756,7 +784,7 @@ class Linear(TicketTracker):
     def recolor_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None:
-        found = self._found_group(group, team)
+        found = self._found_group(group, team).unwrap()
         children = found.children if found is not None else ()
         for label in labels.root:
             child = next(
@@ -771,7 +799,7 @@ class Linear(TicketTracker):
                 raise TicketTrackerError(
                     f"The {group.root} group holds no label named {label.name.root}."
                 )
-            with translated_errors():
+            with LinearCall.translated_errors():
                 _ = self._client.execute(
                     "mutation($id: String!, $input: IssueLabelUpdateInput!) {"
                     " issueLabelUpdate(id: $id, input: $input) { success } }",
@@ -779,39 +807,51 @@ class Linear(TicketTracker):
                 )
 
     @override
-    def team_named(self, name: TeamName) -> TeamKey:
-        found = self._found_team({"name": {"eqIgnoreCase": name.root}})
-        if found is None:
-            raise TicketTrackerError(f"No team is named {name.root}.")
-        return found.key
+    def team_named(self, name: TeamName) -> Result[TeamKey, TicketTrackerError]:
+        match self._found_team({"name": {"eqIgnoreCase": name.root}}):
+            case Ok(found):
+                if found is None:
+                    return Err(TicketTrackerError(f"No team is named {name.root}."))
+                return Ok(found.key)
+            case Err() as failed:
+                return failed
 
     @override
-    def team_of(self, issue: IssueIdentifier) -> TeamKey:
-        with translated_errors():
-            data = self._client.execute(
+    def team_of(self, issue: IssueIdentifier) -> Result[TeamKey, TicketTrackerError]:
+        match LinearCall.answered(
+            lambda: self._client.execute(
                 "query($id: String!) { issue(id: $id) { team { key } } }", {"id": issue.root}
             )
-        return IssueTeamRead.model_validate(data).team
+        ):
+            case Ok(data):
+                return Ok(IssueTeamRead.model_validate(data).team)
+            case Err() as failed:
+                return failed
 
     def _team_id(self, team: TeamKey) -> TeamId:
-        found = self._found_team({"key": {"eqIgnoreCase": team.root}})
+        found = self._found_team({"key": {"eqIgnoreCase": team.root}}).unwrap()
         if found is None:
             raise TicketTrackerError(f"No team has the key {team.root}.")
         return found.id
 
-    def _found_team(self, team_filter: JsonValue) -> TeamRecord | None:
-        with translated_errors():
-            data = self._client.execute(
+    def _found_team(self, team_filter: JsonValue) -> Result[TeamRecord | None, TicketTrackerError]:
+        match LinearCall.answered(
+            lambda: self._client.execute(
                 "query($filter: TeamFilter!) {"
                 " teams(first: 1, filter: $filter) { nodes { id key } } }",
                 {"filter": team_filter},
             )
-        teams = TeamRead.model_validate(data).teams
-        return teams[0] if teams else None
+        ):
+            case Ok(data):
+                return Ok(next(iter(TeamRead.model_validate(data).teams), None))
+            case Err() as failed:
+                return failed
 
-    def _found_group(self, group: LabelGroupName, team: TeamKey | None) -> LabelGroupRecord | None:
-        with translated_errors():
-            data = self._client.execute(
+    def _found_group(
+        self, group: LabelGroupName, team: TeamKey | None
+    ) -> Result[LabelGroupRecord | None, TicketTrackerError]:
+        match LinearCall.answered(
+            lambda: self._client.execute(
                 """
                 query($name: String!, $team: NullableTeamFilter!) {
                   issueLabels(
@@ -829,11 +869,14 @@ class Linear(TicketTracker):
                     else {"key": {"eqIgnoreCase": team.root}},
                 },
             )
-        groups = LabelGroupRead.model_validate(data).groups
-        return groups[0] if groups else None
+        ):
+            case Ok(data):
+                return Ok(next(iter(LabelGroupRead.model_validate(data).groups), None))
+            case Err() as failed:
+                return failed
 
     def _created_label(self, label: JsonValue) -> LabelId:
-        with translated_errors():
+        with LinearCall.translated_errors():
             data = self._client.execute(
                 "mutation($input: IssueLabelCreateInput!) {"
                 " issueLabelCreate(input: $input) { issueLabel { id } } }",
@@ -842,7 +885,7 @@ class Linear(TicketTracker):
         return CreatedLabel.model_validate(data).id
 
     @override
-    def list_issues(self, wanted: IssueFilter) -> Issues:
+    def list_issues(self, wanted: IssueFilter) -> Result[Issues, TicketTrackerError]:
         return self._issues_matching(
             {
                 "creator": {"email": {"eq": wanted.creator.root}},
@@ -851,7 +894,9 @@ class Linear(TicketTracker):
         )
 
     @override
-    def labelled_issues(self, label: LabelName, excluding: StatusTypes) -> Issues:
+    def labelled_issues(
+        self, label: LabelName, excluding: StatusTypes
+    ) -> Result[Issues, TicketTrackerError]:
         return self._issues_matching(
             {
                 "labels": {"some": {"name": {"eqIgnoreCase": label.root}}},
@@ -859,12 +904,12 @@ class Linear(TicketTracker):
             }
         )
 
-    def _issues_matching(self, issue_filter: JsonValue) -> Issues:
+    def _issues_matching(self, issue_filter: JsonValue) -> Result[Issues, TicketTrackerError]:
         found: list[Issue] = []
         cursor: PageCursor | None = None
         while True:
-            with translated_errors():
-                data = self._client.execute(
+            read = LinearCall.answered(
+                lambda after=cursor: self._client.execute(
                     """
                     query($filter: IssueFilter, $after: String) {
                       issues(first: 250, after: $after, filter: $filter) {
@@ -881,22 +926,25 @@ class Linear(TicketTracker):
                     """,
                     {
                         "filter": issue_filter,
-                        "after": cursor.root if cursor is not None else None,
+                        "after": after.root if after is not None else None,
                     },
                 )
-            page = IssueSweep.model_validate(data).issues
+            )
+            if isinstance(read, Err):
+                return read
+            page = IssueSweep.model_validate(read.value).issues
             found.extend(page.issues().root)
             cursor = page.page_info.next_cursor()
             if cursor is None:
-                return Issues(tuple(found))
+                return Ok(Issues(tuple(found)))
 
     @override
-    def unblocked_view_tickets(self, view: ViewSlug) -> PoolTickets:
+    def unblocked_view_tickets(self, view: ViewSlug) -> Result[PoolTickets, TicketTrackerError]:
         found: list[PoolTicket] = []
         cursor: PageCursor | None = None
         while True:
-            with translated_errors():
-                data = self._client.execute(
+            read = LinearCall.answered(
+                lambda after=cursor: self._client.execute(
                     """
                     query($view: String!, $after: String) {
                       customView(id: $view) {
@@ -918,22 +966,29 @@ class Linear(TicketTracker):
                       }
                     }
                     """,
-                    {"view": view.root, "after": cursor.root if cursor is not None else None},
+                    {"view": view.root, "after": after.root if after is not None else None},
                 )
-            page = ViewRead.model_validate(data).issues
+            )
+            if isinstance(read, Err):
+                return read
+            page = ViewRead.model_validate(read.value).issues
             found.extend(node.ticket() for node in page.nodes)
             cursor = page.page_info.next_cursor()
             if cursor is None:
-                return PoolTickets(tuple(found))
+                return Ok(PoolTickets(tuple(found)))
 
     @override
-    def read_issue(self, issue: IssueIdentifier) -> Issue:
-        return self.read_issue_detail(issue).issue
+    def read_issue(self, issue: IssueIdentifier) -> Result[Issue, TicketTrackerError]:
+        match self.read_issue_detail(issue):
+            case Ok(detail):
+                return Ok(detail.issue)
+            case Err() as failed:
+                return failed
 
     @override
-    def read_issue_detail(self, issue: IssueIdentifier) -> IssueDetail:
-        with translated_errors():
-            data = self._client.execute(
+    def read_issue_detail(self, issue: IssueIdentifier) -> Result[IssueDetail, TicketTrackerError]:
+        match LinearCall.answered(
+            lambda: self._client.execute(
                 """
                 query($id: String!) {
                   issue(id: $id) {
@@ -952,18 +1007,22 @@ class Linear(TicketTracker):
                 """,
                 {"id": issue.root},
             )
-        return IssueDetailRead.model_validate(data).issue.detail()
+        ):
+            case Ok(data):
+                return Ok(IssueDetailRead.model_validate(data).issue.detail())
+            case Err() as failed:
+                return failed
 
     @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
         (label_id,) = self._label_ids(issue, LabelNames((label,)))
-        with translated_errors():
+        with LinearCall.translated_errors():
             _ = self._client.add_label(IssueAddLabelRequest(id=issue.root, label_id=label_id.root))
 
     @override
     def remove_label(self, issue: IssueIdentifier, label: LabelName) -> None:
         (label_id,) = self._label_ids(issue, LabelNames((label,)))
-        with translated_errors():
+        with LinearCall.translated_errors():
             _ = self._client.remove_label(
                 IssueRemoveLabelRequest(id=issue.root, label_id=label_id.root)
             )
@@ -971,12 +1030,12 @@ class Linear(TicketTracker):
     @override
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
         label_ids = [label_id.root for label_id in self._label_ids(issue, labels)]
-        with translated_errors():
+        with LinearCall.translated_errors():
             _ = self._client.update_issue(IssueUpdateRequest(id=issue.root, label_ids=label_ids))
 
     @override
     def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None:
-        with translated_errors():
+        with LinearCall.translated_errors():
             user = self._client.find_user(FindUserRequest(email=assignee.root)).user
             if user is None or user.id is None:
                 raise TicketTrackerError(f"No Linear user has the email {assignee.root}.")
@@ -1002,7 +1061,7 @@ class Linear(TicketTracker):
             changes["project_milestone_id"] = found.milestone_id(update.milestone)
         if changes:
             wanted = IssueChanges.model_validate(changes)
-            with translated_errors():
+            with LinearCall.translated_errors():
                 _ = self._client.execute(
                     "mutation($id: String!, $input: IssueUpdateInput!) {"
                     " issueUpdate(id: $id, input: $input) { success } }",
@@ -1016,7 +1075,7 @@ class Linear(TicketTracker):
     @override
     def create_issue(self, new: NewIssue) -> CreatedIssue:
         creation = self._creation_lookup(new).creation(new)
-        with translated_errors():
+        with LinearCall.translated_errors():
             data = self._client.execute(
                 "mutation($input: IssueCreateInput!) {"
                 " issueCreate(input: $input) { issue { identifier url } } }",
@@ -1027,9 +1086,11 @@ class Linear(TicketTracker):
         return created
 
     @override
-    def blockers(self, issue: IssueIdentifier) -> tuple[IssueIdentifier, ...]:
-        with translated_errors():
-            data = self._client.execute(
+    def blockers(
+        self, issue: IssueIdentifier
+    ) -> Result[tuple[IssueIdentifier, ...], TicketTrackerError]:
+        match LinearCall.answered(
+            lambda: self._client.execute(
                 """
                 query($id: String!) {
                   issue(id: $id) {
@@ -1039,7 +1100,11 @@ class Linear(TicketTracker):
                 """,
                 {"id": issue.root},
             )
-        return InverseRelationsRead.model_validate(data).blockers()
+        ):
+            case Ok(data):
+                return Ok(InverseRelationsRead.model_validate(data).blockers())
+            case Err() as failed:
+                return failed
 
     def _relate_all(
         self,
@@ -1054,7 +1119,7 @@ class Linear(TicketTracker):
             self._relate(blocker=blocker, blocked=issue)
 
     def _relate(self, *, blocker: IssueIdentifier, blocked: IssueIdentifier) -> None:
-        with translated_errors():
+        with LinearCall.translated_errors():
             _ = self._client.execute(
                 "mutation($input: IssueRelationCreateInput!) {"
                 " issueRelationCreate(input: $input) { success } }",
@@ -1068,7 +1133,7 @@ class Linear(TicketTracker):
             )
 
     def _creation_lookup(self, new: NewIssue) -> CreationLookup:
-        with translated_errors():
+        with LinearCall.translated_errors():
             data = self._client.execute(
                 """
                 query(
@@ -1112,12 +1177,14 @@ class Linear(TicketTracker):
         return CreationLookup.model_validate(data)
 
     @override
-    def viewer(self) -> Assignee:
-        with translated_errors():
-            viewer = self._client.viewer().viewer
-        if viewer is None or viewer.email is None:
-            raise TicketTrackerError("Linear did not say who the API key belongs to.")
-        return Assignee(viewer.email)
+    def viewer(self) -> Result[Assignee, TicketTrackerError]:
+        match LinearCall.answered(lambda: self._client.viewer().viewer):
+            case Ok(viewer):
+                if viewer is None or viewer.email is None:
+                    return Err(TicketTrackerError("Linear did not say who the API key belongs to."))
+                return Ok(Assignee(viewer.email))
+            case Err() as failed:
+                return failed
 
     def _lookup(self, issue: IssueIdentifier, update: IssueUpdate) -> UpdateLookup:
         labels = update.labels.root if update.labels is not None else ()
@@ -1126,7 +1193,7 @@ class Linear(TicketTracker):
         milestone = update.milestone if isinstance(update.milestone, Milestone) else None
         if not (labels or assignee or project or milestone or update.status):
             return UpdateLookup()
-        with translated_errors():
+        with LinearCall.translated_errors():
             data = self._client.execute(
                 """
                 query(

@@ -37,8 +37,8 @@ def test_labels_the_issue_linked_to_the_worktree_you_stand_in() -> None:
         statuses=TicketStatuses.fake(),
         event=EventName("qa"),
         force=Force(False),
-    )
-    assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames(
+    ).unwrap()
+    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(
         (LabelName.fake(), LabelName("QA"))
     )
 
@@ -56,5 +56,5 @@ def test_a_worktree_with_no_linked_issue_leaves_the_board_where_it_was() -> None
             statuses=TicketStatuses.fake(),
             event=EventName("qa"),
             force=Force(False),
-        )
+        ).unwrap()
     assert store.read() == StateName("Implementing")

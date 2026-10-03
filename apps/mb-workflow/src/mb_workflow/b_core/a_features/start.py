@@ -40,12 +40,17 @@ from mb_workflow.d_lib.models import Model
 from mb_workflow.d_lib.saga import Saga, SagaStep
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
+    from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
+    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry, UnknownClaimLabelError
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
-    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+        TicketTracker,
+        TicketTrackerError,
+    )
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
+    from mb_workflow.b_core.d_domain_model.issue import Issue
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
     from mb_workflow.b_core.d_domain_model.workspace import OpenedWorktree
 
@@ -174,28 +179,31 @@ class TicketStart:
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
         request: StartRequest,
-    ) -> Result[None, FlowError]:
+    ) -> Result[
+        None, FlowError | TicketTrackerError | UnknownClaimLabelError | MissingFlowLabelsError
+    ]:
         with Activity(f"Reading {request.ticket.root}").logged(logger):
-            detail = tracker.read_issue_detail(request.ticket)
-        labelled = flow_labels.state_of(WorkflowChart, detail.issue.grouped)
-        if isinstance(labelled, Err):
-            return labelled
-        labelled_state = labelled.value
-        given = request.state_given(labelled_state)
-        if isinstance(given, Err):
-            return given
-        state = given.value
-        action = TicketStart.action_in(request.ticket, state)
-        if isinstance(action, Err):
-            return action
-        prompt = request.prompt_for(action.value)
-        Claiming.require_claim_label(tracker, claim_settings.label)
+            read = tracker.read_issue_detail(request.ticket)
+        if isinstance(read, Err):
+            return read
+        detail = read.value
+        planned = TicketStart.planned_start(request, flow_labels, detail.issue)
+        if isinstance(planned, Err):
+            return planned
+        labelled_state, state, prompt = planned.value
+        checked = Claiming.require_claim_label(tracker, claim_settings.label)
+        if isinstance(checked, Err):
+            return checked
 
         # Put an unlabelled ticket in the flow before claiming it, so a failed write leaves no claim behind.
         status = detail.issue.status
         if labelled_state is None:
             with Activity(f"Putting {request.ticket.root} in {state.root}").logged(logger):
-                FlowTransition.put_in_state(tracker, request.ticket, flow_labels, statuses, state)
+                put = FlowTransition.put_in_state(
+                    tracker, request.ticket, flow_labels, statuses, state
+                )
+            if isinstance(put, Err):
+                return put
             status = statuses.of(state)
 
         name = WorktreeName.of_issue(request.ticket)
@@ -223,7 +231,9 @@ class TicketStart:
             ),
             previous=detail.assignee,
         )
-        Saga.run((*taking_steps, worktree_step)).unwrap()
+        if isinstance(taking_steps, Err):
+            return taking_steps
+        Saga.run((*taking_steps.value, worktree_step)).unwrap()
         opened = worktree_step.opened().unwrap()
 
         logger.info("Created worktree %s.", opened.worktree.path.root)
@@ -235,6 +245,22 @@ class TicketStart:
         if prompt is not None:
             TicketStart.send_prompt(manager, opened, prompt, request.idle_timeout, request.submit)
         return Ok(None)
+
+    # The flow state the ticket carries, the state it starts in, and the prompt that starts its work.
+    @staticmethod
+    def planned_start(
+        request: StartRequest, flow_labels: FlowLabels, issue: Issue
+    ) -> Result[tuple[StateName | None, StateName, TerminalText | None], FlowError]:
+        labelled = flow_labels.state_of(WorkflowChart, issue.grouped)
+        if isinstance(labelled, Err):
+            return labelled
+        given = request.state_given(labelled.value)
+        if isinstance(given, Err):
+            return given
+        action = TicketStart.action_in(request.ticket, given.value)
+        if isinstance(action, Err):
+            return action
+        return Ok((labelled.value, given.value, request.prompt_for(action.value)))
 
     @staticmethod
     def startable_states() -> AcceptedStates:

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Protocol
 from safe_result import Err, Ok, Result, safe_with
 
 from mb_workflow.b_core.a_features.start import PromptUndeliveredError, TicketStart
-from mb_workflow.b_core.a_features.teardown import release_and_remove
+from mb_workflow.b_core.a_features.teardown import Teardown
 from mb_workflow.b_core.b_domain_services.worktree_reconciliation import obsolete, uncovered
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
@@ -132,149 +132,159 @@ class Narrator(Protocol):
     def creation_failed(self, failure: Failure) -> None: ...
 
 
-def create_workspaces(
-    *,
-    review: CodeForge,
-    manager: WorkspaceManager,
-    claims: ClaimRegistry,
-    tracker: TicketTracker,
-    claim_settings: ClaimSettings,
-    host: HostName,
-    lock: RunLock,
-    narrator: Narrator,
-    status: WorkspaceStatus,
-    since: MergedSince,
-    prompt: ReviewPrompt | None,
-) -> Result[Outcome, AlreadyRunningError | CodeReviewError]:
-    match lock.acquire():
-        case Ok(held):
-            with held:
-                return reconcile_workspaces(
-                    review=review,
+class ReviewWorkspaces:
+    @staticmethod
+    def create_workspaces(
+        *,
+        review: CodeForge,
+        manager: WorkspaceManager,
+        claims: ClaimRegistry,
+        tracker: TicketTracker,
+        claim_settings: ClaimSettings,
+        host: HostName,
+        lock: RunLock,
+        narrator: Narrator,
+        status: WorkspaceStatus,
+        since: MergedSince,
+        prompt: ReviewPrompt | None,
+    ) -> Result[Outcome, AlreadyRunningError | CodeReviewError]:
+        match lock.acquire():
+            case Ok(held):
+                with held:
+                    return ReviewWorkspaces.reconcile_workspaces(
+                        review=review,
+                        manager=manager,
+                        claims=claims,
+                        tracker=tracker,
+                        claim_settings=claim_settings,
+                        host=host,
+                        narrator=narrator,
+                        status=status,
+                        since=since,
+                        prompt=prompt,
+                    )
+            case Err() as refused:
+                return refused
+
+    @staticmethod
+    def reconcile_workspaces(
+        *,
+        review: CodeForge,
+        manager: WorkspaceManager,
+        claims: ClaimRegistry,
+        tracker: TicketTracker,
+        claim_settings: ClaimSettings,
+        host: HostName,
+        narrator: Narrator,
+        status: WorkspaceStatus,
+        since: MergedSince,
+        prompt: ReviewPrompt | None,
+    ) -> Result[Outcome, CodeReviewError]:
+        worktrees = manager.worktrees()
+        current = manager.current()
+        here = current.path
+        repo = current.repo
+        narrator.inspecting(worktrees, here)
+        match review.review_requested():
+            case Ok(requested):
+                narrator.awaiting_review(requested)
+            case Err() as unlisted:
+                return unlisted
+        match review.merged_branches(since):
+            case Ok(merged):
+                pass
+            case Err() as unlisted:
+                return unlisted
+
+        created: list[CreatedWorkspace] = []
+        removed: list[WorktreePath] = []
+        failed: list[Failure] = []
+
+        to_remove = obsolete(
+            requested=requested,
+            merged=merged,
+            worktrees=worktrees,
+            repo=repo,
+            status=status,
+            here=here,
+        )
+        narrator.found_obsolete(to_remove)
+
+        for worktree in to_remove.root:
+            try:
+                narrator.removing(worktree.path)
+                released: Result[None, Exception] = Teardown.release_and_remove(
                     manager=manager,
                     claims=claims,
                     tracker=tracker,
                     claim_settings=claim_settings,
+                    worktree=worktree,
                     host=host,
-                    narrator=narrator,
-                    status=status,
-                    since=since,
-                    prompt=prompt,
                 )
-        case Err() as refused:
-            return refused
+            except (TicketTrackerError, WorkspaceManagerError) as error:
+                released = Err(error)
+            match released:
+                case Ok():
+                    removed.append(worktree.path)
+                case Err(error):
+                    failure = Failure(
+                        subject=FailureSubject.of_path(worktree.path),
+                        reason=FailureReason(str(error)),
+                    )
+                    narrator.removal_failed(failure)
+                    failed.append(failure)
 
+        missing = uncovered(requested, worktrees)
+        narrator.found_uncovered(missing)
 
-def reconcile_workspaces(
-    *,
-    review: CodeForge,
-    manager: WorkspaceManager,
-    claims: ClaimRegistry,
-    tracker: TicketTracker,
-    claim_settings: ClaimSettings,
-    host: HostName,
-    narrator: Narrator,
-    status: WorkspaceStatus,
-    since: MergedSince,
-    prompt: ReviewPrompt | None,
-) -> Result[Outcome, CodeReviewError]:
-    worktrees = manager.worktrees()
-    current = manager.current()
-    here = current.path
-    repo = current.repo
-    narrator.inspecting(worktrees, here)
-    match review.review_requested():
-        case Ok(requested):
-            narrator.awaiting_review(requested)
-        case Err() as unlisted:
-            return unlisted
-    match review.merged_branches(since):
-        case Ok(merged):
-            pass
-        case Err() as unlisted:
-            return unlisted
-
-    created: list[CreatedWorkspace] = []
-    removed: list[WorktreePath] = []
-    failed: list[Failure] = []
-
-    to_remove = obsolete(
-        requested=requested,
-        merged=merged,
-        worktrees=worktrees,
-        repo=repo,
-        status=status,
-        here=here,
-    )
-    narrator.found_obsolete(to_remove)
-
-    for worktree in to_remove.root:
-        try:
-            narrator.removing(worktree.path)
-            release_and_remove(
+        for pr in missing.root:
+            match ReviewWorkspaces.create_review_workspace(
+                review=review,
                 manager=manager,
-                claims=claims,
-                tracker=tracker,
-                claim_settings=claim_settings,
-                worktree=worktree,
-                host=host,
-            )
-        except (TicketTrackerError, WorkspaceManagerError) as error:
-            failure = Failure(
-                subject=FailureSubject.of_path(worktree.path), reason=FailureReason(str(error))
-            )
-            narrator.removal_failed(failure)
-            failed.append(failure)
-        else:
-            removed.append(worktree.path)
+                narrator=narrator,
+                repo=repo,
+                pr=pr,
+                status=status,
+                prompt=prompt,
+            ):
+                case Ok(workspace):
+                    created.append(workspace)
+                case Err(error):
+                    failure = Failure(
+                        subject=FailureSubject.of_pr(pr.number), reason=FailureReason(str(error))
+                    )
+                    narrator.creation_failed(failure)
+                    failed.append(failure)
 
-    missing = uncovered(requested, worktrees)
-    narrator.found_uncovered(missing)
+        return Ok(Outcome(created=tuple(created), removed=tuple(removed), failed=tuple(failed)))
 
-    for pr in missing.root:
-        match create_review_workspace(
-            review=review,
-            manager=manager,
-            narrator=narrator,
-            repo=repo,
-            pr=pr,
-            status=status,
-            prompt=prompt,
-        ):
-            case Ok(workspace):
-                created.append(workspace)
-            case Err(error):
-                failure = Failure(
-                    subject=FailureSubject.of_pr(pr.number), reason=FailureReason(str(error))
-                )
-                narrator.creation_failed(failure)
-                failed.append(failure)
-
-    return Ok(Outcome(created=tuple(created), removed=tuple(removed), failed=tuple(failed)))
-
-
-# The other ports still raise, so their errors become values here, alongside the code review's.
-@safe_with(
-    CodeReviewError, CalledProcessError, PromptUndeliveredError, WorkspaceManagerError, ValueError
-)
-def create_review_workspace(
-    *,
-    review: CodeForge,
-    manager: WorkspaceManager,
-    narrator: Narrator,
-    repo: RepoId,
-    pr: PullRequest,
-    status: WorkspaceStatus,
-    prompt: ReviewPrompt | None,
-) -> CreatedWorkspace:
-    narrator.creating(pr.number)
-    opened = manager.create_for_review(
-        repo, pr.number, status, None if prompt is None else AgentName.claude()
+    # The other ports still raise, so their errors become values here, alongside the code review's.
+    @staticmethod
+    @safe_with(
+        CodeReviewError,
+        CalledProcessError,
+        PromptUndeliveredError,
+        WorkspaceManagerError,
+        ValueError,
     )
-    path = opened.worktree.path
-    WorkspaceNaming.set_display_name_or_warn(manager, path, DisplayName.of_pr(pr.title))
-    narrator.checking_out(path)
-    review.checkout(pr.number, CheckoutDirectory(path.root)).unwrap()
-    if prompt is not None:
-        TicketStart.send_prompt(manager, opened, prompt.text, prompt.idle_timeout, Submit(True))
-    return CreatedWorkspace(name=WorktreeName.of(pr.number), path=path)
+    def create_review_workspace(
+        *,
+        review: CodeForge,
+        manager: WorkspaceManager,
+        narrator: Narrator,
+        repo: RepoId,
+        pr: PullRequest,
+        status: WorkspaceStatus,
+        prompt: ReviewPrompt | None,
+    ) -> CreatedWorkspace:
+        narrator.creating(pr.number)
+        opened = manager.create_for_review(
+            repo, pr.number, status, None if prompt is None else AgentName.claude()
+        )
+        path = opened.worktree.path
+        WorkspaceNaming.set_display_name_or_warn(manager, path, DisplayName.of_pr(pr.title))
+        narrator.checking_out(path)
+        review.checkout(pr.number, CheckoutDirectory(path.root)).unwrap()
+        if prompt is not None:
+            TicketStart.send_prompt(manager, opened, prompt.text, prompt.idle_timeout, Submit(True))
+        return CreatedWorkspace(name=WorktreeName.of(pr.number), path=path)

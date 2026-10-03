@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING, Protocol
 
-from safe_result import Err, Ok
+from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.a_features.autolabel import UnknownLabelError
 from mb_workflow.b_core.a_features.drain import Drain, DrainRequest
@@ -68,16 +68,10 @@ class WatchRequest(Model):
 
 
 class DrainWatch:
-    # Retrying cannot fix these; only an edit to the config or the tracker's labels can.
+    # Retrying cannot fix these; only an edit to the config can.
     @staticmethod
     def config_errors() -> tuple[type[Exception], ...]:
-        return (
-            InvalidConfigError,
-            InvalidOverrideError,
-            MissingConfigError,
-            UnknownClaimLabelError,
-            UnknownLabelError,
-        )
+        return (InvalidConfigError, InvalidOverrideError, MissingConfigError)
 
     @staticmethod
     def watch_pool(
@@ -93,7 +87,7 @@ class DrainWatch:
         stop: StopSignal,
         narrator: DrainNarrator,
         request: WatchRequest,
-    ) -> None:
+    ) -> Result[None, UnknownClaimLabelError | UnknownLabelError]:
         previous: DrainOutcome | None = None
         while not stop.requested().root:
             try:
@@ -115,9 +109,7 @@ class DrainWatch:
             except DrainWatch.config_errors():
                 raise
             except Exception as error:
-                logger.error(
-                    "The pass failed; retrying in %s seconds. %s", request.interval.root, error
-                )
+                DrainWatch.log_failed_pass(request, error)
             else:
                 match attempted:
                     case Ok(outcome):
@@ -125,10 +117,14 @@ class DrainWatch:
                         previous = outcome
                     case Err(AlreadyRunningError() as refusal):
                         logger.info("Skipped this pass: %s.", refusal)
+                    # Retrying cannot fix a missing label either; only an edit to the tracker's labels can.
+                    case Err(UnknownClaimLabelError() | UnknownLabelError() as unfixable):
+                        return Err(unfixable)
                     case Err(error):
-                        logger.error(
-                            "The pass failed; retrying in %s seconds. %s",
-                            request.interval.root,
-                            error,
-                        )
+                        DrainWatch.log_failed_pass(request, error)
             stop.wait(request.interval)
+        return Ok(None)
+
+    @staticmethod
+    def log_failed_pass(request: WatchRequest, error: Exception) -> None:
+        logger.error("The pass failed; retrying in %s seconds. %s", request.interval.root, error)

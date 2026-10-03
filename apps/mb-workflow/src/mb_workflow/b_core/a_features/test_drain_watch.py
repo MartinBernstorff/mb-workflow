@@ -2,6 +2,7 @@ import logging
 from typing import TYPE_CHECKING, override
 
 import pytest
+from safe_result import Err, Ok
 
 from mb_workflow.b_core.a_features.autolabel import UnknownLabelError
 from mb_workflow.b_core.a_features.drain import Changed, DrainOutcome
@@ -37,6 +38,9 @@ from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, 
 from mb_workflow.b_core.d_domain_model.pool import Limit, PoolTickets, Priority
 
 if TYPE_CHECKING:
+    from safe_result import Result
+
+    from mb_workflow.b_core.c_secondary_ports.claims import UnknownClaimLabelError
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
     from mb_workflow.b_core.d_domain_model.pool import ViewSlug
 
@@ -75,10 +79,10 @@ class FlakyTracker(FakeTicketTracker):
         self.failing = True
 
     @override
-    def unblocked_view_tickets(self, view: ViewSlug) -> PoolTickets:
+    def unblocked_view_tickets(self, view: ViewSlug) -> Result[PoolTickets, TicketTrackerError]:
         if self.failing:
             self.failing = False
-            raise TicketTrackerError("Linear is unreachable")
+            return Err(TicketTrackerError("Linear is unreachable"))
         return super().unblocked_view_tickets(view)
 
 
@@ -90,7 +94,7 @@ class SignallingTracker(FakeTicketTracker):
         self.stop = stop
 
     @override
-    def unblocked_view_tickets(self, view: ViewSlug) -> PoolTickets:
+    def unblocked_view_tickets(self, view: ViewSlug) -> Result[PoolTickets, TicketTrackerError]:
         if self.stop is not None:
             self.stop.signal()
         return super().unblocked_view_tickets(view)
@@ -104,8 +108,8 @@ def watching(
     lock: FakeRunLock | None = None,
     settings: DrainSettingsSource | None = None,
     narrator: RecordingNarrator | None = None,
-) -> None:
-    DrainWatch.watch_pool(
+) -> Result[None, UnknownClaimLabelError | UnknownLabelError]:
+    return DrainWatch.watch_pool(
         tracker=tracker,
         claims=FakeClaimRegistry(),
         manager=manager or fake_manager(),
@@ -124,7 +128,7 @@ def test_runs_passes_until_the_stop_signal() -> None:
     passes = WaitCount(3)
     narrator = RecordingNarrator()
     stop = FakeStopSignal(passes)
-    watching(standard_pool(), stop, narrator=narrator)
+    assert watching(standard_pool(), stop, narrator=narrator) == Ok(None)
     assert stop.requested() == Stopped(True)
     assert len(narrator.passes) == passes.root
 
@@ -133,7 +137,7 @@ def test_a_stop_requested_before_the_first_pass_runs_none() -> None:
     narrator = RecordingNarrator()
     stop = FakeStopSignal()
     stop.signal()
-    watching(standard_pool(), stop, narrator=narrator)
+    assert watching(standard_pool(), stop, narrator=narrator) == Ok(None)
     assert narrator.passes == []
 
 
@@ -144,7 +148,7 @@ def test_a_stop_during_a_pass_lets_the_pass_finish_then_ends_the_watch() -> None
     assert isinstance(tracker, SignallingTracker)
     tracker.signal_on_listing(stop)
     started = (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
-    watching(tracker, stop, manager=manager)
+    assert watching(tracker, stop, manager=manager) == Ok(None)
     assert opened_issues(manager) == started
     assert stop.waits() == WaitCount(0)
 
@@ -153,7 +157,9 @@ def test_a_raised_limit_applies_from_the_next_pass() -> None:
     manager = fake_manager()
     settings = SequencedSettings(pool_with_total(Limit(1)), pool_with_total(Limit(2)))
     started = (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
-    watching(standard_pool(), FakeStopSignal(WaitCount(2)), manager=manager, settings=settings)
+    assert watching(
+        standard_pool(), FakeStopSignal(WaitCount(2)), manager=manager, settings=settings
+    ) == Ok(None)
     assert opened_issues(manager) == started
 
 
@@ -166,7 +172,7 @@ def test_a_pass_skips_while_another_drain_holds_the_lock(
     stop = FakeStopSignal(passes)
     skipped = "Skipped this pass"
     with caplog.at_level(logging.INFO), lock.acquire().unwrap():
-        watching(standard_pool(), stop, manager=manager, lock=lock)
+        assert watching(standard_pool(), stop, manager=manager, lock=lock) == Ok(None)
     assert opened_issues(manager) == ()
     assert stop.waits() == passes
     assert caplog.text.count(skipped) == passes.root
@@ -178,7 +184,7 @@ def test_a_tracker_failure_is_retried_on_the_next_pass() -> None:
     assert isinstance(tracker, FlakyTracker)
     tracker.fail_next_listing()
     started = (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
-    watching(tracker, FakeStopSignal(WaitCount(2)), manager=manager)
+    assert watching(tracker, FakeStopSignal(WaitCount(2)), manager=manager) == Ok(None)
     assert opened_issues(manager) == started
 
 
@@ -196,7 +202,7 @@ def test_a_pass_refused_over_conflicting_flow_labels_is_retried_on_the_next_pass
     narrator = RecordingNarrator()
     passes = WaitCount(2)
     stop = FakeStopSignal(passes)
-    watching(tracker, stop, narrator=narrator)
+    assert watching(tracker, stop, narrator=narrator) == Ok(None)
     assert narrator.passes == []
     assert stop.waits() == passes
 
@@ -207,21 +213,22 @@ def test_an_unknown_label_ends_the_watch() -> None:
         labels=LabelNames((LabelName("claimed"), *FlowLabels.fake().labels.root)),
     )
     stop = FakeStopSignal(WaitCount(3))
-    with pytest.raises(UnknownLabelError):
-        watching(tracker, stop)
+    ended = watching(tracker, stop)
+    assert isinstance(ended, Err)
+    assert isinstance(ended.error, UnknownLabelError)
     assert stop.waits() == WaitCount(0)
 
 
 def test_a_config_without_a_pool_ends_the_watch() -> None:
     stop = FakeStopSignal(WaitCount(3))
     with pytest.raises(InvalidConfigError):
-        watching(standard_pool(), stop, settings=MissingPoolSettings())
+        _ = watching(standard_pool(), stop, settings=MissingPoolSettings())
     assert stop.waits() == WaitCount(0)
 
 
 def test_only_passes_that_differ_from_the_last_count_as_changed() -> None:
     narrator = RecordingNarrator()
-    watching(standard_pool(), FakeStopSignal(WaitCount(3)), narrator=narrator)
+    assert watching(standard_pool(), FakeStopSignal(WaitCount(3)), narrator=narrator) == Ok(None)
     assert tuple(changed for _, changed in narrator.passes) == (
         Changed(True),
         Changed(True),

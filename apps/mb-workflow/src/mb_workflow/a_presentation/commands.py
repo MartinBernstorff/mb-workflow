@@ -14,11 +14,11 @@ from mb_workflow.a_presentation.review_workspaces_report import (
     log_review_workspaces_outcome,
 )
 from mb_workflow.b_core.a_features.autolabel import (
+    AutoLabelling,
     AutolabelRequest,
     UnknownLabelError,
-    label_eligible_issues,
 )
-from mb_workflow.b_core.a_features.create_ticket import create_ticket
+from mb_workflow.b_core.a_features.create_ticket import TicketCreation
 from mb_workflow.b_core.a_features.drain import Drain, DrainRequest
 from mb_workflow.b_core.a_features.drain_watch import (
     DrainSettings,
@@ -30,8 +30,8 @@ from mb_workflow.b_core.a_features.edit_ticket import TicketEditor
 from mb_workflow.b_core.a_features.finalize_review import FinalizeReview
 from mb_workflow.b_core.a_features.init_config import Overwrite, init_config
 from mb_workflow.b_core.a_features.link import AlreadyLinkedError, LinkRequest, TicketLinking
-from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt, create_workspaces
-from mb_workflow.b_core.a_features.seed_labels import CoveredByWorkspace, seed_flow_labels
+from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt, ReviewWorkspaces
+from mb_workflow.b_core.a_features.seed_labels import CoveredByWorkspace, FlowLabelSeeding
 from mb_workflow.b_core.a_features.show_config import show_config
 from mb_workflow.b_core.a_features.show_flow import show_flow
 from mb_workflow.b_core.a_features.start import (
@@ -39,10 +39,10 @@ from mb_workflow.b_core.a_features.start import (
     StartRequest,
     TicketStart,
 )
-from mb_workflow.b_core.a_features.teardown import TeardownRequest, teardown_worktree
+from mb_workflow.b_core.a_features.teardown import Teardown, TeardownRequest
 from mb_workflow.b_core.a_features.transition import LinkedTicketTransition
-from mb_workflow.b_core.a_features.unclaim import unclaim_ticket
-from mb_workflow.b_core.a_features.view_ticket import view_ticket
+from mb_workflow.b_core.a_features.unclaim import TicketUnclaiming
+from mb_workflow.b_core.a_features.view_ticket import TicketViewing
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRefusedError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
@@ -191,7 +191,7 @@ def review_workspaces(
         case Err(error):
             logger.error("%s", error)
             return ExitCode(1)
-    reconciled = create_workspaces(
+    reconciled = ReviewWorkspaces.create_workspaces(
         review=github,
         manager=Orca(shell),
         claims=LazyLinearClaims(linear_key),
@@ -232,9 +232,9 @@ def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode
 
 @guarded
 def linear_autolabel(request: AutolabelRequest, window: CreatedAfter) -> ExitCode:
-    outcome = label_eligible_issues(
+    outcome = AutoLabelling.label_eligible_issues(
         linear(), FileLedgerStore(CacheDirectory.of_user()), request, window
-    )
+    ).unwrap()
     log_outcome(outcome)
     return ExitCode.of(outcome.failed_any())
 
@@ -360,7 +360,7 @@ def drain_watch(
             stop=stop,
             narrator=LoggingDrainNarrator(),
             request=request,
-        )
+        ).unwrap()
     return ExitCode(0)
 
 
@@ -368,13 +368,13 @@ def drain_watch(
 def teardown(
     request: TeardownRequest, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
-    teardown_worktree(
+    Teardown.teardown_worktree(
         manager=Orca(here()),
         claims=LazyLinearClaims(linear_key),
         tracker=LazyLinear(linear_key),
         claim_settings=resolved_configuration(directory, name).settings.claims,
         request=request,
-    )
+    ).unwrap()
     return ExitCode(0)
 
 
@@ -382,18 +382,18 @@ def teardown(
 def ticket_unclaim(
     ticket: IssueIdentifier, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
-    unclaim_ticket(
+    TicketUnclaiming.unclaim_ticket(
         registry=LinearClaims.connected(linear_key()),
         tracker=linear(),
         claim_settings=resolved_configuration(directory, name).settings.claims,
         ticket=ticket,
-    )
+    ).unwrap()
     return ExitCode(0)
 
 
 @guarded
 def ticket_view(issue: IssueIdentifier) -> ExitCode:
-    write(Output(view_ticket(linear(), issue).root))
+    write(Output(TicketViewing.view_ticket(linear(), issue).unwrap().root))
     return ExitCode(0)
 
 
@@ -412,7 +412,7 @@ def ticket_create(
     draft: TicketDraft, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
     settings = resolved_configuration(directory, name).settings
-    created = create_ticket(
+    created = TicketCreation.create_ticket(
         tracker=linear(),
         draft=draft,
         defaults=settings.ticket_defaults(),
@@ -479,7 +479,7 @@ def flow_event(
 @guarded
 def flow_seed_labels(team: TeamName) -> ExitCode:
     wanted = flow_labels_of_chart()
-    seeded = seed_flow_labels(linear(), wanted, team)
+    seeded = FlowLabelSeeding.seed_flow_labels(linear(), wanted, team).unwrap()
     if isinstance(seeded, CoveredByWorkspace):
         logger.info(
             "The workspace's %s label group holds every flow label, so it covers %s."

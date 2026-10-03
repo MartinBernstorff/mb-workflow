@@ -62,7 +62,8 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 )
 
 if TYPE_CHECKING:
-    from safe_result import Result
+    from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 
 
 def pooled(
@@ -190,7 +191,7 @@ def rival() -> ClaimHolder:
 
 
 def holders(claims: FakeClaimRegistry, ticket: IssueIdentifier) -> tuple[ClaimHolder, ...]:
-    return tuple(claim.holder for claim in claims.claims(ticket).root)
+    return tuple(claim.holder for claim in claims.claims(ticket).unwrap().root)
 
 
 def opened_issues(manager: FakeWorkspaceManager) -> tuple[IssueIdentifier | None, ...]:
@@ -207,7 +208,7 @@ class RacedRegistry(FakeClaimRegistry):
 
     @override
     def post(self, ticket: IssueIdentifier, holder: ClaimHolder) -> ClaimId:
-        if ticket == self._contested and not self.claims(ticket).root:
+        if ticket == self._contested and not self.claims(ticket).unwrap().root:
             _ = super().post(ticket, rival())
         return super().post(ticket, holder)
 
@@ -231,7 +232,15 @@ def draining_or_refused(
     manager: FakeWorkspaceManager | None = None,
     claims: FakeClaimRegistry | None = None,
     pool: PoolSettings | None = None,
-) -> Result[DrainOutcome, AlreadyRunningError | FlowError]:
+) -> Result[
+    DrainOutcome,
+    AlreadyRunningError
+    | FlowError
+    | TicketTrackerError
+    | UnknownClaimLabelError
+    | UnknownLabelError
+    | MissingFlowLabelsError,
+]:
     return DrainRuns.attempted(tracker, manager=manager, claims=claims, pool=pool)
 
 
@@ -245,7 +254,15 @@ class DrainRuns:
         lock: FakeRunLock | None = None,
         pool: PoolSettings | None = None,
         request: DrainRequest | None = None,
-    ) -> Result[DrainOutcome, AlreadyRunningError | FlowError]:
+    ) -> Result[
+        DrainOutcome,
+        AlreadyRunningError
+        | FlowError
+        | TicketTrackerError
+        | UnknownClaimLabelError
+        | UnknownLabelError
+        | MissingFlowLabelsError,
+    ]:
         return Drain.drain_pool(
             tracker=tracker,
             claims=claims or FakeClaimRegistry(),
@@ -394,7 +411,9 @@ def test_a_start_that_fails_after_claiming_releases_the_claim() -> None:
     with pytest.raises(WorkspaceManagerError):
         _ = draining(tracker, manager=elsewhere, claims=claims)
     assert holders(claims, IssueIdentifier("MB-2")) == ()
-    assert tracker.read_issue(IssueIdentifier("MB-2")).labels == LabelNames((LabelName("Specced"),))
+    assert tracker.read_issue(IssueIdentifier("MB-2")).unwrap().labels == LabelNames(
+        (LabelName("Specced"),)
+    )
 
 
 # Raises as a second stop signal would, after the workspace call begins.
@@ -437,8 +456,10 @@ def test_a_start_that_fails_tries_no_other_ticket() -> None:
 def test_a_claim_label_the_tracker_lacks_refuses_the_pass() -> None:
     tracker = pool_of(pooled(IssueIdentifier("MB-1"), Priority.low), labels=LabelNames(()))
     claims = FakeClaimRegistry()
-    with pytest.raises(UnknownClaimLabelError, match="claimed"):
-        _ = draining(tracker, claims=claims)
+    refused = draining_or_refused(tracker, claims=claims)
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, UnknownClaimLabelError)
+    assert "claimed" in str(refused.error)
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
@@ -519,9 +540,9 @@ def test_a_started_ticket_loses_its_skip_limits_label() -> None:
     tracker = pool_of(pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()))
     _ = draining(tracker)
     assert (
-        tracker.read_issue(IssueIdentifier("MB-2")).labels.matching(
-            PoolSettings.fake().skip_limits_label
-        )
+        tracker.read_issue(IssueIdentifier("MB-2"))
+        .unwrap()
+        .labels.matching(PoolSettings.fake().skip_limits_label)
         is None
     )
 
@@ -531,9 +552,9 @@ def test_a_dry_run_keeps_the_skip_limits_label() -> None:
     dry = DrainRequest.fake().model_copy(update={"dry_run": DryRun(True)})
     _ = draining(tracker, request=dry)
     assert (
-        tracker.read_issue(IssueIdentifier("MB-2")).labels.matching(
-            PoolSettings.fake().skip_limits_label
-        )
+        tracker.read_issue(IssueIdentifier("MB-2"))
+        .unwrap()
+        .labels.matching(PoolSettings.fake().skip_limits_label)
         is not None
     )
 
@@ -542,9 +563,9 @@ def test_a_ticket_another_host_wins_keeps_its_skip_limits_label() -> None:
     tracker = pool_of(pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()))
     _ = draining(tracker, claims=RacedRegistry(IssueIdentifier("MB-2")))
     assert (
-        tracker.read_issue(IssueIdentifier("MB-2")).labels.matching(
-            PoolSettings.fake().skip_limits_label
-        )
+        tracker.read_issue(IssueIdentifier("MB-2"))
+        .unwrap()
+        .labels.matching(PoolSettings.fake().skip_limits_label)
         is not None
     )
 
@@ -563,8 +584,10 @@ def test_a_skip_limits_label_the_tracker_lacks_refuses_the_pass() -> None:
         labels=LabelNames((LabelName("claimed"), *FlowLabels.fake().labels.root)),
     )
     claims = FakeClaimRegistry()
-    with pytest.raises(UnknownLabelError, match="skip-limits"):
-        _ = draining(tracker, claims=claims)
+    refused = draining_or_refused(tracker, claims=claims)
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, UnknownLabelError)
+    assert "skip-limits" in str(refused.error)
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
@@ -731,8 +754,10 @@ def test_the_outcome_names_each_skipped_ticket_and_why() -> None:
 def test_a_limited_label_the_tracker_lacks_refuses_the_pass() -> None:
     tracker = pool_of(pooled(IssueIdentifier("MB-1"), Priority.low))
     claims = FakeClaimRegistry()
-    with pytest.raises(UnknownLabelError, match="refactor"):
-        _ = draining(tracker, claims=claims, pool=pool_capping_refactors_at(Limit(1)))
+    refused = draining_or_refused(tracker, claims=claims, pool=pool_capping_refactors_at(Limit(1)))
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, UnknownLabelError)
+    assert "refactor" in str(refused.error)
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 

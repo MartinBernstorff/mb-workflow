@@ -4,11 +4,11 @@ from typing import override
 import pytest
 
 from mb_workflow.b_core.a_features.autolabel import (
+    AutoLabelling,
     AutolabelRequest,
     DryRun,
     Outcome,
     UnknownLabelError,
-    label_eligible_issues,
 )
 from mb_workflow.b_core.c_secondary_ports.ledger_store import FakeLedgerStore
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
@@ -80,19 +80,21 @@ def request_with(dry_run: DryRun) -> AutolabelRequest:
 
 
 def apply_labels(issues: FakeTicketTracker, store: FakeLedgerStore) -> Outcome:
-    return label_eligible_issues(issues, store, request_with(DryRun(False)), CreatedAfter.fake())
+    return AutoLabelling.label_eligible_issues(
+        issues, store, request_with(DryRun(False)), CreatedAfter.fake()
+    ).unwrap()
 
 
 def test_an_applied_sweep_labels_the_survivors_on_the_tracker() -> None:
     issues = seeded_tracker()
     _ = apply_labels(issues, seeded_ledger_store())
-    assert issues.read_issue(IssueIdentifier("E-4")).labels == LabelNames.fake()
+    assert issues.read_issue(IssueIdentifier("E-4")).unwrap().labels == LabelNames.fake()
 
 
 def test_an_applied_sweep_leaves_the_skipped_issues_unlabelled() -> None:
     issues = seeded_tracker()
     _ = apply_labels(issues, seeded_ledger_store())
-    assert issues.read_issue(IssueIdentifier("E-1")).labels == LabelNames(())
+    assert issues.read_issue(IssueIdentifier("E-1")).unwrap().labels == LabelNames(())
 
 
 def test_an_applied_sweep_records_what_it_labelled() -> None:
@@ -121,25 +123,27 @@ def test_a_refused_update_is_left_out_of_the_ledger() -> None:
 
 def test_a_dry_sweep_leaves_the_tracker_untouched() -> None:
     issues = seeded_tracker()
-    _ = label_eligible_issues(
+    _ = AutoLabelling.label_eligible_issues(
         issues, seeded_ledger_store(), request_with(DryRun(True)), CreatedAfter.fake()
-    )
-    assert issues.read_issue(IssueIdentifier("E-4")).labels == LabelNames(())
+    ).unwrap()
+    assert issues.read_issue(IssueIdentifier("E-4")).unwrap().labels == LabelNames(())
 
 
 def test_a_dry_sweep_leaves_the_ledger_untouched() -> None:
     store = seeded_ledger_store()
-    _ = label_eligible_issues(
+    _ = AutoLabelling.label_eligible_issues(
         seeded_tracker(), store, request_with(DryRun(True)), CreatedAfter.fake()
-    )
+    ).unwrap()
     assert store.read(LabelName.fake()) == Ledger((IssueIdentifier("E-10"),))
 
 
 def test_a_sweep_leaves_issues_created_before_the_window_alone() -> None:
     issues = seeded_tracker()
     after = CreatedAfter(CreatedOn.fake().root + timedelta(days=1))
-    _ = label_eligible_issues(issues, seeded_ledger_store(), request_with(DryRun(False)), after)
-    assert issues.read_issue(IssueIdentifier("E-4")).labels == LabelNames(())
+    _ = AutoLabelling.label_eligible_issues(
+        issues, seeded_ledger_store(), request_with(DryRun(False)), after
+    ).unwrap()
+    assert issues.read_issue(IssueIdentifier("E-4")).unwrap().labels == LabelNames(())
 
 
 def test_a_sweep_skips_an_issue_carrying_another_label_of_the_group() -> None:
@@ -152,12 +156,12 @@ def test_a_sweep_skips_an_issue_carrying_another_label_of_the_group() -> None:
         groups={LabelGroupName("area"): LabelNames((LabelName.fake(), frontend))},
     )
     _ = apply_labels(issues, FakeLedgerStore())
-    assert issues.read_issue(IssueIdentifier("E-4")).labels == LabelNames((frontend,))
+    assert issues.read_issue(IssueIdentifier("E-4")).unwrap().labels == LabelNames((frontend,))
 
 
 def test_sweeping_for_a_label_the_tracker_lacks_is_refused() -> None:
     unknown = AutolabelRequest.fake().model_copy(update={"label": LabelName("Frontend")})
     with pytest.raises(UnknownLabelError, match="Frontend"):
-        _ = label_eligible_issues(
+        _ = AutoLabelling.label_eligible_issues(
             seeded_tracker(), seeded_ledger_store(), unknown, CreatedAfter.fake()
-        )
+        ).unwrap()

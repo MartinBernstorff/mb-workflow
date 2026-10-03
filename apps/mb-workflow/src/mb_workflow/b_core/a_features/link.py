@@ -19,9 +19,12 @@ from mb_workflow.d_lib.models import Model
 from mb_workflow.d_lib.saga import Saga, SagaStep
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
+    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry, UnknownClaimLabelError
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
-    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+        TicketTracker,
+        TicketTrackerError,
+    )
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
@@ -121,9 +124,12 @@ class TicketLinking:
         claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
         request: LinkRequest,
-    ) -> Result[None, FlowError]:
+    ) -> Result[None, FlowError | TicketTrackerError | UnknownClaimLabelError]:
         # Refuse before touching anything, so a refused link leaves no claim behind.
-        detail = tracker.read_issue_detail(request.ticket)
+        read = tracker.read_issue_detail(request.ticket)
+        if isinstance(read, Err):
+            return read
+        detail = read.value
         with_work_left = TicketState.state_with_work_left(WorkflowChart, flow_labels, detail.issue)
         if isinstance(with_work_left, Err):
             return with_work_left
@@ -147,9 +153,14 @@ class TicketLinking:
             ),
             previous=detail.assignee,
         )
+        if isinstance(taking_steps, Err):
+            return taking_steps
+
         # Linking comes last, as Orca cannot unlink a worktree to revert it.
         status_step = StatusStep(manager, here, board.status_for(state))
-        Saga.run((*taking_steps, status_step, LinkStep(manager, here, request.ticket))).unwrap()
+        Saga.run(
+            (*taking_steps.value, status_step, LinkStep(manager, here, request.ticket))
+        ).unwrap()
         WorkspaceNaming.set_display_name_or_warn(
             manager, here.path, DisplayName.of_issue(detail.title)
         )
