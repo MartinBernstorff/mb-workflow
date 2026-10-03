@@ -246,6 +246,7 @@ def ticket_start(
         workspace=settings.workspace,
         claim_settings=settings.claims,
         flow_labels=flow_labels_of_chart(),
+        statuses=settings.ticket_statuses,
         request=request,
     )
     return ExitCode(0)
@@ -269,6 +270,7 @@ def drain(
         workspace=settings.workspace,
         claim_settings=settings.claims,
         flow_labels=flow_labels_of_chart(),
+        statuses=settings.ticket_statuses,
         pool=pool,
         request=request,
     )

@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     )
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName
+    from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ class DrainRequest(Model):
             host=self.host,
             take_over=TakeOver(False),
             activate=Activate(False),
+            state=None,
         )
 
 
@@ -170,6 +172,7 @@ def drain_pool(
     workspace: WorkspaceSettings,
     claim_settings: ClaimSettings,
     flow_labels: FlowLabels,
+    statuses: TicketStatuses,
     pool: PoolSettings,
     request: DrainRequest,
 ) -> DrainOutcome:
@@ -230,6 +233,7 @@ def drain_pool(
                 workspace=workspace,
                 claim_settings=claim_settings,
                 flow_labels=flow_labels,
+                statuses=statuses,
                 request=request.start_request(ticket.issue.identifier),
             ).root:
                 picked.append(ticket)
@@ -261,6 +265,7 @@ def try_start_ticket(
     workspace: WorkspaceSettings,
     claim_settings: ClaimSettings,
     flow_labels: FlowLabels,
+    statuses: TicketStatuses,
     request: StartRequest,
 ) -> Started:
     try:
@@ -272,6 +277,7 @@ def try_start_ticket(
             workspace=workspace,
             claim_settings=claim_settings,
             flow_labels=flow_labels,
+            statuses=statuses,
             request=request,
         )
     except ClaimLostError:
