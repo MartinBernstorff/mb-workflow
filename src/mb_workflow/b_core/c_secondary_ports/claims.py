@@ -25,6 +25,11 @@ class ClaimLostError(ClaimRefusedError):
     pass
 
 
+# The configured claim label does not exist, so no claim can succeed until the config changes.
+class UnknownClaimLabelError(ClaimRefusedError):
+    pass
+
+
 class ClaimRegistry(Protocol):
     def claims(self, ticket: IssueIdentifier) -> Claims: ...
 
@@ -91,7 +96,7 @@ def claimed_error(ticket: IssueIdentifier, holder: Claim) -> ClaimLostError:
 # Checked before claiming, so a doomed claim never withdraws another holder's claim.
 def require_claim_label(tracker: TicketTracker, label: LabelName) -> None:
     if tracker.workspace_labels().matching(label) is None:
-        raise ClaimRefusedError(
+        raise UnknownClaimLabelError(
             f"No label is named {label.root}. Create the label or change claims.label."
         )
 

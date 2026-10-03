@@ -4,10 +4,16 @@ from typing import override
 import pytest
 
 from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
-from mb_workflow.b_core.a_features.drain import DrainOutcome, DrainRequest, drain_pool
+from mb_workflow.b_core.a_features.drain import (
+    Changed,
+    DrainOutcome,
+    DrainRequest,
+    UnreadyReason,
+    drain_pool,
+)
 from mb_workflow.b_core.c_secondary_ports.claims import (
-    ClaimRefusedError,
     FakeClaimRegistry,
+    UnknownClaimLabelError,
 )
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, FakeRunLock
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
@@ -34,6 +40,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
 from mb_workflow.b_core.d_domain_model.pool import (
     Limit,
     PoolLimits,
+    PoolTicket,
     PoolTickets,
     Priority,
     Refusal,
@@ -96,8 +103,9 @@ def pool_of(
     labels: LabelNames | None = None,
     elsewhere: tuple[TrackedIssue, ...] = (),
     closing: tuple[IssueStatus, ...] = (),
+    kind: type[FakeTicketTracker] = FakeTicketTracker,
 ) -> FakeTicketTracker:
-    return FakeTicketTracker(
+    return kind(
         LabelNames((LabelName("claimed"), skip_limits().root[0], *FlowLabels.fake().labels.root))
         if labels is None
         else labels,
@@ -143,11 +151,12 @@ def picked(outcome: DrainOutcome) -> tuple[IssueIdentifier, ...]:
     return outcome.picked.identifiers()
 
 
-def standard_pool() -> FakeTicketTracker:
+def standard_pool(kind: type[FakeTicketTracker] = FakeTicketTracker) -> FakeTicketTracker:
     return pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
         pooled(IssueIdentifier("MB-2"), Priority.high),
         pooled(IssueIdentifier("MB-3"), Priority.high, state=StateName("QA")),
+        kind=kind,
     )
 
 
@@ -366,7 +375,7 @@ def test_a_start_that_fails_tries_no_other_ticket() -> None:
 def test_a_claim_label_the_tracker_lacks_refuses_the_pass() -> None:
     tracker = pool_of(pooled(IssueIdentifier("MB-1"), Priority.low), labels=LabelNames(()))
     claims = FakeClaimRegistry()
-    with pytest.raises(ClaimRefusedError, match="claimed"):
+    with pytest.raises(UnknownClaimLabelError, match="claimed"):
         _ = draining(tracker, claims=claims)
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
@@ -398,7 +407,8 @@ def test_a_pool_with_no_ready_ticket_starts_nothing() -> None:
         pool_of(pooled(IssueIdentifier("MB-3"), Priority.high, state=StateName("QA"))),
         manager=manager,
     )
-    assert outcome == DrainOutcome(ready=PoolTickets(()), picked=PoolTickets(()), skipped=())
+    assert outcome.ready == PoolTickets(())
+    assert outcome.picked == PoolTickets(())
     assert manager.worktrees() == Worktrees.fake()
 
 
@@ -500,27 +510,32 @@ def drain_logged(
         _ = draining(tracker, pool=pool)
 
 
-def test_the_log_says_why_a_ticket_in_the_view_is_not_ready(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_the_outcome_says_why_a_ticket_in_the_view_is_not_ready() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-2"), Priority.high, labels=LabelNames((LabelName("claimed"),))),
         pooled(IssueIdentifier("MB-3"), Priority.high, state=StateName("QA")),
         pooled(IssueIdentifier("MB-4"), Priority.high, state=None),
     )
-    drain_logged(caplog, tracker)
-    log = caplog.text
-    assert "Skipped MB-2: it is already claimed." in log
-    assert "Skipped MB-3: no agent works tickets in QA." in log
-    assert "Skipped MB-4: it has no flow state." in log
+    outcome = draining(tracker)
+    assert tuple(
+        (unready.ticket.issue.identifier, unready.reason) for unready in outcome.unready
+    ) == (
+        (IssueIdentifier("MB-2"), UnreadyReason("it is already claimed")),
+        (IssueIdentifier("MB-3"), UnreadyReason("no agent works tickets in QA")),
+        (IssueIdentifier("MB-4"), UnreadyReason("it has no flow state")),
+    )
 
 
-def test_the_log_names_the_tickets_left_when_the_pool_fills(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    drain_logged(caplog, standard_pool(), pool=pool_with_total(Limit(1)))
-    log = caplog.text
-    assert "The pool is full at 1 tickets; leaving MB-1 unstarted." in log
+def test_the_outcome_names_the_tickets_left_when_the_pool_fills() -> None:
+    total = Limit(1)
+    outcome = draining(standard_pool(), pool=pool_with_total(total))
+    assert outcome.full is not None
+    assert outcome.full.total == total
+    assert outcome.full.left.identifiers() == (IssueIdentifier("MB-1"),)
+
+
+def test_the_outcome_of_a_pass_with_room_left_is_not_full() -> None:
+    assert draining(standard_pool()).full is None
 
 
 def test_the_log_names_each_ticket_started(caplog: pytest.LogCaptureFixture) -> None:
@@ -604,3 +619,44 @@ def test_a_ticket_labelled_skip_limits_starts_past_its_label_limit() -> None:
     outcome = draining(tracker, pool=pool_capping_refactors_at(Limit(1)))
     assert picked(outcome) == (IssueIdentifier("MB-2"),)
     assert outcome.skipped == ()
+
+
+def outcome_of(
+    ready: tuple[IssueIdentifier, ...], picked: tuple[IssueIdentifier, ...] = ()
+) -> DrainOutcome:
+    def tickets(identifiers: tuple[IssueIdentifier, ...]) -> PoolTickets:
+        return PoolTickets(
+            tuple(
+                PoolTicket.fake().model_copy(
+                    update={
+                        "issue": PoolTicket.fake().issue.model_copy(
+                            update={"identifier": identifier}
+                        )
+                    }
+                )
+                for identifier in identifiers
+            )
+        )
+
+    return DrainOutcome(ready=tickets(ready), picked=tickets(picked), skipped=())
+
+
+def test_a_first_pass_counts_as_changed() -> None:
+    assert outcome_of((IssueIdentifier("MB-1"),)).changed_since(None) == Changed(True)
+
+
+def test_a_pass_matching_the_last_counts_as_unchanged() -> None:
+    previous = outcome_of((IssueIdentifier("MB-1"), IssueIdentifier("MB-2")))
+    current = outcome_of((IssueIdentifier("MB-2"), IssueIdentifier("MB-1")))
+    assert current.changed_since(previous) == Changed(False)
+
+
+def test_a_pass_with_a_different_ready_set_counts_as_changed() -> None:
+    previous = outcome_of((IssueIdentifier("MB-1"),))
+    current = outcome_of((IssueIdentifier("MB-1"), IssueIdentifier("MB-2")))
+    assert current.changed_since(previous) == Changed(True)
+
+
+def test_a_pass_that_started_a_ticket_counts_as_changed() -> None:
+    started = outcome_of((IssueIdentifier("MB-1"),), picked=(IssueIdentifier("MB-1"),))
+    assert started.changed_since(started) == Changed(True)

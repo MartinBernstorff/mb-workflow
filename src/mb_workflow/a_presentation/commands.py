@@ -2,11 +2,16 @@ import logging
 import re
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from mb_workflow.a_presentation.autolabel_report import log_outcome
 from mb_workflow.a_presentation.console import ExitCode, Output, write
-from mb_workflow.a_presentation.drain_report import log_drain_outcome, log_skips, pick_listing
+from mb_workflow.a_presentation.drain_report import (
+    LoggingDrainNarrator,
+    log_drain_outcome,
+    log_pass,
+    pick_listing,
+)
 from mb_workflow.a_presentation.review_workspaces_report import (
     LoggingNarrator,
     log_review_workspaces_outcome,
@@ -18,6 +23,12 @@ from mb_workflow.b_core.a_features.autolabel import (
 )
 from mb_workflow.b_core.a_features.create_ticket import create_ticket
 from mb_workflow.b_core.a_features.drain import DrainRequest, drain_pool
+from mb_workflow.b_core.a_features.drain_watch import (
+    DrainSettings,
+    DrainSettingsSource,
+    WatchRequest,
+    watch_pool,
+)
 from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
 from mb_workflow.b_core.a_features.init_config import Overwrite, init_config
@@ -76,6 +87,7 @@ from mb_workflow.c_infrastructure.orca import Orca
 from mb_workflow.c_infrastructure.project_override import override_of_origin
 from mb_workflow.c_infrastructure.random_tie_break import RandomTieBreak
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
+from mb_workflow.c_infrastructure.signal_stop import PollSeconds, SignalStop
 from mb_workflow.c_infrastructure.workspace_board import BoardError, WorkspaceBoard
 
 if TYPE_CHECKING:
@@ -260,11 +272,47 @@ def drain(
         pool=pool,
         request=request,
     )
-    log_skips(outcome)
+    log_pass(outcome)
     if request.dry_run.root:
         write(pick_listing(outcome.picked, flow_labels_of_chart()))
     else:
         log_drain_outcome(outcome)
+    return ExitCode(0)
+
+
+class ConfiguredDrainSettings(DrainSettingsSource):
+    def __init__(self, directory: WorkingDirectory, name: ConfigFileName) -> None:
+        self._directory = directory
+        self._name = name
+
+    @override
+    def current(self) -> DrainSettings:
+        settings = resolved_configuration(self._directory, self._name).settings
+        return DrainSettings(
+            workspace=settings.workspace, claims=settings.claims, pool=settings.required_pool()
+        )
+
+
+@guarded
+def drain_watch(
+    request: WatchRequest, lock: LockName, directory: WorkingDirectory, name: ConfigFileName
+) -> ExitCode:
+    orca = Orca(here())
+    key = linear_key()
+    with SignalStop.installed(PollSeconds(0.2)) as stop:
+        watch_pool(
+            tracker=Linear.connected(key),
+            claims=LinearClaims.connected(key),
+            manager=orca,
+            board=workspace_board(orca),
+            lock=FlockRunLock(LockPath.of(lock)),
+            tie_break=RandomTieBreak(),
+            flow_labels=flow_labels_of_chart(),
+            settings=ConfiguredDrainSettings(directory, name),
+            stop=stop,
+            narrator=LoggingDrainNarrator(),
+            request=request,
+        )
     return ExitCode(0)
 
 

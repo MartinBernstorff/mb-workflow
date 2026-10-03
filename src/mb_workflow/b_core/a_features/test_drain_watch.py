@@ -1,0 +1,178 @@
+from typing import TYPE_CHECKING, override
+
+import pytest
+
+from mb_workflow.b_core.a_features.autolabel import UnknownLabelError
+from mb_workflow.b_core.a_features.drain import Changed, DrainOutcome
+from mb_workflow.b_core.a_features.drain_watch import (
+    DrainNarrator,
+    DrainSettings,
+    DrainSettingsSource,
+    WatchRequest,
+    watch_pool,
+)
+from mb_workflow.b_core.a_features.test_drain import (
+    fake_board,
+    fake_manager,
+    opened_issues,
+    pool_of,
+    pool_with_total,
+    pooled,
+    standard_pool,
+)
+from mb_workflow.b_core.c_secondary_ports.claims import FakeClaimRegistry
+from mb_workflow.b_core.c_secondary_ports.run_lock import FakeRunLock
+from mb_workflow.b_core.c_secondary_ports.stop_signal import FakeStopSignal, Stopped, WaitCount
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+    FakeTicketTracker,
+    TicketTrackerError,
+)
+from mb_workflow.b_core.c_secondary_ports.tie_break import ReversingTieBreak
+from mb_workflow.b_core.d_domain_model.config import InvalidConfigError, PoolSettings
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, LabelNames
+from mb_workflow.b_core.d_domain_model.pool import Limit, PoolTickets, Priority
+
+if TYPE_CHECKING:
+    from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
+    from mb_workflow.b_core.d_domain_model.pool import ViewSlug
+
+
+# Serves each settings in turn, then keeps serving the last.
+class SequencedSettings(DrainSettingsSource):
+    def __init__(self, *pools: PoolSettings) -> None:
+        self._pools = list(pools)
+
+    @override
+    def current(self) -> DrainSettings:
+        pool = self._pools.pop(0) if len(self._pools) > 1 else self._pools[0]
+        return DrainSettings.fake().model_copy(update={"pool": pool})
+
+
+class MissingPoolSettings(DrainSettingsSource):
+    @override
+    def current(self) -> DrainSettings:
+        raise InvalidConfigError("Set [pool] view")
+
+
+class RecordingNarrator(DrainNarrator):
+    def __init__(self) -> None:
+        self.passes: list[tuple[DrainOutcome, Changed]] = []
+
+    @override
+    def passed(self, outcome: DrainOutcome, changed: Changed) -> None:
+        self.passes.append((outcome, changed))
+
+
+# Fails the next listing of the view, as if the tracker were briefly unreachable.
+class FlakyTracker(FakeTicketTracker):
+    failing = False
+
+    def fail_next_listing(self) -> None:
+        self.failing = True
+
+    @override
+    def unblocked_view_tickets(self, view: ViewSlug) -> PoolTickets:
+        if self.failing:
+            self.failing = False
+            raise TicketTrackerError("Linear is unreachable")
+        return super().unblocked_view_tickets(view)
+
+
+def watching(
+    tracker: FakeTicketTracker,
+    *,
+    passes: WaitCount,
+    manager: FakeWorkspaceManager | None = None,
+    lock: FakeRunLock | None = None,
+    settings: DrainSettingsSource | None = None,
+    narrator: RecordingNarrator | None = None,
+    stop: FakeStopSignal | None = None,
+) -> FakeStopSignal:
+    stop = stop or FakeStopSignal(passes)
+    watch_pool(
+        tracker=tracker,
+        claims=FakeClaimRegistry(),
+        manager=manager or fake_manager(),
+        board=fake_board(),
+        lock=lock or FakeRunLock(),
+        tie_break=ReversingTieBreak(),
+        flow_labels=FlowLabels.fake(),
+        settings=settings or SequencedSettings(PoolSettings.fake()),
+        stop=stop,
+        narrator=narrator or RecordingNarrator(),
+        request=WatchRequest.fake(),
+    )
+    return stop
+
+
+def test_runs_passes_until_the_stop_signal() -> None:
+    passes = WaitCount(3)
+    narrator = RecordingNarrator()
+    stop = watching(standard_pool(), passes=passes, narrator=narrator)
+    assert stop.requested() == Stopped(True)
+    assert len(narrator.passes) == passes.root
+
+
+def test_a_stop_requested_before_the_first_pass_runs_none() -> None:
+    narrator = RecordingNarrator()
+    stop = FakeStopSignal()
+    stop.signal()
+    _ = watching(standard_pool(), passes=WaitCount(3), narrator=narrator, stop=stop)
+    assert narrator.passes == []
+
+
+def test_a_raised_limit_applies_from_the_next_pass() -> None:
+    manager = fake_manager()
+    settings = SequencedSettings(pool_with_total(Limit(1)), pool_with_total(Limit(2)))
+    _ = watching(standard_pool(), passes=WaitCount(2), manager=manager, settings=settings)
+    assert opened_issues(manager) == (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
+
+
+def test_a_pass_skips_while_another_drain_holds_the_lock() -> None:
+    lock = FakeRunLock()
+    manager = fake_manager()
+    passes = WaitCount(2)
+    with lock.held():
+        stop = watching(standard_pool(), passes=passes, manager=manager, lock=lock)
+    assert opened_issues(manager) == ()
+    assert stop.waits() == passes
+
+
+def test_a_tracker_failure_is_retried_on_the_next_pass() -> None:
+    manager = fake_manager()
+    tracker = standard_pool(FlakyTracker)
+    assert isinstance(tracker, FlakyTracker)
+    tracker.fail_next_listing()
+    _ = watching(tracker, passes=WaitCount(2), manager=manager)
+    assert opened_issues(manager) == (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
+
+
+def test_an_unknown_label_ends_the_watch() -> None:
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-1"), Priority.low),
+        labels=LabelNames((LabelName("claimed"), *FlowLabels.fake().labels.root)),
+    )
+    stop = FakeStopSignal(WaitCount(3))
+    with pytest.raises(UnknownLabelError):
+        _ = watching(tracker, passes=WaitCount(3), stop=stop)
+    assert stop.waits() == WaitCount(0)
+
+
+def test_a_config_without_a_pool_ends_the_watch() -> None:
+    stop = FakeStopSignal(WaitCount(3))
+    with pytest.raises(InvalidConfigError):
+        _ = watching(
+            standard_pool(), passes=WaitCount(3), settings=MissingPoolSettings(), stop=stop
+        )
+    assert stop.waits() == WaitCount(0)
+
+
+def test_only_passes_that_differ_from_the_last_count_as_changed() -> None:
+    narrator = RecordingNarrator()
+    _ = watching(standard_pool(), passes=WaitCount(3), narrator=narrator)
+    assert tuple(changed for _, changed in narrator.passes) == (
+        Changed(True),
+        Changed(True),
+        Changed(False),
+    )

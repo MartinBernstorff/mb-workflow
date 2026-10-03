@@ -44,9 +44,9 @@ class FlockRunLock(RunLock):
                 fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as error:
                 raise AlreadyRunningError(f"another run holds {path}") from error
-            logger.info("Holding %s", path)
+            logger.debug("Holding %s", path)
             try:
                 yield
             finally:
                 fcntl.flock(handle, fcntl.LOCK_UN)
-                logger.info("Released %s", path)
+                logger.debug("Released %s", path)
