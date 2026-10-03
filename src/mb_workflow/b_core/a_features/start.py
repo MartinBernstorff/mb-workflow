@@ -84,7 +84,7 @@ class StartRequest(Model):
                     " move it with `mw flow` instead of --state."
                 )
             return labelled_state
-        startable = startable_states()
+        startable = TicketStart.startable_states()
         listed = ", ".join(state.root for state in startable)
         if self.state is None:
             raise FlowError(
@@ -98,100 +98,106 @@ class StartRequest(Model):
         return self.state
 
 
-def start_ticket(
-    *,
-    manager: WorkspaceManager,
-    tracker: TicketTracker,
-    claims: ClaimRegistry,
-    board: WorkspaceStatusStore,
-    workspace: WorkspaceSettings,
-    claim_settings: ClaimSettings,
-    flow_labels: FlowLabels,
-    statuses: TicketStatuses,
-    request: StartRequest,
-) -> None:
-    with Activity(f"reading {request.ticket.root}").logged(logger):
-        detail = tracker.read_issue_detail(request.ticket)
-    labelled_state = state_of(WorkflowChart, flow_labels, detail.issue.grouped)
-    state = request.state_given(labelled_state)
-    prompt = request.prompt_for(action_in(request.ticket, state))
-    Claiming.require_claim_label(tracker, claim_settings.label)
+class TicketStart:
+    @staticmethod
+    def start_ticket(
+        *,
+        manager: WorkspaceManager,
+        tracker: TicketTracker,
+        claims: ClaimRegistry,
+        board: WorkspaceStatusStore,
+        workspace: WorkspaceSettings,
+        claim_settings: ClaimSettings,
+        flow_labels: FlowLabels,
+        statuses: TicketStatuses,
+        request: StartRequest,
+    ) -> None:
+        with Activity(f"Reading {request.ticket.root}").logged(logger):
+            detail = tracker.read_issue_detail(request.ticket)
+        labelled_state = state_of(WorkflowChart, flow_labels, detail.issue.grouped)
+        state = request.state_given(labelled_state)
+        prompt = request.prompt_for(TicketStart.action_in(request.ticket, state))
+        Claiming.require_claim_label(tracker, claim_settings.label)
 
-    # Put an unlabelled ticket in the flow before claiming it, so a failed write leaves no claim behind.
-    status = detail.issue.status
-    if labelled_state is None:
-        with Activity(f"putting {request.ticket.root} in {state.root}").logged(logger):
-            put_in_state(tracker, request.ticket, flow_labels, statuses, state)
-        status = statuses.of(state)
+        # Put an unlabelled ticket in the flow before claiming it, so a failed write leaves no claim behind.
+        status = detail.issue.status
+        if labelled_state is None:
+            with Activity(f"Putting {request.ticket.root} in {state.root}").logged(logger):
+                put_in_state(tracker, request.ticket, flow_labels, statuses, state)
+            status = statuses.of(state)
 
-    name = WorktreeName.of_issue(request.ticket)
-    TicketTaking.take_ticket(
-        claims=claims,
-        tracker=tracker,
-        workspace=workspace,
-        claim_settings=claim_settings,
-        request=ClaimRequest(
-            ticket=request.ticket,
-            status=status,
-            holder=ClaimHolder(host=request.host, worktree=name),
-            take_over=request.take_over,
-        ),
-    )
-
-    with Activity(f"creating worktree {name.root}").logged(logger):
-        opened = manager.create_for_issue(
-            workspace.orca_project,
-            name,
-            request.ticket,
-            None if prompt is None else AgentName.claude(),
-            board.status_for(state),
-            activate=request.activate,
+        name = WorktreeName.of_issue(request.ticket)
+        TicketTaking.take_ticket(
+            claims=claims,
+            tracker=tracker,
+            workspace=workspace,
+            claim_settings=claim_settings,
+            request=ClaimRequest(
+                ticket=request.ticket,
+                status=status,
+                holder=ClaimHolder(host=request.host, worktree=name),
+                take_over=request.take_over,
+            ),
         )
-    logger.info("Created worktree %s.", opened.worktree.path.root)
-    with Activity(f"naming worktree {name.root}").logged(logger):
-        set_display_name_or_warn(manager, opened.worktree.path, DisplayName.of_issue(detail.title))
 
-    if prompt is not None:
-        send_prompt(manager, opened, prompt, request.idle_timeout, request.submit)
+        with Activity(f"Creating worktree {name.root}").logged(logger):
+            opened = manager.create_for_issue(
+                workspace.orca_project,
+                name,
+                request.ticket,
+                None if prompt is None else AgentName.claude(),
+                board.status_for(state),
+                activate=request.activate,
+            )
+        logger.info("Created worktree %s.", opened.worktree.path.root)
+        with Activity(f"Naming worktree {name.root}").logged(logger):
+            set_display_name_or_warn(
+                manager, opened.worktree.path, DisplayName.of_issue(detail.title)
+            )
 
+        if prompt is not None:
+            TicketStart.send_prompt(manager, opened, prompt, request.idle_timeout, request.submit)
 
-def startable_states() -> tuple[StateName, ...]:
-    named = (StateName(state.name) for state in WorkflowChart.states)
-    return tuple(
-        state for state in named if not isinstance(next_action(WorkflowChart, state), Finished)
-    )
-
-
-def action_in(ticket: IssueIdentifier, state: StateName) -> Skill | AwaitingHuman:
-    action = next_action(WorkflowChart, state)
-    if isinstance(action, Finished):
-        raise FlowError(f"The ticket is {state.root}, so there is no work left in it.")
-    if isinstance(action, AwaitingHuman):
-        logger.warning(
-            "%s is in %s, which waits for a human, so no prompt is typed.",
-            ticket.root,
-            state.root,
+    @staticmethod
+    def startable_states() -> tuple[StateName, ...]:
+        named = (StateName(state.name) for state in WorkflowChart.states)
+        return tuple(
+            state for state in named if not isinstance(next_action(WorkflowChart, state), Finished)
         )
-    else:
-        logger.info("%s is in %s, so the next step is %s.", ticket.root, state.root, action.root)
-    return action
 
+    @staticmethod
+    def action_in(ticket: IssueIdentifier, state: StateName) -> Skill | AwaitingHuman:
+        action = next_action(WorkflowChart, state)
+        if isinstance(action, Finished):
+            raise FlowError(f"The ticket is {state.root}, so there is no work left in it.")
+        if isinstance(action, AwaitingHuman):
+            logger.warning(
+                "%s is in %s, which waits for a human, so no prompt is typed.",
+                ticket.root,
+                state.root,
+            )
+        else:
+            logger.info(
+                "%s is in %s, so the next step is %s.", ticket.root, state.root, action.root
+            )
+        return action
 
-def send_prompt(
-    manager: WorkspaceManager,
-    opened: OpenedWorktree,
-    prompt: TerminalText,
-    idle_timeout: TimeoutMs,
-    submit: Submit,
-) -> None:
-    if opened.terminal is None:
-        raise PromptUndeliveredError("No agent terminal handle returned; prompt not typed.")
+    @staticmethod
+    def send_prompt(
+        manager: WorkspaceManager,
+        opened: OpenedWorktree,
+        prompt: TerminalText,
+        idle_timeout: TimeoutMs,
+        submit: Submit,
+    ) -> None:
+        if opened.terminal is None:
+            raise PromptUndeliveredError("No agent terminal handle returned; prompt not typed.")
 
-    try:
-        with Activity("waiting for the agent terminal to go idle").logged(logger):
-            manager.wait_for_idle(opened.terminal, idle_timeout)
-    except WorkspaceManagerError:
-        logger.warning("Agent terminal never went idle; typing the prompt anyway.")
+        try:
+            with Activity("Waiting for the agent terminal to go idle").logged(logger):
+                manager.wait_for_idle(opened.terminal, idle_timeout)
+        except WorkspaceManagerError:
+            logger.warning("Agent terminal never went idle; typing the prompt anyway.")
 
-    with Activity(f"{'submitting' if submit.root else 'typing'} {prompt.root}").logged(logger):
-        manager.send_text(opened.terminal, prompt, submit)
+        with Activity(f"{'Submitting' if submit.root else 'Typing'} {prompt.root}").logged(logger):
+            manager.send_text(opened.terminal, prompt, submit)

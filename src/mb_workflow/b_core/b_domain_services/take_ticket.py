@@ -26,7 +26,7 @@ class TicketTaking:
     ) -> None:
         Claiming.require_claim_label(tracker, claim_settings.label)
         with Activity(
-            f"claiming {request.ticket.root} for worktree {request.holder.worktree.root}"
+            f"Claiming {request.ticket.root} for worktree {request.holder.worktree.root}"
             f" on {request.holder.host.root}"
         ).logged(logger):
             Claiming.claim_ticket(claims, request)
@@ -38,7 +38,7 @@ class TicketTaking:
 
         # Assignment is a convenience, not the point of taking a ticket, so never fail the run over it.
         try:
-            with Activity(f"assigning {request.ticket.root} to {workspace.assignee.root}").logged(
+            with Activity(f"Assigning {request.ticket.root} to {workspace.assignee.root}").logged(
                 logger
             ):
                 tracker.assign(request.ticket, workspace.assignee)

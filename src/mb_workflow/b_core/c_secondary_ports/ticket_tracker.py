@@ -1,3 +1,4 @@
+import logging
 from itertools import count
 from typing import TYPE_CHECKING, Protocol, override
 
@@ -41,10 +42,14 @@ from mb_workflow.b_core.d_domain_model.issue import (
     TeamName,
 )
 from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority, ViewSlug
+from mb_workflow.d_lib.logging import Activity
 from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
+
+
+logger = logging.getLogger(__name__)
 
 
 class TicketTrackerError(Exception):
@@ -96,6 +101,15 @@ class TicketTracker(Protocol):
     def blockers(self, issue: IssueIdentifier) -> tuple[IssueIdentifier, ...]: ...
 
     def viewer(self) -> Assignee: ...
+
+
+class LabelCheck:
+    @staticmethod
+    def require_label(tracker: TicketTracker, label: LabelName, missing: Exception) -> None:
+        with Activity(f"Checking that label {label.root} exists").logged(logger):
+            known = tracker.workspace_labels().matching(label)
+        if known is None:
+            raise missing
 
 
 class TrackedIssue(Model):

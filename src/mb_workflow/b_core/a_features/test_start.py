@@ -1,6 +1,6 @@
 import pytest
 
-from mb_workflow.b_core.a_features.start import StartRequest, start_ticket
+from mb_workflow.b_core.a_features.start import StartRequest, TicketStart
 from mb_workflow.b_core.c_secondary_ports.claims import (
     ClaimRefusedError,
     FakeClaimRegistry,
@@ -112,7 +112,7 @@ def starting(
     workspace: WorkspaceSettings | None = None,
     claim_settings: ClaimSettings | None = None,
 ) -> None:
-    start_ticket(
+    TicketStart.start_ticket(
         manager=manager,
         tracker=tracker,
         claims=claims or FakeClaimRegistry(),

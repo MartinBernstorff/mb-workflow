@@ -579,8 +579,8 @@ def test_the_outcome_of_a_pass_with_room_left_is_not_full() -> None:
 def test_the_log_names_each_ticket_started(caplog: pytest.LogCaptureFixture) -> None:
     drain_logged(caplog, standard_pool())
     log = caplog.text
-    assert "Started taking MB-2 (high, Specced)." in log
-    assert "Started taking MB-1 (low, Specced)." in log
+    assert "Taking MB-2 (high, Specced)…" in log
+    assert "Taking MB-1 (low, Specced)…" in log
 
 
 def test_a_dry_run_logs_each_ticket_it_would_start(caplog: pytest.LogCaptureFixture) -> None:
@@ -595,15 +595,15 @@ def test_a_dry_run_logs_each_ticket_it_would_start(caplog: pytest.LogCaptureFixt
 @pytest.mark.parametrize(
     "activity",
     [
-        "draining the pool",
-        f"listing the tickets in view {PoolSettings.fake().view.root}",
-        "listing the tickets labelled claimed",
-        "taking MB-2 (high, Specced)",
-        "reading MB-2",
-        f"claiming MB-2 for worktree MB-2 on {DrainRequest.fake().host.root}",
-        "labelling MB-2 as claimed",
-        f"assigning MB-2 to {WorkspaceSettings.fake().assignee.root}",
-        "creating worktree MB-2",
+        "Draining the pool",
+        f"Listing the tickets in view {PoolSettings.fake().view.root}",
+        "Listing the tickets labelled claimed",
+        "Taking MB-2 (high, Specced)",
+        "Reading MB-2",
+        f"Claiming MB-2 for worktree MB-2 on {DrainRequest.fake().host.root}",
+        "Labelling MB-2 as claimed",
+        f"Assigning MB-2 to {WorkspaceSettings.fake().assignee.root}",
+        "Creating worktree MB-2",
     ],
 )
 def test_the_log_brackets_each_activity_of_a_pass_with_its_start_and_finish(
@@ -611,8 +611,8 @@ def test_the_log_brackets_each_activity_of_a_pass_with_its_start_and_finish(
 ) -> None:
     drain_logged(caplog, standard_pool())
     log = caplog.text
-    started = log.index(f"Started {activity}.")
-    assert re.search(rf"Finished {re.escape(activity)} in \d+\.\ds\.", log[started:])
+    started = log.index(f"{activity}…")
+    assert re.search(rf"{re.escape(activity)} took \d+\.\ds\.", log[started:])
 
 
 def test_the_log_says_a_ticket_labelled_skip_limits_overrode_the_limits(
