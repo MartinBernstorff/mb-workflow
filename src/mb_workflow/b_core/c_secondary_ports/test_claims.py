@@ -1,5 +1,3 @@
-import pytest
-
 from mb_workflow.b_core.c_secondary_ports.claims import (
     Claiming,
     ClaimRefusedError,
@@ -86,15 +84,12 @@ def test_labelling_a_claim_adds_the_label() -> None:
     tracker = FakeTicketTracker(
         LabelNames((*LabelNames.fake().root, LabelName("claimed"))), (TrackedIssue.fake(),)
     )
-    Claiming.label_claim_or_withdraw(
-        registry_held_by(ClaimHolder.fake()), tracker, LabelledClaim.fake()
-    )
+    _ = Claiming.label_claim(tracker, LabelledClaim.fake())
     assert tracker.read_issue(IssueIdentifier.fake()).labels.has(LabelName("claimed")).root
 
 
-def test_a_failed_label_withdraws_only_the_holders_claim() -> None:
-    registry = registry_held_by(rival(), ClaimHolder.fake())
+def test_a_label_the_tracker_lacks_refuses_the_claim() -> None:
     tracker = FakeTicketTracker(LabelNames.fake(), (TrackedIssue.fake(),))
-    with pytest.raises(ClaimRefusedError, match="claimed"):
-        Claiming.label_claim_or_withdraw(registry, tracker, LabelledClaim.fake())
-    assert claim_holders(registry) == (rival(),)
+    labelled = Claiming.label_claim(tracker, LabelledClaim.fake())
+    assert isinstance(labelled.error, ClaimRefusedError)
+    assert tracker.read_issue(IssueIdentifier.fake()).labels == TrackedIssue.fake().issue.labels

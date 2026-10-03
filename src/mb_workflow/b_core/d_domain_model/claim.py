@@ -111,6 +111,12 @@ class Released(Value[bool]):
         return StatusTypes(tuple(kind for kind in StatusType if Released.of_type(kind).root))
 
 
+class Posted(Value[bool]):
+    @staticmethod
+    def fake() -> Posted:
+        return Posted(True)
+
+
 class TakeOver(Value[bool]):
     @staticmethod
     def fake() -> TakeOver:
