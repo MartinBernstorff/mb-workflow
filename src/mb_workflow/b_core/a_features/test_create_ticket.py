@@ -21,7 +21,11 @@ from mb_workflow.b_core.d_domain_model.issue import (
     StatusType,
     StatusTypes,
 )
-from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDefaults, TicketDraft
+from mb_workflow.b_core.d_domain_model.ticket_draft import (
+    TicketDefaults,
+    TicketDraft,
+    TicketDraftError,
+)
 from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
 
@@ -87,3 +91,11 @@ def test_a_relation_to_an_unknown_issue_is_refused_before_the_ticket_is_created(
 def test_creating_a_ticket_before_the_flow_labels_exist_is_refused() -> None:
     with pytest.raises(MissingFlowLabelsError):
         _ = created(tracking(groups=LabelNames(())), TicketDraft.fake())
+
+
+def test_a_flow_label_passed_as_a_label_creates_no_ticket() -> None:
+    tracker = tracking()
+    draft = TicketDraft.fake().model_copy(update={"labels": LabelNames((LabelName("Specced"),))})
+    with pytest.raises(TicketDraftError):
+        _ = created(tracker, draft)
+    assert tracker.labelled_issues(LabelName("Grilling"), StatusTypes(())).root == ()

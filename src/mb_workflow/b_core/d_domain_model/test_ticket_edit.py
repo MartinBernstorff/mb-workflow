@@ -1,5 +1,6 @@
 import pytest
 
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     Cleared,
@@ -31,7 +32,7 @@ def viewer() -> Assignee:
 
 def test_an_empty_edit_is_refused() -> None:
     with pytest.raises(TicketEditError):
-        _ = TicketEdit.nothing().update(IssueDetail.fake(), viewer())
+        _ = TicketEdit.nothing().checked(FlowLabels.fake())
 
 
 def test_a_title_edit_changes_only_the_title() -> None:
@@ -55,7 +56,7 @@ def test_a_body_and_a_body_file_together_are_refused() -> None:
         update={"body": IssueDescription("a"), "body_file": IssueDescription("b")}
     )
     with pytest.raises(TicketEditError):
-        _ = edit.update(IssueDetail.fake(), viewer())
+        _ = edit.checked(FlowLabels.fake())
 
 
 def test_added_labels_join_the_held_ones() -> None:
@@ -156,7 +157,7 @@ def test_setting_and_removing_the_milestone_together_are_refused() -> None:
         update={"milestone": MilestoneName.fake(), "remove_milestone": RemoveMilestone(True)}
     )
     with pytest.raises(TicketEditError):
-        _ = edit.update(IssueDetail.fake(), viewer())
+        _ = edit.checked(FlowLabels.fake())
 
 
 def test_label_flags_split_on_commas() -> None:
@@ -169,3 +170,10 @@ def test_label_flags_split_on_commas() -> None:
 def test_a_status_is_passed_on() -> None:
     edit = TicketEdit.nothing().model_copy(update={"status": IssueStatusName("Done")})
     assert edit.update(IssueDetail.fake(), viewer()).status == IssueStatusName("Done")
+
+
+@pytest.mark.parametrize("option", ["add_labels", "remove_labels"])
+def test_a_flow_label_in_a_label_option_is_refused(option: str) -> None:
+    edit = TicketEdit.nothing().model_copy(update={option: LabelNames((LabelName("specced"),))})
+    with pytest.raises(TicketEditError, match="--state"):
+        _ = edit.checked(FlowLabels.fake())

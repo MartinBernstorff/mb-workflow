@@ -14,7 +14,13 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelName,
     LabelNames,
 )
-from mb_workflow.d_lib.models import Model
+from mb_workflow.d_lib.models import Model, Value
+
+
+class FlowLabelRefusal(Value[str]):
+    @staticmethod
+    def fake() -> FlowLabelRefusal:
+        return FlowLabelRefusal("Specced is a flow label.")
 
 
 class FlowLabels(Model):
@@ -58,6 +64,16 @@ class FlowLabels(Model):
 
     def missing(self, held: LabelNames) -> LabelNames:
         return held.unmatched(self.labels)
+
+    # A flow label set by hand would disagree with the status, so the state is moved with --state instead.
+    def refusal(self, requested: LabelNames) -> FlowLabelRefusal | None:
+        passed = self.labels.spelled(requested)
+        if not passed.root:
+            return None
+        listed = ", ".join(label.root for label in passed.root)
+        return FlowLabelRefusal(
+            f"{listed} is a flow label. Move the ticket with `mw ticket edit --state` instead."
+        )
 
     def relabelled(self, held: LabelNames, state: StateName) -> LabelNames:
         kept = tuple(label for label in held.root if self.labels.matching(label) is None)

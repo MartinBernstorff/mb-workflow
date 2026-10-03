@@ -94,3 +94,9 @@ def test_the_blocking_relations_carry_over() -> None:
     )
     new = drafted(draft)
     assert (new.blocks, new.blocked_by) == ((IssueIdentifier("E-1"),), (IssueIdentifier("E-2"),))
+
+
+def test_a_flow_label_among_the_labels_is_refused() -> None:
+    draft = TicketDraft.fake().model_copy(update={"labels": LabelNames((LabelName("specced"),))})
+    with pytest.raises(TicketDraftError, match="--state"):
+        _ = drafted(draft)

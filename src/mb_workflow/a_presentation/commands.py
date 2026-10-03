@@ -375,7 +375,7 @@ def ticket_view(issue: IssueIdentifier) -> ExitCode:
 
 @guarded
 def ticket_edit(issue: IssueIdentifier, edit: TicketEdit) -> ExitCode:
-    edit_ticket(linear(), issue, edit)
+    edit_ticket(linear(), issue, edit, flow_labels_of_chart())
     write(Output(f"{issue.root}\n"))
     return ExitCode(0)
 

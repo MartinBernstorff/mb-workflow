@@ -72,6 +72,9 @@ class TicketDraft(Model):
     ) -> NewIssue:
         if self.body is not None and self.body_file is not None:
             raise TicketDraftError("Specify only one of --body and --body-file.")
+        refusal = flow_labels.refusal(self.labels)
+        if refusal is not None:
+            raise TicketDraftError(refusal.root)
         project = self.project if self.project is not None else defaults.project
         return NewIssue(
             team=defaults.team,
