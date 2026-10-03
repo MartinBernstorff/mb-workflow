@@ -192,12 +192,11 @@ class PoolLimits(Model):
         stray = [key for key in data if key not in cls.model_fields]
         if stray:
             raise ValueError(
-                f"{', '.join(stray)} is no pool limit. State limits sit under"
+                f"{', '.join(stray)} is no pool limit (allowed are {', '.join(cls.model_fields)}). State limits sit under"
                 " [pool.limits.states], label limits under [pool.limits.labels]."
             )
         return data
 
-    # State limits in [pool.limits.states] only override the defaults, whatever their casing.
     @field_validator("states")
     @classmethod
     def spell_as_the_chart(cls, states: dict[StateName, Limit]) -> dict[StateName, Limit]:
