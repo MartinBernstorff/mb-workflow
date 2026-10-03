@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.b_domain_services.flow_label_check import require_flow_labels
+from mb_workflow.b_core.b_domain_services.flow_label_check import FlowLabelCheck
 from mb_workflow.b_core.d_domain_model.flow import StateNames, WorkflowChart
 
 if TYPE_CHECKING:
@@ -19,7 +19,6 @@ def create_ticket(
     flow_labels: FlowLabels,
     statuses: TicketStatuses,
 ) -> CreatedIssue:
-    require_flow_labels(tracker, flow_labels)
     new = draft.new_issue(
         defaults=defaults,
         start=StateNames.initial_state(WorkflowChart),
@@ -27,6 +26,8 @@ def create_ticket(
         statuses=statuses,
         viewer=tracker.viewer(),
     )
+    # A team taken from the project is unknown until Linear creates the issue, so only the workspace counts then.
+    FlowLabelCheck.require(tracker, flow_labels, new.team)
     # Linear relates the issues only once it exists, so an unknown one must be caught beforehand.
     for related in draft.related():
         _ = tracker.read_issue(related)

@@ -26,10 +26,13 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     TrackedIssue,
 )
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, ClaimId, Claims, HostName
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
     Cleared,
+    ColoredLabel,
+    ColoredLabels,
     CreatedAfter,
     CreatedIssue,
     CreatedOn,
@@ -45,6 +48,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueStatusName,
     IssueTitle,
     IssueUpdate,
+    LabelColor,
     LabelGroupName,
     LabelName,
     LabelNames,
@@ -59,6 +63,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     StatusTypes,
     Team,
     TeamKey,
+    TeamName,
 )
 from mb_workflow.b_core.d_domain_model.pool import PoolTicket, Priority, ViewSlug
 from mb_workflow.c_infrastructure.credentials import CredentialsDirectory, RepositorySlug
@@ -174,6 +179,9 @@ class Backlog(Model):
     assignee: Assignee
     view: ViewSlug
     team: TeamKey
+    team_name: TeamName
+    other_team: TeamKey
+    other_team_name: TeamName
 
     def identifier(self, seed: Seed) -> IssueIdentifier:
         return self.identifiers[seed]
@@ -220,10 +228,16 @@ class Organization(Payload):
 class WorkspaceTeam(Payload):
     id: TeamId
     key: TeamKey
+    name: TeamName
 
     @staticmethod
     def fake() -> WorkspaceTeam:
-        return WorkspaceTeam(id=TeamId.fake(), key=TeamKey.fake())
+        return WorkspaceTeam(id=TeamId.fake(), key=TeamKey.fake(), name=TeamName.fake())
+
+    # Team-scoped labels are only told apart with a second team, which the suite keeps for that.
+    @staticmethod
+    def other() -> WorkspaceTeam:
+        return WorkspaceTeam(id=TeamId.fake(), key=TeamKey("CON"), name=TeamName("Contract"))
 
 
 class Workspace(Payload):
@@ -237,8 +251,20 @@ class Workspace(Payload):
     @staticmethod
     def of(client: LinearClient) -> Workspace:
         return Workspace.model_validate(
-            client.execute("{ organization { urlKey } teams { nodes { id key } } }")
+            client.execute("{ organization { urlKey } teams { nodes { id key name } } }")
         )
+
+    @staticmethod
+    def ensure_other_team(client: LinearClient) -> WorkspaceTeam:
+        wanted = WorkspaceTeam.other()
+        found = next((team for team in Workspace.of(client).teams if team.key == wanted.key), None)
+        if found is not None:
+            return found
+        _ = client.execute(
+            "mutation($input: TeamCreateInput!) { teamCreate(input: $input) { success } }",
+            {"input": {"name": wanted.name.root, "key": wanted.key.root}},
+        )
+        return next(team for team in Workspace.of(client).teams if team.key == wanted.key)
 
 
 class TrackerKind(StrEnum):
@@ -253,6 +279,9 @@ def fake_backlog() -> Backlog:
         assignee=Assignee.fake(),
         view=ViewSlug.fake(),
         team=TeamKey.fake(),
+        team_name=TeamName.fake(),
+        other_team=WorkspaceTeam.other().key,
+        other_team_name=WorkspaceTeam.other().name,
     )
 
 
@@ -457,7 +486,8 @@ def ensure_view(client: LinearClient) -> ViewSlug:
 # Seeded once per session; reset() restores whatever a test changes.
 @pytest.fixture(scope="session")
 def linear_backlog(linear_client: LinearClient) -> Backlog:
-    team = Workspace.of(linear_client).teams[0]
+    other = Workspace.ensure_other_team(linear_client)
+    team = next(team for team in Workspace.of(linear_client).teams if team.key != other.key)
     ensure_labels(linear_client, workspace_labels())
     _ = ensure_project(linear_client, team.id, Project.fake())
     viewer = linear_client.viewer().viewer
@@ -471,6 +501,9 @@ def linear_backlog(linear_client: LinearClient) -> Backlog:
         assignee=Assignee(viewer.email),
         view=ensure_view(linear_client),
         team=team.key,
+        team_name=team.name,
+        other_team=other.key,
+        other_team_name=other.name,
     )
     for planted in seeds():
         for blocker in planted.blocked_by:
@@ -553,6 +586,7 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
                 created_on=planted.created_on,
                 priority=planted.priority,
                 blocked_by=tuple(backlog.identifier(blocker) for blocker in planted.blocked_by),
+                team=backlog.team,
             )
             for planted in seeds()
         ),
@@ -566,16 +600,19 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
         ),
         backlog.assignee,
         views={backlog.view: tuple(backlog.identifier(seed) for seed in Seed)},
-        teams=(Team(key=backlog.team, projects=(ProjectName.fake(),)),),
+        teams=(
+            Team(key=backlog.team, name=backlog.team_name, projects=(ProjectName.fake(),)),
+            Team(key=backlog.other_team, name=backlog.other_team_name, projects=()),
+        ),
     )
 
 
 def drop_group(client: LinearClient, group: LabelGroupName) -> None:
     found = LabelGroupRead.model_validate(
         client.execute(
-            "query($name: String!) { issueLabels(first: 1, filter:"
+            "query($name: String!) { issueLabels(first: 250, filter:"
             " { name: { eqIgnoreCase: $name }, isGroup: { eq: true } })"
-            " { nodes { id children(first: 250) { nodes { id name } } } } }",
+            " { nodes { id children(first: 250) { nodes { id name color } } } } }",
             {"name": group.root},
         )
     ).groups
@@ -613,26 +650,189 @@ QA = LabelName("QA")
 
 
 def test_a_created_group_lists_its_labels_back(groupless: TicketTracker) -> None:
-    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((GRILLING, QA)))
-    assert set(groupless.group_labels(LabelGroupName.fake()).root) == set(
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILLING, QA))), None
+    )
+    assert set(groupless.group_labels(LabelGroupName.fake(), None).label_names().root) == set(
         LabelNames((GRILLING, QA)).root
     )
 
 
 def test_labels_added_to_a_group_join_the_ones_there(groupless: TicketTracker) -> None:
-    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((GRILLING,)))
-    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((QA,)))
-    assert set(groupless.group_labels(LabelGroupName.fake()).root) == set(
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILLING,))), None
+    )
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), None
+    )
+    assert set(groupless.group_labels(LabelGroupName.fake(), None).label_names().root) == set(
         LabelNames((GRILLING, QA)).root
     )
 
 
+def test_a_created_group_reads_back_the_colors_of_its_labels(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    created = FlowLabels.fake().colored(LabelNames((GRILLING, QA)))
+    groupless.create_group_labels(LabelGroupName.fake(), created, backlog.team)
+    assert set(groupless.group_labels(LabelGroupName.fake(), backlog.team).root) == set(
+        created.root
+    )
+
+
+def test_a_recolored_label_reads_back_its_new_color(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
+    )
+    yellow = ColoredLabels((ColoredLabel(name=QA, color=LabelColor.yellow()),))
+    groupless.recolor_group_labels(LabelGroupName.fake(), yellow, backlog.team)
+    assert groupless.group_labels(LabelGroupName.fake(), backlog.team) == yellow
+
+
+def test_recoloring_a_label_the_group_lacks_is_refused(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
+    )
+    yellow = ColoredLabels((ColoredLabel(name=GRILLING, color=LabelColor.yellow()),))
+    with pytest.raises(TicketTrackerError, match=GRILLING.root):
+        groupless.recolor_group_labels(LabelGroupName.fake(), yellow, backlog.team)
+
+
 def test_a_group_that_does_not_exist_lists_no_labels(groupless: TicketTracker) -> None:
-    assert groupless.group_labels(LabelGroupName.fake()) == LabelNames(())
+    assert groupless.group_labels(LabelGroupName.fake(), None) == ColoredLabels(())
+
+
+def test_a_group_created_in_a_team_lists_its_labels_under_the_team(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILLING, QA))), backlog.team
+    )
+    assert set(
+        groupless.group_labels(LabelGroupName.fake(), backlog.team).label_names().root
+    ) == set(LabelNames((GRILLING, QA)).root)
+
+
+def test_a_group_created_in_a_team_is_not_a_workspace_group(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILLING, QA))), backlog.team
+    )
+    assert groupless.group_labels(LabelGroupName.fake(), None) == ColoredLabels(())
+
+
+def test_a_group_created_in_a_team_is_not_listed_under_another_team(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILLING, QA))), backlog.team
+    )
+    assert groupless.group_labels(LabelGroupName.fake(), backlog.other_team) == ColoredLabels(())
+
+
+def test_a_workspace_group_is_not_listed_under_a_team(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILLING, QA))), None
+    )
+    assert groupless.group_labels(LabelGroupName.fake(), backlog.team) == ColoredLabels(())
+
+
+def test_a_team_is_found_by_its_name(tracker: TicketTracker, backlog: Backlog) -> None:
+    assert tracker.team_named(backlog.team_name) == backlog.team
+
+
+def test_a_team_is_found_by_its_name_whatever_its_case(
+    tracker: TicketTracker, backlog: Backlog
+) -> None:
+    assert tracker.team_named(TeamName(backlog.team_name.root.upper())) == backlog.team
+
+
+def test_an_unknown_team_name_is_refused(tracker: TicketTracker) -> None:
+    unknown = TeamName("No such team")
+    with pytest.raises(TicketTrackerError, match=unknown.root):
+        _ = tracker.team_named(unknown)
+
+
+def test_an_issue_names_its_team(tracker: TicketTracker, backlog: Backlog) -> None:
+    assert tracker.team_of(backlog.identifier(Seed.done)) == backlog.team
+
+
+def test_an_issue_takes_its_own_teams_label_over_a_namesake_in_another_team(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.other_team
+    )
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
+    )
+    groupless.update_issue(
+        backlog.identifier(Seed.done),
+        IssueUpdate.nothing().model_copy(update={"labels": LabelNames((QA,))}),
+    )
+    assert groupless.read_issue(backlog.identifier(Seed.done)).labels == LabelNames((QA,))
+
+
+def test_setting_labels_takes_the_issues_own_teams_label_over_a_namesake(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.other_team
+    )
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
+    )
+    groupless.set_labels(backlog.identifier(Seed.done), LabelNames((QA,)))
+    assert groupless.read_issue(backlog.identifier(Seed.done)).labels == LabelNames((QA,))
+
+
+def test_adding_a_label_cannot_take_another_teams_label(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.other_team
+    )
+    with pytest.raises(TicketTrackerError, match=QA.root):
+        groupless.add_label(backlog.identifier(Seed.done), QA)
+
+
+def test_an_issue_takes_a_workspace_label_its_team_lacks(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), None
+    )
+    groupless.update_issue(
+        backlog.identifier(Seed.done),
+        IssueUpdate.nothing().model_copy(update={"labels": LabelNames((QA,))}),
+    )
+    assert groupless.read_issue(backlog.identifier(Seed.done)).labels == LabelNames((QA,))
+
+
+def test_an_issue_cannot_take_another_teams_label(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.other_team
+    )
+    with pytest.raises(TicketTrackerError, match=QA.root):
+        groupless.update_issue(
+            backlog.identifier(Seed.done),
+            IssueUpdate.nothing().model_copy(update={"labels": LabelNames((QA,))}),
+        )
 
 
 def test_a_grouped_label_names_its_group(groupless: TicketTracker) -> None:
-    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((GRILLING, QA)))
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILLING, QA))), None
+    )
     assert groupless.label_group(QA) == LabelGroupName.fake()
 
 
@@ -641,7 +841,9 @@ def test_an_ungrouped_label_names_no_group(tracker: TicketTracker) -> None:
 
 
 def test_an_issue_carries_a_label_of_a_group(groupless: TicketTracker, backlog: Backlog) -> None:
-    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((GRILLING, QA)))
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILLING, QA))), None
+    )
     groupless.set_labels(backlog.identifier(Seed.done), LabelNames((LabelName("d-grill"), QA)))
     assert set(groupless.read_issue(backlog.identifier(Seed.done)).labels.root) == set(
         LabelNames((LabelName("d-grill"), QA)).root
@@ -651,7 +853,9 @@ def test_an_issue_carries_a_label_of_a_group(groupless: TicketTracker, backlog: 
 def test_an_issue_reads_back_the_group_of_its_labels(
     groupless: TicketTracker, backlog: Backlog
 ) -> None:
-    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((GRILLING, QA)))
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILLING, QA))), None
+    )
     groupless.set_labels(backlog.identifier(Seed.done), LabelNames((LabelName("d-grill"), QA)))
     assert groupless.read_issue(backlog.identifier(Seed.done)).grouped.in_group(
         LabelGroupName.fake()
@@ -661,7 +865,9 @@ def test_an_issue_reads_back_the_group_of_its_labels(
 def test_an_issue_carrying_two_labels_of_one_group_is_refused(
     groupless: TicketTracker, backlog: Backlog
 ) -> None:
-    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((GRILLING, QA)))
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILLING, QA))), None
+    )
     with pytest.raises(TicketTrackerError):
         groupless.set_labels(backlog.identifier(Seed.done), LabelNames((GRILLING, QA)))
 
