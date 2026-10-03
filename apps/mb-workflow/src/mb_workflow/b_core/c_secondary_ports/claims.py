@@ -199,19 +199,19 @@ class FakeClaimRegistry(ClaimRegistry):
 
     @override
     def claims(self, ticket: IssueIdentifier) -> Result[Claims, TicketTrackerError]:
-        return Ok(self._held(ticket))
+        return Ok(self._held_claims(ticket))
 
     @override
     def post(self, ticket: IssueIdentifier, holder: ClaimHolder) -> ClaimId:
         posted = Claim(id=ClaimId(f"claim-{next(self._ids)}"), holder=holder)
-        self._claims[ticket] = Claims((*self._held(ticket).root, posted))
+        self._claims[ticket] = Claims((*self._held_claims(ticket).root, posted))
         return posted.id
 
     @override
     def withdraw(self, ticket: IssueIdentifier, claim: ClaimId) -> None:
         self._claims[ticket] = Claims(
-            tuple(held for held in self._held(ticket).root if held.id != claim)
+            tuple(held for held in self._held_claims(ticket).root if held.id != claim)
         )
 
-    def _held(self, ticket: IssueIdentifier) -> Claims:
+    def _held_claims(self, ticket: IssueIdentifier) -> Claims:
         return self._claims.get(ticket, Claims(()))

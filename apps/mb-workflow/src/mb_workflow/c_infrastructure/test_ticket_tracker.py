@@ -770,6 +770,10 @@ def test_an_issue_names_its_team(tracker: TicketTracker, backlog: Backlog) -> No
     assert tracker.team_of(backlog.identifier(Seed.done)).unwrap() == backlog.team
 
 
+def test_the_team_of_an_unknown_issue_is_refused(tracker: TicketTracker) -> None:
+    assert isinstance(tracker.team_of(IssueIdentifier("E-404")), Err)
+
+
 def test_an_issue_takes_its_own_teams_label_over_a_namesake_in_another_team(
     groupless: TicketTracker, backlog: Backlog
 ) -> None:
@@ -1016,6 +1020,10 @@ def test_an_issue_without_a_description_carries_none(
 
 def test_viewing_an_unknown_issue_is_refused(tracker: TicketTracker) -> None:
     assert isinstance(tracker.read_issue_detail(IssueIdentifier("E-404")), Err)
+
+
+def test_the_blockers_of_an_unknown_issue_are_refused(tracker: TicketTracker) -> None:
+    assert isinstance(tracker.blockers(IssueIdentifier("E-404")), Err)
 
 
 def test_an_added_label_joins_the_ones_already_there(

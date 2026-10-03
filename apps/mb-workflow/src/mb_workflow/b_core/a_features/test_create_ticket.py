@@ -82,7 +82,8 @@ def test_a_created_ticket_is_related_to_the_issues_it_blocks_and_is_blocked_by()
 
 def test_a_relation_to_an_unknown_issue_is_refused_before_the_ticket_is_created() -> None:
     tracker = tracking()
-    draft = TicketDraft.fake().model_copy(update={"blocked_by": (IssueIdentifier("E-404"),)})
+    unknown = IssueIdentifier("E-404")
+    draft = TicketDraft.fake().model_copy(update={"blocked_by": (unknown,)})
     refused = create_ticket(
         tracker=tracker,
         draft=draft,
@@ -91,7 +92,7 @@ def test_a_relation_to_an_unknown_issue_is_refused_before_the_ticket_is_created(
         statuses=TicketStatuses.fake(),
     )
     assert isinstance(refused, Err)
-    assert "E-404" in str(refused.error)
+    assert unknown.root in str(refused.error)
     assert tracker.labelled_issues(LabelName("Grilling"), StatusTypes(())).unwrap().root == ()
 
 

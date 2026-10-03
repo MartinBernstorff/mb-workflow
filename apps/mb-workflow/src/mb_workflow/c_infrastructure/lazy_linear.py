@@ -88,29 +88,17 @@ class LazyLinear(TicketTracker):
 
     @override
     def workspace_labels(self) -> Result[LabelNames, TicketTrackerError]:
-        match self._tracker():
-            case Ok(tracker):
-                return tracker.workspace_labels()
-            case Err() as failed:
-                return failed
+        return self._looked_up(lambda tracker: tracker.workspace_labels())
 
     @override
     def group_labels(
         self, group: LabelGroupName, team: TeamKey | None
     ) -> Result[ColoredLabels, TicketTrackerError]:
-        match self._tracker():
-            case Ok(tracker):
-                return tracker.group_labels(group, team)
-            case Err() as failed:
-                return failed
+        return self._looked_up(lambda tracker: tracker.group_labels(group, team))
 
     @override
     def label_group(self, label: LabelName) -> Result[LabelGroupName | None, TicketTrackerError]:
-        match self._tracker():
-            case Ok(tracker):
-                return tracker.label_group(label)
-            case Err() as failed:
-                return failed
+        return self._looked_up(lambda tracker: tracker.label_group(label))
 
     @override
     def create_group_labels(
@@ -126,61 +114,33 @@ class LazyLinear(TicketTracker):
 
     @override
     def team_named(self, name: TeamName) -> Result[TeamKey, TicketTrackerError]:
-        match self._tracker():
-            case Ok(tracker):
-                return tracker.team_named(name)
-            case Err() as failed:
-                return failed
+        return self._looked_up(lambda tracker: tracker.team_named(name))
 
     @override
     def team_of(self, issue: IssueIdentifier) -> Result[TeamKey, TicketTrackerError]:
-        match self._tracker():
-            case Ok(tracker):
-                return tracker.team_of(issue)
-            case Err() as failed:
-                return failed
+        return self._looked_up(lambda tracker: tracker.team_of(issue))
 
     @override
     def list_issues(self, wanted: IssueFilter) -> Result[Issues, TicketTrackerError]:
-        match self._tracker():
-            case Ok(tracker):
-                return tracker.list_issues(wanted)
-            case Err() as failed:
-                return failed
+        return self._looked_up(lambda tracker: tracker.list_issues(wanted))
 
     @override
     def unblocked_view_tickets(self, view: ViewSlug) -> Result[PoolTickets, TicketTrackerError]:
-        match self._tracker():
-            case Ok(tracker):
-                return tracker.unblocked_view_tickets(view)
-            case Err() as failed:
-                return failed
+        return self._looked_up(lambda tracker: tracker.unblocked_view_tickets(view))
 
     @override
     def labelled_issues(
         self, label: LabelName, excluding: StatusTypes
     ) -> Result[Issues, TicketTrackerError]:
-        match self._tracker():
-            case Ok(tracker):
-                return tracker.labelled_issues(label, excluding)
-            case Err() as failed:
-                return failed
+        return self._looked_up(lambda tracker: tracker.labelled_issues(label, excluding))
 
     @override
     def read_issue(self, issue: IssueIdentifier) -> Result[Issue, TicketTrackerError]:
-        match self._tracker():
-            case Ok(tracker):
-                return tracker.read_issue(issue)
-            case Err() as failed:
-                return failed
+        return self._looked_up(lambda tracker: tracker.read_issue(issue))
 
     @override
     def read_issue_detail(self, issue: IssueIdentifier) -> Result[IssueDetail, TicketTrackerError]:
-        match self._tracker():
-            case Ok(tracker):
-                return tracker.read_issue_detail(issue)
-            case Err() as failed:
-                return failed
+        return self._looked_up(lambda tracker: tracker.read_issue_detail(issue))
 
     # Writes still raise; MB-130 returns their errors as values too.
     @override
@@ -211,17 +171,18 @@ class LazyLinear(TicketTracker):
     def blockers(
         self, issue: IssueIdentifier
     ) -> Result[tuple[IssueIdentifier, ...], TicketTrackerError]:
-        match self._tracker():
-            case Ok(tracker):
-                return tracker.blockers(issue)
-            case Err() as failed:
-                return failed
+        return self._looked_up(lambda tracker: tracker.blockers(issue))
 
     @override
     def viewer(self) -> Result[Assignee, TicketTrackerError]:
+        return self._looked_up(lambda tracker: tracker.viewer())
+
+    def _looked_up[T](
+        self, lookup: Callable[[Linear], Result[T, TicketTrackerError]]
+    ) -> Result[T, TicketTrackerError]:
         match self._tracker():
             case Ok(tracker):
-                return tracker.viewer()
+                return lookup(tracker)
             case Err() as failed:
                 return failed
 

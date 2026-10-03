@@ -207,7 +207,7 @@ class FakeTicketTracker(TicketTracker):
     def group_labels(
         self, group: LabelGroupName, team: TeamKey | None
     ) -> Result[ColoredLabels, TicketTrackerError]:
-        return Ok(self._held(group, team))
+        return Ok(self._group_members(group, team))
 
     @override
     def label_group(self, label: LabelName) -> Result[LabelGroupName | None, TicketTrackerError]:
@@ -229,7 +229,7 @@ class FakeTicketTracker(TicketTracker):
     def create_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None:
-        held = ColoredLabels((*self._held(group, team).root, *labels.root))
+        held = ColoredLabels((*self._group_members(group, team).root, *labels.root))
         if team is None:
             self._groups[group] = held
             self._labels = LabelNames((*self._labels.root, *labels.label_names().root))
@@ -240,7 +240,7 @@ class FakeTicketTracker(TicketTracker):
     def recolor_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None:
-        held = self._held(group, team)
+        held = self._group_members(group, team)
         unknown = held.label_names().unmatched(labels.label_names())
         if unknown.root:
             raise TicketTrackerError(
@@ -465,7 +465,7 @@ class FakeTicketTracker(TicketTracker):
     def viewer(self) -> Result[Assignee, TicketTrackerError]:
         return Ok(self._viewer)
 
-    def _held(self, group: LabelGroupName, team: TeamKey | None) -> ColoredLabels:
+    def _group_members(self, group: LabelGroupName, team: TeamKey | None) -> ColoredLabels:
         if team is None:
             return self._groups.get(group, ColoredLabels(()))
         return self._team_groups.get((team, group), ColoredLabels(()))

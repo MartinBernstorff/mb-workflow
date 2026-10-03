@@ -12,20 +12,23 @@ if TYPE_CHECKING:
     from mb_workflow.c_infrastructure.linear import LinearApiKey
 
 
+MISSING = "No Linear credentials for this repository."
+
+
 def missing_key() -> LinearApiKey:
-    raise MissingCredentialsError("No Linear credentials for this repository.")
+    raise MissingCredentialsError(MISSING)
 
 
 def test_a_lazy_registry_reads_no_key_until_it_is_used() -> None:
     read = LazyLinearClaims(missing_key).claims(IssueIdentifier.fake())
     assert isinstance(read, Err)
-    assert "No Linear credentials" in str(read.error)
+    assert MISSING in str(read.error)
 
 
 def test_a_lazy_tracker_returns_the_missing_key_from_a_lookup() -> None:
     read = LazyLinear(missing_key).read_issue(IssueIdentifier.fake())
     assert isinstance(read, Err)
-    assert "No Linear credentials" in str(read.error)
+    assert MISSING in str(read.error)
 
 
 def test_a_lazy_tracker_reads_no_key_until_it_is_used() -> None:
