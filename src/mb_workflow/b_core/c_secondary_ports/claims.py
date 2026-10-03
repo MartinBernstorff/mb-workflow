@@ -14,6 +14,7 @@ from mb_workflow.b_core.d_domain_model.claim import (
     ClaimHolder,
     ClaimId,
     Claims,
+    Posted,
     TakeOver,
 )
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName, LabelName
@@ -63,12 +64,12 @@ class ClaimRequest(Model):
 
 class Claiming:
     @staticmethod
-    def claim_ticket(registry: ClaimRegistry, request: ClaimRequest) -> None:
+    def claim_ticket(registry: ClaimRegistry, request: ClaimRequest) -> Posted:
         with Activity(f"Reading the claims on {request.ticket.root}").logged(logger):
             held = registry.claims(request.ticket)
         current = held.holding(request.status)
         if current is not None and current.holder == request.holder:
-            return
+            return Posted(False)
         if current is not None and not request.take_over.root:
             raise Claiming.claimed_error(request.ticket, current)
         Claiming.withdraw_claims(registry, request.ticket, held)
@@ -80,7 +81,7 @@ class Claiming:
             read_back = registry.claims(request.ticket)
         winner = read_back.holding(request.status)
         if winner is not None and winner.id == posted:
-            return
+            return Posted(True)
         if posted in read_back.ids():
             with Activity(f"Withdrawing our claim on {request.ticket.root}").logged(logger):
                 registry.withdraw(request.ticket, posted)
@@ -128,8 +129,8 @@ class Claiming:
         except TicketTrackerError as error:
             return Err(
                 ClaimRefusedError(
-                    f"Could not label {request.ticket.root} as {request.label.root}, so the claim"
-                    f" was withdrawn. Create the label or change claims.label. {error}"
+                    f"Could not label {request.ticket.root} as {request.label.root}."
+                    f" Create the label or change claims.label. {error}"
                 )
             )
         return Ok(None)

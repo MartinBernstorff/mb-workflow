@@ -426,12 +426,13 @@ def refusing_manager() -> FakeWorkspaceManager:
 
 
 def test_a_failed_worktree_creation_leaves_neither_claim_nor_claim_label() -> None:
-    tracker = tracking(StateName("Specced"))
+    specced = StateName("Specced")
+    tracker = tracking(specced)
     claims = FakeClaimRegistry()
     with pytest.raises(WorkspaceManagerError):
         starting(refusing_manager(), tracker, StartRequest.fake(), claims)
     assert claims.claims(IssueIdentifier.fake()) == Claims(())
-    assert tracker.read_issue(IssueIdentifier.fake()).labels == labelled(StateName("Specced"))
+    assert tracker.read_issue(IssueIdentifier.fake()).labels == labelled(specced)
 
 
 def test_a_failed_worktree_creation_restores_the_previous_assignee() -> None:
@@ -455,3 +456,15 @@ def test_a_failed_forced_start_does_not_restore_the_rivals_claim() -> None:
     with pytest.raises(WorkspaceManagerError):
         starting(refusing_manager(), tracking(StateName("Specced")), forcing, claims)
     assert claims.claims(IssueIdentifier.fake()) == Claims(())
+
+
+def test_a_failed_start_keeps_the_claim_and_label_this_worktree_already_held() -> None:
+    tracker = tracking(StateName("Specced"))
+    tracker.add_label(IssueIdentifier.fake(), ClaimSettings.fake().label)
+    claims = FakeClaimRegistry(
+        {IssueIdentifier.fake(): Claims((Claim(id=ClaimId("ours"), holder=ours()),))}
+    )
+    with pytest.raises(WorkspaceManagerError):
+        starting(refusing_manager(), tracker, StartRequest.fake(), claims)
+    assert holders(claims) == (ours(),)
+    assert tracker.read_issue(IssueIdentifier.fake()).labels.has(ClaimSettings.fake().label).root

@@ -1415,9 +1415,9 @@ def test_an_unclaimed_ticket_has_no_claims(claims: ClaimRegistry, backlog: Backl
 
 # Both claimers must pass the check for a holder before either posts, or no race is run.
 class RacedRegistry(ClaimRegistry):
-    def __init__(self, inner: ClaimRegistry, rival: Callable[[], None]) -> None:
+    def __init__(self, inner: ClaimRegistry, rival: Callable[[], object]) -> None:
         self._inner = inner
-        self._rival: Callable[[], None] | None = rival
+        self._rival: Callable[[], object] | None = rival
 
     @override
     def claims(self, ticket: IssueIdentifier) -> Claims:
@@ -1427,7 +1427,7 @@ class RacedRegistry(ClaimRegistry):
     def post(self, ticket: IssueIdentifier, holder: ClaimHolder) -> ClaimId:
         rival, self._rival = self._rival, None
         if rival is not None:
-            rival()
+            _ = rival()
         return self._inner.post(ticket, holder)
 
     @override
@@ -1445,7 +1445,7 @@ def test_of_two_racing_claimers_exactly_one_wins(
     second = first.model_copy(update={"holder": rival_of(first.holder)})
     raced = RacedRegistry(claims, lambda: Claiming.claim_ticket(claims, second))
     with pytest.raises(ClaimRefusedError, match="bob-mbp"):
-        Claiming.claim_ticket(raced, first)
+        _ = Claiming.claim_ticket(raced, first)
     assert holders(claims.claims(ticket)) == (second.holder,)
 
 

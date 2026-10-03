@@ -97,15 +97,9 @@ class WorktreeStep(SagaStep):
             return Err(error)
         return Ok(None)
 
+    # The last step of start, so no later failure ever reverts it.
     @override
     def revert(self) -> Result[None, Exception]:
-        if self._opened is None:
-            return Ok(None)
-        try:
-            with Activity(f"Removing worktree {self._creation.name.root}").logged(logger):
-                self._manager.remove(self._opened.worktree.path)
-        except WorkspaceManagerError as error:
-            return Err(error)
         return Ok(None)
 
     def opened(self) -> Result[OpenedWorktree, WorkspaceManagerError]:
@@ -190,7 +184,7 @@ class TicketStart:
             status = statuses.of(state)
 
         name = WorktreeName.of_issue(request.ticket)
-        creation = WorktreeStep(
+        worktree_step = WorktreeStep(
             manager,
             WorktreeCreation(
                 project=workspace.orca_project,
@@ -201,7 +195,7 @@ class TicketStart:
                 activate=request.activate,
             ),
         )
-        taking = TicketTaking.steps(
+        taking_steps = TicketTaking.saga_steps(
             claims=claims,
             tracker=tracker,
             workspace=workspace,
@@ -214,8 +208,8 @@ class TicketStart:
             ),
             previous=detail.assignee,
         )
-        Saga.run((*taking, creation)).unwrap()
-        opened = creation.opened().unwrap()
+        Saga.run((*taking_steps, worktree_step)).unwrap()
+        opened = worktree_step.opened().unwrap()
 
         logger.info("Created worktree %s.", opened.worktree.path.root)
         with Activity(f"Naming worktree {name.root}").logged(logger):

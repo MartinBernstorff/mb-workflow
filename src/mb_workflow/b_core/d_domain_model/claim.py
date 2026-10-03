@@ -111,6 +111,13 @@ class Released(Value[bool]):
         return StatusTypes(tuple(kind for kind in StatusType if Released.of_type(kind).root))
 
 
+# Whether claiming posted a new claim, rather than finding this holder's claim already there.
+class Posted(Value[bool]):
+    @staticmethod
+    def fake() -> Posted:
+        return Posted(True)
+
+
 class TakeOver(Value[bool]):
     @staticmethod
     def fake() -> TakeOver:
