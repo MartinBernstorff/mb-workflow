@@ -98,7 +98,7 @@ class DrainWatch:
         while not stop.requested().root:
             try:
                 current = settings.current()
-                outcome = Drain.drain_pool(
+                attempted = Drain.drain_pool(
                     tracker=tracker,
                     claims=claims,
                     manager=manager,
@@ -112,8 +112,6 @@ class DrainWatch:
                     pool=current.pool,
                     request=request.drain,
                 )
-            except AlreadyRunningError as error:
-                logger.info("Skipped this pass: %s.", error)
             except DrainWatch.config_errors():
                 raise
             except Exception as error:
@@ -121,10 +119,12 @@ class DrainWatch:
                     "The pass failed; retrying in %s seconds. %s", request.interval.root, error
                 )
             else:
-                match outcome:
-                    case Ok(drained):
-                        narrator.passed(drained, drained.changed_since(previous))
-                        previous = drained
+                match attempted:
+                    case Ok(outcome):
+                        narrator.passed(outcome, outcome.changed_since(previous))
+                        previous = outcome
+                    case Err(AlreadyRunningError() as refusal):
+                        logger.info("Skipped this pass: %s.", refusal)
                     case Err(error):
                         logger.error(
                             "The pass failed; retrying in %s seconds. %s",

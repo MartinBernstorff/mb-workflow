@@ -10,7 +10,7 @@ from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimRequest
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
-    set_display_name_or_warn,
+    WorkspaceNaming,
 )
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, TakeOver
 from mb_workflow.b_core.d_domain_model.flow import (
@@ -228,7 +228,7 @@ class TicketStart:
 
         logger.info("Created worktree %s.", opened.worktree.path.root)
         with Activity(f"Naming worktree {name.root}").logged(logger):
-            set_display_name_or_warn(
+            WorkspaceNaming.set_display_name_or_warn(
                 manager, opened.worktree.path, DisplayName.of_issue(detail.title)
             )
 

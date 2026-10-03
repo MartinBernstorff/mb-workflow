@@ -1,3 +1,4 @@
+import logging
 from typing import TYPE_CHECKING, override
 
 import pytest
@@ -156,15 +157,19 @@ def test_a_raised_limit_applies_from_the_next_pass() -> None:
     assert opened_issues(manager) == started
 
 
-def test_a_pass_skips_while_another_drain_holds_the_lock() -> None:
+def test_a_pass_skips_while_another_drain_holds_the_lock(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     lock = FakeRunLock()
     manager = fake_manager()
     passes = WaitCount(2)
     stop = FakeStopSignal(passes)
-    with lock.held():
+    skipped = "Skipped this pass"
+    with caplog.at_level(logging.INFO), lock.acquire().unwrap():
         watching(standard_pool(), stop, manager=manager, lock=lock)
     assert opened_issues(manager) == ()
     assert stop.waits() == passes
+    assert caplog.text.count(skipped) == passes.root
 
 
 def test_a_tracker_failure_is_retried_on_the_next_pass() -> None:
