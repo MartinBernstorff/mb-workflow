@@ -1,8 +1,6 @@
 projects:
   - "apps/*"
 
-defaultProject: "mb-workflow"
-
 vcs:
   defaultBranch: "main"
   provider: "github"
