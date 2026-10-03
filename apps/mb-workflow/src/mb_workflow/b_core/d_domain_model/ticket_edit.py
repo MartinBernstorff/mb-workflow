@@ -13,6 +13,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Cleared,
     IssueDescription,
     IssueDetail,
+    IssueIdentifier,
     IssueTitle,
     IssueUpdate,
     LabelNames,
@@ -50,6 +51,8 @@ class TicketEdit(Model):
     state: StateName | None
     milestone: MilestoneName | None
     remove_milestone: RemoveMilestone
+    add_blocks: tuple[IssueIdentifier, ...]
+    add_blocked_by: tuple[IssueIdentifier, ...]
 
     @staticmethod
     def fake() -> TicketEdit:
@@ -70,6 +73,8 @@ class TicketEdit(Model):
             state=None,
             milestone=None,
             remove_milestone=RemoveMilestone(False),
+            add_blocks=(),
+            add_blocked_by=(),
         )
 
     def checked(
@@ -115,7 +120,14 @@ class TicketEdit(Model):
             project=project,
             status=statuses.of(self.state) if self.state is not None else None,
             milestone=self._milestone(current, project),
+            blocks=tuple(issue for issue in self.add_blocks if issue not in current.blocks),
+            blocked_by=tuple(
+                issue for issue in self.add_blocked_by if issue not in current.blocked_by
+            ),
         )
+
+    def related(self) -> tuple[IssueIdentifier, ...]:
+        return (*self.add_blocks, *self.add_blocked_by)
 
     # The state is set without consulting the chart's moves, as the manual override of `mw flow`.
     def _labels(self, current: IssueDetail, flow_labels: FlowLabels) -> LabelNames | None:

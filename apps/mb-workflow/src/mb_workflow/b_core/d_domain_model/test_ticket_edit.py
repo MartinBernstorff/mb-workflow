@@ -1,5 +1,5 @@
 import pytest
-from safe_result import Err
+from safe_result import Err, Ok
 
 from mb_workflow.b_core.d_domain_model.flow import StateName, UnknownStateError
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
@@ -9,6 +9,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
     IssueDescription,
     IssueDetail,
+    IssueIdentifier,
     IssueStatusName,
     IssueUpdate,
     LabelName,
@@ -258,3 +259,39 @@ def test_a_flow_label_in_a_label_option_is_refused(option: str) -> None:
     refused = edit.checked(FlowLabels.fake())
     assert isinstance(refused, Err)
     assert state_option in str(refused.error)
+
+
+def test_an_edit_with_only_relations_is_accepted() -> None:
+    edit = TicketEdit.nothing().model_copy(update={"add_blocks": (IssueIdentifier("E-1"),)})
+    assert isinstance(edit.checked(FlowLabels.fake()), Ok)
+
+
+def test_added_relations_carry_into_the_update() -> None:
+    edit = TicketEdit.nothing().model_copy(
+        update={
+            "add_blocks": (IssueIdentifier("E-1"),),
+            "add_blocked_by": (IssueIdentifier("E-2"),),
+        }
+    )
+    update = edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake())
+    assert (update.blocks, update.blocked_by) == (
+        (IssueIdentifier("E-1"),),
+        (IssueIdentifier("E-2"),),
+    )
+
+
+def test_relations_the_ticket_already_holds_are_not_added_again() -> None:
+    current = IssueDetail.fake().model_copy(
+        update={
+            "blocks": frozenset({IssueIdentifier("E-1")}),
+            "blocked_by": frozenset({IssueIdentifier("E-2")}),
+        }
+    )
+    edit = TicketEdit.nothing().model_copy(
+        update={
+            "add_blocks": (IssueIdentifier("E-1"), IssueIdentifier("E-3")),
+            "add_blocked_by": (IssueIdentifier("E-2"),),
+        }
+    )
+    update = edit.update(current, viewer(), FlowLabels.fake(), TicketStatuses.fake())
+    assert (update.blocks, update.blocked_by) == ((IssueIdentifier("E-3"),), ())

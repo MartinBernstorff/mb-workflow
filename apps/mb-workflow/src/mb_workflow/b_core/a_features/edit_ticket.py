@@ -26,6 +26,9 @@ class TicketEditor:
             case Ok(checked):
                 if checked.state is not None:
                     FlowLabelCheck.require(tracker, flow_labels, tracker.team_of(issue))
+                # Linear relates the issues after updating the fields, so an unknown one must be caught beforehand.
+                for related in checked.related():
+                    _ = tracker.read_issue(related)
                 current = tracker.read_issue_detail(issue)
                 tracker.update_issue(
                     issue, checked.update(current, tracker.viewer(), flow_labels, statuses)

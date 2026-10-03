@@ -338,6 +338,9 @@ class IssueUpdate(Model):
     project: ProjectName | Cleared | None
     status: IssueStatusName | None
     milestone: Milestone | Cleared | None
+    # Relations to add; those the issue already holds are kept.
+    blocks: tuple[IssueIdentifier, ...]
+    blocked_by: tuple[IssueIdentifier, ...]
 
     @staticmethod
     def fake() -> IssueUpdate:
@@ -349,6 +352,8 @@ class IssueUpdate(Model):
             project=ProjectName.fake(),
             status=IssueStatusName.fake(),
             milestone=Milestone.fake(),
+            blocks=(),
+            blocked_by=(),
         )
 
     @staticmethod
@@ -361,6 +366,8 @@ class IssueUpdate(Model):
             project=None,
             status=None,
             milestone=None,
+            blocks=(),
+            blocked_by=(),
         )
 
 

@@ -350,6 +350,9 @@ class FakeTicketTracker(TicketTracker):
         )
         assignee = tracked.assignee if update.assignee is None else update.assignee
         held = assignee if isinstance(assignee, Assignee) else None
+        for blocker in update.blocked_by:
+            _ = self._tracked(blocker)
+        blocked = tuple(self._tracked(other) for other in update.blocks)
         self._issues[issue] = tracked.model_copy(
             update={
                 "issue": tracked.issue.model_copy(
@@ -366,8 +369,13 @@ class FakeTicketTracker(TicketTracker):
                 ),
                 "assignee": held,
                 "milestone": milestone,
+                "blocked_by": (*tracked.blocked_by, *update.blocked_by),
             }
         )
+        for other in blocked:
+            self._issues[other.issue.identifier] = other.model_copy(
+                update={"blocked_by": (*other.blocked_by, issue)}
+            )
 
     @override
     def create_issue(self, new: NewIssue) -> CreatedIssue:

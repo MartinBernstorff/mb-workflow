@@ -168,3 +168,43 @@ def test_a_flow_label_passed_as_a_label_leaves_the_ticket_unchanged() -> None:
     )
     assert isinstance(refused, Err)
     assert tracker.read_issue(IssueIdentifier.fake()) == before
+
+
+def related() -> FakeTicketTracker:
+    other = Issue.fake().model_copy(update={"identifier": IssueIdentifier("E-1")})
+    return FakeTicketTracker(
+        LabelNames((LabelName.fake(),)),
+        (TrackedIssue.fake(), TrackedIssue.fake().model_copy(update={"issue": other})),
+        Projects.fake(),
+        IssueStatuses.fake(),
+        Assignee.fake(),
+    )
+
+
+def test_editing_a_ticket_adds_the_issues_it_blocks() -> None:
+    tracker = related()
+    edit = TicketEdit.nothing().model_copy(update={"add_blocks": (IssueIdentifier("E-1"),)})
+    _ = TicketEditor.apply_edit(
+        tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
+    ).unwrap()
+    assert tracker.blockers(IssueIdentifier("E-1")) == (IssueIdentifier.fake(),)
+
+
+def test_editing_a_ticket_adds_the_issues_it_is_blocked_by() -> None:
+    tracker = related()
+    edit = TicketEdit.nothing().model_copy(update={"add_blocked_by": (IssueIdentifier("E-1"),)})
+    _ = TicketEditor.apply_edit(
+        tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
+    ).unwrap()
+    assert tracker.blockers(IssueIdentifier.fake()) == (IssueIdentifier("E-1"),)
+
+
+def test_a_relation_to_an_unknown_issue_leaves_the_ticket_unchanged() -> None:
+    tracker = related()
+    before = tracker.read_issue_detail(IssueIdentifier.fake())
+    edit = TicketEdit.fake().model_copy(update={"add_blocked_by": (IssueIdentifier("E-404"),)})
+    with pytest.raises(TicketTrackerError, match="E-404"):
+        _ = TicketEditor.apply_edit(
+            tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
+        )
+    assert tracker.read_issue_detail(IssueIdentifier.fake()) == before

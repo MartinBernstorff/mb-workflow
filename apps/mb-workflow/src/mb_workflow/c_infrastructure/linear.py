@@ -1000,16 +1000,21 @@ class Linear(TicketTracker):
             changes["state_id"] = found.state_id(update.status)
         if update.milestone is not None:
             changes["project_milestone_id"] = found.milestone_id(update.milestone)
-        wanted = IssueChanges.model_validate(changes)
-        with translated_errors():
-            _ = self._client.execute(
-                "mutation($id: String!, $input: IssueUpdateInput!) {"
-                " issueUpdate(id: $id, input: $input) { success } }",
-                {
-                    "id": issue.root,
-                    "input": wanted.model_dump(mode="json", by_alias=True, exclude_unset=True),
-                },
-            )
+        if changes:
+            wanted = IssueChanges.model_validate(changes)
+            with translated_errors():
+                _ = self._client.execute(
+                    "mutation($id: String!, $input: IssueUpdateInput!) {"
+                    " issueUpdate(id: $id, input: $input) { success } }",
+                    {
+                        "id": issue.root,
+                        "input": wanted.model_dump(mode="json", by_alias=True, exclude_unset=True),
+                    },
+                )
+        for blocked in update.blocks:
+            self._relate(blocker=issue, blocked=blocked)
+        for blocker in update.blocked_by:
+            self._relate(blocker=blocker, blocked=issue)
 
     @override
     def create_issue(self, new: NewIssue) -> CreatedIssue:
