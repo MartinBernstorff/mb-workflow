@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from pydantic import JsonValue, model_validator
+
 from mb_workflow.b_core.d_domain_model.git import Ref
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueTitle
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
@@ -16,6 +18,12 @@ class ProjectSelector(Value[str]):
     @staticmethod
     def fake() -> ProjectSelector:
         return ProjectSelector("github:flowbasedk/flowbase")
+
+    # Orca stores project IDs in lowercase and matches them case-sensitively.
+    @model_validator(mode="before")
+    @classmethod
+    def lowercased(cls, data: JsonValue) -> JsonValue:
+        return data.lower() if isinstance(data, str) else data
 
 
 class WorktreeName(Value[str]):
