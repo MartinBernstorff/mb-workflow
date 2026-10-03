@@ -5,6 +5,7 @@ from safe_result import Err, Ok, Result
 from mb_workflow.b_core.b_domain_services.flow_label_check import FlowLabelCheck
 
 if TYPE_CHECKING:
+    from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
         TicketTracker,
         TicketTrackerError,
@@ -25,7 +26,12 @@ class TicketEditor:
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
     ) -> Result[
-        None, TicketEditError | FlowLabelOptionError | UnknownStateError | TicketTrackerError
+        None,
+        TicketEditError
+        | FlowLabelOptionError
+        | UnknownStateError
+        | TicketTrackerError
+        | MissingFlowLabelsError,
     ]:
         checked = edit.checked(flow_labels)
         if isinstance(checked, Err):

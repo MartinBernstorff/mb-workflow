@@ -78,12 +78,12 @@ def label_eligible_issues(
     ledger_store: LedgerStore,
     request: AutolabelRequest,
     window: CreatedAfter,
-) -> Result[Outcome, TicketTrackerError]:
+) -> Result[Outcome, TicketTrackerError | UnknownLabelError]:
     known = tracker.workspace_labels()
     if isinstance(known, Err):
         return known
     if not known.value.has(request.label).root:
-        raise UnknownLabelError(f"No label is named {request.label.root}.")
+        return Err(UnknownLabelError(f"No label is named {request.label.root}."))
 
     recorded = ledger_store.read(request.label)
     issues = tracker.list_issues(IssueFilter(creator=request.creator, created_after=window))

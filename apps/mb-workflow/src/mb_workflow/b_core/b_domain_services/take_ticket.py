@@ -17,7 +17,11 @@ from mb_workflow.d_lib.models import Value
 from mb_workflow.d_lib.saga import Saga, SagaStep
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry, ClaimRequest
+    from mb_workflow.b_core.c_secondary_ports.claims import (
+        ClaimRegistry,
+        ClaimRequest,
+        UnknownClaimLabelError,
+    )
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.issue import Assignee, IssueIdentifier
@@ -36,7 +40,7 @@ class TicketTaking:
         claim_settings: ClaimSettings,
         request: ClaimRequest,
         previous: Assignee | None,
-    ) -> Result[None, TicketTrackerError]:
+    ) -> Result[None, TicketTrackerError | UnknownClaimLabelError]:
         steps = TicketTaking.saga_steps(
             claims=claims,
             tracker=tracker,
@@ -60,7 +64,7 @@ class TicketTaking:
         claim_settings: ClaimSettings,
         request: ClaimRequest,
         previous: Assignee | None,
-    ) -> Result[tuple[SagaStep, ...], TicketTrackerError]:
+    ) -> Result[tuple[SagaStep, ...], TicketTrackerError | UnknownClaimLabelError]:
         checked = Claiming.require_claim_label(tracker, claim_settings.label)
         if isinstance(checked, Err):
             return checked

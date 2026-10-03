@@ -22,7 +22,8 @@ from mb_workflow.d_lib.logging import Activity
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
+    from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
+    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry, UnknownClaimLabelError
     from mb_workflow.b_core.c_secondary_ports.run_lock import RunLock
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
@@ -151,7 +152,7 @@ class Drain:
     @staticmethod
     def require_limited_labels(
         tracker: TicketTracker, limits: PoolLimits
-    ) -> Result[None, TicketTrackerError]:
+    ) -> Result[None, TicketTrackerError | UnknownLabelError]:
         with Activity("Checking that the limited labels exist").logged(logger):
             known = tracker.workspace_labels()
         if isinstance(known, Err):
@@ -159,15 +160,17 @@ class Drain:
         unknown = known.value.unmatched(limits.limited_labels())
         if unknown.root:
             listed = ", ".join(label.root for label in unknown.root)
-            raise UnknownLabelError(
-                f"No label is named {listed}. Create the label or change [pool.limits.labels]."
+            return Err(
+                UnknownLabelError(
+                    f"No label is named {listed}. Create the label or change [pool.limits.labels]."
+                )
             )
         return Ok(None)
 
     @staticmethod
     def require_skip_limits_label(
         tracker: TicketTracker, label: LabelName
-    ) -> Result[None, TicketTrackerError]:
+    ) -> Result[None, TicketTrackerError | UnknownLabelError]:
         return LabelCheck.require_label(
             tracker,
             label,
@@ -180,7 +183,10 @@ class Drain:
     @staticmethod
     def read_pool(
         tracker: TicketTracker, claim_settings: ClaimSettings, pool: PoolSettings
-    ) -> Result[tuple[PoolTickets, Issues], TicketTrackerError]:
+    ) -> Result[
+        tuple[PoolTickets, Issues],
+        TicketTrackerError | UnknownClaimLabelError | UnknownLabelError,
+    ]:
         checked = Claiming.require_claim_label(tracker, claim_settings.label)
         if isinstance(checked, Err):
             return checked
@@ -215,7 +221,10 @@ class Drain:
         statuses: TicketStatuses,
         pool: PoolSettings,
         request: DrainRequest,
-    ) -> Result[DrainOutcome, TicketTrackerError]:
+    ) -> Result[
+        DrainOutcome,
+        TicketTrackerError | UnknownClaimLabelError | UnknownLabelError | MissingFlowLabelsError,
+    ]:
         with lock.held(), Activity("Draining the pool").logged(logger):
             read = Drain.read_pool(tracker, claim_settings, pool)
             if isinstance(read, Err):
@@ -311,7 +320,7 @@ class Drain:
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
         request: StartRequest,
-    ) -> Result[Started, TicketTrackerError]:
+    ) -> Result[Started, TicketTrackerError | UnknownClaimLabelError | MissingFlowLabelsError]:
         try:
             started = TicketStart.start_ticket(
                 manager=manager,

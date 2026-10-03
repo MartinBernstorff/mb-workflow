@@ -6,6 +6,7 @@ from mb_workflow.b_core.b_domain_services.flow_label_check import FlowLabelCheck
 from mb_workflow.b_core.d_domain_model.flow import StateNames, WorkflowChart
 
 if TYPE_CHECKING:
+    from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
         TicketTracker,
         TicketTrackerError,
@@ -27,7 +28,10 @@ def create_ticket(
     defaults: TicketDefaults,
     flow_labels: FlowLabels,
     statuses: TicketStatuses,
-) -> Result[CreatedIssue, TicketDraftError | FlowLabelOptionError | TicketTrackerError]:
+) -> Result[
+    CreatedIssue,
+    TicketDraftError | FlowLabelOptionError | TicketTrackerError | MissingFlowLabelsError,
+]:
     viewer = tracker.viewer()
     if isinstance(viewer, Err):
         return viewer

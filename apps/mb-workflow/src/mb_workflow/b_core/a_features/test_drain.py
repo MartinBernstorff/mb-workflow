@@ -1,8 +1,9 @@
 import logging
 import re
-from typing import override
+from typing import TYPE_CHECKING, override
 
 import pytest
+from safe_result import Err
 
 from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
 from mb_workflow.b_core.a_features.drain import (
@@ -59,6 +60,12 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     WorktreePath,
     Worktrees,
 )
+
+if TYPE_CHECKING:
+    from safe_result import Result
+
+    from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 
 
 def pooled(
@@ -216,7 +223,10 @@ def draining(
     lock: FakeRunLock | None = None,
     pool: PoolSettings | None = None,
     request: DrainRequest | None = None,
-) -> DrainOutcome:
+) -> Result[
+    DrainOutcome,
+    TicketTrackerError | UnknownClaimLabelError | UnknownLabelError | MissingFlowLabelsError,
+]:
     return Drain.drain_pool(
         tracker=tracker,
         claims=claims or FakeClaimRegistry(),
@@ -230,7 +240,7 @@ def draining(
         statuses=TicketStatuses.fake(),
         pool=pool or PoolSettings.fake(),
         request=request or DrainRequest.fake(),
-    ).unwrap()
+    )
 
 
 def test_starts_the_top_ready_ticket_and_submits_its_prompt() -> None:
@@ -238,7 +248,7 @@ def test_starts_the_top_ready_ticket_and_submits_its_prompt() -> None:
     claims = FakeClaimRegistry()
     outcome = draining(
         standard_pool(), manager=manager, claims=claims, pool=pool_with_total(Limit(1))
-    )
+    ).unwrap()
     assert picked(outcome) == (IssueIdentifier("MB-2"),)
     assert holders(claims, IssueIdentifier("MB-2")) == (holder_of(IssueIdentifier("MB-2")),)
     assert opened_issues(manager) == (IssueIdentifier("MB-2"),)
@@ -247,21 +257,21 @@ def test_starts_the_top_ready_ticket_and_submits_its_prompt() -> None:
 
 def test_started_tickets_open_in_the_background() -> None:
     manager = fake_manager()
-    _ = draining(standard_pool(), manager=manager)
+    _ = draining(standard_pool(), manager=manager).unwrap()
     assert opened_issues(manager)
     assert manager.activated() == ()
 
 
 def test_starts_every_ready_ticket_in_pick_order_while_the_total_allows() -> None:
     manager = fake_manager()
-    outcome = draining(standard_pool(), manager=manager)
+    outcome = draining(standard_pool(), manager=manager).unwrap()
     assert picked(outcome) == (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
     assert opened_issues(manager) == (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
 
 
 def test_the_pass_stops_once_the_total_is_reached() -> None:
     claims = FakeClaimRegistry()
-    _ = draining(standard_pool(), claims=claims, pool=pool_with_total(Limit(1)))
+    _ = draining(standard_pool(), claims=claims, pool=pool_with_total(Limit(1))).unwrap()
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
@@ -275,7 +285,7 @@ def test_labelled_tickets_in_progress_count_toward_the_total() -> None:
             in_progress(IssueIdentifier("MB-12"), StateName("Review")),
         ),
     )
-    assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
+    assert picked(draining(tracker).unwrap()) == (IssueIdentifier("MB-2"),)
 
 
 @pytest.mark.parametrize(
@@ -291,7 +301,9 @@ def test_labelled_tickets_that_are_closed_do_not_count(closing: IssueStatus) -> 
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("QA"), closing.name),),
         closing=(closing,),
     )
-    assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-1"),)
+    assert picked(draining(tracker, pool=pool_with_total(Limit(1))).unwrap()) == (
+        IssueIdentifier("MB-1"),
+    )
 
 
 def test_unlabelled_tickets_do_not_count() -> None:
@@ -299,7 +311,9 @@ def test_unlabelled_tickets_do_not_count() -> None:
         pooled(IssueIdentifier("MB-1"), Priority.low),
         elsewhere=(pooled(IssueIdentifier("MB-10"), Priority.low, state=StateName("QA")),),
     )
-    assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-1"),)
+    assert picked(draining(tracker, pool=pool_with_total(Limit(1))).unwrap()) == (
+        IssueIdentifier("MB-1"),
+    )
 
 
 def test_a_ticket_whose_state_is_full_is_skipped_for_the_next() -> None:
@@ -308,7 +322,7 @@ def test_a_ticket_whose_state_is_full_is_skipped_for_the_next() -> None:
         pooled(IssueIdentifier("MB-2"), Priority.high, state=StateName("Grilling")),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Grilling")),),
     )
-    assert picked(draining(tracker)) == (IssueIdentifier("MB-1"),)
+    assert picked(draining(tracker).unwrap()) == (IssueIdentifier("MB-1"),)
 
 
 def test_a_ticket_started_in_the_pass_fills_its_state() -> None:
@@ -316,7 +330,7 @@ def test_a_ticket_started_in_the_pass_fills_its_state() -> None:
         pooled(IssueIdentifier("MB-1"), Priority.low, state=StateName("Grilling")),
         pooled(IssueIdentifier("MB-2"), Priority.high, state=StateName("Grilling")),
     )
-    assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
+    assert picked(draining(tracker).unwrap()) == (IssueIdentifier("MB-2"),)
 
 
 def test_a_claimed_ticket_without_a_flow_label_does_not_count_toward_the_limits() -> None:
@@ -331,7 +345,9 @@ def test_a_claimed_ticket_without_a_flow_label_does_not_count_toward_the_limits(
             ),
         ),
     )
-    assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-2"),)
+    assert picked(draining(tracker, pool=pool_with_total(Limit(1))).unwrap()) == (
+        IssueIdentifier("MB-2"),
+    )
 
 
 def test_a_ticket_carrying_the_claim_label_is_passed_over() -> None:
@@ -339,13 +355,13 @@ def test_a_ticket_carrying_the_claim_label_is_passed_over() -> None:
         pooled(IssueIdentifier("MB-1"), Priority.low),
         pooled(IssueIdentifier("MB-2"), Priority.high, labels=LabelNames((LabelName("claimed"),))),
     )
-    assert picked(draining(tracker)) == (IssueIdentifier("MB-1"),)
+    assert picked(draining(tracker).unwrap()) == (IssueIdentifier("MB-1"),)
 
 
 def test_a_ticket_another_host_wins_is_passed_over_for_the_next() -> None:
     manager = fake_manager()
     claims = RacedRegistry(IssueIdentifier("MB-2"))
-    outcome = draining(standard_pool(), manager=manager, claims=claims)
+    outcome = draining(standard_pool(), manager=manager, claims=claims).unwrap()
     assert picked(outcome) == (IssueIdentifier("MB-1"),)
     assert holders(claims, IssueIdentifier("MB-2")) == (rival(),)
     assert opened_issues(manager) == (IssueIdentifier("MB-1"),)
@@ -353,7 +369,7 @@ def test_a_ticket_another_host_wins_is_passed_over_for_the_next() -> None:
 
 def test_a_ticket_another_host_wins_counts_toward_the_total() -> None:
     claims = RacedRegistry(IssueIdentifier("MB-2"))
-    outcome = draining(standard_pool(), claims=claims, pool=pool_with_total(Limit(1)))
+    outcome = draining(standard_pool(), claims=claims, pool=pool_with_total(Limit(1))).unwrap()
     assert picked(outcome) == ()
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
@@ -363,7 +379,7 @@ def test_a_start_that_fails_after_claiming_releases_the_claim() -> None:
     claims = FakeClaimRegistry()
     elsewhere = fake_manager(ProjectSelector("github:other/project"))
     with pytest.raises(WorkspaceManagerError):
-        _ = draining(tracker, manager=elsewhere, claims=claims)
+        _ = draining(tracker, manager=elsewhere, claims=claims).unwrap()
     assert holders(claims, IssueIdentifier("MB-2")) == ()
     assert tracker.read_issue(IssueIdentifier("MB-2")).unwrap().labels == LabelNames(
         (LabelName("Specced"),)
@@ -392,7 +408,7 @@ def test_a_start_interrupted_by_a_second_stop_signal_releases_the_claim() -> Non
         Worktrees.fake(), WorktreePath.fake(), WorkspaceStatuses(()), project=ProjectSelector.fake()
     )
     with pytest.raises(SystemExit):
-        _ = draining(standard_pool(), manager=manager, claims=claims)
+        _ = draining(standard_pool(), manager=manager, claims=claims).unwrap()
     assert holders(claims, IssueIdentifier("MB-2")) == ()
 
 
@@ -403,15 +419,17 @@ def test_a_start_that_fails_tries_no_other_ticket() -> None:
             standard_pool(),
             manager=fake_manager(ProjectSelector("github:other/project")),
             claims=claims,
-        )
+        ).unwrap()
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
 def test_a_claim_label_the_tracker_lacks_refuses_the_pass() -> None:
     tracker = pool_of(pooled(IssueIdentifier("MB-1"), Priority.low), labels=LabelNames(()))
     claims = FakeClaimRegistry()
-    with pytest.raises(UnknownClaimLabelError, match="claimed"):
-        _ = draining(tracker, claims=claims)
+    refused = draining(tracker, claims=claims)
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, UnknownClaimLabelError)
+    assert "claimed" in str(refused.error)
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
@@ -430,7 +448,7 @@ def test_a_dry_run_lists_the_tickets_the_limits_allow_and_starts_nothing() -> No
         ),
     )
     dry = DrainRequest.fake().model_copy(update={"dry_run": DryRun(True)})
-    outcome = draining(tracker, manager=manager, claims=claims, request=dry)
+    outcome = draining(tracker, manager=manager, claims=claims, request=dry).unwrap()
     assert picked(outcome) == (IssueIdentifier("MB-4"), IssueIdentifier("MB-1"))
     assert manager.worktrees() == Worktrees.fake()
     assert holders(claims, IssueIdentifier("MB-4")) == ()
@@ -441,7 +459,7 @@ def test_a_pool_with_no_ready_ticket_starts_nothing() -> None:
     outcome = draining(
         pool_of(pooled(IssueIdentifier("MB-3"), Priority.high, state=StateName("QA"))),
         manager=manager,
-    )
+    ).unwrap()
     assert outcome.ready == PoolTickets(())
     assert outcome.picked == PoolTickets(())
     assert outcome.skipped == ()
@@ -453,7 +471,7 @@ def test_a_pass_is_refused_while_another_holds_the_lock() -> None:
     lock = FakeRunLock()
     claims = FakeClaimRegistry()
     with lock.held(), pytest.raises(AlreadyRunningError):
-        _ = draining(standard_pool(), claims=claims, lock=lock)
+        _ = draining(standard_pool(), claims=claims, lock=lock).unwrap()
     assert holders(claims, IssueIdentifier("MB-2")) == ()
 
 
@@ -463,7 +481,7 @@ def test_a_ticket_labelled_skip_limits_starts_past_the_total() -> None:
         pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()),
         pooled(IssueIdentifier("MB-3"), Priority.low, labels=skip_limits()),
     )
-    assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (
+    assert picked(draining(tracker, pool=pool_with_total(Limit(1))).unwrap()) == (
         IssueIdentifier("MB-3"),
         IssueIdentifier("MB-2"),
     )
@@ -476,7 +494,7 @@ def test_a_ticket_labelled_skip_limits_starts_in_a_full_state() -> None:
         ),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Grilling")),),
     )
-    assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
+    assert picked(draining(tracker).unwrap()) == (IssueIdentifier("MB-2"),)
 
 
 def test_tickets_labelled_skip_limits_count_toward_the_limits_of_the_rest() -> None:
@@ -484,12 +502,14 @@ def test_tickets_labelled_skip_limits_count_toward_the_limits_of_the_rest() -> N
         pooled(IssueIdentifier("MB-1"), Priority.high),
         pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()),
     )
-    assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-2"),)
+    assert picked(draining(tracker, pool=pool_with_total(Limit(1))).unwrap()) == (
+        IssueIdentifier("MB-2"),
+    )
 
 
 def test_a_started_ticket_loses_its_skip_limits_label() -> None:
     tracker = pool_of(pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()))
-    _ = draining(tracker)
+    _ = draining(tracker).unwrap()
     assert (
         tracker.read_issue(IssueIdentifier("MB-2"))
         .unwrap()
@@ -501,7 +521,7 @@ def test_a_started_ticket_loses_its_skip_limits_label() -> None:
 def test_a_dry_run_keeps_the_skip_limits_label() -> None:
     tracker = pool_of(pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()))
     dry = DrainRequest.fake().model_copy(update={"dry_run": DryRun(True)})
-    _ = draining(tracker, request=dry)
+    _ = draining(tracker, request=dry).unwrap()
     assert (
         tracker.read_issue(IssueIdentifier("MB-2"))
         .unwrap()
@@ -512,7 +532,7 @@ def test_a_dry_run_keeps_the_skip_limits_label() -> None:
 
 def test_a_ticket_another_host_wins_keeps_its_skip_limits_label() -> None:
     tracker = pool_of(pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()))
-    _ = draining(tracker, claims=RacedRegistry(IssueIdentifier("MB-2")))
+    _ = draining(tracker, claims=RacedRegistry(IssueIdentifier("MB-2"))).unwrap()
     assert (
         tracker.read_issue(IssueIdentifier("MB-2"))
         .unwrap()
@@ -526,7 +546,7 @@ def test_an_urgent_ticket_keeps_to_the_limits() -> None:
         pooled(IssueIdentifier("MB-2"), Priority.urgent, state=StateName("Grilling")),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Grilling")),),
     )
-    assert picked(draining(tracker)) == ()
+    assert picked(draining(tracker).unwrap()) == ()
 
 
 def test_a_skip_limits_label_the_tracker_lacks_refuses_the_pass() -> None:
@@ -535,8 +555,10 @@ def test_a_skip_limits_label_the_tracker_lacks_refuses_the_pass() -> None:
         labels=LabelNames((LabelName("claimed"), *FlowLabels.fake().labels.root)),
     )
     claims = FakeClaimRegistry()
-    with pytest.raises(UnknownLabelError, match="skip-limits"):
-        _ = draining(tracker, claims=claims)
+    refused = draining(tracker, claims=claims)
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, UnknownLabelError)
+    assert "skip-limits" in str(refused.error)
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
@@ -544,7 +566,7 @@ def drain_logged(
     caplog: pytest.LogCaptureFixture, tracker: FakeTicketTracker, pool: PoolSettings | None = None
 ) -> None:
     with caplog.at_level(logging.INFO):
-        _ = draining(tracker, pool=pool)
+        _ = draining(tracker, pool=pool).unwrap()
 
 
 def test_the_outcome_says_why_a_ticket_in_the_view_is_not_ready() -> None:
@@ -556,7 +578,7 @@ def test_the_outcome_says_why_a_ticket_in_the_view_is_not_ready() -> None:
     claimed = UnreadyReason("it is already claimed")
     unworked = UnreadyReason("no agent works tickets in QA")
     stateless = UnreadyReason("it has no flow state")
-    outcome = draining(tracker)
+    outcome = draining(tracker).unwrap()
     assert tuple(
         (unready.ticket.issue.identifier, unready.reason) for unready in outcome.unready
     ) == (
@@ -568,14 +590,14 @@ def test_the_outcome_says_why_a_ticket_in_the_view_is_not_ready() -> None:
 
 def test_the_outcome_names_the_tickets_left_when_the_pool_fills() -> None:
     total = Limit(1)
-    outcome = draining(standard_pool(), pool=pool_with_total(total))
+    outcome = draining(standard_pool(), pool=pool_with_total(total)).unwrap()
     assert outcome.full is not None
     assert outcome.full.total == total
     assert outcome.full.left.identifiers() == (IssueIdentifier("MB-1"),)
 
 
 def test_the_outcome_of_a_pass_with_room_left_is_not_full() -> None:
-    assert draining(standard_pool()).full is None
+    assert draining(standard_pool()).unwrap().full is None
 
 
 def test_the_log_names_each_ticket_started(caplog: pytest.LogCaptureFixture) -> None:
@@ -590,7 +612,7 @@ def test_a_dry_run_logs_each_ticket_it_would_start(caplog: pytest.LogCaptureFixt
         _ = draining(
             standard_pool(),
             request=DrainRequest.fake().model_copy(update={"dry_run": DryRun(True)}),
-        )
+        ).unwrap()
     assert "Would start MB-2 (high, Specced)." in caplog.text
 
 
@@ -640,7 +662,7 @@ def test_a_ticket_whose_label_is_full_is_skipped_for_the_next() -> None:
         labels=labels_with_refactor(),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Review"), labels=refactors()),),
     )
-    assert picked(draining(tracker, pool=pool_capping_refactors_at(Limit(1)))) == (
+    assert picked(draining(tracker, pool=pool_capping_refactors_at(Limit(1))).unwrap()) == (
         IssueIdentifier("MB-1"),
     )
 
@@ -652,7 +674,7 @@ def test_a_ticket_started_in_the_pass_fills_its_label() -> None:
         pooled(IssueIdentifier("MB-3"), Priority.no_priority),
         labels=labels_with_refactor(),
     )
-    assert picked(draining(tracker, pool=pool_capping_refactors_at(Limit(1)))) == (
+    assert picked(draining(tracker, pool=pool_capping_refactors_at(Limit(1))).unwrap()) == (
         IssueIdentifier("MB-2"),
         IssueIdentifier("MB-3"),
     )
@@ -664,7 +686,7 @@ def test_the_outcome_names_each_skipped_ticket_and_why() -> None:
         pooled(IssueIdentifier("MB-2"), Priority.high, labels=refactors()),
         labels=labels_with_refactor(),
     )
-    outcome = draining(tracker, pool=pool_capping_refactors_at(Limit(1)))
+    outcome = draining(tracker, pool=pool_capping_refactors_at(Limit(1))).unwrap()
     assert tuple((skip.ticket.issue.identifier, skip.refusal) for skip in outcome.skipped) == (
         (IssueIdentifier("MB-1"), Refusal("label refactor is at its limit of 1")),
     )
@@ -673,8 +695,10 @@ def test_the_outcome_names_each_skipped_ticket_and_why() -> None:
 def test_a_limited_label_the_tracker_lacks_refuses_the_pass() -> None:
     tracker = pool_of(pooled(IssueIdentifier("MB-1"), Priority.low))
     claims = FakeClaimRegistry()
-    with pytest.raises(UnknownLabelError, match="refactor"):
-        _ = draining(tracker, claims=claims, pool=pool_capping_refactors_at(Limit(1)))
+    refused = draining(tracker, claims=claims, pool=pool_capping_refactors_at(Limit(1)))
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, UnknownLabelError)
+    assert "refactor" in str(refused.error)
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
@@ -688,7 +712,7 @@ def test_a_ticket_labelled_skip_limits_starts_past_its_label_limit() -> None:
         labels=labels_with_refactor(),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Review"), labels=refactors()),),
     )
-    outcome = draining(tracker, pool=pool_capping_refactors_at(Limit(1)))
+    outcome = draining(tracker, pool=pool_capping_refactors_at(Limit(1))).unwrap()
     assert picked(outcome) == (IssueIdentifier("MB-2"),)
     assert outcome.skipped == ()
 

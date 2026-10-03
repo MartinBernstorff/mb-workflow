@@ -38,15 +38,17 @@ class FlowLabelCheck:
     @staticmethod
     def require(
         tracker: TicketTracker, wanted: FlowLabels, team: TeamKey | None
-    ) -> Result[None, TicketTrackerError]:
+    ) -> Result[None, TicketTrackerError | MissingFlowLabelsError]:
         match FlowLabelCheck.held_labels(tracker, wanted, team):
             case Ok(held):
                 missing = wanted.missing(held.label_names())
                 if missing.root:
-                    raise MissingFlowLabelsError(
-                        f"The {wanted.group.root} label group lacks"
-                        f" {', '.join(label.root for label in missing.root)}."
-                        " Run `mw flow seed-labels --team <team name>` to create them."
+                    return Err(
+                        MissingFlowLabelsError(
+                            f"The {wanted.group.root} label group lacks"
+                            f" {', '.join(label.root for label in missing.root)}."
+                            " Run `mw flow seed-labels --team <team name>` to create them."
+                        )
                     )
                 return Ok(None)
             case Err() as failed:

@@ -6,6 +6,7 @@ from mb_workflow.b_core.d_domain_model.flow import EventName, StateName, Workflo
 if TYPE_CHECKING:
     from safe_result import Result
 
+    from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
         TicketTracker,
@@ -25,7 +26,7 @@ def transition(
     statuses: TicketStatuses,
     event: EventName,
     force: flow_transition.Force,
-) -> Result[StateName, TicketTrackerError]:
+) -> Result[StateName, TicketTrackerError | MissingFlowLabelsError]:
     issue = manager.current().linked_issue()
     return flow_transition.transition(
         chart=WorkflowChart,

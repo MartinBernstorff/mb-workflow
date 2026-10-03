@@ -115,7 +115,7 @@ class Claiming:
     @staticmethod
     def require_claim_label(
         tracker: TicketTracker, label: LabelName
-    ) -> Result[None, TicketTrackerError]:
+    ) -> Result[None, TicketTrackerError | UnknownClaimLabelError]:
         return LabelCheck.require_label(
             tracker,
             label,

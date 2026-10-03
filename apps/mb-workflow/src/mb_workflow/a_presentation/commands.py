@@ -335,7 +335,7 @@ def drain_watch(
             stop=stop,
             narrator=LoggingDrainNarrator(),
             request=request,
-        )
+        ).unwrap()
     return ExitCode(0)
 
 

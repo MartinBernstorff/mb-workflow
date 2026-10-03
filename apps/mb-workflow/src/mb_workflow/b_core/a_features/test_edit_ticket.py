@@ -1,4 +1,3 @@
-import pytest
 from safe_result import Err
 
 from mb_workflow.b_core.a_features.edit_ticket import TicketEditor
@@ -155,10 +154,11 @@ def test_moving_a_ticket_without_seeded_flow_labels_leaves_it_unchanged() -> Non
     tracker = in_grilling(groups=LabelNames(()))
     before = tracker.read_issue(IssueIdentifier.fake()).unwrap()
     edit = TicketEdit.nothing().model_copy(update={"state": StateName.fake()})
-    with pytest.raises(MissingFlowLabelsError):
-        _ = TicketEditor.apply_edit(
-            tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
-        )
+    refused = TicketEditor.apply_edit(
+        tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
+    )
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, MissingFlowLabelsError)
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap() == before
 
 

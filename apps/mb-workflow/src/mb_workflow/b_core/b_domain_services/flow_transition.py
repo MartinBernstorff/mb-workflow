@@ -8,6 +8,7 @@ from mb_workflow.b_core.d_domain_model.issue import IssueUpdate
 from mb_workflow.d_lib.models import Value
 
 if TYPE_CHECKING:
+    from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
         TicketTracker,
@@ -34,7 +35,7 @@ def transition(
     statuses: TicketStatuses,
     event: EventName,
     force: Force,
-) -> Result[StateName, TicketTrackerError]:
+) -> Result[StateName, TicketTrackerError | MissingFlowLabelsError]:
     edges = Edges.of_chart(chart)
     target = edges.target_of(event) if force.root else edges.target_from(store.read(), event)
     put = put_in_state(tracker, issue, wanted, statuses, target)
@@ -50,7 +51,7 @@ def put_in_state(
     wanted: FlowLabels,
     statuses: TicketStatuses,
     state: StateName,
-) -> Result[None, TicketTrackerError]:
+) -> Result[None, TicketTrackerError | MissingFlowLabelsError]:
     team = tracker.team_of(issue)
     if isinstance(team, Err):
         return team

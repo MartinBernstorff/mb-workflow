@@ -1,4 +1,3 @@
-import pytest
 from safe_result import Err
 
 from mb_workflow.b_core.a_features.create_ticket import create_ticket
@@ -97,8 +96,15 @@ def test_a_relation_to_an_unknown_issue_is_refused_before_the_ticket_is_created(
 
 
 def test_creating_a_ticket_before_the_flow_labels_exist_is_refused() -> None:
-    with pytest.raises(MissingFlowLabelsError):
-        _ = created(tracking(groups=LabelNames(())), TicketDraft.fake())
+    refused = create_ticket(
+        tracker=tracking(groups=LabelNames(())),
+        draft=TicketDraft.fake(),
+        defaults=TicketDefaults.fake(),
+        flow_labels=FlowLabels.fake(),
+        statuses=TicketStatuses.fake(),
+    )
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, MissingFlowLabelsError)
 
 
 def test_a_flow_label_passed_as_a_label_creates_no_ticket() -> None:

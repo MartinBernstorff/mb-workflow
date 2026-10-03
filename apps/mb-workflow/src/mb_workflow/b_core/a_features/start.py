@@ -40,7 +40,8 @@ from mb_workflow.d_lib.models import Model
 from mb_workflow.d_lib.saga import Saga, SagaStep
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
+    from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
+    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry, UnknownClaimLabelError
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
         TicketTracker,
@@ -173,7 +174,7 @@ class TicketStart:
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
         request: StartRequest,
-    ) -> Result[None, TicketTrackerError]:
+    ) -> Result[None, TicketTrackerError | UnknownClaimLabelError | MissingFlowLabelsError]:
         with Activity(f"Reading {request.ticket.root}").logged(logger):
             read = tracker.read_issue_detail(request.ticket)
         if isinstance(read, Err):

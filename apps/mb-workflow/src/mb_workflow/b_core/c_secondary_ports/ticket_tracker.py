@@ -117,15 +117,15 @@ class TicketTracker(Protocol):
 
 class LabelCheck:
     @staticmethod
-    def require_label(
-        tracker: TicketTracker, label: LabelName, missing: Exception
-    ) -> Result[None, TicketTrackerError]:
+    def require_label[E: Exception](
+        tracker: TicketTracker, label: LabelName, missing: E
+    ) -> Result[None, TicketTrackerError | E]:
         with Activity(f"Checking that label {label.root} exists").logged(logger):
             listed = tracker.workspace_labels()
         match listed:
             case Ok(known):
                 if known.matching(label) is None:
-                    raise missing
+                    return Err(missing)
                 return Ok(None)
             case Err() as failed:
                 return failed

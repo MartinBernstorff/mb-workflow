@@ -14,7 +14,7 @@ from mb_workflow.b_core.d_domain_model.workspace import DisplayName, WorktreeNam
 from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
+    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry, UnknownClaimLabelError
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
         TicketTracker,
@@ -73,7 +73,7 @@ class TicketLinking:
         claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
         request: LinkRequest,
-    ) -> Result[None, TicketTrackerError]:
+    ) -> Result[None, TicketTrackerError | UnknownClaimLabelError]:
         # Refuse before touching anything, so a refused link leaves no claim behind.
         read = tracker.read_issue_detail(request.ticket)
         if isinstance(read, Err):
