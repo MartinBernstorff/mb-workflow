@@ -13,3 +13,9 @@ def test_a_dry_run_cannot_watch() -> None:
     usage_error = 2
     result = CliRunner().invoke(app, ["workspace", "drain", "--dry-run", "--watch"])
     assert result.exit_code == usage_error
+
+
+def test_a_command_run_without_its_required_arguments_shows_help() -> None:
+    result = CliRunner().invoke(app, ["ticket", "view"])
+    assert "Missing argument" not in result.output
+    assert "Show this message and exit." in result.output
