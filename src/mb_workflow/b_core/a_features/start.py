@@ -2,14 +2,8 @@ import logging
 from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.b_domain_services.next_action import next_action
-from mb_workflow.b_core.c_secondary_ports.claims import (
-    ClaimRequest,
-    LabelledClaim,
-    claim_ticket,
-    label_claim_or_withdraw,
-    require_claim_label,
-)
-from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
+from mb_workflow.b_core.b_domain_services.take_ticket import take_ticket
+from mb_workflow.b_core.c_secondary_ports.claims import ClaimRequest
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
     set_display_name_or_warn,
@@ -96,41 +90,18 @@ def start_ticket(
     prompt = request.prompt_for(action_in(request.ticket, state))
 
     name = WorktreeName.of_issue(request.ticket)
-    holder = ClaimHolder(host=request.host, worktree=name)
-    require_claim_label(tracker, claim_settings.label)
-    claim_ticket(
-        claims,
-        ClaimRequest(
+    take_ticket(
+        claims=claims,
+        tracker=tracker,
+        workspace=workspace,
+        claim_settings=claim_settings,
+        request=ClaimRequest(
             ticket=request.ticket,
             status=detail.issue.status,
-            holder=holder,
+            holder=ClaimHolder(host=request.host, worktree=name),
             take_over=request.take_over,
         ),
     )
-    logger.info(
-        "Claimed %s for worktree %s on %s.",
-        request.ticket.root,
-        holder.worktree.root,
-        holder.host.root,
-    )
-    label_claim_or_withdraw(
-        claims,
-        tracker,
-        LabelledClaim(ticket=request.ticket, holder=holder, label=claim_settings.label),
-    )
-
-    # Assignment is a convenience, not the point of starting a ticket, so never fail the run over it.
-    try:
-        tracker.assign(request.ticket, workspace.assignee)
-    except TicketTrackerError as error:
-        logger.warning(
-            "Could not assign %s to %s: %s",
-            request.ticket.root,
-            workspace.assignee.root,
-            error,
-        )
-    else:
-        logger.info("Assigned %s to %s.", request.ticket.root, workspace.assignee.root)
 
     opened = manager.create_for_issue(
         workspace.orca_project,
