@@ -15,7 +15,7 @@ class FlowError(Exception):
     pass
 
 
-class UnknownStateError(ValueError):
+class UnknownStateError(FlowError, ValueError):
     pass
 
 
@@ -181,7 +181,7 @@ class AcceptedStates(Value[tuple[StateName, ...]]):
     def of_chart(chart: type[WorkflowChart]) -> AcceptedStates:
         return AcceptedStates(tuple(StateName(state.name) for state in chart.states))
 
-    def named(self, name: StateName) -> Result[StateName, UnknownStateError]:
+    def named_ignoring_case(self, name: StateName) -> Result[StateName, UnknownStateError]:
         wanted = name.root.casefold()
         for state in self.root:
             if state.root.casefold() == wanted:

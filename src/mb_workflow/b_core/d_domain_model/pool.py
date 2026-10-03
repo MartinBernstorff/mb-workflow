@@ -203,14 +203,14 @@ class PoolLimits(Model):
     def spell_as_the_chart(cls, states: dict[StateName, Limit]) -> dict[StateName, Limit]:
         chart = AcceptedStates.of_chart(WorkflowChart)
         spelled: dict[StateName, Limit] = {}
-        typed: dict[StateName, StateName] = {}
+        typed_as: dict[StateName, StateName] = {}
         for name, limit in states.items():
-            known = chart.named(name).unwrap()
-            if known in typed:
+            known = chart.named_ignoring_case(name).unwrap()
+            if known in typed_as:
                 raise ValueError(
-                    f"{typed[known].root}, {name.root} both limit {known.root}. Keep one of them."
+                    f"{typed_as[known].root}, {name.root} both limit {known.root}. Keep one of them."
                 )
-            typed[known] = name
+            typed_as[known] = name
             spelled[known] = limit
         return {**default_state_limits(), **spelled}
 

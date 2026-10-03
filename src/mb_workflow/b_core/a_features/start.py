@@ -92,7 +92,7 @@ class StartRequest(Model):
                 f"{self.ticket.root} carries no flow label, so it is not in the flow."
                 f" Pass --state with one of {listed}."
             )
-        return startable.named(self.state).unwrap()
+        return startable.named_ignoring_case(self.state).unwrap()
 
 
 class TicketStart:
