@@ -190,7 +190,11 @@ class Drain:
             Drain.require_limited_labels(tracker, pool.limits)
             Drain.require_skip_limits_label(tracker, pool.skip_limits_label)
             with Activity(f"Listing the tickets in view {pool.view.root}").logged(logger):
-                listed = tracker.unblocked_view_tickets(pool.view)
+                found = tracker.unblocked_view_tickets(pool.view)
+            resolved = found.with_flow_states_resolved(flow_labels)
+            if isinstance(resolved, Err):
+                return resolved
+            listed = resolved.value
             unready = tuple(
                 Unready.of(ticket, claim_settings.label, flow_labels)
                 for ticket in listed.root

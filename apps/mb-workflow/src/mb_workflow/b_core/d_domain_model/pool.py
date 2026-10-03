@@ -110,6 +110,13 @@ class PoolTickets(Value[tuple[PoolTicket, ...]]):
             tuple(ticket for ticket in self.root if ticket.ready(claim_label, flow_labels).root)
         )
 
+    # A ticket whose flow labels name no single state stops the pass, so it is never passed over unnoticed.
+    def with_flow_states_resolved(self, flow_labels: FlowLabels) -> Result[PoolTickets, FlowError]:
+        for ticket in self.root:
+            if isinstance(unresolved := ticket.flow_state(flow_labels), Err):
+                return unresolved
+        return Ok(self)
+
     def identifiers(self) -> tuple[IssueIdentifier, ...]:
         return tuple(ticket.issue.identifier for ticket in self.root)
 
