@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.a_features.unclaim import unclaim_ticket
-from mb_workflow.b_core.c_secondary_ports.claims import LabelledClaim, release_claim
+from mb_workflow.b_core.c_secondary_ports.claims import Claiming, LabelledClaim
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName
 from mb_workflow.b_core.d_domain_model.workspace import WorktreeName
@@ -62,7 +62,7 @@ def release_and_remove(
 ) -> None:
     if worktree.issue is not None:
         holder = ClaimHolder(host=host, worktree=WorktreeName.of_issue(worktree.issue))
-        release_claim(
+        Claiming.release_claim(
             claims,
             tracker,
             LabelledClaim(ticket=worktree.issue, holder=holder, label=claim_settings.label),

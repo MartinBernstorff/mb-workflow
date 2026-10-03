@@ -14,11 +14,11 @@ from linear_python_client import (
 from pydantic import AliasPath, Field
 
 from mb_workflow.b_core.c_secondary_ports.claims import (
+    Claiming,
     ClaimRefusedError,
     ClaimRegistry,
     ClaimRequest,
     FakeClaimRegistry,
-    claim_ticket,
 )
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
@@ -1237,9 +1237,9 @@ def test_of_two_racing_claimers_exactly_one_wins(
         update={"ticket": ticket, "status": tracker.read_issue(ticket).status}
     )
     second = first.model_copy(update={"holder": rival_of(first.holder)})
-    raced = RacedRegistry(claims, lambda: claim_ticket(claims, second))
+    raced = RacedRegistry(claims, lambda: Claiming.claim_ticket(claims, second))
     with pytest.raises(ClaimRefusedError, match="bob-mbp"):
-        claim_ticket(raced, first)
+        Claiming.claim_ticket(raced, first)
     assert holders(claims.claims(ticket)) == (second.holder,)
 
 

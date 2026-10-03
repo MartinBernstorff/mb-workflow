@@ -4,13 +4,7 @@ from typing import TYPE_CHECKING
 from mb_workflow.b_core.b_domain_services.flow_label_check import require_flow_labels
 from mb_workflow.b_core.b_domain_services.flow_transition import put_in_state
 from mb_workflow.b_core.b_domain_services.next_action import next_action
-from mb_workflow.b_core.c_secondary_ports.claims import (
-    ClaimRequest,
-    LabelledClaim,
-    claim_ticket,
-    label_claim_or_withdraw,
-    require_claim_label,
-)
+from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimRequest, LabelledClaim
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
@@ -121,7 +115,7 @@ def start_ticket(
     labelled_state = state_of(WorkflowChart, flow_labels, detail.issue.grouped)
     state = request.state_given(labelled_state)
     prompt = request.prompt_for(action_in(request.ticket, state))
-    require_claim_label(tracker, claim_settings.label)
+    Claiming.require_claim_label(tracker, claim_settings.label)
 
     # Put an unlabelled ticket in the flow before claiming it, so a failed write leaves no claim behind.
     status = detail.issue.status
@@ -133,7 +127,7 @@ def start_ticket(
 
     name = WorktreeName.of_issue(request.ticket)
     holder = ClaimHolder(host=request.host, worktree=name)
-    claim_ticket(
+    Claiming.claim_ticket(
         claims,
         ClaimRequest(
             ticket=request.ticket,
@@ -148,7 +142,7 @@ def start_ticket(
         holder.worktree.root,
         holder.host.root,
     )
-    label_claim_or_withdraw(
+    Claiming.label_claim_or_withdraw(
         claims,
         tracker,
         LabelledClaim(ticket=request.ticket, holder=holder, label=claim_settings.label),

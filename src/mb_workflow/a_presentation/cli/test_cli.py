@@ -1,7 +1,15 @@
-from mb_workflow.a_presentation.cli import flow_app
+from typer.testing import CliRunner
+
+from mb_workflow.a_presentation.cli import app, flow_app
 from mb_workflow.b_core.d_domain_model.flow import EventNames, WorkflowChart
 
 
 def test_a_command_exists_for_every_event_the_chart_holds() -> None:
     registered = {command.name for command in flow_app.registered_commands}
     assert {event.root for event in EventNames.of_chart(WorkflowChart).root} <= registered
+
+
+def test_a_dry_run_cannot_watch() -> None:
+    usage_error = 2
+    result = CliRunner().invoke(app, ["workspace", "drain", "--dry-run", "--watch"])
+    assert result.exit_code == usage_error
