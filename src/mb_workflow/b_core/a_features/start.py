@@ -1,8 +1,8 @@
 import logging
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.b_domain_services.next_action import next_action, state_with_work_left
-from mb_workflow.b_core.b_domain_services.take_ticket import take_ticket
+from mb_workflow.b_core.b_domain_services.next_action import TicketState, next_action
+from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRequest
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
@@ -82,11 +82,11 @@ def start_ticket(
     request: StartRequest,
 ) -> None:
     detail = tracker.read_issue_detail(request.ticket)
-    state = state_with_work_left(WorkflowChart, flow_labels, detail.issue)
+    state = TicketState.state_with_work_left(WorkflowChart, flow_labels, detail.issue)
     prompt = request.prompt_for(action_in(request.ticket, state))
 
     name = WorktreeName.of_issue(request.ticket)
-    take_ticket(
+    TicketTaking.take_ticket(
         claims=claims,
         tracker=tracker,
         workspace=workspace,

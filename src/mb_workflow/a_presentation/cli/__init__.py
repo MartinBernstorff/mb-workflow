@@ -152,8 +152,8 @@ def workspace_start(
     )
 
 
-@workspace_app.command("link")
-def workspace_link(
+@app.command("link")
+def link(
     *,
     ticket: str = typer.Argument(..., help="Ticket to link the current worktree to, e.g. MB-33."),
     force: bool = typer.Option(

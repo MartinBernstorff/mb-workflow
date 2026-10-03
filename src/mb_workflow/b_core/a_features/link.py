@@ -1,8 +1,8 @@
 import logging
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.b_domain_services.next_action import state_with_work_left
-from mb_workflow.b_core.b_domain_services.take_ticket import take_ticket
+from mb_workflow.b_core.b_domain_services.next_action import TicketState
+from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRequest
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import set_display_name_or_warn
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, TakeOver
@@ -39,56 +39,59 @@ class LinkRequest(Model):
             ticket=IssueIdentifier.fake(), host=HostName.fake(), take_over=TakeOver.fake()
         )
 
-
-# Does what start does for a worktree that already exists, minus typing the prompt.
-def link_ticket(
-    *,
-    manager: WorkspaceManager,
-    tracker: TicketTracker,
-    claims: ClaimRegistry,
-    board: WorkspaceStatusStore,
-    workspace: WorkspaceSettings,
-    claim_settings: ClaimSettings,
-    flow_labels: FlowLabels,
-    request: LinkRequest,
-) -> None:
-    # Refuse before touching anything, so a refused link leaves no claim behind.
-    detail = tracker.read_issue_detail(request.ticket)
-    state = state_with_work_left(WorkflowChart, flow_labels, detail.issue)
-    here = manager.current()
-    require_unlinked_or_forced(here, request)
-
-    # Named after the ticket, not the directory, as teardown and drain rebuild the holder that way.
-    take_ticket(
-        claims=claims,
-        tracker=tracker,
-        workspace=workspace,
-        claim_settings=claim_settings,
-        request=ClaimRequest(
-            ticket=request.ticket,
-            status=detail.issue.status,
-            holder=ClaimHolder(host=request.host, worktree=WorktreeName.of_issue(request.ticket)),
-            take_over=request.take_over,
-        ),
-    )
-
-    manager.set_linked_issue(here.path, request.ticket)
-    logger.info("Linked %s to %s.", here.path.root, request.ticket.root)
-    manager.set_status(here.path, board.status_for(state))
-    set_display_name_or_warn(manager, here.path, DisplayName.of_issue(detail.title))
-
-
-# The previous ticket's claim is left alone, as this worktree may not be the one holding it.
-def require_unlinked_or_forced(here: Worktree, request: LinkRequest) -> None:
-    if here.issue is None or here.issue == request.ticket:
-        return
-    if not request.take_over.root:
-        raise AlreadyLinkedError(
-            f"{here.path.root} is linked to {here.issue.root}. Pass --force to link it to"
-            f" {request.ticket.root} instead."
+    # The previous ticket's claim is left alone, as this worktree may not be the one holding it.
+    def require_unlinked_or_forced(self, here: Worktree) -> None:
+        if here.issue is None or here.issue == self.ticket:
+            return
+        if not self.take_over.root:
+            raise AlreadyLinkedError(
+                f"{here.path.root} is linked to {here.issue.root}. Pass --force to link it to"
+                f" {self.ticket.root} instead."
+            )
+        logger.warning(
+            "Replacing the link from %s to %s; its claim is left in place.",
+            here.issue.root,
+            self.ticket.root,
         )
-    logger.warning(
-        "Replacing the link from %s to %s; its claim is left in place.",
-        here.issue.root,
-        request.ticket.root,
-    )
+
+
+class TicketLinking:
+    # Does what start does for a worktree that already exists, minus typing the prompt.
+    @staticmethod
+    def link_ticket(
+        *,
+        manager: WorkspaceManager,
+        tracker: TicketTracker,
+        claims: ClaimRegistry,
+        board: WorkspaceStatusStore,
+        workspace: WorkspaceSettings,
+        claim_settings: ClaimSettings,
+        flow_labels: FlowLabels,
+        request: LinkRequest,
+    ) -> None:
+        # Refuse before touching anything, so a refused link leaves no claim behind.
+        detail = tracker.read_issue_detail(request.ticket)
+        state = TicketState.state_with_work_left(WorkflowChart, flow_labels, detail.issue)
+        here = manager.current()
+        request.require_unlinked_or_forced(here)
+
+        # Named after the ticket, not the directory, as teardown and drain rebuild the holder that way.
+        TicketTaking.take_ticket(
+            claims=claims,
+            tracker=tracker,
+            workspace=workspace,
+            claim_settings=claim_settings,
+            request=ClaimRequest(
+                ticket=request.ticket,
+                status=detail.issue.status,
+                holder=ClaimHolder(
+                    host=request.host, worktree=WorktreeName.of_issue(request.ticket)
+                ),
+                take_over=request.take_over,
+            ),
+        )
+
+        manager.set_linked_issue(here.path, request.ticket)
+        logger.info("Linked %s to %s.", here.path.root, request.ticket.root)
+        manager.set_status(here.path, board.status_for(state))
+        set_display_name_or_warn(manager, here.path, DisplayName.of_issue(detail.title))

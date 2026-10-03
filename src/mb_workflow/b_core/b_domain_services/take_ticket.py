@@ -17,38 +17,40 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Shared by every command that puts a ticket in a worktree: claim it, label the claim, assign it.
-def take_ticket(
-    *,
-    claims: ClaimRegistry,
-    tracker: TicketTracker,
-    workspace: WorkspaceSettings,
-    claim_settings: ClaimSettings,
-    request: ClaimRequest,
-) -> None:
-    require_claim_label(tracker, claim_settings.label)
-    claim_ticket(claims, request)
-    logger.info(
-        "Claimed %s for worktree %s on %s.",
-        request.ticket.root,
-        request.holder.worktree.root,
-        request.holder.host.root,
-    )
-    label_claim_or_withdraw(
-        claims,
-        tracker,
-        LabelledClaim(ticket=request.ticket, holder=request.holder, label=claim_settings.label),
-    )
-
-    # Assignment is a convenience, not the point of taking a ticket, so never fail the run over it.
-    try:
-        tracker.assign(request.ticket, workspace.assignee)
-    except TicketTrackerError as error:
-        logger.warning(
-            "Could not assign %s to %s: %s",
+class TicketTaking:
+    # Shared by every command that puts a ticket in a worktree: claim it, label the claim, assign it.
+    @staticmethod
+    def take_ticket(
+        *,
+        claims: ClaimRegistry,
+        tracker: TicketTracker,
+        workspace: WorkspaceSettings,
+        claim_settings: ClaimSettings,
+        request: ClaimRequest,
+    ) -> None:
+        require_claim_label(tracker, claim_settings.label)
+        claim_ticket(claims, request)
+        logger.info(
+            "Claimed %s for worktree %s on %s.",
             request.ticket.root,
-            workspace.assignee.root,
-            error,
+            request.holder.worktree.root,
+            request.holder.host.root,
         )
-    else:
-        logger.info("Assigned %s to %s.", request.ticket.root, workspace.assignee.root)
+        label_claim_or_withdraw(
+            claims,
+            tracker,
+            LabelledClaim(ticket=request.ticket, holder=request.holder, label=claim_settings.label),
+        )
+
+        # Assignment is a convenience, not the point of taking a ticket, so never fail the run over it.
+        try:
+            tracker.assign(request.ticket, workspace.assignee)
+        except TicketTrackerError as error:
+            logger.warning(
+                "Could not assign %s to %s: %s",
+                request.ticket.root,
+                workspace.assignee.root,
+                error,
+            )
+        else:
+            logger.info("Assigned %s to %s.", request.ticket.root, workspace.assignee.root)

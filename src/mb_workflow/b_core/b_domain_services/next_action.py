@@ -22,13 +22,17 @@ def next_action(chart: type[WorkflowChart], state: StateName) -> NextAction:
     raise FlowError(f"{state.root} is no state of the chart.")
 
 
-# Checked before a ticket is taken, so one outside the flow or with no work left is never claimed.
-def state_with_work_left(
-    chart: type[WorkflowChart], flow_labels: FlowLabels, issue: Issue
-) -> StateName:
-    state = state_of(chart, flow_labels, issue.grouped)
-    if state is None:
-        raise FlowError(f"{issue.identifier.root} carries no flow label, so it is not in the flow.")
-    if isinstance(next_action(chart, state), Finished):
-        raise FlowError(f"The ticket is {state.root}, so there is no work left in it.")
-    return state
+class TicketState:
+    # Checked before a ticket is taken, so one outside the flow or with no work left is never claimed.
+    @staticmethod
+    def state_with_work_left(
+        chart: type[WorkflowChart], flow_labels: FlowLabels, issue: Issue
+    ) -> StateName:
+        state = state_of(chart, flow_labels, issue.grouped)
+        if state is None:
+            raise FlowError(
+                f"{issue.identifier.root} carries no flow label, so it is not in the flow."
+            )
+        if isinstance(next_action(chart, state), Finished):
+            raise FlowError(f"The ticket is {state.root}, so there is no work left in it.")
+        return state

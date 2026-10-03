@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from mb_workflow.b_core.a_features.link import AlreadyLinkedError, LinkRequest, link_ticket
+from mb_workflow.b_core.a_features.link import AlreadyLinkedError, LinkRequest, TicketLinking
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRefusedError, FakeClaimRegistry
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracker, TrackedIssue
@@ -79,7 +79,7 @@ def linking(
     *,
     workspace: WorkspaceSettings | None = None,
 ) -> None:
-    link_ticket(
+    TicketLinking.link_ticket(
         manager=manager,
         tracker=tracker,
         claims=claims,

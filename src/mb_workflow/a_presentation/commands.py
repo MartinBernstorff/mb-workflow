@@ -22,7 +22,7 @@ from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
 from mb_workflow.b_core.a_features.init_config import Overwrite, init_config
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
-from mb_workflow.b_core.a_features.link import AlreadyLinkedError, LinkRequest, link_ticket
+from mb_workflow.b_core.a_features.link import AlreadyLinkedError, LinkRequest, TicketLinking
 from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt, create_workspaces
 from mb_workflow.b_core.a_features.seed_labels import seed_flow_labels
 from mb_workflow.b_core.a_features.show_config import show_config
@@ -248,7 +248,7 @@ def ticket_link(
     settings = resolved_configuration(directory, name).settings
     orca = Orca(here())
     key = linear_key()
-    link_ticket(
+    TicketLinking.link_ticket(
         manager=orca,
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),

@@ -35,8 +35,7 @@ class LabelRequest(Model):
 def issue_from_workspace(worktree: Worktree) -> IssueIdentifier:
     if worktree.issue is None:
         raise UnlinkedWorktreeError(
-            f"{worktree.path.root} has no linked Linear issue."
-            " Link one with `mw workspace link <ticket>`."
+            f"{worktree.path.root} has no linked Linear issue. Link one with `mw link <ticket>`."
         )
     return worktree.issue
 
