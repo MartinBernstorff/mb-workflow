@@ -1,6 +1,7 @@
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from safe_result import Err, Ok, Result
 from statemachine import Event, State, StateChart
 from statemachine.model import Model as ChartModel
 
@@ -11,6 +12,10 @@ if TYPE_CHECKING:
 
 
 class FlowError(Exception):
+    pass
+
+
+class UnknownStateError(FlowError, ValueError):
     pass
 
 
@@ -164,6 +169,25 @@ class StateNames(Value[frozenset[StateName]]):
         if initial is None:
             raise ValueError("The chart has no state to start in.")
         return StateName(initial.name)
+
+
+# The states a caller accepts, in chart order, so a typed name is spelled as the chart spells it.
+class AcceptedStates(Value[tuple[StateName, ...]]):
+    @staticmethod
+    def fake() -> AcceptedStates:
+        return AcceptedStates((StateName.fake(),))
+
+    @staticmethod
+    def of_chart(chart: type[WorkflowChart]) -> AcceptedStates:
+        return AcceptedStates(tuple(StateName(state.name) for state in chart.states))
+
+    def named_ignoring_case(self, name: StateName) -> Result[StateName, UnknownStateError]:
+        wanted = name.root.casefold()
+        for state in self.root:
+            if state.root.casefold() == wanted:
+                return Ok(state)
+        listed = ", ".join(state.root for state in self.root)
+        return Err(UnknownStateError(f"No flow state is named {name.root}. Use one of {listed}."))
 
 
 class EventNames(Value[tuple[EventName, ...]]):

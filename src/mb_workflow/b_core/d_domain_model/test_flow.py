@@ -1,7 +1,9 @@
 import pytest
+from safe_result import Err, Ok
 from statemachine.exceptions import TransitionNotAllowed
 
 from mb_workflow.b_core.d_domain_model.flow import (
+    AcceptedStates,
     Edge,
     Edges,
     EventName,
@@ -10,6 +12,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
     FlowStatus,
     StateName,
     StateNames,
+    UnknownStateError,
     WorkflowChart,
     WorkState,
 )
@@ -171,3 +174,19 @@ def test_the_events_legal_from_a_state_come_from_the_edges_at_hand() -> None:
     edges = Edges(frozenset({edge(GRILLING, EventName("abandon"), MERGED)}))
     with pytest.raises(FlowError, match=r"Legal: abandon\."):
         _ = edges.target_from(GRILLING, EventName("to-ticket"))
+
+
+@pytest.mark.parametrize("typed", ["specced", "SPECCED", "Specced"])
+def test_a_state_named_in_any_casing_is_spelled_as_the_chart(typed: str) -> None:
+    assert AcceptedStates.of_chart(WorkflowChart).named_ignoring_case(StateName(typed)) == Ok(
+        SPECCED
+    )
+
+
+def test_an_unknown_state_lists_only_the_accepted_states_in_chart_order() -> None:
+    unknown = StateName("foo")
+    refusal = f"No flow state is named {unknown.root}. Use one of Speccing, Grilling."
+    looked_up = AcceptedStates((SPECCING, GRILLING)).named_ignoring_case(unknown)
+    assert isinstance(looked_up, Err)
+    assert isinstance(looked_up.error, UnknownStateError)
+    assert str(looked_up.error) == refusal

@@ -15,7 +15,7 @@ from mb_workflow.b_core.a_features.drain_watch import WatchRequest
 from mb_workflow.b_core.a_features.init_config import Overwrite
 from mb_workflow.b_core.a_features.link import LinkRequest
 from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt
-from mb_workflow.b_core.a_features.start import StartRequest
+from mb_workflow.b_core.a_features.start import StartRequest, TicketStart
 from mb_workflow.b_core.a_features.teardown import TeardownRequest
 from mb_workflow.b_core.b_domain_services.flow_report import AsJson
 from mb_workflow.b_core.b_domain_services.flow_transition import Force
@@ -136,7 +136,11 @@ def workspace_start(
         False, "--force", help="Take the claim over from whoever holds the ticket."
     ),
     state: str | None = typer.Option(
-        None, "--state", help="Flow state to put a ticket without a flow label in."
+        None,
+        "--state",
+        help="Flow state to put a ticket without a flow label in, ignoring case: "
+        + ", ".join(state.root for state in TicketStart.startable_states().root)
+        + ".",
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:

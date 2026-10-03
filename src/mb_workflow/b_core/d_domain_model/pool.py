@@ -3,6 +3,7 @@ from enum import IntEnum
 from pydantic import Field, JsonValue, NonNegativeInt, field_validator, model_validator
 
 from mb_workflow.b_core.d_domain_model.flow import (
+    AcceptedStates,
     Skill,
     StateName,
     StateNames,
@@ -174,18 +175,6 @@ def default_state_limits() -> dict[StateName, Limit]:
     return {StateName("Grilling"): Limit(1)}
 
 
-def chart_state_named(name: StateName) -> StateName | None:
-    wanted = name.root.casefold()
-    return next(
-        (
-            state
-            for state in StateNames.of_chart(WorkflowChart).root
-            if state.root.casefold() == wanted
-        ),
-        None,
-    )
-
-
 class PoolLimits(Model):
     total: Limit = Limit(4)
     states: dict[StateName, Limit] = Field(default_factory=default_state_limits)
@@ -195,39 +184,34 @@ class PoolLimits(Model):
     def fake() -> PoolLimits:
         return PoolLimits()
 
-    # State limits in [pool.limits.states] only override the defaults.
     @model_validator(mode="before")
     @classmethod
-    def join_default_state_limits(cls, data: JsonValue) -> JsonValue:
+    def refuse_stray_limits(cls, data: JsonValue) -> JsonValue:
         if not isinstance(data, dict):
             return data
         stray = [key for key in data if key not in cls.model_fields]
         if stray:
             raise ValueError(
-                f"{', '.join(stray)} is no pool limit. State limits sit under"
+                f"{', '.join(stray)} is no pool limit (allowed are {', '.join(cls.model_fields)}). State limits sit under"
                 " [pool.limits.states], label limits under [pool.limits.labels]."
             )
-        states = data.get("states", {})
-        if not isinstance(states, dict):
-            return data
-        defaults: dict[str, JsonValue] = {
-            name.root: limit.root for name, limit in default_state_limits().items()
-        }
-        return {**data, "states": {**defaults, **states}}
+        return data
 
     @field_validator("states")
     @classmethod
     def spell_as_the_chart(cls, states: dict[StateName, Limit]) -> dict[StateName, Limit]:
+        chart = AcceptedStates.of_chart(WorkflowChart)
         spelled: dict[StateName, Limit] = {}
+        typed_as: dict[StateName, StateName] = {}
         for name, limit in states.items():
-            known = chart_state_named(name)
-            if known is None:
-                listed = ", ".join(
-                    sorted(state.root for state in StateNames.of_chart(WorkflowChart).root)
+            known = chart.named_ignoring_case(name).unwrap()
+            if known in typed_as:
+                raise ValueError(
+                    f"{typed_as[known].root}, {name.root} both limit {known.root}. Keep one of them."
                 )
-                raise ValueError(f"{name.root} is not a state in the chart. Limit one of {listed}.")
+            typed_as[known] = name
             spelled[known] = limit
-        return spelled
+        return {**default_state_limits(), **spelled}
 
     def limited_labels(self) -> LabelNames:
         return LabelNames(tuple(self.labels))
