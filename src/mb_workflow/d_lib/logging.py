@@ -17,7 +17,6 @@ class LogLevel(RootModel[int]):
         return LogLevel(logging.INFO)
 
     def configure(self) -> None:
-        # Each line starts with the time of day, so a long run shows when each step happened.
         logging.basicConfig(level=self.root, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
         for name in ("httpx", "httpcore"):
             logging.getLogger(name).setLevel(logging.WARNING)
