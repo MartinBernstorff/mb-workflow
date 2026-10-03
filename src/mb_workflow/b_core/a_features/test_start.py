@@ -28,6 +28,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
     FlowError,
     StateName,
     StateNames,
+    UnknownStateError,
     WorkflowChart,
 )
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
@@ -232,6 +233,15 @@ def test_a_ticket_without_a_flow_label_started_in_a_state_gets_its_label_and_sta
     assert manager.typed_texts() == (TerminalText("/implement E-4289"),)
 
 
+def test_a_state_typed_in_lowercase_puts_the_ticket_in_the_chart_state() -> None:
+    tracker = tracking(None)
+    specced = StateName("Specced")
+    starting(fake_manager(), tracker, starting_in(StateName("specced")))
+    issue = tracker.read_issue(IssueIdentifier.fake())
+    assert issue.labels.has(LabelName(specced.root)).root
+    assert issue.status == TicketStatuses.fake().of(specced)
+
+
 def test_a_ticket_with_a_flow_label_started_in_a_state_is_not_claimed() -> None:
     manager = fake_manager()
     tracker = tracking(StateName("Grilling"))
@@ -246,9 +256,9 @@ def test_a_ticket_with_a_flow_label_started_in_a_state_is_not_claimed() -> None:
 def test_a_ticket_started_in_a_state_with_no_work_is_not_claimed() -> None:
     tracker = tracking(None)
     claims = FakeClaimRegistry()
-    merged = StateName("Merged")
-    with pytest.raises(FlowError, match=merged.root):
-        starting(fake_manager(), tracker, starting_in(merged), claims)
+    refusal = r"No flow state is named merged\. Use one of Grilling, .*, Merging\.$"
+    with pytest.raises(UnknownStateError, match=refusal):
+        starting(fake_manager(), tracker, starting_in(StateName("merged")), claims)
     assert tracker.read_issue(IssueIdentifier.fake()).labels == labelled(None)
     assert claims.claims(IssueIdentifier.fake()) == Claims(())
 

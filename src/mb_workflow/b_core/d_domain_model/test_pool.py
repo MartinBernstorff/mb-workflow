@@ -96,9 +96,20 @@ def test_a_state_limit_beside_the_total_points_to_the_states_table() -> None:
         _ = PoolLimits.model_validate({"total": 6, "QA": 2})
 
 
-def test_a_state_outside_the_chart_is_refused() -> None:
-    with pytest.raises(ValueError, match="Todo"):
+def test_a_state_limit_in_lowercase_is_spelled_as_the_chart() -> None:
+    assert StateName("QA") in PoolLimits.model_validate({"states": {"qa": 2}}).states
+
+
+def test_a_state_outside_the_chart_is_refused_listing_the_chart_states() -> None:
+    with pytest.raises(
+        ValueError, match=r"No flow state is named Todo\. Use one of Grilling, Speccing,"
+    ):
         _ = PoolLimits.model_validate({"states": {"Todo": 1}})
+
+
+def test_a_state_limited_twice_in_different_casings_is_refused() -> None:
+    with pytest.raises(ValueError, match="Specced, specced"):
+        _ = PoolLimits.model_validate({"states": {"Specced": 1, "specced": 2}})
 
 
 def test_label_limits_default_to_none() -> None:

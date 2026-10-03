@@ -11,6 +11,7 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
 )
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, TakeOver
 from mb_workflow.b_core.d_domain_model.flow import (
+    AcceptedStates,
     AwaitingHuman,
     Finished,
     FlowError,
@@ -85,17 +86,13 @@ class StartRequest(Model):
                 )
             return labelled_state
         startable = TicketStart.startable_states()
-        listed = ", ".join(state.root for state in startable)
         if self.state is None:
+            listed = ", ".join(state.root for state in startable.root)
             raise FlowError(
                 f"{self.ticket.root} carries no flow label, so it is not in the flow."
                 f" Pass --state with one of {listed}."
             )
-        if self.state not in startable:
-            raise FlowError(
-                f"Cannot start a ticket in {self.state.root}. Pass --state with one of {listed}."
-            )
-        return self.state
+        return startable.named(self.state).unwrap()
 
 
 class TicketStart:
@@ -159,10 +156,13 @@ class TicketStart:
             TicketStart.send_prompt(manager, opened, prompt, request.idle_timeout, request.submit)
 
     @staticmethod
-    def startable_states() -> tuple[StateName, ...]:
-        named = (StateName(state.name) for state in WorkflowChart.states)
-        return tuple(
-            state for state in named if not isinstance(next_action(WorkflowChart, state), Finished)
+    def startable_states() -> AcceptedStates:
+        return AcceptedStates(
+            tuple(
+                state
+                for state in AcceptedStates.of_chart(WorkflowChart).root
+                if not isinstance(next_action(WorkflowChart, state), Finished)
+            )
         )
 
     @staticmethod
