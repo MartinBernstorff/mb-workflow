@@ -71,7 +71,9 @@ class TicketEdit(Model):
             raise TicketEditError("Specify only one of --body and --body-file.")
         if self.milestone is not None and self.remove_milestone.root:
             raise TicketEditError("Specify only one of --milestone and --remove-milestone.")
-        refusal = flow_labels.refusal(LabelNames((*self.add_labels.root, *self.remove_labels.root)))
+        refusal = flow_labels.label_option_refusal(
+            LabelNames((*self.add_labels.root, *self.remove_labels.root))
+        )
         if refusal is not None:
             raise TicketEditError(refusal.root)
         return self

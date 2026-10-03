@@ -98,5 +98,6 @@ def test_the_blocking_relations_carry_over() -> None:
 
 def test_a_flow_label_among_the_labels_is_refused() -> None:
     draft = TicketDraft.fake().model_copy(update={"labels": LabelNames((LabelName("specced"),))})
-    with pytest.raises(TicketDraftError, match="--state"):
+    state_option = "--state"
+    with pytest.raises(TicketDraftError, match=state_option):
         _ = drafted(draft)

@@ -175,5 +175,6 @@ def test_a_status_is_passed_on() -> None:
 @pytest.mark.parametrize("option", ["add_labels", "remove_labels"])
 def test_a_flow_label_in_a_label_option_is_refused(option: str) -> None:
     edit = TicketEdit.nothing().model_copy(update={option: LabelNames((LabelName("specced"),))})
-    with pytest.raises(TicketEditError, match="--state"):
+    state_option = "--state"
+    with pytest.raises(TicketEditError, match=state_option):
         _ = edit.checked(FlowLabels.fake())

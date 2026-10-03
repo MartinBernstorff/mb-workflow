@@ -66,7 +66,7 @@ class FlowLabels(Model):
         return held.unmatched(self.labels)
 
     # A flow label set by hand would disagree with the status, so the state is moved with --state instead.
-    def refusal(self, requested: LabelNames) -> FlowLabelRefusal | None:
+    def label_option_refusal(self, requested: LabelNames) -> FlowLabelRefusal | None:
         passed = self.labels.spelled(requested)
         if not passed.root:
             return None
