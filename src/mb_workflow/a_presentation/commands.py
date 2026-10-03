@@ -6,12 +6,7 @@ from typing import TYPE_CHECKING, override
 
 from mb_workflow.a_presentation.autolabel_report import log_outcome
 from mb_workflow.a_presentation.console import ExitCode, Output, write
-from mb_workflow.a_presentation.drain_report import (
-    LoggingDrainNarrator,
-    log_drain_outcome,
-    log_pass,
-    pick_listing,
-)
+from mb_workflow.a_presentation.drain_report import DrainReport, LoggingDrainNarrator
 from mb_workflow.a_presentation.review_workspaces_report import (
     LoggingNarrator,
     log_review_workspaces_outcome,
@@ -22,12 +17,12 @@ from mb_workflow.b_core.a_features.autolabel import (
     label_eligible_issues,
 )
 from mb_workflow.b_core.a_features.create_ticket import create_ticket
-from mb_workflow.b_core.a_features.drain import DrainRequest, drain_pool
+from mb_workflow.b_core.a_features.drain import Drain, DrainRequest
 from mb_workflow.b_core.a_features.drain_watch import (
     DrainSettings,
     DrainSettingsSource,
+    DrainWatch,
     WatchRequest,
-    watch_pool,
 )
 from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
@@ -260,7 +255,7 @@ def drain(
     pool = settings.required_pool()
     orca = Orca(here())
     key = linear_key()
-    outcome = drain_pool(
+    outcome = Drain.drain_pool(
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
         manager=orca,
@@ -274,11 +269,11 @@ def drain(
         pool=pool,
         request=request,
     )
-    log_pass(outcome)
+    DrainReport.log_pass(outcome)
     if request.dry_run.root:
-        write(pick_listing(outcome.picked, flow_labels_of_chart()))
+        write(DrainReport.pick_listing(outcome.picked, flow_labels_of_chart()))
     else:
-        log_drain_outcome(outcome)
+        DrainReport.log_drain_outcome(outcome)
     return ExitCode(0)
 
 
@@ -291,7 +286,10 @@ class ConfiguredDrainSettings(DrainSettingsSource):
     def current(self) -> DrainSettings:
         settings = resolved_configuration(self._directory, self._name).settings
         return DrainSettings(
-            workspace=settings.workspace, claims=settings.claims, pool=settings.required_pool()
+            workspace=settings.workspace,
+            claims=settings.claims,
+            pool=settings.required_pool(),
+            statuses=settings.ticket_statuses,
         )
 
 
@@ -302,7 +300,7 @@ def drain_watch(
     orca = Orca(here())
     key = linear_key()
     with SignalStop.installed(PollSeconds(0.2)) as stop:
-        watch_pool(
+        DrainWatch.watch_pool(
             tracker=Linear.connected(key),
             claims=LinearClaims.connected(key),
             manager=orca,

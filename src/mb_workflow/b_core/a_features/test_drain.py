@@ -6,10 +6,10 @@ import pytest
 from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
 from mb_workflow.b_core.a_features.drain import (
     Changed,
+    Drain,
     DrainOutcome,
     DrainRequest,
     UnreadyReason,
-    drain_pool,
 )
 from mb_workflow.b_core.c_secondary_ports.claims import (
     FakeClaimRegistry,
@@ -216,7 +216,7 @@ def draining(
     pool: PoolSettings | None = None,
     request: DrainRequest | None = None,
 ) -> DrainOutcome:
-    return drain_pool(
+    return Drain.drain_pool(
         tracker=tracker,
         claims=claims or FakeClaimRegistry(),
         manager=manager or fake_manager(),

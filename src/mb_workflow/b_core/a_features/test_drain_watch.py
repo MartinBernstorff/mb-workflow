@@ -8,8 +8,8 @@ from mb_workflow.b_core.a_features.drain_watch import (
     DrainNarrator,
     DrainSettings,
     DrainSettingsSource,
+    DrainWatch,
     WatchRequest,
-    watch_pool,
 )
 from mb_workflow.b_core.a_features.test_drain import (
     fake_board,
@@ -102,7 +102,7 @@ def watching(
     settings: DrainSettingsSource | None = None,
     narrator: RecordingNarrator | None = None,
 ) -> None:
-    watch_pool(
+    DrainWatch.watch_pool(
         tracker=tracker,
         claims=FakeClaimRegistry(),
         manager=manager or fake_manager(),
