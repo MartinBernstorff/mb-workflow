@@ -103,33 +103,35 @@ def run_review_workspaces(
     claims: FakeClaimRegistry | None = None,
     prompt: ReviewPrompt | None = None,
 ) -> Outcome:
-    return attempting_review_workspaces(
+    return ReviewWorkspacesRuns.attempted(
         review, manager, status=status, claims=claims, prompt=prompt
     ).unwrap()
 
 
-def attempting_review_workspaces(
-    review: CodeForge,
-    manager: FakeWorkspaceManager,
-    lock: FakeRunLock | None = None,
-    *,
-    status: WorkspaceStatus = WorkspaceStatus.fake(),
-    claims: FakeClaimRegistry | None = None,
-    prompt: ReviewPrompt | None = None,
-) -> Result[Outcome, AlreadyRunningError]:
-    return create_workspaces(
-        review=review,
-        manager=manager,
-        claims=FakeClaimRegistry() if claims is None else claims,
-        tracker=FakeTicketTracker(LabelNames.fake(), (TrackedIssue.fake(),)),
-        claim_settings=ClaimSettings(),
-        host=HostName.fake(),
-        lock=FakeRunLock() if lock is None else lock,
-        narrator=SilentNarrator(),
-        status=status,
-        since=MergedSince.fake(),
-        prompt=prompt,
-    )
+class ReviewWorkspacesRuns:
+    @staticmethod
+    def attempted(
+        review: CodeForge,
+        manager: FakeWorkspaceManager,
+        lock: FakeRunLock | None = None,
+        *,
+        status: WorkspaceStatus = WorkspaceStatus.fake(),
+        claims: FakeClaimRegistry | None = None,
+        prompt: ReviewPrompt | None = None,
+    ) -> Result[Outcome, AlreadyRunningError]:
+        return create_workspaces(
+            review=review,
+            manager=manager,
+            claims=FakeClaimRegistry() if claims is None else claims,
+            tracker=FakeTicketTracker(LabelNames.fake(), (TrackedIssue.fake(),)),
+            claim_settings=ClaimSettings(),
+            host=HostName.fake(),
+            lock=FakeRunLock() if lock is None else lock,
+            narrator=SilentNarrator(),
+            status=status,
+            since=MergedSince.fake(),
+            prompt=prompt,
+        )
 
 
 def test_creates_a_workspace_for_a_pr_awaiting_review(here: WorktreePath) -> None:
@@ -250,8 +252,8 @@ def test_a_workspace_that_cannot_be_created_is_reported_as_failed(here: Worktree
 def test_a_run_is_refused_while_another_holds_the_lock(here: WorktreePath) -> None:
     lock = FakeRunLock()
     manager = standing_in(here)
-    with lock.held():
-        refused = attempting_review_workspaces(FakeCodeReview(PullRequests.fake()), manager, lock)
+    with lock.acquire().unwrap():
+        refused = ReviewWorkspacesRuns.attempted(FakeCodeReview(PullRequests.fake()), manager, lock)
     assert isinstance(refused.error, AlreadyRunningError)
     assert len(manager.worktrees().root) == 1
 

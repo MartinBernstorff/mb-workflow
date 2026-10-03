@@ -13,6 +13,7 @@ from mb_workflow.d_lib.models import Value
 
 if TYPE_CHECKING:
     from collections.abc import Generator
+    from contextlib import AbstractContextManager
 
     from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
 
@@ -46,22 +47,27 @@ class FlockRunLock(RunLock):
         self._path = path
 
     @override
-    @contextmanager
-    def held(self) -> Generator[Result[None, AlreadyRunningError]]:
+    def acquire(self) -> Result[AbstractContextManager[None], AlreadyRunningError]:
         path = self._path.root
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w") as handle:
-            if FlockRunLock.acquire_exclusive(handle).is_err():
-                yield Err(AlreadyRunningError(f"another run holds {path}"))
-                return
-            logger.debug("Holding %s", path)
-            try:
-                yield Ok(None)
-            finally:
-                fcntl.flock(handle, fcntl.LOCK_UN)
-                logger.debug("Released %s", path)
+        handle = path.open("w")
+        if FlockRunLock.acquire_exclusive(handle).is_err():
+            handle.close()
+            return Err(AlreadyRunningError(f"another run holds {path}"))
+        logger.debug("Holding %s", path)
+        return Ok(FlockRunLock.released_on_exit(handle, self._path))
 
     @staticmethod
     @safe_with(BlockingIOError)
     def acquire_exclusive(handle: TextIO) -> None:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    @staticmethod
+    @contextmanager
+    def released_on_exit(handle: TextIO, path: LockPath) -> Generator[None]:
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+            handle.close()
+            logger.debug("Released %s", path.root)

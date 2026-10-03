@@ -12,9 +12,9 @@ class AlreadyRunningError(Exception):
     pass
 
 
-# Yields Err when another run holds the lock; the body then runs without holding it.
+# Acquiring returns the held lock to enter, so a run cannot reach its body without the lock.
 class RunLock(Protocol):
-    def held(self) -> AbstractContextManager[Result[None, AlreadyRunningError]]: ...
+    def acquire(self) -> Result[AbstractContextManager[None], AlreadyRunningError]: ...
 
 
 class FakeRunLock(RunLock):
@@ -22,13 +22,15 @@ class FakeRunLock(RunLock):
         self._held = False
 
     @override
-    @contextmanager
-    def held(self) -> Generator[Result[None, AlreadyRunningError]]:
+    def acquire(self) -> Result[AbstractContextManager[None], AlreadyRunningError]:
         if self._held:
-            yield Err(AlreadyRunningError("another run holds the lock"))
-            return
+            return Err(AlreadyRunningError("another run holds the lock"))
         self._held = True
+        return Ok(self._released_on_exit())
+
+    @contextmanager
+    def _released_on_exit(self) -> Generator[None]:
         try:
-            yield Ok(None)
+            yield
         finally:
             self._held = False

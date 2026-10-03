@@ -219,34 +219,36 @@ def draining(
     pool: PoolSettings | None = None,
     request: DrainRequest | None = None,
 ) -> DrainOutcome:
-    return attempting_drain(
+    return DrainRuns.attempted(
         tracker, manager=manager, claims=claims, pool=pool, request=request
     ).unwrap()
 
 
-def attempting_drain(
-    tracker: FakeTicketTracker,
-    *,
-    manager: FakeWorkspaceManager | None = None,
-    claims: FakeClaimRegistry | None = None,
-    lock: FakeRunLock | None = None,
-    pool: PoolSettings | None = None,
-    request: DrainRequest | None = None,
-) -> Result[DrainOutcome, AlreadyRunningError]:
-    return Drain.drain_pool(
-        tracker=tracker,
-        claims=claims or FakeClaimRegistry(),
-        manager=manager or fake_manager(),
-        board=fake_board(),
-        lock=lock or FakeRunLock(),
-        tie_break=ReversingTieBreak(),
-        workspace=WorkspaceSettings.fake(),
-        claim_settings=ClaimSettings(label=LabelName("claimed")),
-        flow_labels=FlowLabels.fake(),
-        statuses=TicketStatuses.fake(),
-        pool=pool or PoolSettings.fake(),
-        request=request or DrainRequest.fake(),
-    )
+class DrainRuns:
+    @staticmethod
+    def attempted(
+        tracker: FakeTicketTracker,
+        *,
+        manager: FakeWorkspaceManager | None = None,
+        claims: FakeClaimRegistry | None = None,
+        lock: FakeRunLock | None = None,
+        pool: PoolSettings | None = None,
+        request: DrainRequest | None = None,
+    ) -> Result[DrainOutcome, AlreadyRunningError]:
+        return Drain.drain_pool(
+            tracker=tracker,
+            claims=claims or FakeClaimRegistry(),
+            manager=manager or fake_manager(),
+            board=fake_board(),
+            lock=lock or FakeRunLock(),
+            tie_break=ReversingTieBreak(),
+            workspace=WorkspaceSettings.fake(),
+            claim_settings=ClaimSettings(label=LabelName("claimed")),
+            flow_labels=FlowLabels.fake(),
+            statuses=TicketStatuses.fake(),
+            pool=pool or PoolSettings.fake(),
+            request=request or DrainRequest.fake(),
+        )
 
 
 def test_starts_the_top_ready_ticket_and_submits_its_prompt() -> None:
@@ -466,8 +468,8 @@ def test_a_pool_with_no_ready_ticket_starts_nothing() -> None:
 def test_a_pass_is_refused_while_another_holds_the_lock() -> None:
     lock = FakeRunLock()
     claims = FakeClaimRegistry()
-    with lock.held():
-        refused = attempting_drain(standard_pool(), claims=claims, lock=lock)
+    with lock.acquire().unwrap():
+        refused = DrainRuns.attempted(standard_pool(), claims=claims, lock=lock)
     assert isinstance(refused.error, AlreadyRunningError)
     assert holders(claims, IssueIdentifier("MB-2")) == ()
 

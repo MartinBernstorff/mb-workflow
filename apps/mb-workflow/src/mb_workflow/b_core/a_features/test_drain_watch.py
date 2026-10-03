@@ -163,7 +163,7 @@ def test_a_pass_skips_while_another_drain_holds_the_lock(
     passes = WaitCount(2)
     stop = FakeStopSignal(passes)
     skipped = "Skipped this pass"
-    with caplog.at_level(logging.INFO), lock.held():
+    with caplog.at_level(logging.INFO), lock.acquire().unwrap():
         watching(standard_pool(), stop, manager=manager, lock=lock)
     assert opened_issues(manager) == ()
     assert stop.waits() == passes

@@ -181,9 +181,9 @@ class Drain:
         pool: PoolSettings,
         request: DrainRequest,
     ) -> Result[DrainOutcome, AlreadyRunningError]:
-        with lock.held() as acquired:
-            match acquired:
-                case Ok():
+        match lock.acquire():
+            case Ok(held):
+                with held:
                     return Ok(
                         Drain.drain_holding_lock(
                             tracker=tracker,
@@ -199,8 +199,8 @@ class Drain:
                             request=request,
                         )
                     )
-                case Err() as refused:
-                    return refused
+            case Err() as refused:
+                return refused
 
     @staticmethod
     def drain_holding_lock(

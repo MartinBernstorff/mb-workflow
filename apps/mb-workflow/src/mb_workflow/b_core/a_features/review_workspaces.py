@@ -142,9 +142,9 @@ def create_workspaces(
     since: MergedSince,
     prompt: ReviewPrompt | None,
 ) -> Result[Outcome, AlreadyRunningError]:
-    with lock.held() as acquired:
-        match acquired:
-            case Ok():
+    match lock.acquire():
+        case Ok(held):
+            with held:
                 return Ok(
                     reconcile_workspaces(
                         review=review,
@@ -159,8 +159,8 @@ def create_workspaces(
                         prompt=prompt,
                     )
                 )
-            case Err() as refused:
-                return refused
+        case Err() as refused:
+            return refused
 
 
 def reconcile_workspaces(
