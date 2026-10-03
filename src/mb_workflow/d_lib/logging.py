@@ -17,7 +17,7 @@ class LogLevel(RootModel[int]):
         return LogLevel(logging.INFO)
 
     def configure(self) -> None:
-        logging.basicConfig(level=self.root, format="%(message)s")
+        logging.basicConfig(level=self.root, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
         for name in ("httpx", "httpcore"):
             logging.getLogger(name).setLevel(logging.WARNING)
 
