@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.c_secondary_ports.claims import withdraw_claims
+from mb_workflow.b_core.c_secondary_ports.claims import Claiming
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
@@ -21,7 +21,7 @@ def unclaim_ticket(
 ) -> None:
     held = registry.claims(ticket)
     if held.root:
-        withdraw_claims(registry, ticket, held)
+        Claiming.withdraw_claims(registry, ticket, held)
     else:
         logger.info("%s has no claim.", ticket.root)
     tracker.remove_label(ticket, claim_settings.label)

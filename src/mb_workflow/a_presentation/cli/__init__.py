@@ -11,6 +11,7 @@ from mb_workflow.a_presentation.cli.ticket import ticket_app
 from mb_workflow.a_presentation.diagram import DiagramPath, diagram
 from mb_workflow.b_core.a_features.autolabel import DryRun
 from mb_workflow.b_core.a_features.drain import DrainRequest
+from mb_workflow.b_core.a_features.drain_watch import WatchRequest
 from mb_workflow.b_core.a_features.init_config import Overwrite
 from mb_workflow.b_core.a_features.link import LinkRequest
 from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt
@@ -19,9 +20,9 @@ from mb_workflow.b_core.a_features.teardown import TeardownRequest
 from mb_workflow.b_core.b_domain_services.flow_report import AsJson
 from mb_workflow.b_core.b_domain_services.flow_transition import Force
 from mb_workflow.b_core.d_domain_model.claim import HostName, TakeOver
-from mb_workflow.b_core.d_domain_model.clock import Today
+from mb_workflow.b_core.d_domain_model.clock import IntervalSeconds, Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
-from mb_workflow.b_core.d_domain_model.flow import EventName
+from mb_workflow.b_core.d_domain_model.flow import EventName, StateName
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.pull_request import (
     Lookback,
@@ -134,6 +135,9 @@ def workspace_start(
     force: bool = typer.Option(
         False, "--force", help="Take the claim over from whoever holds the ticket."
     ),
+    state: str | None = typer.Option(
+        None, "--state", help="Flow state to put a ticket without a flow label in."
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
@@ -144,6 +148,7 @@ def workspace_start(
         host=HostName.of_machine(),
         take_over=TakeOver(force),
         activate=Activate(True),
+        state=None if state is None else StateName(state),
     )
     raise typer.Exit(
         code=commands.ticket_start(
@@ -187,15 +192,32 @@ def workspace_drain(
     lock: str = typer.Option(
         "drain", "--lock", help="Name of the lock that keeps passes from overlapping."
     ),
+    watch: bool = typer.Option(
+        False, "--watch", help="Repeat passes until Ctrl-C, re-reading the config each pass."
+    ),
+    interval_seconds: int = typer.Option(
+        30, "--interval-seconds", min=0, help="Seconds to wait after each --watch pass ends."
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Start ready tickets in pick order until a pool limit is reached. Tickets labelled skip-limits ignore the limits."""
+    if dry_run and watch:
+        raise typer.BadParameter("--dry-run cannot be combined with --watch.")
     configure(LogLevel(logging.WARNING if quiet else logging.INFO))
     request = DrainRequest(
         dry_run=DryRun(dry_run),
         idle_timeout=TimeoutMs(idle_timeout_ms),
         host=HostName.of_machine(),
     )
+    if watch:
+        raise typer.Exit(
+            code=commands.drain_watch(
+                WatchRequest(drain=request, interval=IntervalSeconds(interval_seconds)),
+                LockName(lock),
+                WorkingDirectory(Path.cwd()),
+                ConfigFileName.default(),
+            ).root
+        )
     raise typer.Exit(
         code=commands.drain(
             request, LockName(lock), WorkingDirectory(Path.cwd()), ConfigFileName.default()

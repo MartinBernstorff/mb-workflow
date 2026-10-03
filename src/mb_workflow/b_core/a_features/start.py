@@ -1,9 +1,11 @@
 import logging
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.b_domain_services.next_action import TicketState, next_action
+from mb_workflow.b_core.b_domain_services.flow_label_check import require_flow_labels
+from mb_workflow.b_core.b_domain_services.flow_transition import put_in_state
+from mb_workflow.b_core.b_domain_services.next_action import next_action
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
-from mb_workflow.b_core.c_secondary_ports.claims import ClaimRequest
+from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimRequest
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
     set_display_name_or_warn,
@@ -14,8 +16,10 @@ from mb_workflow.b_core.d_domain_model.flow import (
     Finished,
     FlowError,
     Skill,
+    StateName,
     WorkflowChart,
 )
+from mb_workflow.b_core.d_domain_model.flow_labels import state_of
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.workspace import (
     Activate,
@@ -34,8 +38,8 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
-    from mb_workflow.b_core.d_domain_model.flow import StateName
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
+    from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
     from mb_workflow.b_core.d_domain_model.workspace import OpenedWorktree
 
 logger = logging.getLogger(__name__)
@@ -52,6 +56,8 @@ class StartRequest(Model):
     host: HostName
     take_over: TakeOver
     activate: Activate
+    # The state to put a ticket without a flow label in; None leaves the flow label to decide.
+    state: StateName | None
 
     @staticmethod
     def fake() -> StartRequest:
@@ -62,12 +68,34 @@ class StartRequest(Model):
             host=HostName.fake(),
             take_over=TakeOver.fake(),
             activate=Activate.fake(),
+            state=None,
         )
 
     def prompt_for(self, action: Skill | AwaitingHuman) -> TerminalText | None:
         if isinstance(action, AwaitingHuman):
             return None
         return TerminalText(f"{action.root} {self.ticket.root}")
+
+    def state_given(self, labelled_state: StateName | None) -> StateName:
+        if labelled_state is not None:
+            if self.state is not None:
+                raise FlowError(
+                    f"{self.ticket.root} is already in {labelled_state.root};"
+                    " move it with `mw flow` instead of --state."
+                )
+            return labelled_state
+        startable = startable_states()
+        listed = ", ".join(state.root for state in startable)
+        if self.state is None:
+            raise FlowError(
+                f"{self.ticket.root} carries no flow label, so it is not in the flow."
+                f" Pass --state with one of {listed}."
+            )
+        if self.state not in startable:
+            raise FlowError(
+                f"Cannot start a ticket in {self.state.root}. Pass --state with one of {listed}."
+            )
+        return self.state
 
 
 def start_ticket(
@@ -79,11 +107,22 @@ def start_ticket(
     workspace: WorkspaceSettings,
     claim_settings: ClaimSettings,
     flow_labels: FlowLabels,
+    statuses: TicketStatuses,
     request: StartRequest,
 ) -> None:
     detail = tracker.read_issue_detail(request.ticket)
-    state = TicketState.state_with_work_left(WorkflowChart, flow_labels, detail.issue)
+    labelled_state = state_of(WorkflowChart, flow_labels, detail.issue.grouped)
+    state = request.state_given(labelled_state)
     prompt = request.prompt_for(action_in(request.ticket, state))
+    Claiming.require_claim_label(tracker, claim_settings.label)
+
+    # Put an unlabelled ticket in the flow before claiming it, so a failed write leaves no claim behind.
+    status = detail.issue.status
+    if labelled_state is None:
+        require_flow_labels(tracker, flow_labels)
+        put_in_state(tracker, request.ticket, flow_labels, statuses, state)
+        status = statuses.of(state)
+        logger.info("Put %s in %s.", request.ticket.root, state.root)
 
     name = WorktreeName.of_issue(request.ticket)
     TicketTaking.take_ticket(
@@ -93,7 +132,7 @@ def start_ticket(
         claim_settings=claim_settings,
         request=ClaimRequest(
             ticket=request.ticket,
-            status=detail.issue.status,
+            status=status,
             holder=ClaimHolder(host=request.host, worktree=name),
             take_over=request.take_over,
         ),
@@ -112,6 +151,13 @@ def start_ticket(
 
     if prompt is not None:
         send_prompt(manager, opened, prompt, request.idle_timeout, request.submit)
+
+
+def startable_states() -> tuple[StateName, ...]:
+    named = (StateName(state.name) for state in WorkflowChart.states)
+    return tuple(
+        state for state in named if not isinstance(next_action(WorkflowChart, state), Finished)
+    )
 
 
 def action_in(ticket: IssueIdentifier, state: StateName) -> Skill | AwaitingHuman:

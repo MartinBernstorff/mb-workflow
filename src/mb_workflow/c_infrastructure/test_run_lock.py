@@ -73,6 +73,6 @@ def test_logs_taking_and_releasing_the_flock(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     lock = FlockRunLock(LockPath(tmp_path / "review-workspaces.lock"))
-    with caplog.at_level(logging.INFO), lock.held():
+    with caplog.at_level(logging.DEBUG), lock.held():
         assert "Holding" in caplog.text
     assert "Released" in caplog.text

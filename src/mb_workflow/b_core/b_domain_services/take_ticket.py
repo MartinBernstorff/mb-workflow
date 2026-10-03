@@ -1,12 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.c_secondary_ports.claims import (
-    LabelledClaim,
-    claim_ticket,
-    label_claim_or_withdraw,
-    require_claim_label,
-)
+from mb_workflow.b_core.c_secondary_ports.claims import Claiming, LabelledClaim
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 
 if TYPE_CHECKING:
@@ -28,15 +23,15 @@ class TicketTaking:
         claim_settings: ClaimSettings,
         request: ClaimRequest,
     ) -> None:
-        require_claim_label(tracker, claim_settings.label)
-        claim_ticket(claims, request)
+        Claiming.require_claim_label(tracker, claim_settings.label)
+        Claiming.claim_ticket(claims, request)
         logger.info(
             "Claimed %s for worktree %s on %s.",
             request.ticket.root,
             request.holder.worktree.root,
             request.holder.host.root,
         )
-        label_claim_or_withdraw(
+        Claiming.label_claim_or_withdraw(
             claims,
             tracker,
             LabelledClaim(ticket=request.ticket, holder=request.holder, label=claim_settings.label),
