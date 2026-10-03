@@ -345,6 +345,23 @@ class Orca(WorkspaceManager):
         )
 
     @override
+    def set_linked_issue(self, path: WorktreePath, issue: IssueIdentifier) -> None:
+        _ = self._single(
+            Command(
+                (
+                    "orca",
+                    "worktree",
+                    "set",
+                    "--worktree",
+                    WorktreeSelector.of(path).root,
+                    "--linear-issue",
+                    issue.root,
+                    "--json",
+                )
+            )
+        )
+
+    @override
     def wait_for_idle(self, terminal: TerminalHandle, timeout: TimeoutMs) -> None:
         _ = self._run(
             Command(
