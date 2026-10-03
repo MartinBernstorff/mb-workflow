@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, override
 
 from safe_result import Err, Ok, Result
@@ -75,23 +76,24 @@ class WorktreeCreation(Model):
         )
 
 
+# Mutable, as it holds the opened worktree for start to read once the saga succeeds.
+@dataclass
 class WorktreeStep(SagaStep):
-    def __init__(self, manager: WorkspaceManager, creation: WorktreeCreation) -> None:
-        self._manager = manager
-        self._creation = creation
-        self._opened: OpenedWorktree | None = None
+    manager: WorkspaceManager
+    creation: WorktreeCreation
+    _opened: OpenedWorktree | None = field(default=None, init=False)
 
     @override
     def apply(self) -> Result[None, Exception]:
         try:
-            with Activity(f"Creating worktree {self._creation.name.root}").logged(logger):
-                self._opened = self._manager.create_for_issue(
-                    self._creation.project,
-                    self._creation.name,
-                    self._creation.ticket,
-                    self._creation.agent,
-                    self._creation.status,
-                    activate=self._creation.activate,
+            with Activity(f"Creating worktree {self.creation.name.root}").logged(logger):
+                self._opened = self.manager.create_for_issue(
+                    self.creation.project,
+                    self.creation.name,
+                    self.creation.ticket,
+                    self.creation.agent,
+                    self.creation.status,
+                    activate=self.creation.activate,
                 )
         except WorkspaceManagerError as error:
             return Err(error)
@@ -105,7 +107,7 @@ class WorktreeStep(SagaStep):
     def opened(self) -> Result[OpenedWorktree, WorkspaceManagerError]:
         if self._opened is None:
             return Err(
-                WorkspaceManagerError(f"Worktree {self._creation.name.root} was not created.")
+                WorkspaceManagerError(f"Worktree {self.creation.name.root} was not created.")
             )
         return Ok(self._opened)
 
