@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING
 from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
 from mb_workflow.b_core.a_features.start import StartRequest, TicketStart
 from mb_workflow.b_core.b_domain_services.pick_order import in_pick_order
-from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimLostError, LabelledClaim
+from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimLostError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import LabelCheck
-from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, Released, TakeOver
+from mb_workflow.b_core.d_domain_model.claim import HostName, Released, TakeOver
 from mb_workflow.b_core.d_domain_model.pool import (
     Limit,
     Occupancy,
@@ -15,7 +15,7 @@ from mb_workflow.b_core.d_domain_model.pool import (
     PoolTickets,
     Refusal,
 )
-from mb_workflow.b_core.d_domain_model.workspace import Activate, Submit, TimeoutMs, WorktreeName
+from mb_workflow.b_core.d_domain_model.workspace import Activate, Submit, TimeoutMs
 from mb_workflow.d_lib.logging import Activity
 from mb_workflow.d_lib.models import Model, Value
 
@@ -291,20 +291,6 @@ class Drain:
         except ClaimLostError:
             logger.info("Another host holds %s; trying the next ticket.", request.ticket.root)
             return Started(False)
-        # BaseException too: a second stop signal exits mid-start, and must not strand the claim.
-        except BaseException:
-            Claiming.release_claim(
-                claims,
-                tracker,
-                LabelledClaim(
-                    ticket=request.ticket,
-                    holder=ClaimHolder(
-                        host=request.host, worktree=WorktreeName.of_issue(request.ticket)
-                    ),
-                    label=claim_settings.label,
-                ),
-            )
-            raise
         return Started(True)
 
 

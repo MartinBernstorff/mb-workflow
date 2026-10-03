@@ -1,5 +1,7 @@
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
+
+from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.b_domain_services.flow_transition import put_in_state
 from mb_workflow.b_core.b_domain_services.next_action import next_action
@@ -25,13 +27,16 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     Activate,
     AgentName,
     DisplayName,
+    ProjectSelector,
     Submit,
     TerminalText,
     TimeoutMs,
+    WorkspaceStatus,
     WorktreeName,
 )
 from mb_workflow.d_lib.logging import Activity
 from mb_workflow.d_lib.models import Model
+from mb_workflow.d_lib.saga import Saga, SagaStep
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
@@ -48,6 +53,67 @@ logger = logging.getLogger(__name__)
 
 class PromptUndeliveredError(Exception):
     pass
+
+
+class WorktreeCreation(Model):
+    project: ProjectSelector
+    name: WorktreeName
+    ticket: IssueIdentifier
+    agent: AgentName | None
+    status: WorkspaceStatus
+    activate: Activate
+
+    @staticmethod
+    def fake() -> WorktreeCreation:
+        return WorktreeCreation(
+            project=ProjectSelector.fake(),
+            name=WorktreeName.of_issue(IssueIdentifier.fake()),
+            ticket=IssueIdentifier.fake(),
+            agent=AgentName.claude(),
+            status=WorkspaceStatus.fake(),
+            activate=Activate.fake(),
+        )
+
+
+class WorktreeStep(SagaStep):
+    def __init__(self, manager: WorkspaceManager, creation: WorktreeCreation) -> None:
+        self._manager = manager
+        self._creation = creation
+        self._opened: OpenedWorktree | None = None
+
+    @override
+    def apply(self) -> Result[None, Exception]:
+        try:
+            with Activity(f"Creating worktree {self._creation.name.root}").logged(logger):
+                self._opened = self._manager.create_for_issue(
+                    self._creation.project,
+                    self._creation.name,
+                    self._creation.ticket,
+                    self._creation.agent,
+                    self._creation.status,
+                    activate=self._creation.activate,
+                )
+        except WorkspaceManagerError as error:
+            return Err(error)
+        return Ok(None)
+
+    @override
+    def revert(self) -> Result[None, Exception]:
+        if self._opened is None:
+            return Ok(None)
+        try:
+            with Activity(f"Removing worktree {self._creation.name.root}").logged(logger):
+                self._manager.remove(self._opened.worktree.path)
+        except WorkspaceManagerError as error:
+            return Err(error)
+        return Ok(None)
+
+    def opened(self) -> Result[OpenedWorktree, WorkspaceManagerError]:
+        if self._opened is None:
+            return Err(
+                WorkspaceManagerError(f"Worktree {self._creation.name.root} was not created.")
+            )
+        return Ok(self._opened)
 
 
 class StartRequest(Model):
@@ -124,7 +190,18 @@ class TicketStart:
             status = statuses.of(state)
 
         name = WorktreeName.of_issue(request.ticket)
-        TicketTaking.take_ticket(
+        creation = WorktreeStep(
+            manager,
+            WorktreeCreation(
+                project=workspace.orca_project,
+                name=name,
+                ticket=request.ticket,
+                agent=None if prompt is None else AgentName.claude(),
+                status=board.status_for(state),
+                activate=request.activate,
+            ),
+        )
+        taking = TicketTaking.steps(
             claims=claims,
             tracker=tracker,
             workspace=workspace,
@@ -135,17 +212,11 @@ class TicketStart:
                 holder=ClaimHolder(host=request.host, worktree=name),
                 take_over=request.take_over,
             ),
+            previous=detail.assignee,
         )
+        Saga.run((*taking, creation)).unwrap()
+        opened = creation.opened().unwrap()
 
-        with Activity(f"Creating worktree {name.root}").logged(logger):
-            opened = manager.create_for_issue(
-                workspace.orca_project,
-                name,
-                request.ticket,
-                None if prompt is None else AgentName.claude(),
-                board.status_for(state),
-                activate=request.activate,
-            )
         logger.info("Created worktree %s.", opened.worktree.path.root)
         with Activity(f"Naming worktree {name.root}").logged(logger):
             set_display_name_or_warn(

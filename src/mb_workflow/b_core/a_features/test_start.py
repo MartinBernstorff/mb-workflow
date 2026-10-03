@@ -14,6 +14,7 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     DisplayNameRefusingWorkspaceManager,
     FakeWorkspaceManager,
+    WorkspaceManagerError,
 )
 from mb_workflow.b_core.d_domain_model.claim import (
     Claim,
@@ -74,11 +75,18 @@ def tracking(
     state: StateName | None,
     tracker: type[FakeTicketTracker] = FakeTicketTracker,
     status: IssueStatusName = IssueStatusName.fake(),
+    assignee: Assignee | None = None,
 ) -> FakeTicketTracker:
-    issue = Issue.fake().model_copy(update={"labels": labelled(state), "status": status})
+    issue = Issue.fake().model_copy(
+        update={
+            "labels": labelled(state),
+            "status": status,
+            "assigned": Assigned(assignee is not None),
+        }
+    )
     return tracker(
         LabelNames((*LabelNames.fake().root, LabelName("claimed"), *FlowLabels.fake().labels.root)),
-        (TrackedIssue.fake().model_copy(update={"issue": issue}),),
+        (TrackedIssue.fake().model_copy(update={"issue": issue, "assignee": assignee}),),
         statuses=mapped_statuses(),
         groups={FlowLabels.fake().group: FlowLabels.fake().labels},
     )
@@ -405,3 +413,45 @@ def test_a_forced_start_with_a_missing_claim_label_keeps_the_rivals_claim() -> N
             claim_settings=missing,
         )
     assert holders(claims) == holders(claimed_by_a_rival())
+
+
+# Selects no project the workspace settings name, so creating the worktree fails.
+def refusing_manager() -> FakeWorkspaceManager:
+    return FakeWorkspaceManager(
+        Worktrees.fake(),
+        WorktreePath.fake(),
+        fake_board_statuses(),
+        project=ProjectSelector("github:other/project"),
+    )
+
+
+def test_a_failed_worktree_creation_leaves_neither_claim_nor_claim_label() -> None:
+    tracker = tracking(StateName("Specced"))
+    claims = FakeClaimRegistry()
+    with pytest.raises(WorkspaceManagerError):
+        starting(refusing_manager(), tracker, StartRequest.fake(), claims)
+    assert claims.claims(IssueIdentifier.fake()) == Claims(())
+    assert tracker.read_issue(IssueIdentifier.fake()).labels == labelled(StateName("Specced"))
+
+
+def test_a_failed_worktree_creation_restores_the_previous_assignee() -> None:
+    previous = Assignee("previous@flowbase.io")
+    tracker = tracking(StateName("Specced"), assignee=previous)
+    with pytest.raises(WorkspaceManagerError):
+        starting(refusing_manager(), tracker, StartRequest.fake())
+    assert tracker.read_issue_detail(IssueIdentifier.fake()).assignee == previous
+
+
+def test_a_failed_worktree_creation_leaves_an_unassigned_ticket_unassigned() -> None:
+    tracker = tracking(StateName("Specced"))
+    with pytest.raises(WorkspaceManagerError):
+        starting(refusing_manager(), tracker, StartRequest.fake())
+    assert tracker.read_issue(IssueIdentifier.fake()).assigned == Assigned(False)
+
+
+def test_a_failed_forced_start_does_not_restore_the_rivals_claim() -> None:
+    claims = claimed_by_a_rival()
+    forcing = StartRequest.fake().model_copy(update={"take_over": TakeOver(True)})
+    with pytest.raises(WorkspaceManagerError):
+        starting(refusing_manager(), tracking(StateName("Specced")), forcing, claims)
+    assert claims.claims(IssueIdentifier.fake()) == Claims(())

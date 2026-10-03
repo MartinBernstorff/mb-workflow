@@ -89,6 +89,7 @@ class TicketLinking:
                 ),
                 take_over=request.take_over,
             ),
+            previous=detail.assignee,
         )
 
         manager.set_linked_issue(here.path, request.ticket)

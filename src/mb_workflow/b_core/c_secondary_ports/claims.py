@@ -2,6 +2,8 @@ import logging
 from itertools import count
 from typing import Protocol, override
 
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     LabelCheck,
     TicketTracker,
@@ -113,22 +115,24 @@ class Claiming:
             ),
         )
 
-    # The label is how in-progress tickets are found, so a claim that cannot be labelled is withdrawn.
+    # The label is how in-progress tickets are found, so a claim that cannot be labelled is refused.
     @staticmethod
-    def label_claim_or_withdraw(
-        registry: ClaimRegistry, tracker: TicketTracker, request: LabelledClaim
-    ) -> None:
+    def label_claim(
+        tracker: TicketTracker, request: LabelledClaim
+    ) -> Result[None, ClaimRefusedError]:
         try:
             with Activity(f"Labelling {request.ticket.root} as {request.label.root}").logged(
                 logger
             ):
                 tracker.add_label(request.ticket, request.label)
         except TicketTrackerError as error:
-            Claiming.withdraw_holders_claims(registry, request.ticket, request.holder)
-            raise ClaimRefusedError(
-                f"Could not label {request.ticket.root} as {request.label.root}, so the claim was"
-                f" withdrawn. Create the label or change claims.label. {error}"
-            ) from error
+            return Err(
+                ClaimRefusedError(
+                    f"Could not label {request.ticket.root} as {request.label.root}, so the claim"
+                    f" was withdrawn. Create the label or change claims.label. {error}"
+                )
+            )
+        return Ok(None)
 
     @staticmethod
     def withdraw_holders_claims(
