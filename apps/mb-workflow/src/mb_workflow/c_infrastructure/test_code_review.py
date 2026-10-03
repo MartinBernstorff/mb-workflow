@@ -509,9 +509,17 @@ def review(
     if isinstance(ledger, FakeCodeReview):
         return ledger
     if isinstance(ledger, ScriptedGh):
-        return GitHub(ledger)
+        return connected(ledger)
     live: LiveRepository = request.getfixturevalue("live_repository")
-    return GitHub(live.shell())
+    return connected(live.shell())
+
+
+def connected(shell: CommandRunner) -> GitHub:
+    match GitHub.connected(shell):
+        case Ok(github):
+            return github
+        case Err(error):
+            pytest.fail(str(error))
 
 
 @pytest.fixture
@@ -658,14 +666,17 @@ class BrokenGh(CommandRunner):
     def at(self, directory: ExistingDirectory) -> BrokenGh:
         return self
 
-    # Answers the version probe, so only the port's own calls fail.
     @override
     def run(self, command: Command) -> CommandOutput:
-        if command == Command(("gh", "--version")):
-            return CommandOutput("gh version 2.0.0\n")
         if self._output is None:
             raise CalledProcessError(1, command.root, "", "gh: not authenticated")
         return self._output
+
+
+def test_connecting_to_a_failing_gh_is_refused() -> None:
+    github = GitHub.connected(BrokenGh(None))
+    assert isinstance(github, Err)
+    assert isinstance(github.error, CodeReviewError)
 
 
 def test_a_failing_gh_is_returned_as_a_code_review_error(tmp_path: Path) -> None:

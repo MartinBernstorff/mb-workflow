@@ -188,8 +188,14 @@ def review_workspaces(
     except MissingConfigError:
         claim_settings = ClaimSettings()
     shell = here()
+    match GitHub.connected(shell):
+        case Ok(github):
+            pass
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
     reconciled = create_workspaces(
-        review=GitHub(shell),
+        review=github,
         manager=Orca(shell),
         claims=LazyLinearClaims(linear_key),
         tracker=LazyLinear(linear_key),
@@ -213,7 +219,13 @@ def review_workspaces(
 @guarded
 def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode:
     shell = here()
-    match FinalizeReview.finalize(GitHub(shell), Orca(shell), request, status):
+    match GitHub.connected(shell):
+        case Ok(github):
+            pass
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
+    match FinalizeReview.finalize(github, Orca(shell), request, status):
         case Ok():
             return ExitCode(0)
         case Err(error):

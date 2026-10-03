@@ -196,7 +196,7 @@ def pending_submission(pr: PrNumber, pending: ReviewId, request: ReviewRequest) 
 class GitHubFailure:
     @staticmethod
     def as_code_review_error[T](
-        result: Result[T, CalledProcessError | ValidationError],
+        result: Result[T, CalledProcessError | OSError | ValidationError],
     ) -> Result[T, CodeReviewError]:
         match result:
             case Ok(value):
@@ -205,14 +205,25 @@ class GitHubFailure:
                 return Err(
                     CodeReviewError(f"{' '.join(error.cmd)} failed: {str(error.stderr).strip()}")
                 )
-            case Err(error):
+            case Err(ValidationError() as error):
                 return Err(CodeReviewError(f"GitHub answered with unreadable output: {error}"))
+            case Err(error):
+                return Err(CodeReviewError(f"Cannot run gh: {error}"))
 
 
 class GitHub(CodeForge):
     def __init__(self, shell: CommandRunner) -> None:
         self._shell = shell
+
+    @staticmethod
+    def connected(shell: CommandRunner) -> Result[GitHub, CodeReviewError]:
+        return GitHubFailure.as_code_review_error(GitHub._probed(shell))
+
+    @staticmethod
+    @safe_with(CalledProcessError, OSError)
+    def _probed(shell: CommandRunner) -> GitHub:
         _ = shell.run(Command(("gh", "--version")))
+        return GitHub(shell)
 
     @override
     def review_requested(self) -> Result[PullRequests, CodeReviewError]:
