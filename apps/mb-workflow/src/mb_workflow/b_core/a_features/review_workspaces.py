@@ -1,10 +1,11 @@
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, Protocol
 
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.a_features.start import PromptUndeliveredError, TicketStart
 from mb_workflow.b_core.a_features.teardown import release_and_remove
 from mb_workflow.b_core.b_domain_services.worktree_reconciliation import obsolete, uncovered
-from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
@@ -25,14 +26,18 @@ from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
-    from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
+    from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge, CodeReviewError
     from mb_workflow.b_core.c_secondary_ports.run_lock import RunLock
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.claim import HostName
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings
-    from mb_workflow.b_core.d_domain_model.pull_request import MergedSince, PullRequests
-    from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus, Worktrees
+    from mb_workflow.b_core.d_domain_model.pull_request import (
+        MergedSince,
+        PullRequest,
+        PullRequests,
+    )
+    from mb_workflow.b_core.d_domain_model.workspace import RepoId, WorkspaceStatus, Worktrees
 
 
 class FailureReason(Value[str]):
@@ -139,7 +144,7 @@ def create_workspaces(
     status: WorkspaceStatus,
     since: MergedSince,
     prompt: ReviewPrompt | None,
-) -> Outcome:
+) -> Result[Outcome, CodeReviewError]:
     with lock.held():
         return reconcile_workspaces(
             review=review,
@@ -167,14 +172,22 @@ def reconcile_workspaces(
     status: WorkspaceStatus,
     since: MergedSince,
     prompt: ReviewPrompt | None,
-) -> Outcome:
+) -> Result[Outcome, CodeReviewError]:
     worktrees = manager.worktrees()
     current = manager.current()
     here = current.path
     repo = current.repo
     narrator.inspecting(worktrees, here)
-    requested = review.review_requested()
-    narrator.awaiting_review(requested)
+    match review.review_requested():
+        case Ok(requested):
+            narrator.awaiting_review(requested)
+        case Err() as unlisted:
+            return unlisted
+    match review.merged_branches(since):
+        case Ok(merged):
+            pass
+        case Err() as unlisted:
+            return unlisted
 
     created: list[CreatedWorkspace] = []
     removed: list[WorktreePath] = []
@@ -182,7 +195,7 @@ def reconcile_workspaces(
 
     to_remove = obsolete(
         requested=requested,
-        merged=review.merged_branches(since),
+        merged=merged,
         worktrees=worktrees,
         repo=repo,
         status=status,
@@ -214,32 +227,58 @@ def reconcile_workspaces(
     narrator.found_uncovered(missing)
 
     for pr in missing.root:
-        try:
-            narrator.creating(pr.number)
-            opened = manager.create_for_review(
-                repo, pr.number, status, None if prompt is None else AgentName.claude()
-            )
-            path = opened.worktree.path
-            set_display_name_or_warn(manager, path, DisplayName.of_pr(pr.title))
-            narrator.checking_out(path)
-            review.checkout(pr.number, CheckoutDirectory(path.root))
-            if prompt is not None:
-                TicketStart.send_prompt(
-                    manager, opened, prompt.text, prompt.idle_timeout, Submit(True)
+        match create_review_workspace(
+            review=review,
+            manager=manager,
+            narrator=narrator,
+            repo=repo,
+            pr=pr,
+            status=status,
+            prompt=prompt,
+        ):
+            case Ok(workspace):
+                created.append(workspace)
+            case Err(error):
+                failure = Failure(
+                    subject=FailureSubject.of_pr(pr.number), reason=FailureReason(str(error))
                 )
-        except (
-            CalledProcessError,
-            CodeReviewError,
-            PromptUndeliveredError,
-            WorkspaceManagerError,
-            ValueError,
-        ) as error:
-            failure = Failure(
-                subject=FailureSubject.of_pr(pr.number), reason=FailureReason(str(error))
-            )
-            narrator.creation_failed(failure)
-            failed.append(failure)
-        else:
-            created.append(CreatedWorkspace(name=WorktreeName.of(pr.number), path=path))
+                narrator.creation_failed(failure)
+                failed.append(failure)
 
-    return Outcome(created=tuple(created), removed=tuple(removed), failed=tuple(failed))
+    return Ok(Outcome(created=tuple(created), removed=tuple(removed), failed=tuple(failed)))
+
+
+def create_review_workspace(
+    *,
+    review: CodeForge,
+    manager: WorkspaceManager,
+    narrator: Narrator,
+    repo: RepoId,
+    pr: PullRequest,
+    status: WorkspaceStatus,
+    prompt: ReviewPrompt | None,
+) -> Result[CreatedWorkspace, Exception]:
+    try:
+        narrator.creating(pr.number)
+        opened = manager.create_for_review(
+            repo, pr.number, status, None if prompt is None else AgentName.claude()
+        )
+        path = opened.worktree.path
+        set_display_name_or_warn(manager, path, DisplayName.of_pr(pr.title))
+        narrator.checking_out(path)
+        match review.checkout(pr.number, CheckoutDirectory(path.root)):
+            case Ok():
+                if prompt is not None:
+                    TicketStart.send_prompt(
+                        manager, opened, prompt.text, prompt.idle_timeout, Submit(True)
+                    )
+                return Ok(CreatedWorkspace(name=WorktreeName.of(pr.number), path=path))
+            case Err() as refused:
+                return refused
+    except (
+        CalledProcessError,
+        PromptUndeliveredError,
+        WorkspaceManagerError,
+        ValueError,
+    ) as error:
+        return Err(error)

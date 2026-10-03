@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from safe_result import Err, Ok, Result
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
+    from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge, CodeReviewError
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, ReviewRequest
     from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus, Worktree
@@ -39,12 +39,15 @@ class FinalizeReview:
         manager: WorkspaceManager,
         request: ReviewRequest,
         status: WorkspaceStatus,
-    ) -> Result[None, NotFinalizableError]:
+    ) -> Result[None, NotFinalizableError | CodeReviewError]:
         worktree = manager.current()
         match FinalizeReview.reviewed_pr(worktree, status):
             case Ok(pr):
-                review.submit(pr, request)
-                logger.info("Submitted %s on PR #%s.", request.decision.value, pr.root)
+                match review.submit(pr, request):
+                    case Ok():
+                        logger.info("Submitted %s on PR #%s.", request.decision.value, pr.root)
+                    case Err() as refused:
+                        return refused
 
                 manager.remove(worktree.path)
                 logger.info("Removed %s.", worktree.path.root)

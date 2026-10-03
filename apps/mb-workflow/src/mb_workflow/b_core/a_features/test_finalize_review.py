@@ -80,8 +80,10 @@ def test_removes_the_worktree_once_the_review_is_in() -> None:
 def test_a_refused_review_keeps_the_worktree() -> None:
     manager = standing_in(Worktree.fake())
     bare = ReviewRequest(decision=ReviewDecision.comment, body=ReviewBody(""))
-    with pytest.raises(CodeReviewError, match="comment requires comment text"):
-        _ = FinalizeReview.finalize(
-            FakeCodeReview(PullRequests.fake()), manager, bare, WorkspaceStatus.fake()
-        )
+    finalized = FinalizeReview.finalize(
+        FakeCodeReview(PullRequests.fake()), manager, bare, WorkspaceStatus.fake()
+    )
+    assert isinstance(finalized, Err)
+    assert isinstance(finalized.error, CodeReviewError)
+    assert "comment requires comment text" in str(finalized.error)
     assert manager.worktrees() == Worktrees.fake()

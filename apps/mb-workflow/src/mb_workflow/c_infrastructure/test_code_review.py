@@ -5,6 +5,7 @@ from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, Protocol, override
 
 import pytest
+from safe_result import Err, Ok
 
 from mb_workflow.b_core.c_secondary_ports.code_review import (
     CodeReviewError,
@@ -190,7 +191,7 @@ class ScriptedGhState:
                 *_, number, _, review, _ = path.split("/")
                 pr = PrNumber(int(number))
                 if self.pending.pop(pr, None) != ReviewId(int(review)):
-                    raise AssertionError(f"No pending review {review} on #{number}")
+                    pytest.fail(f"No pending review {review} on #{number}")
                 text = body[-1].removeprefix("body=") if len(body) > 0 else ""
                 self.record_submission(
                     pr,
@@ -201,7 +202,7 @@ class ScriptedGhState:
                 )
                 return CommandOutput("")
             case _:
-                raise AssertionError(f"gh has no answer for {command.root}")
+                pytest.fail(f"gh has no answer for {command.root}")
 
     # Someone else's pending review sits first, so the adapter must pick out the viewer's own.
     def reviews_on(self, pr: PrNumber) -> CommandOutput:
@@ -540,18 +541,26 @@ def remark() -> ReviewRequest:
 
 def test_lists_the_pull_requests_awaiting_review(review: CodeForge, kind: ReviewKind) -> None:
     skip_on_own_pull_requests(kind)
-    assert review.review_requested() == requested()
+    assert review.review_requested() == Ok(requested())
 
 
 def test_a_branch_merged_on_the_day_counts_as_merged_since_then(
     review: CodeForge, stage: Stage
 ) -> None:
-    assert stage.merged in review.merged_branches(MergedSince(stage.merged_on.root)).root
+    match review.merged_branches(MergedSince(stage.merged_on.root)):
+        case Ok(branches):
+            assert stage.merged in branches.root
+        case Err(error):
+            pytest.fail(str(error))
 
 
 def test_a_branch_merged_the_day_before_does_not(review: CodeForge, stage: Stage) -> None:
     since = MergedSince(stage.merged_on.root + timedelta(days=1))
-    assert stage.merged not in review.merged_branches(since).root
+    match review.merged_branches(since):
+        case Ok(branches):
+            assert stage.merged not in branches.root
+        case Err(error):
+            pytest.fail(str(error))
 
 
 def test_a_checkout_lands_in_the_directory_it_was_given(
@@ -560,21 +569,22 @@ def test_a_checkout_lands_in_the_directory_it_was_given(
     stage: Stage,
     checkout_directory: CheckoutDirectory,
 ) -> None:
-    review.checkout(stage.fresh, checkout_directory)
+    assert review.checkout(stage.fresh, checkout_directory) == Ok(None)
     assert ledger.checked_out(checkout_directory) == stage.fresh
 
 
 def test_checking_out_into_a_missing_directory_is_refused(
     review: CodeForge, stage: Stage, tmp_path: Path
 ) -> None:
-    with pytest.raises(CodeReviewError):
-        review.checkout(stage.fresh, CheckoutDirectory(tmp_path / "missing"))
+    checked_out = review.checkout(stage.fresh, CheckoutDirectory(tmp_path / "missing"))
+    assert isinstance(checked_out, Err)
+    assert isinstance(checked_out.error, CodeReviewError)
 
 
 def test_submitting_completes_my_pending_review(
     review: CodeForge, ledger: ReviewLedger, stage: Stage
 ) -> None:
-    review.submit(stage.pending, remark())
+    assert review.submit(stage.pending, remark()) == Ok(None)
     assert ledger.submitted() == (
         SubmittedReview(pr=stage.pending, request=remark(), drafted=Drafted(True)),
     )
@@ -583,8 +593,8 @@ def test_submitting_completes_my_pending_review(
 def test_a_pending_review_is_completed_only_once(
     review: CodeForge, ledger: ReviewLedger, stage: Stage
 ) -> None:
-    review.submit(stage.pending, remark())
-    review.submit(stage.pending, remark())
+    _ = review.submit(stage.pending, remark())
+    _ = review.submit(stage.pending, remark())
     assert [submitted.drafted for submitted in ledger.submitted()] == [
         Drafted(True),
         Drafted(False),
@@ -594,7 +604,7 @@ def test_a_pending_review_is_completed_only_once(
 def test_submitting_without_a_pending_review_opens_a_new_one(
     review: CodeForge, ledger: ReviewLedger, stage: Stage
 ) -> None:
-    review.submit(stage.fresh, remark())
+    assert review.submit(stage.fresh, remark()) == Ok(None)
     assert ledger.submitted() == (
         SubmittedReview(pr=stage.fresh, request=remark(), drafted=Drafted(False)),
     )
@@ -605,7 +615,7 @@ def test_an_approval_may_go_without_a_body(
 ) -> None:
     skip_on_own_pull_requests(kind)
     bare = ReviewRequest(decision=ReviewDecision.approve, body=ReviewBody(""))
-    review.submit(stage.fresh, bare)
+    assert review.submit(stage.fresh, bare) == Ok(None)
     assert ledger.submitted() == (
         SubmittedReview(pr=stage.fresh, request=bare, drafted=Drafted(False)),
     )
@@ -618,7 +628,7 @@ def test_requesting_changes_carries_its_body(
     rejection = ReviewRequest(
         decision=ReviewDecision.request_changes, body=ReviewBody("Needs a test.")
     )
-    review.submit(stage.fresh, rejection)
+    assert review.submit(stage.fresh, rejection) == Ok(None)
     assert ledger.submitted() == (
         SubmittedReview(pr=stage.fresh, request=rejection, drafted=Drafted(False)),
     )
@@ -628,6 +638,55 @@ def test_requesting_changes_carries_its_body(
 def test_a_decision_that_needs_a_body_is_refused_without_one(
     review: CodeForge, ledger: ReviewLedger, stage: Stage, decision: ReviewDecision
 ) -> None:
-    with pytest.raises(CodeReviewError, match="requires comment text"):
-        review.submit(stage.pending, ReviewRequest(decision=decision, body=ReviewBody("")))
+    submitted = review.submit(stage.pending, ReviewRequest(decision=decision, body=ReviewBody("")))
+    assert isinstance(submitted, Err)
+    assert isinstance(submitted.error, CodeReviewError)
+    assert "requires comment text" in str(submitted.error)
     assert ledger.submitted() == ()
+
+
+class BrokenGh(CommandRunner):
+    def __init__(self, output: CommandOutput | None) -> None:
+        self._output = output
+
+    @override
+    def cwd(self) -> ExistingDirectory:
+        return ExistingDirectory.fake()
+
+    @override
+    def at(self, directory: ExistingDirectory) -> BrokenGh:
+        return self
+
+    # Answers the version probe, so only the port's own calls fail.
+    @override
+    def run(self, command: Command) -> CommandOutput:
+        if command == Command(("gh", "--version")):
+            return CommandOutput("gh version 2.0.0\n")
+        if self._output is None:
+            raise CalledProcessError(1, command.root, "", "gh: not authenticated")
+        return self._output
+
+
+def test_a_failing_gh_is_returned_as_a_code_review_error(tmp_path: Path) -> None:
+    github = GitHub(BrokenGh(None))
+    results = (
+        github.review_requested(),
+        github.merged_branches(MergedSince.fake()),
+        github.checkout(PrNumber.fake(), CheckoutDirectory(tmp_path)),
+        github.submit(PrNumber.fake(), remark()),
+    )
+    for result in results:
+        assert isinstance(result, Err)
+        assert isinstance(result.error, CodeReviewError)
+
+
+def test_unreadable_gh_output_is_returned_as_a_code_review_error() -> None:
+    github = GitHub(BrokenGh(CommandOutput("not json")))
+    results = (
+        github.review_requested(),
+        github.merged_branches(MergedSince.fake()),
+        github.submit(PrNumber.fake(), remark()),
+    )
+    for result in results:
+        assert isinstance(result, Err)
+        assert isinstance(result.error, CodeReviewError)
