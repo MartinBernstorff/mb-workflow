@@ -61,13 +61,17 @@ def test_the_lock_lives_in_the_cache_under_its_name() -> None:
 
 
 def test_a_project_lock_lives_in_the_cache_under_the_project() -> None:
-    path = LockPath.of_project(LockName("drain"), ProjectSelector("github:owner/repo")).root
-    assert path.parts[-2:] == ("github-owner-repo", "drain.lock")
+    name = LockName.fake()
+    project = ProjectSelector("github:owner/repo")
+    directory = "github-owner-repo"
+    path = LockPath.of_project(name, project).root
+    assert path.parts[-2:] == (directory, f"{name.root}.lock")
 
 
 def test_projects_get_separate_locks() -> None:
-    assert LockPath.of_project(LockName("drain"), ProjectSelector("github:owner/one")) != (
-        LockPath.of_project(LockName("drain"), ProjectSelector("github:owner/two"))
+    name = LockName.fake()
+    assert LockPath.of_project(name, ProjectSelector("github:owner/one")) != (
+        LockPath.of_project(name, ProjectSelector("github:owner/two"))
     )
 
 
