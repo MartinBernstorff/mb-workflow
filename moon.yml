@@ -143,3 +143,31 @@ tasks:
     options:
       cache: false
       runInCI: false
+
+  # Serial, because the fix tasks rewrite the sources the checks read.
+  phase-1:
+    deps:
+      - "lint-fix"
+      - "format-fix"
+      - "diagram"
+      - "types"
+      - "modularity"
+      - "noprim"
+      - "actionlint"
+    inputs: []
+    options:
+      runDepsInParallel: false
+      runInCI: false
+
+  full:
+    deps:
+      - "lint"
+      - "format"
+      - "types"
+      - "modularity"
+      - "noprim"
+      - "actionlint"
+      - "test"
+    inputs: []
+    options:
+      runInCI: false
