@@ -173,3 +173,47 @@ def test_a_flow_label_passed_as_a_label_leaves_the_ticket_unchanged() -> None:
     )
     assert isinstance(refused, Err)
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap() == before
+
+
+def tracking_another_issue(other: IssueIdentifier) -> FakeTicketTracker:
+    held = Issue.fake().model_copy(update={"identifier": other})
+    return FakeTicketTracker(
+        LabelNames.fake(),
+        (TrackedIssue.fake(), TrackedIssue.fake().model_copy(update={"issue": held})),
+        Projects.fake(),
+        IssueStatuses.fake(),
+        Assignee.fake(),
+    )
+
+
+def test_editing_a_ticket_adds_the_issues_it_blocks() -> None:
+    blocked = IssueIdentifier("E-1")
+    tracker = tracking_another_issue(blocked)
+    edit = TicketEdit.nothing().model_copy(update={"add_blocks": (blocked,)})
+    _ = TicketEditor.apply_edit(
+        tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
+    ).unwrap()
+    assert tracker.blockers(blocked).unwrap() == (IssueIdentifier.fake(),)
+
+
+def test_editing_a_ticket_adds_the_issues_it_is_blocked_by() -> None:
+    blocker = IssueIdentifier("E-1")
+    tracker = tracking_another_issue(blocker)
+    edit = TicketEdit.nothing().model_copy(update={"add_blocked_by": (blocker,)})
+    _ = TicketEditor.apply_edit(
+        tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
+    ).unwrap()
+    assert tracker.blockers(IssueIdentifier.fake()).unwrap() == (blocker,)
+
+
+def test_a_relation_to_an_unknown_issue_leaves_the_ticket_unchanged() -> None:
+    tracker = tracking_another_issue(IssueIdentifier("E-1"))
+    unknown = IssueIdentifier("E-404")
+    before = tracker.read_issue_detail(IssueIdentifier.fake()).unwrap()
+    edit = TicketEdit.fake().model_copy(update={"add_blocked_by": (unknown,)})
+    refused = TicketEditor.apply_edit(
+        tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
+    )
+    assert isinstance(refused, Err)
+    assert unknown.root in str(refused.error)
+    assert tracker.read_issue_detail(IssueIdentifier.fake()).unwrap() == before

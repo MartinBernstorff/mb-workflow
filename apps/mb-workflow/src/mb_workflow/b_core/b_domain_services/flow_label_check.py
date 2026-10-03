@@ -10,7 +10,7 @@ if TYPE_CHECKING:
         TicketTrackerError,
     )
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
-    from mb_workflow.b_core.d_domain_model.issue import TeamKey
+    from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, TeamKey
 
 
 class MissingFlowLabelsError(Exception):
@@ -51,5 +51,16 @@ class FlowLabelCheck:
                         )
                     )
                 return Ok(None)
+            case Err() as failed:
+                return failed
+
+    # Checks the flow labels the issue's own team can use.
+    @staticmethod
+    def require_for_issue(
+        tracker: TicketTracker, wanted: FlowLabels, issue: IssueIdentifier
+    ) -> Result[None, TicketTrackerError | MissingFlowLabelsError]:
+        match tracker.team_of(issue):
+            case Ok(team):
+                return FlowLabelCheck.require(tracker, wanted, team)
             case Err() as failed:
                 return failed

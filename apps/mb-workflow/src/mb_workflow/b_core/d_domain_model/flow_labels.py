@@ -41,7 +41,7 @@ class FlowLabels(Model):
                 if isinstance(state, WorkState) and state.phase == Phase.entry
             )
         )
-        return FlowLabels(group=group, labels=chart_labels(chart), entry=entry)
+        return FlowLabels(group=group, labels=FlowLabels.chart_labels(chart), entry=entry)
 
     def colored(self, labels: LabelNames) -> ColoredLabels:
         return ColoredLabels(
@@ -83,21 +83,22 @@ class FlowLabels(Model):
         kept = tuple(label for label in held.root if self.labels.matching(label) is None)
         return LabelNames((*kept, LabelName(state.root)))
 
+    @staticmethod
+    def chart_labels(chart: type[WorkflowChart]) -> LabelNames:
+        return LabelNames(tuple(LabelName(state.name) for state in chart.states))
 
-def chart_labels(chart: type[WorkflowChart]) -> LabelNames:
-    return LabelNames(tuple(LabelName(state.name) for state in chart.states))
-
-
-def state_of(
-    chart: type[WorkflowChart], flow_labels: FlowLabels, held: GroupedLabels
-) -> StateName | None:
-    found = held.in_group(flow_labels.group).root
-    if not found:
-        return None
-    if len(found) > 1:
-        listed = ", ".join(label.root for label in found)
-        raise FlowError(f"The ticket carries the flow labels {listed}, but may carry only one.")
-    known = chart_labels(chart).matching(found[0])
-    if known is None:
-        raise FlowError(f"{found[0].root} is no state of the chart.")
-    return StateName(known.root)
+    def state_of(
+        self, chart: type[WorkflowChart], held: GroupedLabels
+    ) -> Result[StateName | None, FlowError]:
+        found = held.in_group(self.group).root
+        if not found:
+            return Ok(None)
+        if len(found) > 1:
+            listed = ", ".join(label.root for label in found)
+            return Err(
+                FlowError(f"The ticket carries the flow labels {listed}, but may carry only one.")
+            )
+        known = FlowLabels.chart_labels(chart).matching(found[0])
+        if known is None:
+            return Err(FlowError(f"{found[0].root} is no state of the chart."))
+        return Ok(StateName(known.root))

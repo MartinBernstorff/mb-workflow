@@ -1404,6 +1404,22 @@ def test_a_created_issue_blocks_and_is_blocked_by_the_issues_it_names(
     )
 
 
+def test_an_update_adds_the_issues_it_blocks_and_is_blocked_by(
+    tracker: TicketTracker, creating: Callable[[NewIssue], CreatedIssue]
+) -> None:
+    blocked = creating(new_issue(IssueTitle("updated: blocked"))).identifier
+    blocker = creating(new_issue(IssueTitle("updated: blocker"))).identifier
+    middle = creating(new_issue(IssueTitle("updated: middle"))).identifier
+    tracker.update_issue(
+        middle,
+        IssueUpdate.nothing().model_copy(update={"blocks": (blocked,), "blocked_by": (blocker,)}),
+    )
+    assert (tracker.blockers(middle).unwrap(), tracker.blockers(blocked).unwrap()) == (
+        (blocker,),
+        (middle,),
+    )
+
+
 def rival_of(holder: ClaimHolder) -> ClaimHolder:
     return holder.model_copy(update={"host": HostName("bob-mbp.local")})
 

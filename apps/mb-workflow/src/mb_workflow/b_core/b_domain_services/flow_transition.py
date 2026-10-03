@@ -3,7 +3,13 @@ from typing import TYPE_CHECKING
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.b_domain_services.flow_label_check import FlowLabelCheck
-from mb_workflow.b_core.d_domain_model.flow import Edges, EventName, StateName, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import (
+    Edges,
+    EventName,
+    FlowError,
+    StateName,
+    WorkflowChart,
+)
 from mb_workflow.b_core.d_domain_model.issue import IssueUpdate
 from mb_workflow.d_lib.models import Value
 
@@ -27,7 +33,7 @@ class Force(Value[bool]):
 
 class FlowTransition:
     @staticmethod
-    def transition_issue(
+    def move_ticket(
         *,
         chart: type[WorkflowChart],
         store: WorkspaceStatusStore,
@@ -37,14 +43,16 @@ class FlowTransition:
         statuses: TicketStatuses,
         event: EventName,
         force: Force,
-    ) -> Result[StateName, TicketTrackerError | MissingFlowLabelsError]:
+    ) -> Result[StateName, FlowError | TicketTrackerError | MissingFlowLabelsError]:
         edges = Edges.of_chart(chart)
         target = edges.target_of(event) if force.root else edges.target_from(store.read(), event)
-        put = FlowTransition.put_in_state(tracker, issue, wanted, statuses, target)
+        if isinstance(target, Err):
+            return target
+        put = FlowTransition.put_in_state(tracker, issue, wanted, statuses, target.value)
         if isinstance(put, Err):
             return put
-        store.write(target)
-        return Ok(target)
+        store.write(target.value)
+        return Ok(target.value)
 
     @staticmethod
     def put_in_state(
@@ -54,10 +62,7 @@ class FlowTransition:
         statuses: TicketStatuses,
         state: StateName,
     ) -> Result[None, TicketTrackerError | MissingFlowLabelsError]:
-        team = tracker.team_of(issue)
-        if isinstance(team, Err):
-            return team
-        checked = FlowLabelCheck.require(tracker, wanted, team.value)
+        checked = FlowLabelCheck.require_for_issue(tracker, wanted, issue)
         if isinstance(checked, Err):
             return checked
         held = tracker.read_issue(issue)

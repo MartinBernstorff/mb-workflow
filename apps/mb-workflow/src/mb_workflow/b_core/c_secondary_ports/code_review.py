@@ -1,6 +1,8 @@
 from datetime import date
 from typing import Protocol, override
 
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.d_domain_model.git import BranchNames
 from mb_workflow.b_core.d_domain_model.pull_request import (
     CheckoutDirectory,
@@ -18,23 +20,27 @@ class CodeReviewError(Exception):
 
 
 class CodeForge(Protocol):
-    def review_requested(self) -> PullRequests: ...
+    def review_requested(self) -> Result[PullRequests, CodeReviewError]: ...
 
-    def merged_branches(self, since: MergedSince) -> BranchNames: ...
+    def merged_branches(self, since: MergedSince) -> Result[BranchNames, CodeReviewError]: ...
 
-    def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> None: ...
+    def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> Result[None, CodeReviewError]: ...
 
-    def submit(self, pr: PrNumber, request: ReviewRequest) -> None: ...
-
-
-def refuse_incomplete(request: ReviewRequest) -> None:
-    if not request.complete().root:
-        raise CodeReviewError(f"{request.decision.value} requires comment text")
+    def submit(self, pr: PrNumber, request: ReviewRequest) -> Result[None, CodeReviewError]: ...
 
 
-def refuse_missing(into: CheckoutDirectory) -> None:
-    if not into.root.is_dir():
-        raise CodeReviewError(f"Cannot check out into {into.root}: not a directory")
+class CodeReviewRefusal:
+    @staticmethod
+    def check_complete(request: ReviewRequest) -> Result[None, CodeReviewError]:
+        if not request.complete().root:
+            return Err(CodeReviewError(f"{request.decision.value} requires comment text"))
+        return Ok(None)
+
+    @staticmethod
+    def check_directory(into: CheckoutDirectory) -> Result[None, CodeReviewError]:
+        if not into.root.is_dir():
+            return Err(CodeReviewError(f"Cannot check out into {into.root}: not a directory"))
+        return Ok(None)
 
 
 class MergedOn(Value[date]):
@@ -84,33 +90,64 @@ class FakeCodeReview(CodeForge):
         self._checkouts: dict[CheckoutDirectory, PrNumber] = {}
 
     @override
-    def review_requested(self) -> PullRequests:
-        return self._requested
+    def review_requested(self) -> Result[PullRequests, CodeReviewError]:
+        return Ok(self._requested)
 
     @override
-    def merged_branches(self, since: MergedSince) -> BranchNames:
-        return BranchNames(
-            tuple(
-                merged.pull_request.branch
-                for merged in self._merged
-                if merged.merged_on.root >= since.root
+    def merged_branches(self, since: MergedSince) -> Result[BranchNames, CodeReviewError]:
+        return Ok(
+            BranchNames(
+                tuple(
+                    merged.pull_request.branch
+                    for merged in self._merged
+                    if merged.merged_on.root >= since.root
+                )
             )
         )
 
     @override
-    def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> None:
-        refuse_missing(into)
-        self._checkouts[into] = pr
+    def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> Result[None, CodeReviewError]:
+        match CodeReviewRefusal.check_directory(into):
+            case Ok():
+                self._checkouts[into] = pr
+                return Ok(None)
+            case Err() as refused:
+                return refused
 
     @override
-    def submit(self, pr: PrNumber, request: ReviewRequest) -> None:
-        refuse_incomplete(request)
-        drafted = Drafted(pr in self._pending)
-        self._pending.discard(pr)
-        self._submitted.append(SubmittedReview(pr=pr, request=request, drafted=drafted))
+    def submit(self, pr: PrNumber, request: ReviewRequest) -> Result[None, CodeReviewError]:
+        match CodeReviewRefusal.check_complete(request):
+            case Ok():
+                drafted = Drafted(pr in self._pending)
+                self._pending.discard(pr)
+                self._submitted.append(SubmittedReview(pr=pr, request=request, drafted=drafted))
+                return Ok(None)
+            case Err() as refused:
+                return refused
 
     def submitted(self) -> tuple[SubmittedReview, ...]:
         return tuple(self._submitted)
 
     def checked_out(self, into: CheckoutDirectory) -> PrNumber | None:
         return self._checkouts.get(into)
+
+
+class UnreachableCodeReview(CodeForge):
+    def __init__(self) -> None:
+        self._unreachable = CodeReviewError("The code review is unreachable.")
+
+    @override
+    def review_requested(self) -> Result[PullRequests, CodeReviewError]:
+        return Err(self._unreachable)
+
+    @override
+    def merged_branches(self, since: MergedSince) -> Result[BranchNames, CodeReviewError]:
+        return Err(self._unreachable)
+
+    @override
+    def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> Result[None, CodeReviewError]:
+        return Err(self._unreachable)
+
+    @override
+    def submit(self, pr: PrNumber, request: ReviewRequest) -> Result[None, CodeReviewError]:
+        return Err(self._unreachable)

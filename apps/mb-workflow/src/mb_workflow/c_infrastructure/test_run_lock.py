@@ -28,31 +28,37 @@ def lock(request: pytest.FixtureRequest, tmp_path: Path) -> RunLock:
 
 def test_a_free_lock_lets_the_run_proceed(lock: RunLock) -> None:
     entered = False
-    with lock.held():
+    with lock.acquire().unwrap():
         entered = True
     assert entered
 
 
 def test_a_second_holder_is_refused_while_the_first_holds_the_lock(lock: RunLock) -> None:
-    with (
-        lock.held(),
-        pytest.raises(AlreadyRunningError, match="another run holds"),
-        lock.held(),
-    ):
-        pytest.fail("the second run should not have entered")
+    refusal = "another run holds"
+    with lock.acquire().unwrap():
+        second = lock.acquire()
+    assert isinstance(second.error, AlreadyRunningError)
+    assert refusal in str(second.error)
+
+
+def test_a_refused_holder_leaves_the_lock_with_the_first(lock: RunLock) -> None:
+    with lock.acquire().unwrap():
+        _ = lock.acquire()
+        third = lock.acquire()
+    assert isinstance(third.error, AlreadyRunningError)
 
 
 def test_the_lock_is_free_again_once_the_run_ends(lock: RunLock) -> None:
-    with lock.held():
+    with lock.acquire().unwrap():
         pass
-    with lock.held():
+    with lock.acquire().unwrap():
         pass
 
 
 def test_the_lock_is_released_when_the_run_raises(lock: RunLock) -> None:
-    with pytest.raises(ValueError, match="boom"), lock.held():
+    with pytest.raises(ValueError, match="boom"), lock.acquire().unwrap():
         raise ValueError("boom")
-    with lock.held():
+    with lock.acquire().unwrap():
         pass
 
 
@@ -77,18 +83,15 @@ def test_projects_get_separate_locks() -> None:
 
 def test_a_separate_flock_on_the_same_path_is_refused(tmp_path: Path) -> None:
     path = LockPath(tmp_path / "review-workspaces.lock")
-    with (
-        FlockRunLock(path).held(),
-        pytest.raises(AlreadyRunningError),
-        FlockRunLock(path).held(),
-    ):
-        pytest.fail("the second run should not have entered")
+    with FlockRunLock(path).acquire().unwrap():
+        second = FlockRunLock(path).acquire()
+    assert isinstance(second.error, AlreadyRunningError)
 
 
 def test_logs_taking_and_releasing_the_flock(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     lock = FlockRunLock(LockPath(tmp_path / "review-workspaces.lock"))
-    with caplog.at_level(logging.DEBUG), lock.held():
+    with caplog.at_level(logging.DEBUG), lock.acquire().unwrap():
         assert "Holding" in caplog.text
     assert "Released" in caplog.text

@@ -33,16 +33,17 @@ class TicketEditor:
         | TicketTrackerError
         | MissingFlowLabelsError,
     ]:
-        checked = edit.checked(flow_labels)
+        checked = edit.checked(flow_labels, issue)
         if isinstance(checked, Err):
             return checked
         if checked.value.state is not None:
-            team = tracker.team_of(issue)
-            if isinstance(team, Err):
-                return team
-            labelled = FlowLabelCheck.require(tracker, flow_labels, team.value)
+            labelled = FlowLabelCheck.require_for_issue(tracker, flow_labels, issue)
             if isinstance(labelled, Err):
                 return labelled
+        for related in checked.value.related_issues():
+            found = tracker.read_issue(related)
+            if isinstance(found, Err):
+                return found
         current = tracker.read_issue_detail(issue)
         if isinstance(current, Err):
             return current

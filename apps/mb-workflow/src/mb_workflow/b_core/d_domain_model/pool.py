@@ -1,6 +1,8 @@
 from enum import IntEnum
+from typing import TYPE_CHECKING
 
 from pydantic import Field, JsonValue, NonNegativeInt, field_validator, model_validator
+from safe_result import Err, Ok
 
 from mb_workflow.b_core.d_domain_model.flow import (
     AcceptedStates,
@@ -10,7 +12,6 @@ from mb_workflow.b_core.d_domain_model.flow import (
     WorkflowChart,
     WorkState,
 )
-from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, state_of
 from mb_workflow.b_core.d_domain_model.issue import (
     GroupedLabel,
     GroupedLabels,
@@ -21,6 +22,12 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelNames,
 )
 from mb_workflow.d_lib.models import Model, Value
+
+if TYPE_CHECKING:
+    from safe_result import Result
+
+    from mb_workflow.b_core.d_domain_model.flow import FlowError
+    from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 
 
 class ViewSlug(Value[str]):
@@ -77,15 +84,15 @@ class PoolTicket(Model):
             )
         )
 
-    def flow_state(self, flow_labels: FlowLabels) -> StateName | None:
-        return state_of(WorkflowChart, flow_labels, self.issue.grouped)
+    def flow_state(self, flow_labels: FlowLabels) -> Result[StateName | None, FlowError]:
+        return flow_labels.state_of(WorkflowChart, self.issue.grouped)
 
-    def slot(self, flow_labels: FlowLabels) -> Slot | None:
+    def slot(self, flow_labels: FlowLabels) -> Result[Slot | None, FlowError]:
         return Slot.of(self.issue, flow_labels)
 
     def ready(self, claim_label: LabelName, flow_labels: FlowLabels) -> Ready:
         return Ready(
-            self.flow_state(flow_labels) in PoolTicket.ready_states().root
+            self.flow_state(flow_labels).unwrap_or(None) in PoolTicket.ready_states().root
             and self.issue.labels.matching(claim_label) is None
         )
 
@@ -102,6 +109,13 @@ class PoolTickets(Value[tuple[PoolTicket, ...]]):
         return PoolTickets(
             tuple(ticket for ticket in self.root if ticket.ready(claim_label, flow_labels).root)
         )
+
+    # A ticket whose flow labels name no single state stops the pass, so it is never passed over unnoticed.
+    def with_flow_states_resolved(self, flow_labels: FlowLabels) -> Result[PoolTickets, FlowError]:
+        for ticket in self.root:
+            if isinstance(unresolved := ticket.flow_state(flow_labels), Err):
+                return unresolved
+        return Ok(self)
 
     def identifiers(self) -> tuple[IssueIdentifier, ...]:
         return tuple(ticket.issue.identifier for ticket in self.root)
@@ -134,9 +148,12 @@ class Slot(Model):
         return Slot(state=StateName("Implementing"), labels=LabelNames(()))
 
     @staticmethod
-    def of(issue: Issue, flow_labels: FlowLabels) -> Slot | None:
-        state = state_of(WorkflowChart, flow_labels, issue.grouped)
-        return None if state is None else Slot(state=state, labels=issue.labels)
+    def of(issue: Issue, flow_labels: FlowLabels) -> Result[Slot | None, FlowError]:
+        match flow_labels.state_of(WorkflowChart, issue.grouped):
+            case Err() as unresolved:
+                return unresolved
+            case Ok(state):
+                return Ok(None if state is None else Slot(state=state, labels=issue.labels))
 
 
 class Occupancy(Value[tuple[Slot, ...]]):
@@ -144,10 +161,18 @@ class Occupancy(Value[tuple[Slot, ...]]):
     def fake() -> Occupancy:
         return Occupancy((Slot.fake(),))
 
+    # A ticket whose flow labels name no single state leaves the occupancy unknown, so no limit is trusted.
     @staticmethod
-    def of(issues: Issues, flow_labels: FlowLabels) -> Occupancy:
-        slots = (Slot.of(issue, flow_labels) for issue in issues.root)
-        return Occupancy(tuple(slot for slot in slots if slot is not None))
+    def of(issues: Issues, flow_labels: FlowLabels) -> Result[Occupancy, FlowError]:
+        slots: list[Slot] = []
+        for issue in issues.root:
+            match Slot.of(issue, flow_labels):
+                case Err() as unresolved:
+                    return unresolved
+                case Ok(slot):
+                    if slot is not None:
+                        slots.append(slot)
+        return Ok(Occupancy(tuple(slots)))
 
     def with_slot(self, slot: Slot) -> Occupancy:
         return Occupancy((*self.root, slot))
@@ -171,13 +196,15 @@ class LimitSummary(Value[str]):
         return LimitSummary("total 4, Grilling 1")
 
 
-def default_state_limits() -> dict[StateName, Limit]:
-    return {StateName("Grilling"): Limit(1)}
+class DefaultLimits:
+    @staticmethod
+    def state_limits() -> dict[StateName, Limit]:
+        return {StateName("Grilling"): Limit(1)}
 
 
 class PoolLimits(Model):
     total: Limit = Limit(4)
-    states: dict[StateName, Limit] = Field(default_factory=default_state_limits)
+    states: dict[StateName, Limit] = Field(default_factory=DefaultLimits.state_limits)
     labels: dict[LabelName, Limit] = Field(default_factory=dict)
 
     @staticmethod
@@ -211,7 +238,7 @@ class PoolLimits(Model):
                 )
             typed_as[known] = name
             spelled[known] = limit
-        return {**default_state_limits(), **spelled}
+        return {**DefaultLimits.state_limits(), **spelled}
 
     def limited_labels(self) -> LabelNames:
         return LabelNames(tuple(self.labels))

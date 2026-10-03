@@ -1,14 +1,25 @@
 import re
 
 import pytest
+from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.a_features.link import AlreadyLinkedError, LinkRequest, TicketLinking
-from mb_workflow.b_core.c_secondary_ports.claims import ClaimRefusedError, FakeClaimRegistry
+from mb_workflow.b_core.c_secondary_ports.claims import (
+    ClaimRefusedError,
+    FakeClaimRegistry,
+    UnknownClaimLabelError,
+)
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
-from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracker, TrackedIssue
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+    FakeTicketTracker,
+    TicketTrackerError,
+    TrackedIssue,
+)
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     DisplayNameRefusingWorkspaceManager,
     FakeWorkspaceManager,
+    LinkRefusingWorkspaceManager,
+    WorkspaceManagerError,
 )
 from mb_workflow.b_core.d_domain_model.claim import (
     Claim,
@@ -41,12 +52,17 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 )
 
 
-def tracking(state: StateName | None) -> FakeTicketTracker:
+def tracking(state: StateName | None, assignee: Assignee | None = None) -> FakeTicketTracker:
     flow = () if state is None else (LabelName(state.root),)
-    issue = Issue.fake().model_copy(update={"labels": LabelNames((*LabelNames.fake().root, *flow))})
+    issue = Issue.fake().model_copy(
+        update={
+            "labels": LabelNames((*LabelNames.fake().root, *flow)),
+            "assigned": Assigned(assignee is not None),
+        }
+    )
     return FakeTicketTracker(
         LabelNames((*LabelNames.fake().root, LabelName("claimed"), *FlowLabels.fake().labels.root)),
-        (TrackedIssue.fake().model_copy(update={"issue": issue}),),
+        (TrackedIssue.fake().model_copy(update={"issue": issue, "assignee": assignee}),),
         groups={FlowLabels.fake().group: FlowLabels.fake().labels},
     )
 
@@ -78,8 +94,8 @@ def linking(
     request: LinkRequest,
     *,
     workspace: WorkspaceSettings | None = None,
-) -> None:
-    TicketLinking.link_ticket(
+) -> Result[None, FlowError | TicketTrackerError | UnknownClaimLabelError]:
+    return TicketLinking.link_ticket(
         manager=manager,
         tracker=tracker,
         claims=claims,
@@ -88,12 +104,12 @@ def linking(
         claim_settings=ClaimSettings.fake(),
         flow_labels=FlowLabels.fake(),
         request=request,
-    ).unwrap()
+    )
 
 
 def linked(state: StateName | None, request: LinkRequest) -> Worktree:
     manager = managing(here_linked_to(None))
-    linking(manager, tracking(state), FakeClaimRegistry(), request)
+    assert linking(manager, tracking(state), FakeClaimRegistry(), request) == Ok(None)
     return manager.current()
 
 
@@ -139,20 +155,26 @@ def test_a_refused_display_name_still_links_the_worktree() -> None:
     manager = DisplayNameRefusingWorkspaceManager(
         here_linked_to(None), WorktreePath.fake(), fake_board_statuses()
     )
-    linking(manager, tracking(StateName.fake()), FakeClaimRegistry(), LinkRequest.fake())
+    assert linking(
+        manager, tracking(StateName.fake()), FakeClaimRegistry(), LinkRequest.fake()
+    ) == Ok(None)
     assert manager.current().issue == IssueIdentifier.fake()
 
 
 # Teardown and drain rebuild the holder from the ticket, so the directory name must not leak in.
 def test_claims_the_ticket_under_the_tickets_name() -> None:
     claims = FakeClaimRegistry()
-    linking(managing(here_linked_to(None)), tracking(StateName.fake()), claims, LinkRequest.fake())
+    assert linking(
+        managing(here_linked_to(None)), tracking(StateName.fake()), claims, LinkRequest.fake()
+    ) == Ok(None)
     assert holders(claims, IssueIdentifier.fake()) == (our_holder(),)
 
 
 def test_the_linked_ticket_carries_the_claim_label() -> None:
     tracker = tracking(StateName.fake())
-    linking(managing(here_linked_to(None)), tracker, FakeClaimRegistry(), LinkRequest.fake())
+    assert linking(
+        managing(here_linked_to(None)), tracker, FakeClaimRegistry(), LinkRequest.fake()
+    ) == Ok(None)
     labels = tracker.read_issue(IssueIdentifier.fake()).unwrap().labels
     assert labels.has(ClaimSettings.fake().label).root
 
@@ -161,20 +183,20 @@ def test_assigns_the_ticket_to_the_configured_assignee() -> None:
     tracker = tracking(StateName.fake())
     assignee = Assignee("other@flowbase.io")
     workspace = WorkspaceSettings.fake().model_copy(update={"assignee": assignee})
-    linking(
+    assert linking(
         managing(here_linked_to(None)),
         tracker,
         FakeClaimRegistry(),
         LinkRequest.fake(),
         workspace=workspace,
-    )
+    ) == Ok(None)
     assert tracker.read_issue_detail(IssueIdentifier.fake()).unwrap().assignee == assignee
 
 
 def test_relinking_the_ticket_already_linked_keeps_a_single_claim() -> None:
     claims = claimed_by(our_holder(), IssueIdentifier.fake())
     manager = managing(here_linked_to(IssueIdentifier.fake()))
-    linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake())
+    assert linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake()) == Ok(None)
     assert holders(claims, IssueIdentifier.fake()) == (our_holder(),)
     assert manager.current().issue == IssueIdentifier.fake()
 
@@ -183,8 +205,10 @@ def test_a_ticket_without_a_flow_label_is_neither_claimed_nor_linked() -> None:
     manager = managing(here_linked_to(None))
     tracker = tracking(None)
     claims = FakeClaimRegistry()
-    with pytest.raises(FlowError, match="no flow label"):
-        linking(manager, tracker, claims, LinkRequest.fake())
+    refused = linking(manager, tracker, claims, LinkRequest.fake())
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, FlowError)
+    assert re.search("no flow label", str(refused.error))
     assert manager.current().issue is None
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().assigned == Assigned(False)
@@ -194,14 +218,14 @@ def test_a_ticket_claimed_by_another_host_is_not_linked() -> None:
     rival = HostName("bob-mbp.local")
     manager = managing(here_linked_to(None))
     with pytest.raises(ClaimRefusedError, match=re.escape(rival.root)):
-        linking(manager, tracking(StateName.fake()), claimed_by_host(rival), LinkRequest.fake())
+        _ = linking(manager, tracking(StateName.fake()), claimed_by_host(rival), LinkRequest.fake())
     assert manager.current().issue is None
 
 
 def test_force_takes_the_claim_over_from_another_host() -> None:
     manager = managing(here_linked_to(None))
     claims = claimed_by_host(HostName("bob-mbp.local"))
-    linking(manager, tracking(StateName.fake()), claims, forcing())
+    assert linking(manager, tracking(StateName.fake()), claims, forcing()) == Ok(None)
     assert holders(claims, IssueIdentifier.fake()) == (our_holder(),)
     assert manager.current().issue == IssueIdentifier.fake()
 
@@ -211,14 +235,14 @@ def test_a_worktree_linked_to_another_ticket_is_neither_relinked_nor_claimed() -
     manager = managing(here_linked_to(previous))
     claims = FakeClaimRegistry()
     with pytest.raises(AlreadyLinkedError, match=previous.root):
-        linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake())
+        _ = linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake())
     assert manager.current().issue == previous
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
 
 
 def test_force_replaces_the_link_to_another_ticket() -> None:
     manager = managing(here_linked_to(IssueIdentifier("E-1")))
-    linking(manager, tracking(StateName.fake()), FakeClaimRegistry(), forcing())
+    assert linking(manager, tracking(StateName.fake()), FakeClaimRegistry(), forcing()) == Ok(None)
     assert manager.current().issue == IssueIdentifier.fake()
 
 
@@ -228,5 +252,52 @@ def test_force_leaves_the_previous_tickets_claim_alone() -> None:
         host=LinkRequest.fake().host, worktree=WorktreeName.of_issue(previous)
     )
     claims = claimed_by(previous_holder, previous)
-    linking(managing(here_linked_to(previous)), tracking(StateName.fake()), claims, forcing())
+    assert linking(
+        managing(here_linked_to(previous)), tracking(StateName.fake()), claims, forcing()
+    ) == Ok(None)
     assert holders(claims, previous) == (previous_holder,)
+
+
+def refusing_to_link() -> LinkRefusingWorkspaceManager:
+    return LinkRefusingWorkspaceManager(
+        here_linked_to(None), WorktreePath.fake(), fake_board_statuses()
+    )
+
+
+def test_a_refused_link_leaves_neither_claim_nor_claim_label() -> None:
+    tracker = tracking(StateName.fake())
+    claims = FakeClaimRegistry()
+    with pytest.raises(WorkspaceManagerError):
+        _ = linking(refusing_to_link(), tracker, claims, LinkRequest.fake())
+    assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
+    labels = tracker.read_issue(IssueIdentifier.fake()).unwrap().labels
+    assert not labels.has(ClaimSettings.fake().label).root
+
+
+def test_a_refused_link_restores_the_previous_assignee() -> None:
+    previous = Assignee("previous@flowbase.io")
+    tracker = tracking(StateName.fake(), assignee=previous)
+    with pytest.raises(WorkspaceManagerError):
+        _ = linking(refusing_to_link(), tracker, FakeClaimRegistry(), LinkRequest.fake())
+    assert tracker.read_issue_detail(IssueIdentifier.fake()).unwrap().assignee == previous
+
+
+def test_a_refused_link_puts_the_worktree_back_in_its_column() -> None:
+    column = fake_board().status_for(StateName("Specced"))
+    here = Worktree.bare(RepoId.fake(), WorktreePath.fake()).model_copy(update={"status": column})
+    manager = LinkRefusingWorkspaceManager(
+        Worktrees((here,)), WorktreePath.fake(), fake_board_statuses()
+    )
+    with pytest.raises(WorkspaceManagerError):
+        _ = linking(manager, tracking(StateName.fake()), FakeClaimRegistry(), LinkRequest.fake())
+    assert manager.current().status == column
+
+
+def test_a_refused_status_leaves_neither_claim_nor_link() -> None:
+    board_without_columns = WorkspaceStatuses(())
+    manager = FakeWorkspaceManager(here_linked_to(None), WorktreePath.fake(), board_without_columns)
+    claims = FakeClaimRegistry()
+    with pytest.raises(WorkspaceManagerError):
+        _ = linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake())
+    assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
+    assert manager.current().issue is None

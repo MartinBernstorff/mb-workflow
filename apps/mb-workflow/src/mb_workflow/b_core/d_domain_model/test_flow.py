@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from safe_result import Err, Ok
 from statemachine.exceptions import TransitionNotAllowed
@@ -128,52 +130,63 @@ def test_the_chart_names_every_event_it_holds() -> None:
 
 
 def test_a_legal_event_leads_to_the_state_the_chart_names() -> None:
-    assert Edges.of_chart(WorkflowChart).target_from(QA, EventName("ready")) == REVIEW
+    assert Edges.of_chart(WorkflowChart).target_from(QA, EventName("ready")) == Ok(REVIEW)
 
 
 def test_resolving_a_review_from_qa_returns_the_work_to_implementing() -> None:
-    assert (
-        Edges.of_chart(WorkflowChart).target_from(QA, EventName("resolve-review")) == IMPLEMENTING
+    assert Edges.of_chart(WorkflowChart).target_from(QA, EventName("resolve-review")) == Ok(
+        IMPLEMENTING
     )
 
 
 def test_an_illegal_event_names_the_current_state_and_the_events_legal_from_it() -> None:
-    with pytest.raises(
-        FlowError, match=r"merge is not legal from Grilling\. Legal: grill, to-ticket\."
-    ):
-        _ = Edges.of_chart(WorkflowChart).target_from(GRILLING, EventName("merge"))
+    refused = Edges.of_chart(WorkflowChart).target_from(GRILLING, EventName("merge"))
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, FlowError)
+    assert re.search(
+        r"merge is not legal from Grilling\. Legal: grill, to-ticket\.", str(refused.error)
+    )
 
 
 def test_an_event_outside_the_chart_is_illegal_from_every_state() -> None:
-    with pytest.raises(FlowError, match=r"abandon is not legal from QA\."):
-        _ = Edges.of_chart(WorkflowChart).target_from(QA, EventName("abandon"))
+    refused = Edges.of_chart(WorkflowChart).target_from(QA, EventName("abandon"))
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, FlowError)
+    assert re.search(r"abandon is not legal from QA\.", str(refused.error))
 
 
 def test_the_final_state_has_no_legal_event_to_offer() -> None:
-    with pytest.raises(FlowError, match=r"Legal: none\."):
-        _ = Edges.of_chart(WorkflowChart).target_from(MERGED, EventName("merge"))
+    refused = Edges.of_chart(WorkflowChart).target_from(MERGED, EventName("merge"))
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, FlowError)
+    assert re.search(r"Legal: none\.", str(refused.error))
 
 
 def test_forcing_an_event_leads_to_its_state_from_wherever_the_work_sits() -> None:
-    assert Edges.of_chart(WorkflowChart).target_of(EventName("merge")) == MERGING
+    assert Edges.of_chart(WorkflowChart).target_of(EventName("merge")) == Ok(MERGING)
 
 
 def test_every_event_leads_to_one_state_so_any_of_them_can_be_forced() -> None:
     edges = Edges.of_chart(WorkflowChart)
-    assert {edges.target_of(name) for name in edges.events().root} <= StateNames.of_chart(
-        WorkflowChart
-    ).root
+    states = StateNames.of_chart(WorkflowChart).root
+    assert {edges.target_of(name) for name in edges.events().root} <= {
+        Ok(state) for state in states
+    }
 
 
 def test_forcing_an_event_outside_the_chart_lists_the_events_it_holds() -> None:
-    with pytest.raises(FlowError, match=r"abandon is no event of the chart\. Its events: grill,"):
-        _ = Edges.of_chart(WorkflowChart).target_of(EventName("abandon"))
+    refused = Edges.of_chart(WorkflowChart).target_of(EventName("abandon"))
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, FlowError)
+    assert re.search(r"abandon is no event of the chart\. Its events: grill,", str(refused.error))
 
 
 def test_the_events_legal_from_a_state_come_from_the_edges_at_hand() -> None:
     edges = Edges(frozenset({edge(GRILLING, EventName("abandon"), MERGED)}))
-    with pytest.raises(FlowError, match=r"Legal: abandon\."):
-        _ = edges.target_from(GRILLING, EventName("to-ticket"))
+    refused = edges.target_from(GRILLING, EventName("to-ticket"))
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, FlowError)
+    assert re.search(r"Legal: abandon\.", str(refused.error))
 
 
 @pytest.mark.parametrize("typed", ["specced", "SPECCED", "Specced"])

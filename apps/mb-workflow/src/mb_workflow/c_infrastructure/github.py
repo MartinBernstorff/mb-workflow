@@ -1,11 +1,15 @@
 import logging
 from itertools import chain
+from subprocess import CalledProcessError
 from typing import override
+
+from pydantic import ValidationError
+from safe_result import Err, Ok, Result, safe_with
 
 from mb_workflow.b_core.c_secondary_ports.code_review import (
     CodeForge,
-    refuse_incomplete,
-    refuse_missing,
+    CodeReviewError,
+    CodeReviewRefusal,
 )
 from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames
 from mb_workflow.b_core.d_domain_model.pull_request import (
@@ -189,13 +193,44 @@ def pending_submission(pr: PrNumber, pending: ReviewId, request: ReviewRequest) 
     return Command((*submit, "-f", f"body={request.body.root}"))
 
 
+class GitHubFailure:
+    @staticmethod
+    def as_code_review_error[T](
+        result: Result[T, CalledProcessError | OSError | ValidationError],
+    ) -> Result[T, CodeReviewError]:
+        match result:
+            case Ok(value):
+                return Ok(value)
+            case Err(CalledProcessError() as error):
+                return Err(
+                    CodeReviewError(f"{' '.join(error.cmd)} failed: {str(error.stderr).strip()}")
+                )
+            case Err(ValidationError() as error):
+                return Err(CodeReviewError(f"GitHub answered with unreadable output: {error}"))
+            case Err(error):
+                return Err(CodeReviewError(f"Cannot run gh: {error}"))
+
+
 class GitHub(CodeForge):
     def __init__(self, shell: CommandRunner) -> None:
         self._shell = shell
+
+    @staticmethod
+    def connected(shell: CommandRunner) -> Result[GitHub, CodeReviewError]:
+        return GitHubFailure.as_code_review_error(GitHub._probed(shell))
+
+    @staticmethod
+    @safe_with(CalledProcessError, OSError)
+    def _probed(shell: CommandRunner) -> GitHub:
         _ = shell.run(Command(("gh", "--version")))
+        return GitHub(shell)
 
     @override
-    def review_requested(self) -> PullRequests:
+    def review_requested(self) -> Result[PullRequests, CodeReviewError]:
+        return GitHubFailure.as_code_review_error(self._review_requested())
+
+    @safe_with(CalledProcessError, ValidationError)
+    def _review_requested(self) -> PullRequests:
         return PullRequestPayloads.parse(
             self._shell.run(
                 Command(
@@ -213,7 +248,11 @@ class GitHub(CodeForge):
         )
 
     @override
-    def merged_branches(self, since: MergedSince) -> BranchNames:
+    def merged_branches(self, since: MergedSince) -> Result[BranchNames, CodeReviewError]:
+        return GitHubFailure.as_code_review_error(self._merged_branches(since))
+
+    @safe_with(CalledProcessError, ValidationError)
+    def _merged_branches(self, since: MergedSince) -> BranchNames:
         return PullRequestPayloads.parse(
             self._shell.run(
                 Command(
@@ -235,8 +274,15 @@ class GitHub(CodeForge):
         ).branches()
 
     @override
-    def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> None:
-        refuse_missing(into)
+    def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> Result[None, CodeReviewError]:
+        match CodeReviewRefusal.check_directory(into):
+            case Ok():
+                return GitHubFailure.as_code_review_error(self._checkout(pr, into))
+            case Err() as refused:
+                return refused
+
+    @safe_with(CalledProcessError, ValidationError)
+    def _checkout(self, pr: PrNumber, into: CheckoutDirectory) -> None:
         _ = self._shell.at(ExistingDirectory(into.root)).run(
             Command(("gh", "pr", "checkout", str(pr.root), "--force"))
         )
@@ -260,8 +306,15 @@ class GitHub(CodeForge):
         )
 
     @override
-    def submit(self, pr: PrNumber, request: ReviewRequest) -> None:
-        refuse_incomplete(request)
+    def submit(self, pr: PrNumber, request: ReviewRequest) -> Result[None, CodeReviewError]:
+        match CodeReviewRefusal.check_complete(request):
+            case Ok():
+                return GitHubFailure.as_code_review_error(self._submit(pr, request))
+            case Err() as refused:
+                return refused
+
+    @safe_with(CalledProcessError, ValidationError)
+    def _submit(self, pr: PrNumber, request: ReviewRequest) -> None:
         pending = self.reviews(pr).pending_by(self.viewer())
         if pending is None:
             _ = self._shell.run(review_command(pr, request))

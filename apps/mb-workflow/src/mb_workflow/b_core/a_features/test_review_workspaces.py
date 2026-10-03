@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, override
 
 import pytest
+from safe_result import Err
 
 from mb_workflow.b_core.a_features.review_workspaces import (
     CreatedWorkspace,
@@ -14,7 +15,12 @@ from mb_workflow.b_core.a_features.review_workspaces import (
     Unchanged,
 )
 from mb_workflow.b_core.c_secondary_ports.claims import FakeClaimRegistry
-from mb_workflow.b_core.c_secondary_ports.code_review import FakeCodeReview, MergedPullRequest
+from mb_workflow.b_core.c_secondary_ports.code_review import (
+    CodeReviewError,
+    FakeCodeReview,
+    MergedPullRequest,
+    UnreachableCodeReview,
+)
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, FakeRunLock
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracker, TrackedIssue
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
@@ -45,6 +51,8 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from safe_result import Result
 
     from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
 
@@ -96,25 +104,40 @@ def create_review_directory(here: WorktreePath) -> WorktreePath:
 def run_review_workspaces(
     review: CodeForge,
     manager: FakeWorkspaceManager,
-    lock: FakeRunLock | None = None,
     *,
     status: WorkspaceStatus = WorkspaceStatus.fake(),
     claims: FakeClaimRegistry | None = None,
     prompt: ReviewPrompt | None = None,
 ) -> Outcome:
-    return ReviewWorkspaces.create_workspaces(
-        review=review,
-        manager=manager,
-        claims=FakeClaimRegistry() if claims is None else claims,
-        tracker=FakeTicketTracker(LabelNames.fake(), (TrackedIssue.fake(),)),
-        claim_settings=ClaimSettings(),
-        host=HostName.fake(),
-        lock=FakeRunLock() if lock is None else lock,
-        narrator=SilentNarrator(),
-        status=status,
-        since=MergedSince.fake(),
-        prompt=prompt,
-    )
+    return ReviewWorkspacesRuns.attempted(
+        review, manager, status=status, claims=claims, prompt=prompt
+    ).unwrap()
+
+
+class ReviewWorkspacesRuns:
+    @staticmethod
+    def attempted(
+        review: CodeForge,
+        manager: FakeWorkspaceManager,
+        lock: FakeRunLock | None = None,
+        *,
+        status: WorkspaceStatus = WorkspaceStatus.fake(),
+        claims: FakeClaimRegistry | None = None,
+        prompt: ReviewPrompt | None = None,
+    ) -> Result[Outcome, AlreadyRunningError | CodeReviewError]:
+        return ReviewWorkspaces.create_workspaces(
+            review=review,
+            manager=manager,
+            claims=FakeClaimRegistry() if claims is None else claims,
+            tracker=FakeTicketTracker(LabelNames.fake(), (TrackedIssue.fake(),)),
+            claim_settings=ClaimSettings(),
+            host=HostName.fake(),
+            lock=FakeRunLock() if lock is None else lock,
+            narrator=SilentNarrator(),
+            status=status,
+            since=MergedSince.fake(),
+            prompt=prompt,
+        )
 
 
 def test_creates_a_workspace_for_a_pr_awaiting_review(here: WorktreePath) -> None:
@@ -232,11 +255,33 @@ def test_a_workspace_that_cannot_be_created_is_reported_as_failed(here: Worktree
     assert outcome.failed_any() == Failed(True)
 
 
+def test_a_checkout_that_is_refused_is_reported_as_failed(here: WorktreePath) -> None:
+    # No review directory is created, so the code review refuses to check out into it.
+    outcome = run_review_workspaces(FakeCodeReview(PullRequests.fake()), standing_in(here))
+    assert [failure.subject for failure in outcome.failed] == [
+        FailureSubject.of_pr(PrNumber.fake())
+    ]
+    assert outcome.created == ()
+
+
+def test_an_unreachable_code_review_fails_the_run_and_leaves_workspaces_alone(
+    here: WorktreePath,
+) -> None:
+    stale = Worktree.fake().model_copy(update={"path": here.sibling(WorktreeName("stale"))})
+    manager = standing_in(here, stale)
+    before = manager.worktrees()
+    reconciled = ReviewWorkspacesRuns.attempted(UnreachableCodeReview(), manager)
+    assert isinstance(reconciled, Err)
+    assert isinstance(reconciled.error, CodeReviewError)
+    assert manager.worktrees() == before
+
+
 def test_a_run_is_refused_while_another_holds_the_lock(here: WorktreePath) -> None:
     lock = FakeRunLock()
     manager = standing_in(here)
-    with lock.held(), pytest.raises(AlreadyRunningError):
-        _ = run_review_workspaces(FakeCodeReview(PullRequests.fake()), manager, lock)
+    with lock.acquire().unwrap():
+        refused = ReviewWorkspacesRuns.attempted(FakeCodeReview(PullRequests.fake()), manager, lock)
+    assert isinstance(refused.error, AlreadyRunningError)
     assert len(manager.worktrees().root) == 1
 
 

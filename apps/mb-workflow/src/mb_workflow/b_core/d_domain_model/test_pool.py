@@ -1,6 +1,7 @@
 import pytest
+from safe_result import Err, Ok
 
-from mb_workflow.b_core.d_domain_model.flow import StateName
+from mb_workflow.b_core.d_domain_model.flow import FlowError, StateName
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import (
     GroupedLabel,
@@ -216,16 +217,31 @@ def test_occupancy_holds_each_issue_with_its_flow_state_and_labels() -> None:
             for grouped in (in_flow(LabelName("QA")), in_flow(LabelName("Merging")), in_flow())
         )
     )
-    assert Occupancy.of(issues, FlowLabels.fake()) == occupied(
-        in_state(StateName("QA"), LabelName("refactor")),
-        in_state(StateName("Merging"), LabelName("refactor")),
+    assert Occupancy.of(issues, FlowLabels.fake()) == Ok(
+        occupied(
+            in_state(StateName("QA"), LabelName("refactor")),
+            in_state(StateName("Merging"), LabelName("refactor")),
+        )
     )
+
+
+def test_an_issue_with_two_flow_labels_leaves_the_occupancy_unknown() -> None:
+    issues = Issues(
+        (
+            Issue.fake().model_copy(
+                update={"grouped": in_flow(LabelName("QA"), LabelName("Review"))}
+            ),
+        )
+    )
+    counted = Occupancy.of(issues, FlowLabels.fake())
+    assert isinstance(counted, Err)
+    assert isinstance(counted.error, FlowError)
 
 
 def test_an_issue_without_a_flow_label_leaves_the_grilling_limit_open() -> None:
     occupancy = Occupancy.of(
         Issues((Issue.fake().model_copy(update={"grouped": in_flow()}),)), FlowLabels.fake()
-    )
+    ).unwrap()
     assert PoolLimits().refusal(occupancy, in_state(StateName("Grilling"))) is None
 
 
