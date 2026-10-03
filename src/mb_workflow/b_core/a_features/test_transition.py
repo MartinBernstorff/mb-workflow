@@ -1,6 +1,5 @@
 import pytest
 
-from mb_workflow.b_core.a_features.label import UnlinkedWorktreeError
 from mb_workflow.b_core.a_features.transition import transition
 from mb_workflow.b_core.b_domain_services.flow_transition import Force
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
@@ -10,7 +9,12 @@ from mb_workflow.b_core.d_domain_model.flow import EventName, StateName
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, LabelNames
 from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
-from mb_workflow.b_core.d_domain_model.workspace import Worktree, WorktreePath, Worktrees
+from mb_workflow.b_core.d_domain_model.workspace import (
+    UnlinkedWorktreeError,
+    Worktree,
+    WorktreePath,
+    Worktrees,
+)
 
 
 def seeded_tracker() -> FakeTicketTracker:
@@ -43,7 +47,7 @@ def test_a_worktree_with_no_linked_issue_leaves_the_board_where_it_was() -> None
     store = FakeStatusStore(StateName("Implementing"))
     unlinked = Worktree.fake().model_copy(update={"issue": None})
     manager = FakeWorkspaceManager(Worktrees((unlinked,)), unlinked.path)
-    with pytest.raises(UnlinkedWorktreeError):
+    with pytest.raises(UnlinkedWorktreeError, match="no linked Linear issue"):
         _ = transition(
             store=store,
             tracker=seeded_tracker(),

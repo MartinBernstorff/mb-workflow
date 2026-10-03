@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.a_features.label import issue_from_workspace
 from mb_workflow.b_core.b_domain_services import flow_transition
 from mb_workflow.b_core.d_domain_model.flow import EventName, StateName, WorkflowChart
 
@@ -22,7 +21,7 @@ def transition(
     event: EventName,
     force: flow_transition.Force,
 ) -> StateName:
-    issue = issue_from_workspace(manager.current())
+    issue = manager.current().linked_issue()
     return flow_transition.transition(
         chart=WorkflowChart,
         store=store,

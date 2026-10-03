@@ -27,7 +27,6 @@ from mb_workflow.b_core.a_features.drain_watch import (
 from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
 from mb_workflow.b_core.a_features.init_config import Overwrite, init_config
-from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
 from mb_workflow.b_core.a_features.link import AlreadyLinkedError, LinkRequest, TicketLinking
 from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt, create_workspaces
 from mb_workflow.b_core.a_features.seed_labels import CoveredByWorkspace, seed_flow_labels
@@ -66,6 +65,7 @@ from mb_workflow.b_core.d_domain_model.config_template import ConfigTemplate
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError, StateNames, WorkflowChart
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
+from mb_workflow.b_core.d_domain_model.workspace import UnlinkedWorktreeError
 from mb_workflow.c_infrastructure.credentials import (
     CredentialsDirectory,
     InvalidCredentialsError,
@@ -210,12 +210,6 @@ def review_workspaces(
 def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode:
     shell = here()
     finalize(GitHub(shell), Orca(shell), request, status)
-    return ExitCode(0)
-
-
-@guarded
-def relabel(request: LabelRequest) -> ExitCode:
-    change_label(Orca(here()), linear(), request)
     return ExitCode(0)
 
 
