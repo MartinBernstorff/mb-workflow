@@ -134,19 +134,19 @@ class Claiming:
     def release_claim(
         registry: ClaimRegistry, tracker: TicketTracker, request: LabelledClaim
     ) -> None:
-        with Activity(f"withdrawing the claim on {request.ticket.root}").logged(logger):
+        with Activity(f"releasing the claim on {request.ticket.root}").logged(logger):
             Claiming.withdraw_holders_claims(registry, request.ticket, request.holder)
-        if registry.claims(request.ticket).root:
-            return
-        try:
-            tracker.remove_label(request.ticket, request.label)
-        except TicketTrackerError as error:
-            logger.warning(
-                "Could not remove the %s label from %s: %s",
-                request.label.root,
-                request.ticket.root,
-                error,
-            )
+            if registry.claims(request.ticket).root:
+                return
+            try:
+                tracker.remove_label(request.ticket, request.label)
+            except TicketTrackerError as error:
+                logger.warning(
+                    "Could not remove the %s label from %s: %s",
+                    request.label.root,
+                    request.ticket.root,
+                    error,
+                )
 
 
 class LabelledClaim(Model):

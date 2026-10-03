@@ -222,14 +222,14 @@ class Drain:
                         pool.skip_limits_label.root,
                         refusal.root,
                     )
-                described = (
+                ticket_summary = (
                     f"{ticket.issue.identifier.root} ({ticket.priority.name}, {slot.state.root})"
                 )
                 if request.dry_run.root:
-                    logger.info("Would start %s.", described)
+                    logger.info("Would start %s.", ticket_summary)
                     picked.append(ticket)
                 else:
-                    with Activity(f"taking {described}").logged(logger):
+                    with Activity(f"taking {ticket_summary}").logged(logger):
                         started = Drain.try_start_ticket(
                             tracker=tracker,
                             claims=claims,
@@ -244,9 +244,13 @@ class Drain:
                     if started.root:
                         picked.append(ticket)
                         if skips_limits:
-                            Drain.remove_skip_limits_label(
-                                tracker, ticket.issue.identifier, pool.skip_limits_label
-                            )
+                            with Activity(
+                                f"removing label {pool.skip_limits_label.root}"
+                                f" from {ticket.issue.identifier.root}"
+                            ).logged(logger):
+                                tracker.remove_label(
+                                    ticket.issue.identifier, pool.skip_limits_label
+                                )
                 # A ticket lost to another host is now in progress there, so it fills a slot too.
                 occupancy = occupancy.with_slot(slot)
             return DrainOutcome(
@@ -256,13 +260,6 @@ class Drain:
                 unready=unready,
                 full=full,
             )
-
-    @staticmethod
-    def remove_skip_limits_label(
-        tracker: TicketTracker, ticket: IssueIdentifier, label: LabelName
-    ) -> None:
-        with Activity(f"removing label {label.root} from {ticket.root}").logged(logger):
-            tracker.remove_label(ticket, label)
 
     @staticmethod
     def try_start_ticket(

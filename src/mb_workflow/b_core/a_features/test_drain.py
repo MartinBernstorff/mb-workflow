@@ -583,6 +583,15 @@ def test_the_log_names_each_ticket_started(caplog: pytest.LogCaptureFixture) -> 
     assert "Started taking MB-1 (low, Specced)." in log
 
 
+def test_a_dry_run_logs_each_ticket_it_would_start(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO):
+        _ = draining(
+            standard_pool(),
+            request=DrainRequest.fake().model_copy(update={"dry_run": DryRun(True)}),
+        )
+    assert "Would start MB-2 (high, Specced)." in caplog.text
+
+
 @pytest.mark.parametrize(
     "activity",
     [
