@@ -10,9 +10,6 @@ from mb_workflow.d_lib.models import Value
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-# Each line starts with the time of day, so a long run shows when each step happened.
-FORMATTER = logging.Formatter("%(asctime)s %(message)s", datefmt="%H:%M:%S")
-
 
 class LogLevel(RootModel[int]):
     @staticmethod
@@ -20,9 +17,8 @@ class LogLevel(RootModel[int]):
         return LogLevel(logging.INFO)
 
     def configure(self) -> None:
-        handler = logging.StreamHandler()
-        handler.setFormatter(FORMATTER)
-        logging.basicConfig(level=self.root, handlers=[handler])
+        # Each line starts with the time of day, so a long run shows when each step happened.
+        logging.basicConfig(level=self.root, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
         for name in ("httpx", "httpcore"):
             logging.getLogger(name).setLevel(logging.WARNING)
 

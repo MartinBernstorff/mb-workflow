@@ -1,10 +1,12 @@
 import logging
 import re
+import subprocess
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
 
-from mb_workflow.d_lib.logging import FORMATTER, Activity, LogLevel
+from mb_workflow.d_lib.logging import Activity, LogLevel
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -30,11 +32,21 @@ def test_http_loggers_hide_info_but_show_warnings(name: str) -> None:
     assert logger.isEnabledFor(logging.WARNING)
 
 
-def test_a_log_line_starts_with_the_time_of_day() -> None:
-    message = "Claiming MB-57"
-    record = logging.LogRecord(__name__, logging.INFO, __file__, 0, message, None, None)
+# In a subprocess, because pytest's handlers on the root logger turn basicConfig into a no-op.
+def test_a_configured_log_line_starts_with_the_time_of_day() -> None:
+    activity = Activity.fake()
+    script = (
+        "import logging\n"
+        "from mb_workflow.d_lib.logging import LogLevel\n"
+        "LogLevel(logging.INFO).configure()\n"
+        f"logging.getLogger().info({activity.root!r})\n"
+    )
 
-    assert re.fullmatch(rf"\d{{2}}:\d{{2}}:\d{{2}} {message}", FORMATTER.format(record))
+    logged = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=True
+    ).stderr
+
+    assert re.fullmatch(rf"\d{{2}}:\d{{2}}:\d{{2}} {re.escape(activity.root)}\n", logged)
 
 
 def test_an_activity_logs_its_start_before_the_work_and_its_finish_after(
