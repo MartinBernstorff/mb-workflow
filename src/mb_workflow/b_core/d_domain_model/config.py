@@ -99,7 +99,7 @@ class WorkspaceSettings(Model):
 
     @field_validator("orca_project")
     @classmethod
-    def lowercase_as_orca_stores_it(cls, project: ProjectSelector) -> ProjectSelector:
+    def lowercased_orca_project(cls, project: ProjectSelector) -> ProjectSelector:
         # Orca stores project IDs in lowercase and matches them case-sensitively.
         return ProjectSelector(project.root.lower())
 

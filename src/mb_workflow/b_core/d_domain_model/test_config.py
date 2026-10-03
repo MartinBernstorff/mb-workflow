@@ -343,11 +343,13 @@ def test_the_workspace_table_names_the_orca_project_and_the_assignee() -> None:
 
 
 def test_a_mixed_case_orca_project_loads_lowercased() -> None:
+    mixed_case = "github:MartinBernstorff/codetaster"
+    lowercase = "github:martinbernstorff/codetaster"
     settings = settings_with_fake_workspace(
         issues={"tracker": "linear"},
-        workspace={"orca_project": "github:MartinBernstorff/codetaster", "assignee": "a@b.io"},
+        workspace={"orca_project": mixed_case, "assignee": Assignee.fake().root},
     )
-    assert settings.workspace.orca_project == ProjectSelector("github:martinbernstorff/codetaster")
+    assert settings.workspace.orca_project == ProjectSelector(lowercase)
 
 
 def test_a_configuration_without_a_workspace_table_is_refused() -> None:
