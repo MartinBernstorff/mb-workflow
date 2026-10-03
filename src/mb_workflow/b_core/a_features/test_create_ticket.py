@@ -1,4 +1,5 @@
 import pytest
+from safe_result import Err
 
 from mb_workflow.b_core.a_features.create_ticket import create_ticket
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
@@ -48,13 +49,17 @@ def tracking(groups: LabelNames = FlowLabels.fake().labels) -> FakeTicketTracker
 
 
 def created(tracker: FakeTicketTracker, draft: TicketDraft) -> IssueIdentifier:
-    return create_ticket(
-        tracker=tracker,
-        draft=draft,
-        defaults=TicketDefaults.fake(),
-        flow_labels=FlowLabels.fake(),
-        statuses=TicketStatuses.fake(),
-    ).identifier
+    return (
+        create_ticket(
+            tracker=tracker,
+            draft=draft,
+            defaults=TicketDefaults.fake(),
+            flow_labels=FlowLabels.fake(),
+            statuses=TicketStatuses.fake(),
+        )
+        .unwrap()
+        .identifier
+    )
 
 
 def test_a_created_ticket_starts_in_the_first_flow_state() -> None:
@@ -87,3 +92,17 @@ def test_a_relation_to_an_unknown_issue_is_refused_before_the_ticket_is_created(
 def test_creating_a_ticket_before_the_flow_labels_exist_is_refused() -> None:
     with pytest.raises(MissingFlowLabelsError):
         _ = created(tracking(groups=LabelNames(())), TicketDraft.fake())
+
+
+def test_a_flow_label_passed_as_a_label_creates_no_ticket() -> None:
+    tracker = tracking()
+    draft = TicketDraft.fake().model_copy(update={"labels": LabelNames((LabelName("Specced"),))})
+    refused = create_ticket(
+        tracker=tracker,
+        draft=draft,
+        defaults=TicketDefaults.fake(),
+        flow_labels=FlowLabels.fake(),
+        statuses=TicketStatuses.fake(),
+    )
+    assert isinstance(refused, Err)
+    assert tracker.labelled_issues(LabelName("Grilling"), StatusTypes(())).root == ()

@@ -1,3 +1,7 @@
+from typing import TYPE_CHECKING
+
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     Cleared,
@@ -12,6 +16,9 @@ from mb_workflow.b_core.d_domain_model.issue import (
     ProjectName,
 )
 from mb_workflow.d_lib.models import Model, Value
+
+if TYPE_CHECKING:
+    from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabelOptionError, FlowLabels
 
 
 class TicketEditError(ValueError):
@@ -59,17 +66,26 @@ class TicketEdit(Model):
             remove_milestone=RemoveMilestone(False),
         )
 
-    def checked(self) -> TicketEdit:
+    def checked(
+        self, flow_labels: FlowLabels
+    ) -> Result[TicketEdit, TicketEditError | FlowLabelOptionError]:
         if self == TicketEdit.nothing():
-            raise TicketEditError("Specify at least one field to edit.")
+            return Err(TicketEditError("Specify at least one field to edit."))
         if self.body is not None and self.body_file is not None:
-            raise TicketEditError("Specify only one of --body and --body-file.")
+            return Err(TicketEditError("Specify only one of --body and --body-file."))
         if self.milestone is not None and self.remove_milestone.root:
-            raise TicketEditError("Specify only one of --milestone and --remove-milestone.")
-        return self
+            return Err(TicketEditError("Specify only one of --milestone and --remove-milestone."))
+        match flow_labels.checked_label_options(
+            LabelNames((*self.add_labels.root, *self.remove_labels.root))
+        ):
+            case Ok():
+                return Ok(self)
+            case Err() as failed:
+                return failed
 
+    # Expects an edit that passed checked.
     def update(self, current: IssueDetail, viewer: Assignee) -> IssueUpdate:
-        project = self.checked()._project(current)
+        project = self._project(current)
         return IssueUpdate(
             title=self.title,
             description=self.body if self.body is not None else self.body_file,

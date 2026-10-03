@@ -1,3 +1,5 @@
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.d_domain_model.flow import (
     FlowError,
     Phase,
@@ -15,6 +17,10 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelNames,
 )
 from mb_workflow.d_lib.models import Model
+
+
+class FlowLabelOptionError(ValueError):
+    pass
 
 
 class FlowLabels(Model):
@@ -58,6 +64,20 @@ class FlowLabels(Model):
 
     def missing(self, held: LabelNames) -> LabelNames:
         return held.unmatched(self.labels)
+
+    # A flow label set by hand would disagree with the status, so the state is moved with --state instead.
+    def checked_label_options(
+        self, requested: LabelNames
+    ) -> Result[LabelNames, FlowLabelOptionError]:
+        passed = self.labels.spelled(requested)
+        if not passed.root:
+            return Ok(requested)
+        listed = ", ".join(label.root for label in passed.root)
+        return Err(
+            FlowLabelOptionError(
+                f"{listed} is a flow label. Move the ticket with `mw ticket edit --state` instead."
+            )
+        )
 
     def relabelled(self, held: LabelNames, state: StateName) -> LabelNames:
         kept = tuple(label for label in held.root if self.labels.matching(label) is None)

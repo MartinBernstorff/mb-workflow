@@ -1,11 +1,13 @@
 import pytest
+from safe_result import Err
 
-from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
+from mb_workflow.b_core.a_features.edit_ticket import TicketEditor
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
     TicketTrackerError,
     TrackedIssue,
 )
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     IssueIdentifier,
@@ -30,14 +32,16 @@ def tracking() -> FakeTicketTracker:
 
 def test_editing_a_ticket_writes_the_title() -> None:
     tracker = tracking()
-    edit_ticket(tracker, IssueIdentifier.fake(), TicketEdit.fake())
+    _ = TicketEditor.apply_edit(
+        tracker, IssueIdentifier.fake(), TicketEdit.fake(), FlowLabels.fake()
+    ).unwrap()
     assert tracker.read_issue_detail(IssueIdentifier.fake()).title == TicketEdit.fake().title
 
 
 def test_editing_a_ticket_self_assigns_with_me() -> None:
     tracker = tracking()
     edit = TicketEdit.nothing().model_copy(update={"add_assignee": Assignee.me()})
-    edit_ticket(tracker, IssueIdentifier.fake(), edit)
+    _ = TicketEditor.apply_edit(tracker, IssueIdentifier.fake(), edit, FlowLabels.fake()).unwrap()
     assert tracker.read_issue_detail(IssueIdentifier.fake()).assignee == Assignee.fake()
 
 
@@ -49,22 +53,38 @@ def test_editing_a_ticket_swaps_labels() -> None:
             "remove_labels": LabelNames.fake(),
         }
     )
-    edit_ticket(tracker, IssueIdentifier.fake(), edit)
+    _ = TicketEditor.apply_edit(tracker, IssueIdentifier.fake(), edit, FlowLabels.fake()).unwrap()
     assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames((LabelName("Backend"),))
 
 
 def test_editing_an_unknown_ticket_fails() -> None:
     with pytest.raises(TicketTrackerError):
-        edit_ticket(tracking(), IssueIdentifier("E-404"), TicketEdit.fake())
+        _ = TicketEditor.apply_edit(
+            tracking(), IssueIdentifier("E-404"), TicketEdit.fake(), FlowLabels.fake()
+        )
 
 
 def test_an_empty_edit_is_refused_before_the_ticket_is_read() -> None:
-    with pytest.raises(TicketEditError):
-        edit_ticket(tracking(), IssueIdentifier("E-404"), TicketEdit.nothing())
+    refused = TicketEditor.apply_edit(
+        tracking(), IssueIdentifier("E-404"), TicketEdit.nothing(), FlowLabels.fake()
+    )
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, TicketEditError)
 
 
 def test_editing_a_ticket_moves_its_status() -> None:
     tracker = tracking()
     edit = TicketEdit.nothing().model_copy(update={"status": IssueStatusName("done")})
-    edit_ticket(tracker, IssueIdentifier.fake(), edit)
+    _ = TicketEditor.apply_edit(tracker, IssueIdentifier.fake(), edit, FlowLabels.fake()).unwrap()
     assert tracker.read_issue(IssueIdentifier.fake()).status == IssueStatusName("Done")
+
+
+def test_a_flow_label_passed_as_a_label_leaves_the_ticket_unchanged() -> None:
+    tracker = tracking()
+    before = tracker.read_issue(IssueIdentifier.fake())
+    edit = TicketEdit.nothing().model_copy(
+        update={"add_labels": LabelNames((LabelName("Specced"),))}
+    )
+    refused = TicketEditor.apply_edit(tracker, IssueIdentifier.fake(), edit, FlowLabels.fake())
+    assert isinstance(refused, Err)
+    assert tracker.read_issue(IssueIdentifier.fake()) == before
