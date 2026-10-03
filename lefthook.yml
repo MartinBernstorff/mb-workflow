@@ -1,5 +1,5 @@
 pre-commit:
   jobs:
     - name: phase-1
-      run: moon run phase-1 && git add docs/flow.svg docs/flow.md
+      run: moon run :phase-1 && git add apps/mb-workflow/docs/flow.svg apps/mb-workflow/docs/flow.md
       stage_fixed: true

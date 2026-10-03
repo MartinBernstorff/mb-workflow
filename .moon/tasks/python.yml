@@ -1,0 +1,113 @@
+# Inherited by every Python app under apps/. An app's moon.yml only adds or overrides tasks.
+inheritedBy:
+  languages: ["python"]
+
+fileGroups:
+  sources:
+    - "src/**/*.py"
+
+tasks:
+  test:
+    script: "uv run pytest"
+    inputs:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "pytest.toml"
+      - "@group(sources)"
+    options:
+      outputStyle: "buffer-only-failure"
+
+  types:
+    script: "uv run pyrefly check src"
+    inputs:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "/pyrefly.toml"
+      - "@group(sources)"
+    options:
+      outputStyle: "buffer-only-failure"
+
+  modularity:
+    script: "uv run tach check"
+    inputs:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "tach.toml"
+      - "@group(sources)"
+    options:
+      outputStyle: "buffer-only-failure"
+
+  noprim:
+    script: "uv run noprim check src"
+    inputs:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "noprim.toml"
+      - "@group(sources)"
+    options:
+      outputStyle: "buffer-only-failure"
+
+  lint:
+    script: "uv run ruff check"
+    inputs:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "ruff.toml"
+      - "/ruff.toml"
+      - "@group(sources)"
+    options:
+      outputStyle: "buffer-only-failure"
+
+  lint-fix:
+    script: "uv run ruff check --fix"
+    options:
+      cache: false
+      runInCI: false
+
+  format:
+    script: "uv run ruff format --check"
+    inputs:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "ruff.toml"
+      - "/ruff.toml"
+      - "@group(sources)"
+    options:
+      outputStyle: "buffer-only-failure"
+
+  format-fix:
+    script: "uv run ruff format"
+    options:
+      cache: false
+      runInCI: false
+
+  install:
+    script: "uv tool install --force --reinstall ."
+    options:
+      cache: false
+      runInCI: false
+
+  # Serial, because the fix tasks rewrite the sources the checks read.
+  phase-1:
+    deps:
+      - "lint-fix"
+      - "format-fix"
+      - "types"
+      - "modularity"
+      - "noprim"
+    inputs: []
+    options:
+      runDepsInParallel: false
+      runInCI: false
+
+  full:
+    deps:
+      - "lint"
+      - "format"
+      - "types"
+      - "modularity"
+      - "noprim"
+      - "test"
+    inputs: []
+    options:
+      runInCI: false

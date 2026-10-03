@@ -1,15 +1,7 @@
 # mb-workflow
 
-Workflow automation CLI.
+CLIs for workflow automation. Each lives in its own directory under `apps/`:
 
-```sh
-uv run mw dev setup
-uv run mb-workflow workspace create-reviews
-```
+* [`apps/mb-workflow`](apps/mb-workflow) — the `mw` CLI.
 
 All checks run through moon: `moon ci`.
-
-## The workflow state chart
-
-![The workflow state chart](docs/flow.svg)
-

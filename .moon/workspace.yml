@@ -1,7 +1,7 @@
 projects:
-  root: "."
+  - "apps/*"
 
-defaultProject: "root"
+defaultProject: "mb-workflow"
 
 vcs:
   defaultBranch: "main"
