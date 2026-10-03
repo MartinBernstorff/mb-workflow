@@ -40,7 +40,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     WorktreeName,
 )
 from mb_workflow.c_infrastructure.flock import LockName
-from mb_workflow.d_lib.logging import LogLevel, configure
+from mb_workflow.d_lib.logging import LogLevel
 
 if TYPE_CHECKING:
     from mb_workflow.a_presentation.console import ExitCode
@@ -74,7 +74,7 @@ def workspace_create_reviews(
     idle_timeout_ms: int = typer.Option(60000, "--idle-timeout-ms"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     since = MergedSince.of(Lookback(merged_within_days), Today.now())
     review_prompt = (
         ReviewPrompt(text=TerminalText(prompt), idle_timeout=TimeoutMs(idle_timeout_ms))
@@ -95,7 +95,7 @@ def approve(
     status: str = typer.Option(REVIEWING, "--status"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = ReviewRequest(decision=ReviewDecision.approve, body=ReviewBody(comment))
     raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
@@ -107,7 +107,7 @@ def reject(
     status: str = typer.Option(REVIEWING, "--status"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = ReviewRequest(decision=ReviewDecision.request_changes, body=ReviewBody(comment))
     raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
@@ -119,7 +119,7 @@ def comment(
     status: str = typer.Option(REVIEWING, "--status"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = ReviewRequest(decision=ReviewDecision.comment, body=ReviewBody(comment))
     raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
 
@@ -140,7 +140,7 @@ def workspace_start(
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = StartRequest(
         ticket=IssueIdentifier(ticket),
         submit=Submit(submit),
@@ -169,7 +169,7 @@ def link(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Link the current worktree to a ticket, claiming it as start would, without typing a prompt."""
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = LinkRequest(
         ticket=IssueIdentifier(ticket), host=HostName.of_machine(), take_over=TakeOver(force)
     )
@@ -203,7 +203,7 @@ def workspace_drain(
     """Start ready tickets in pick order until a pool limit is reached. Tickets labelled skip-limits ignore the limits."""
     if dry_run and watch:
         raise typer.BadParameter("--dry-run cannot be combined with --watch.")
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = DrainRequest(
         dry_run=DryRun(dry_run),
         idle_timeout=TimeoutMs(idle_timeout_ms),
@@ -233,7 +233,7 @@ def workspace_teardown(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Delete every claim on the worktree's ticket and its claim label, then remove the worktree."""
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = TeardownRequest(worktree=None if worktree is None else WorktreeName(worktree))
     raise typer.Exit(
         code=commands.teardown(request, WorkingDirectory(Path.cwd()), ConfigFileName.default()).root
@@ -245,7 +245,7 @@ def config_init(
     force: bool = typer.Option(False, "--force", help="Overwrite an existing config file."),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(
         code=commands.init(
             WorkingDirectory(Path.cwd()), ConfigFileName.default(), Overwrite(force)
@@ -255,7 +255,7 @@ def config_init(
 
 @config_app.command("show")
 def config_show(quiet: bool = typer.Option(False, "--quiet", "-q")) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(
         code=commands.config(WorkingDirectory(Path.cwd()), ConfigFileName.default()).root
     )
@@ -271,7 +271,7 @@ def flow_diagram(
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=diagram(DiagramPath(Path(output)) if output else None).root)
 
 
@@ -280,7 +280,7 @@ def flow_show(
     as_json: bool = typer.Option(False, "--json"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=commands.flow_show(AsJson(as_json)).root)
 
 
@@ -292,7 +292,7 @@ def flow_seed_labels(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Create the flow label group in a Linear team, with one label per flow state."""
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=commands.flow_seed_labels(TeamName(team)).root)
 
 
@@ -306,7 +306,7 @@ def flow_grill(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("grill"), Force(force)).root)
 
 
@@ -316,7 +316,7 @@ def flow_to_ticket(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("to-ticket"), Force(force)).root)
 
 
@@ -326,7 +326,7 @@ def flow_specced(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("specced"), Force(force)).root)
 
 
@@ -336,7 +336,7 @@ def flow_implement(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("implement"), Force(force)).root)
 
 
@@ -346,7 +346,7 @@ def flow_qa(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("qa"), Force(force)).root)
 
 
@@ -356,7 +356,7 @@ def flow_ready(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("ready"), Force(force)).root)
 
 
@@ -366,7 +366,7 @@ def flow_merge(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("merge"), Force(force)).root)
 
 
@@ -376,7 +376,7 @@ def flow_merged(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("merged"), Force(force)).root)
 
 
@@ -386,5 +386,5 @@ def flow_resolve_review(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("resolve-review"), Force(force)).root)

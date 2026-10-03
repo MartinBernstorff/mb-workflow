@@ -26,7 +26,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
 )
 from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDraft
 from mb_workflow.b_core.d_domain_model.ticket_edit import RemoveMilestone, TicketEdit
-from mb_workflow.d_lib.logging import LogLevel, configure
+from mb_workflow.d_lib.logging import LogLevel
 
 ticket_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
 
@@ -36,7 +36,7 @@ def ticket_view(
     issue: str = typer.Argument(..., help="Identifier of the issue to show, e.g. MB-28."),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=commands.ticket_view(IssueIdentifier(issue)).root)
 
 
@@ -64,7 +64,7 @@ def ticket_create(
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     draft = TicketDraft(
         title=IssueTitle(title),
         body=IssueDescription.from_nullable(body),
@@ -113,7 +113,7 @@ def ticket_edit(
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     edit = TicketEdit(
         title=IssueTitle.from_nullable(title),
         body=IssueDescription.from_nullable(body),
@@ -137,7 +137,7 @@ def label(
     name: str = typer.Argument(..., help="Linear label to add to the linked issue."),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = LabelRequest(label=LabelName(name), change=LabelChange.add)
     raise typer.Exit(code=commands.relabel(request).root)
 
@@ -148,7 +148,7 @@ def unlabel(
     name: str = typer.Argument(..., help="Linear label to remove from the linked issue."),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = LabelRequest(label=LabelName(name), change=LabelChange.remove)
     raise typer.Exit(code=commands.relabel(request).root)
 
@@ -164,7 +164,7 @@ def autolabel(
     apply: bool = typer.Option(False, "--apply"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = AutolabelRequest(
         label=LabelName(name),
         creator=Creator(creator),
@@ -184,7 +184,7 @@ def unclaim(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Delete every claim on the ticket, whichever worktree or host placed it, and its claim label."""
-    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(
         code=commands.ticket_unclaim(
             IssueIdentifier(ticket), WorkingDirectory(Path.cwd()), ConfigFileName.default()

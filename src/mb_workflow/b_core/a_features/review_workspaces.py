@@ -1,7 +1,7 @@
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, Protocol
 
-from mb_workflow.b_core.a_features.start import PromptUndeliveredError, send_prompt
+from mb_workflow.b_core.a_features.start import PromptUndeliveredError, TicketStart
 from mb_workflow.b_core.a_features.teardown import release_and_remove
 from mb_workflow.b_core.b_domain_services.worktree_reconciliation import obsolete, uncovered
 from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
@@ -224,7 +224,9 @@ def reconcile_workspaces(
             narrator.checking_out(path)
             review.checkout(pr.number, CheckoutDirectory(path.root))
             if prompt is not None:
-                send_prompt(manager, opened, prompt.text, prompt.idle_timeout, Submit(True))
+                TicketStart.send_prompt(
+                    manager, opened, prompt.text, prompt.idle_timeout, Submit(True)
+                )
         except (
             CalledProcessError,
             CodeReviewError,

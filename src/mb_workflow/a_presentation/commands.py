@@ -36,7 +36,7 @@ from mb_workflow.b_core.a_features.show_flow import show_flow
 from mb_workflow.b_core.a_features.start import (
     PromptUndeliveredError,
     StartRequest,
-    start_ticket,
+    TicketStart,
 )
 from mb_workflow.b_core.a_features.teardown import TeardownRequest, teardown_worktree
 from mb_workflow.b_core.a_features.transition import transition
@@ -235,7 +235,7 @@ def ticket_start(
     settings = resolved_configuration(directory, name).settings
     orca = Orca(here())
     key = linear_key()
-    start_ticket(
+    TicketStart.start_ticket(
         manager=orca,
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),

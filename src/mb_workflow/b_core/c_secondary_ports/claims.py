@@ -2,7 +2,11 @@ import logging
 from itertools import count
 from typing import Protocol, override
 
-from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker, TicketTrackerError
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+    LabelCheck,
+    TicketTracker,
+    TicketTrackerError,
+)
 from mb_workflow.b_core.d_domain_model.claim import (
     Claim,
     ClaimHolder,
@@ -11,6 +15,7 @@ from mb_workflow.b_core.d_domain_model.claim import (
     TakeOver,
 )
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName, LabelName
+from mb_workflow.d_lib.logging import Activity
 from mb_workflow.d_lib.models import Model
 
 logger = logging.getLogger(__name__)
@@ -57,7 +62,8 @@ class ClaimRequest(Model):
 class Claiming:
     @staticmethod
     def claim_ticket(registry: ClaimRegistry, request: ClaimRequest) -> None:
-        held = registry.claims(request.ticket)
+        with Activity(f"Reading the claims on {request.ticket.root}").logged(logger):
+            held = registry.claims(request.ticket)
         current = held.holding(request.status)
         if current is not None and current.holder == request.holder:
             return
@@ -66,13 +72,16 @@ class Claiming:
         Claiming.withdraw_claims(registry, request.ticket, held)
 
         # Every claimer posts before reading, so each reads back the same earliest claim, provided Linear serves a just-posted comment at once.
-        posted = registry.post(request.ticket, request.holder)
-        read_back = registry.claims(request.ticket)
+        with Activity(f"Posting a claim on {request.ticket.root}").logged(logger):
+            posted = registry.post(request.ticket, request.holder)
+        with Activity(f"Reading back the claims on {request.ticket.root}").logged(logger):
+            read_back = registry.claims(request.ticket)
         winner = read_back.holding(request.status)
         if winner is not None and winner.id == posted:
             return
         if posted in read_back.ids():
-            registry.withdraw(request.ticket, posted)
+            with Activity(f"Withdrawing our claim on {request.ticket.root}").logged(logger):
+                registry.withdraw(request.ticket, posted)
         if winner is None:
             raise ClaimLostError(f"Our claim on {request.ticket.root} was withdrawn by another.")
         raise Claiming.claimed_error(request.ticket, winner)
@@ -80,12 +89,11 @@ class Claiming:
     @staticmethod
     def withdraw_claims(registry: ClaimRegistry, ticket: IssueIdentifier, held: Claims) -> None:
         for claim in held.root:
-            logger.info(
-                "Withdrawing the claim of worktree %s on %s.",
-                claim.holder.worktree.root,
-                claim.holder.host.root,
-            )
-            registry.withdraw(ticket, claim.id)
+            with Activity(
+                f"Withdrawing the claim of worktree {claim.holder.worktree.root}"
+                f" on {claim.holder.host.root}"
+            ).logged(logger):
+                registry.withdraw(ticket, claim.id)
 
     @staticmethod
     def claimed_error(ticket: IssueIdentifier, holder: Claim) -> ClaimLostError:
@@ -97,10 +105,13 @@ class Claiming:
     # Checked before claiming, so a doomed claim never withdraws another holder's claim.
     @staticmethod
     def require_claim_label(tracker: TicketTracker, label: LabelName) -> None:
-        if tracker.workspace_labels().matching(label) is None:
-            raise UnknownClaimLabelError(
+        LabelCheck.require_label(
+            tracker,
+            label,
+            UnknownClaimLabelError(
                 f"No label is named {label.root}. Create the label or change claims.label."
-            )
+            ),
+        )
 
     # The label is how in-progress tickets are found, so a claim that cannot be labelled is withdrawn.
     @staticmethod
@@ -108,14 +119,16 @@ class Claiming:
         registry: ClaimRegistry, tracker: TicketTracker, request: LabelledClaim
     ) -> None:
         try:
-            tracker.add_label(request.ticket, request.label)
+            with Activity(f"Labelling {request.ticket.root} as {request.label.root}").logged(
+                logger
+            ):
+                tracker.add_label(request.ticket, request.label)
         except TicketTrackerError as error:
             Claiming.withdraw_holders_claims(registry, request.ticket, request.holder)
             raise ClaimRefusedError(
                 f"Could not label {request.ticket.root} as {request.label.root}, so the claim was"
                 f" withdrawn. Create the label or change claims.label. {error}"
             ) from error
-        logger.info("Labelled %s as %s.", request.ticket.root, request.label.root)
 
     @staticmethod
     def withdraw_holders_claims(
@@ -129,18 +142,19 @@ class Claiming:
     def release_claim(
         registry: ClaimRegistry, tracker: TicketTracker, request: LabelledClaim
     ) -> None:
-        Claiming.withdraw_holders_claims(registry, request.ticket, request.holder)
-        if registry.claims(request.ticket).root:
-            return
-        try:
-            tracker.remove_label(request.ticket, request.label)
-        except TicketTrackerError as error:
-            logger.warning(
-                "Could not remove the %s label from %s: %s",
-                request.label.root,
-                request.ticket.root,
-                error,
-            )
+        with Activity(f"Releasing the claim on {request.ticket.root}").logged(logger):
+            Claiming.withdraw_holders_claims(registry, request.ticket, request.holder)
+            if registry.claims(request.ticket).root:
+                return
+            try:
+                tracker.remove_label(request.ticket, request.label)
+            except TicketTrackerError as error:
+                logger.warning(
+                    "Could not remove the %s label from %s: %s",
+                    request.label.root,
+                    request.ticket.root,
+                    error,
+                )
 
 
 class LabelledClaim(Model):

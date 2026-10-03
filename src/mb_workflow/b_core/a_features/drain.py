@@ -2,9 +2,10 @@ import logging
 from typing import TYPE_CHECKING
 
 from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
-from mb_workflow.b_core.a_features.start import StartRequest, start_ticket
+from mb_workflow.b_core.a_features.start import StartRequest, TicketStart
 from mb_workflow.b_core.b_domain_services.pick_order import in_pick_order
 from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimLostError, LabelledClaim
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import LabelCheck
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, Released, TakeOver
 from mb_workflow.b_core.d_domain_model.pool import (
     Limit,
@@ -15,6 +16,7 @@ from mb_workflow.b_core.d_domain_model.pool import (
     Refusal,
 )
 from mb_workflow.b_core.d_domain_model.workspace import Activate, Submit, TimeoutMs, WorktreeName
+from mb_workflow.d_lib.logging import Activity
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
@@ -143,7 +145,8 @@ class Drain:
     # Checked before claiming, so a misspelt limit never lets a pass run uncapped.
     @staticmethod
     def require_limited_labels(tracker: TicketTracker, limits: PoolLimits) -> None:
-        unknown = tracker.workspace_labels().unmatched(limits.limited_labels())
+        with Activity("Checking that the limited labels exist").logged(logger):
+            unknown = tracker.workspace_labels().unmatched(limits.limited_labels())
         if unknown.root:
             listed = ", ".join(label.root for label in unknown.root)
             raise UnknownLabelError(
@@ -152,10 +155,13 @@ class Drain:
 
     @staticmethod
     def require_skip_limits_label(tracker: TicketTracker, label: LabelName) -> None:
-        if tracker.workspace_labels().matching(label) is None:
-            raise UnknownLabelError(
+        LabelCheck.require_label(
+            tracker,
+            label,
+            UnknownLabelError(
                 f"No label is named {label.root}. Create the label or change [pool] skip_limits_label."
-            )
+            ),
+        )
 
     @staticmethod
     def drain_pool(
@@ -173,11 +179,12 @@ class Drain:
         pool: PoolSettings,
         request: DrainRequest,
     ) -> DrainOutcome:
-        with lock.held():
+        with lock.held(), Activity("Draining the pool").logged(logger):
             Claiming.require_claim_label(tracker, claim_settings.label)
             Drain.require_limited_labels(tracker, pool.limits)
             Drain.require_skip_limits_label(tracker, pool.skip_limits_label)
-            listed = tracker.unblocked_view_tickets(pool.view)
+            with Activity(f"Listing the tickets in view {pool.view.root}").logged(logger):
+                listed = tracker.unblocked_view_tickets(pool.view)
             unready = tuple(
                 Unready.of(ticket, claim_settings.label, flow_labels)
                 for ticket in listed.root
@@ -186,9 +193,11 @@ class Drain:
             ready = in_pick_order(
                 listed.ready(claim_settings.label, flow_labels), pool.skip_limits_label, tie_break
             )
-            occupancy = Occupancy.of(
-                tracker.labelled_issues(claim_settings.label, Released.types()), flow_labels
-            )
+            with Activity(f"Listing the tickets labelled {claim_settings.label.root}").logged(
+                logger
+            ):
+                in_progress = tracker.labelled_issues(claim_settings.label, Released.types())
+            occupancy = Occupancy.of(in_progress, flow_labels)
             picked: list[PoolTicket] = []
             skipped: list[Skip] = []
             full: PoolFull | None = None
@@ -215,29 +224,35 @@ class Drain:
                         pool.skip_limits_label.root,
                         refusal.root,
                     )
-                logger.info(
-                    "%s %s (%s, %s).",
-                    "Would start" if request.dry_run.root else "Starting",
-                    ticket.issue.identifier.root,
-                    ticket.priority.name,
-                    slot.state.root,
+                ticket_summary = (
+                    f"{ticket.issue.identifier.root} ({ticket.priority.name}, {slot.state.root})"
                 )
                 if request.dry_run.root:
+                    logger.info("Would start %s.", ticket_summary)
                     picked.append(ticket)
-                elif Drain.try_start_ticket(
-                    tracker=tracker,
-                    claims=claims,
-                    manager=manager,
-                    board=board,
-                    workspace=workspace,
-                    claim_settings=claim_settings,
-                    flow_labels=flow_labels,
-                    statuses=statuses,
-                    request=request.start_request(ticket.issue.identifier),
-                ).root:
-                    picked.append(ticket)
-                    if skips_limits:
-                        tracker.remove_label(ticket.issue.identifier, pool.skip_limits_label)
+                else:
+                    with Activity(f"Taking {ticket_summary}").logged(logger):
+                        started = Drain.try_start_ticket(
+                            tracker=tracker,
+                            claims=claims,
+                            manager=manager,
+                            board=board,
+                            workspace=workspace,
+                            claim_settings=claim_settings,
+                            flow_labels=flow_labels,
+                            statuses=statuses,
+                            request=request.start_request(ticket.issue.identifier),
+                        )
+                    if started.root:
+                        picked.append(ticket)
+                        if skips_limits:
+                            with Activity(
+                                f"Removing label {pool.skip_limits_label.root}"
+                                f" from {ticket.issue.identifier.root}"
+                            ).logged(logger):
+                                tracker.remove_label(
+                                    ticket.issue.identifier, pool.skip_limits_label
+                                )
                 # A ticket lost to another host is now in progress there, so it fills a slot too.
                 occupancy = occupancy.with_slot(slot)
             return DrainOutcome(
@@ -262,7 +277,7 @@ class Drain:
         request: StartRequest,
     ) -> Started:
         try:
-            start_ticket(
+            TicketStart.start_ticket(
                 manager=manager,
                 tracker=tracker,
                 claims=claims,
