@@ -40,8 +40,15 @@ class SettingsTable(Value[dict[str, JsonValue]]):
     def empty() -> SettingsTable:
         return SettingsTable({})
 
+    # An override key replaces the key it matches ignoring case, as state and label names match.
     def merged(self, override: SettingsTable) -> SettingsTable:
-        merged = dict(self.root)
+        respelled = {
+            held: key
+            for key in override.root
+            for held in self.root
+            if held.casefold() == key.casefold()
+        }
+        merged = {respelled.get(held, held): value for held, value in self.root.items()}
         for key, value in override.root.items():
             current = merged.get(key)
             if isinstance(current, dict) and isinstance(value, dict):

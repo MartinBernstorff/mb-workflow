@@ -553,3 +553,26 @@ def test_an_override_may_supply_a_setting_the_repository_file_lacks(tmp_path: Pa
     resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake(), override)
 
     assert resolved.unwrap().settings.workspace.assignee == Assignee("me@example.com")
+
+
+def test_an_override_state_limit_replaces_the_repo_limit_whatever_its_casing(
+    tmp_path: Path,
+) -> None:
+    _ = (tmp_path / "mb-workflow.toml").write_text(
+        '[issues]\ntracker = "linear"\n'
+        '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
+        '[ticket_statuses]\nGrilling = "Maturing"\nSpeccing = "Maturing"\nSpecced = "Todo"\n'
+        'Implementing = "In Progress"\nQA = "In Progress"\nReview = "In Review"\n'
+        'Merging = "Ready For Release"\nMerged = "Done"\n'
+        '[pool]\nview = "4efb86b38740"\n'
+        "[pool.limits.states]\nQA = 2\n"
+    )
+    mine = 3
+    override = OverrideFile(
+        path=OverridePath.fake(),
+        table=SettingsTable({"pool": {"limits": {"states": {"qa": mine}}}}),
+    )
+
+    resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake(), override)
+
+    assert resolved.unwrap().settings.required_pool().limits.states[StateName("QA")] == Limit(mine)
