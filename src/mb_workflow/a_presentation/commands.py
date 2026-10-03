@@ -4,6 +4,8 @@ from pathlib import Path
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, override
 
+from safe_result import Err, Ok
+
 from mb_workflow.a_presentation.autolabel_report import log_outcome
 from mb_workflow.a_presentation.console import ExitCode, Output, write
 from mb_workflow.a_presentation.drain_report import DrainReport, LoggingDrainNarrator
@@ -25,7 +27,7 @@ from mb_workflow.b_core.a_features.drain_watch import (
     WatchRequest,
 )
 from mb_workflow.b_core.a_features.edit_ticket import TicketEditor
-from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
+from mb_workflow.b_core.a_features.finalize_review import FinalizeReview
 from mb_workflow.b_core.a_features.init_config import Overwrite, init_config
 from mb_workflow.b_core.a_features.link import AlreadyLinkedError, LinkRequest, TicketLinking
 from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt, create_workspaces
@@ -117,7 +119,6 @@ FAILURES = (
     MissingConfigError,
     MissingCredentialsError,
     MissingFlowLabelsError,
-    NotFinalizableError,
     OSError,
     PromptUndeliveredError,
     TicketTrackerError,
@@ -209,8 +210,12 @@ def review_workspaces(
 @guarded
 def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode:
     shell = here()
-    finalize(GitHub(shell), Orca(shell), request, status)
-    return ExitCode(0)
+    match FinalizeReview.finalize(GitHub(shell), Orca(shell), request, status):
+        case Ok():
+            return ExitCode(0)
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
 
 
 @guarded

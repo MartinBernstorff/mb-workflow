@@ -23,6 +23,7 @@ Clean as you go. Whenever you touch a file that has violations, fix those violat
 * TY-c1: _Never_ allow primitives as function parameters, fields, etc. Instead, use a Pydantic `RootModel`. Enforced by `moon run noprim`.
 * TY-a8: On each domain model/`RootModel`, add a `.fake` static method for testing. It should hold default values for every value. When the item is an aggregate, call the `.fake` of its member objects to construct the default values.
 * TY-7e: Return errors as values using [safe-result](https://github.com/overflowy/safe-result).
+  * Migration in progress. The cookbook is in MB-106. `test_raise_check.py` fails on any `raise` it does not allow, and `raise-baseline/` holds the remaining count per module. The check lowers a count when it drops; never raise one.
 * TY-fg: Use nominal typing and explicit subtyping. E.g. if a class is implementing a protocol, also make it inherit that protocol.
 
 ## Modules
