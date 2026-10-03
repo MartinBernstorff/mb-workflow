@@ -128,6 +128,10 @@ class TimeoutMs(Value[int]):
         return TimeoutMs(60000)
 
 
+class UnlinkedWorktreeError(Exception):
+    pass
+
+
 class Worktree(Model):
     repo: RepoId
     path: WorktreePath
@@ -148,6 +152,13 @@ class Worktree(Model):
             status=WorkspaceStatus.fake(),
             display_name=DisplayName.fake(),
         )
+
+    def linked_issue(self) -> IssueIdentifier:
+        if self.issue is None:
+            raise UnlinkedWorktreeError(
+                f"{self.path.root} has no linked Linear issue. Link one with `mw link <ticket>`."
+            )
+        return self.issue
 
     @staticmethod
     def bare(repo: RepoId, path: WorktreePath) -> Worktree:

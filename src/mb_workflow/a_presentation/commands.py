@@ -38,7 +38,7 @@ from mb_workflow.b_core.a_features.start import (
     TicketStart,
 )
 from mb_workflow.b_core.a_features.teardown import TeardownRequest, teardown_worktree
-from mb_workflow.b_core.a_features.transition import UnlinkedWorktreeError, transition
+from mb_workflow.b_core.a_features.transition import transition
 from mb_workflow.b_core.a_features.unclaim import unclaim_ticket
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
@@ -65,6 +65,7 @@ from mb_workflow.b_core.d_domain_model.config_template import ConfigTemplate
 from mb_workflow.b_core.d_domain_model.flow import EventName, FlowError, StateNames, WorkflowChart
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
+from mb_workflow.b_core.d_domain_model.workspace import UnlinkedWorktreeError
 from mb_workflow.c_infrastructure.credentials import (
     CredentialsDirectory,
     InvalidCredentialsError,
