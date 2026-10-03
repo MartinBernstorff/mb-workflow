@@ -1,10 +1,7 @@
 import pytest
+from safe_result import Err, Ok
 
-from mb_workflow.b_core.a_features.finalize_review import (
-    NotFinalizableError,
-    finalize,
-    reviewed_pr,
-)
+from mb_workflow.b_core.a_features.finalize_review import FinalizeReview, NotFinalizableError
 from mb_workflow.b_core.c_secondary_ports.code_review import (
     CodeReviewError,
     Drafted,
@@ -31,31 +28,41 @@ def standing_in(worktree: Worktree) -> FakeWorkspaceManager:
     return FakeWorkspaceManager(Worktrees((worktree,)), WorktreePath.fake())
 
 
-def test_finalizes_a_worktree_in_the_reviewing_status() -> None:
-    assert reviewed_pr(Worktree.fake(), WorkspaceStatus.fake()) == PrNumber.fake()
+def test_reads_the_pull_request_of_a_worktree_in_the_reviewing_status() -> None:
+    reviewed = FinalizeReview.reviewed_pr(Worktree.fake(), WorkspaceStatus.fake())
+    assert reviewed == Ok(PrNumber.fake())
 
 
-def test_rejects_a_worktree_in_another_status() -> None:
-    worktree = Worktree.fake().model_copy(update={"status": WorkspaceStatus("in-progress")})
-    with pytest.raises(NotFinalizableError, match="expected status-8"):
-        _ = reviewed_pr(worktree, WorkspaceStatus.fake())
-
-
-def test_rejects_a_worktree_without_a_status() -> None:
-    worktree = Worktree.fake().model_copy(update={"status": None})
-    with pytest.raises(NotFinalizableError, match="status none"):
-        _ = reviewed_pr(worktree, WorkspaceStatus.fake())
-
-
-def test_rejects_a_worktree_with_no_linked_pull_request() -> None:
-    worktree = Worktree.fake().model_copy(update={"pull_request": None})
-    with pytest.raises(NotFinalizableError, match="no linked pull request"):
-        _ = reviewed_pr(worktree, WorkspaceStatus.fake())
+@pytest.mark.parametrize(
+    ("update", "reason"),
+    [
+        ({"status": WorkspaceStatus("in-progress")}, "expected status-8"),
+        ({"status": None}, "status none"),
+        ({"pull_request": None}, "no linked pull request"),
+    ],
+)
+def test_an_unfinalizable_worktree_is_refused_and_left_alone(
+    update: dict[str, object], reason: str
+) -> None:
+    review = FakeCodeReview(PullRequests.fake())
+    manager = standing_in(Worktree.fake().model_copy(update=update))
+    before = manager.worktrees()
+    finalized = FinalizeReview.finalize(
+        review, manager, ReviewRequest.fake(), WorkspaceStatus.fake()
+    )
+    assert isinstance(finalized, Err)
+    assert isinstance(finalized.error, NotFinalizableError)
+    assert reason in str(finalized.error)
+    assert review.submitted() == ()
+    assert manager.worktrees() == before
 
 
 def test_submits_the_decision_on_the_linked_pull_request() -> None:
     review = FakeCodeReview(PullRequests.fake())
-    finalize(review, standing_in(Worktree.fake()), ReviewRequest.fake(), WorkspaceStatus.fake())
+    finalized = FinalizeReview.finalize(
+        review, standing_in(Worktree.fake()), ReviewRequest.fake(), WorkspaceStatus.fake()
+    )
+    assert finalized == Ok(None)
     assert review.submitted() == (
         SubmittedReview(pr=PrNumber.fake(), request=ReviewRequest.fake(), drafted=Drafted(False)),
     )
@@ -63,9 +70,10 @@ def test_submits_the_decision_on_the_linked_pull_request() -> None:
 
 def test_removes_the_worktree_once_the_review_is_in() -> None:
     manager = standing_in(Worktree.fake())
-    finalize(
+    finalized = FinalizeReview.finalize(
         FakeCodeReview(PullRequests.fake()), manager, ReviewRequest.fake(), WorkspaceStatus.fake()
     )
+    assert finalized == Ok(None)
     assert manager.worktrees() == Worktrees(())
 
 
@@ -73,13 +81,7 @@ def test_a_refused_review_keeps_the_worktree() -> None:
     manager = standing_in(Worktree.fake())
     bare = ReviewRequest(decision=ReviewDecision.comment, body=ReviewBody(""))
     with pytest.raises(CodeReviewError, match="comment requires comment text"):
-        finalize(FakeCodeReview(PullRequests.fake()), manager, bare, WorkspaceStatus.fake())
+        _ = FinalizeReview.finalize(
+            FakeCodeReview(PullRequests.fake()), manager, bare, WorkspaceStatus.fake()
+        )
     assert manager.worktrees() == Worktrees.fake()
-
-
-def test_a_worktree_in_another_status_submits_nothing() -> None:
-    review = FakeCodeReview(PullRequests.fake())
-    elsewhere = Worktree.fake().model_copy(update={"status": None})
-    with pytest.raises(NotFinalizableError):
-        finalize(review, standing_in(elsewhere), ReviewRequest.fake(), WorkspaceStatus.fake())
-    assert review.submitted() == ()
