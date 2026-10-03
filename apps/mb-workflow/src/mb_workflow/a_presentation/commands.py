@@ -40,7 +40,7 @@ from mb_workflow.b_core.a_features.start import (
     TicketStart,
 )
 from mb_workflow.b_core.a_features.teardown import TeardownRequest, teardown_worktree
-from mb_workflow.b_core.a_features.transition import transition
+from mb_workflow.b_core.a_features.transition import LinkedTicketTransition
 from mb_workflow.b_core.a_features.unclaim import unclaim_ticket
 from mb_workflow.b_core.a_features.view_ticket import view_ticket
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
@@ -445,7 +445,7 @@ def flow_event(
     event: EventName, force: Force, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
     orca = Orca(here())
-    match transition(
+    match LinkedTicketTransition.move_linked_ticket(
         store=workspace_board(orca),
         tracker=linear(),
         manager=orca,

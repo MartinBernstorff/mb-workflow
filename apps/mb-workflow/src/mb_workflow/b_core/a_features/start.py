@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, override
 
 from safe_result import Err, Ok, Result
 
-from mb_workflow.b_core.b_domain_services.flow_transition import put_in_state
-from mb_workflow.b_core.b_domain_services.next_action import next_action
+from mb_workflow.b_core.b_domain_services.flow_transition import FlowTransition
+from mb_workflow.b_core.b_domain_services.next_action import TicketState
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimRequest
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
@@ -23,7 +23,6 @@ from mb_workflow.b_core.d_domain_model.flow import (
     WorkflowChart,
     WorkState,
 )
-from mb_workflow.b_core.d_domain_model.flow_labels import state_of
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.workspace import (
     Activate,
@@ -178,7 +177,7 @@ class TicketStart:
     ) -> Result[None, FlowError]:
         with Activity(f"Reading {request.ticket.root}").logged(logger):
             detail = tracker.read_issue_detail(request.ticket)
-        labelled = state_of(WorkflowChart, flow_labels, detail.issue.grouped)
+        labelled = flow_labels.state_of(WorkflowChart, detail.issue.grouped)
         if isinstance(labelled, Err):
             return labelled
         labelled_state = labelled.value
@@ -196,7 +195,7 @@ class TicketStart:
         status = detail.issue.status
         if labelled_state is None:
             with Activity(f"Putting {request.ticket.root} in {state.root}").logged(logger):
-                put_in_state(tracker, request.ticket, flow_labels, statuses, state)
+                FlowTransition.put_in_state(tracker, request.ticket, flow_labels, statuses, state)
             status = statuses.of(state)
 
         name = WorktreeName.of_issue(request.ticket)
@@ -251,7 +250,7 @@ class TicketStart:
     def action_in(
         ticket: IssueIdentifier, state: StateName
     ) -> Result[Skill | AwaitingHuman, FlowError]:
-        found = next_action(WorkflowChart, state)
+        found = TicketState.next_action(WorkflowChart, state)
         if isinstance(found, Err):
             return found
         action = found.value

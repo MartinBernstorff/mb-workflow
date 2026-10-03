@@ -27,37 +27,41 @@ class Force(Value[bool]):
         return Force(False)
 
 
-def transition(
-    *,
-    chart: type[WorkflowChart],
-    store: WorkspaceStatusStore,
-    tracker: TicketTracker,
-    issue: IssueIdentifier,
-    wanted: FlowLabels,
-    statuses: TicketStatuses,
-    event: EventName,
-    force: Force,
-) -> Result[StateName, FlowError]:
-    edges = Edges.of_chart(chart)
-    match edges.target_of(event) if force.root else edges.target_from(store.read(), event):
-        case Ok(target):
-            put_in_state(tracker, issue, wanted, statuses, target)
-            store.write(target)
-            return Ok(target)
-        case Err() as illegal:
-            return illegal
+class FlowTransition:
+    @staticmethod
+    def move_ticket(
+        *,
+        chart: type[WorkflowChart],
+        store: WorkspaceStatusStore,
+        tracker: TicketTracker,
+        issue: IssueIdentifier,
+        wanted: FlowLabels,
+        statuses: TicketStatuses,
+        event: EventName,
+        force: Force,
+    ) -> Result[StateName, FlowError]:
+        edges = Edges.of_chart(chart)
+        match edges.target_of(event) if force.root else edges.target_from(store.read(), event):
+            case Ok(target):
+                FlowTransition.put_in_state(tracker, issue, wanted, statuses, target)
+                store.write(target)
+                return Ok(target)
+            case Err() as illegal:
+                return illegal
 
-
-def put_in_state(
-    tracker: TicketTracker,
-    issue: IssueIdentifier,
-    wanted: FlowLabels,
-    statuses: TicketStatuses,
-    state: StateName,
-) -> None:
-    FlowLabelCheck.require(tracker, wanted, tracker.team_of(issue))
-    labels = wanted.relabelled(tracker.read_issue(issue).labels, state)
-    tracker.update_issue(
-        issue,
-        IssueUpdate.nothing().model_copy(update={"labels": labels, "status": statuses.of(state)}),
-    )
+    @staticmethod
+    def put_in_state(
+        tracker: TicketTracker,
+        issue: IssueIdentifier,
+        wanted: FlowLabels,
+        statuses: TicketStatuses,
+        state: StateName,
+    ) -> None:
+        FlowLabelCheck.require(tracker, wanted, tracker.team_of(issue))
+        labels = wanted.relabelled(tracker.read_issue(issue).labels, state)
+        tracker.update_issue(
+            issue,
+            IssueUpdate.nothing().model_copy(
+                update={"labels": labels, "status": statuses.of(state)}
+            ),
+        )

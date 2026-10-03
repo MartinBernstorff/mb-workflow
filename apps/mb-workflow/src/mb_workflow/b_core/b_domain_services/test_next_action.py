@@ -3,7 +3,7 @@ import re
 import pytest
 from safe_result import Err, Ok
 
-from mb_workflow.b_core.b_domain_services.next_action import TicketState, next_action
+from mb_workflow.b_core.b_domain_services.next_action import TicketState
 from mb_workflow.b_core.d_domain_model.flow import (
     AwaitingHuman,
     Finished,
@@ -38,11 +38,11 @@ from mb_workflow.b_core.d_domain_model.issue import (
 def test_every_state_leads_to_the_action_the_chart_names_for_it(
     state: StateName, action: NextAction
 ) -> None:
-    assert next_action(WorkflowChart, state) == Ok(action)
+    assert TicketState.next_action(WorkflowChart, state) == Ok(action)
 
 
 def test_a_state_outside_the_chart_has_no_action() -> None:
-    refused = next_action(WorkflowChart, StateName("Marinating"))
+    refused = TicketState.next_action(WorkflowChart, StateName("Marinating"))
     assert isinstance(refused, Err)
     assert isinstance(refused.error, FlowError)
     assert re.search("Marinating is no state of the chart", str(refused.error))

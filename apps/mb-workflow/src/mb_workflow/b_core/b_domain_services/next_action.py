@@ -9,7 +9,6 @@ from mb_workflow.b_core.d_domain_model.flow import (
     WorkflowChart,
     WorkState,
 )
-from mb_workflow.b_core.d_domain_model.flow_labels import state_of
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.flow import NextAction
@@ -17,20 +16,20 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.issue import Issue
 
 
-def next_action(chart: type[WorkflowChart], state: StateName) -> Result[NextAction, FlowError]:
-    for candidate in chart.states:
-        if isinstance(candidate, WorkState) and StateName(candidate.name) == state:
-            return Ok(candidate.action)
-    return Err(FlowError(f"{state.root} is no state of the chart."))
-
-
 class TicketState:
+    @staticmethod
+    def next_action(chart: type[WorkflowChart], state: StateName) -> Result[NextAction, FlowError]:
+        for candidate in chart.states:
+            if isinstance(candidate, WorkState) and StateName(candidate.name) == state:
+                return Ok(candidate.action)
+        return Err(FlowError(f"{state.root} is no state of the chart."))
+
     # Checked before a ticket is taken, so one outside the flow or with no work left is never claimed.
     @staticmethod
     def state_with_work_left(
         chart: type[WorkflowChart], flow_labels: FlowLabels, issue: Issue
     ) -> Result[StateName, FlowError]:
-        match state_of(chart, flow_labels, issue.grouped):
+        match flow_labels.state_of(chart, issue.grouped):
             case Err() as unresolved:
                 return unresolved
             case Ok(state):
@@ -46,7 +45,7 @@ class TicketState:
     def _with_work_left(
         chart: type[WorkflowChart], state: StateName
     ) -> Result[StateName, FlowError]:
-        match next_action(chart, state):
+        match TicketState.next_action(chart, state):
             case Err() as unknown:
                 return unknown
             case Ok(Finished()):

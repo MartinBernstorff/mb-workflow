@@ -4,7 +4,7 @@ import pytest
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
-from mb_workflow.b_core.b_domain_services.flow_transition import Force, transition
+from mb_workflow.b_core.b_domain_services.flow_transition import FlowTransition, Force
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
@@ -46,7 +46,7 @@ def seeded_tracker(held: LabelNames) -> FakeTicketTracker:
 def transition_with_fake_flow_labels(
     store: FakeStatusStore, tracker: FakeTicketTracker, event: EventName, force: Force
 ) -> Result[StateName, FlowError]:
-    return transition(
+    return FlowTransition.move_ticket(
         chart=WorkflowChart,
         store=store,
         tracker=tracker,

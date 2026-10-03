@@ -12,7 +12,6 @@ from mb_workflow.b_core.d_domain_model.flow import (
     WorkflowChart,
     WorkState,
 )
-from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, state_of
 from mb_workflow.b_core.d_domain_model.issue import (
     GroupedLabel,
     GroupedLabels,
@@ -28,6 +27,7 @@ if TYPE_CHECKING:
     from safe_result import Result
 
     from mb_workflow.b_core.d_domain_model.flow import FlowError
+    from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 
 
 class ViewSlug(Value[str]):
@@ -85,7 +85,7 @@ class PoolTicket(Model):
         )
 
     def flow_state(self, flow_labels: FlowLabels) -> Result[StateName | None, FlowError]:
-        return state_of(WorkflowChart, flow_labels, self.issue.grouped)
+        return flow_labels.state_of(WorkflowChart, self.issue.grouped)
 
     def slot(self, flow_labels: FlowLabels) -> Result[Slot | None, FlowError]:
         return Slot.of(self.issue, flow_labels)
@@ -142,7 +142,7 @@ class Slot(Model):
 
     @staticmethod
     def of(issue: Issue, flow_labels: FlowLabels) -> Result[Slot | None, FlowError]:
-        match state_of(WorkflowChart, flow_labels, issue.grouped):
+        match flow_labels.state_of(WorkflowChart, issue.grouped):
             case Err() as unresolved:
                 return unresolved
             case Ok(state):
@@ -189,13 +189,15 @@ class LimitSummary(Value[str]):
         return LimitSummary("total 4, Grilling 1")
 
 
-def default_state_limits() -> dict[StateName, Limit]:
-    return {StateName("Grilling"): Limit(1)}
+class DefaultLimits:
+    @staticmethod
+    def state_limits() -> dict[StateName, Limit]:
+        return {StateName("Grilling"): Limit(1)}
 
 
 class PoolLimits(Model):
     total: Limit = Limit(4)
-    states: dict[StateName, Limit] = Field(default_factory=default_state_limits)
+    states: dict[StateName, Limit] = Field(default_factory=DefaultLimits.state_limits)
     labels: dict[LabelName, Limit] = Field(default_factory=dict)
 
     @staticmethod
@@ -229,7 +231,7 @@ class PoolLimits(Model):
                 )
             typed_as[known] = name
             spelled[known] = limit
-        return {**default_state_limits(), **spelled}
+        return {**DefaultLimits.state_limits(), **spelled}
 
     def limited_labels(self) -> LabelNames:
         return LabelNames(tuple(self.labels))
