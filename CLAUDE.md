@@ -15,58 +15,13 @@ Always go through moon, never the underlying tool. Moon runs the task's dependen
 | `moon run format` | ruff format check |
 | `moon run format-fix` | ruff format, writing changes |
 | `moon run actionlint` | lint GitHub Actions workflows |
+| `moon run phase-1` | fast checks with auto-fix; what the pre-commit hook runs |
+| `moon run full` | every check, including tests, without auto-fix |
 
 `moon ci` runs everything.
 
 ## Python conventions
 
-**No primitives.** Never use a primitive as a parameter type, field type, or return type. Wrap it in a Pydantic `RootModel`. Enforced by `noprim`.
-
-**Every domain model gets `.fake()`** — a staticmethod returning a fully-populated default instance for tests. For an aggregate, build its defaults from its members' `.fake()`:
-
-```python
-class PersonName(RootModel[str]):
-    @staticmethod
-    def fake() -> PersonName:
-        return PersonName("Ada")
-
-
-class Greeting(RootModel[str]):
-    @staticmethod
-    def fake() -> Greeting:
-        return Greeting(f"Hello, {PersonName.fake().root}!")
-```
-
-**No `tests/` folder.** Tests sit beside the code they test: `test_<module>.py` in the same directory.
-
-**Never maintain `__all__`.** Use direct imports.
-
-**Avoid constants.** When you reach for one, first ask whether it belongs as a parameter of the caller.
-
-**Do not use `iterpy`.** If it appears as a direct dependency, propose a PR removing it.
-
-**Default to no comments.** If code needs a comment to be understood, fix the code. When one is genuinely required, write a single line on *why* (constraint, invariant, bug) — never *what*.
+Follow @CODE-CONVENTIONS.md. In addition:
 
 **Tool settings live in each tool's own config file** — `pytest.toml`, `ruff.toml`, `pyrefly.toml`, `tach.toml`, `noprim.toml`. Never in `pyproject.toml`.
-
-## CLI
-
-Built with Typer, entry point `mb_workflow.cli:app`. Every command must accept `--quiet`, which sets the log level.
-
-
-## Tickets
-
-`MB-<n>` identifiers are Linear issues. Read them with `mw ticket view`, modify them with `mw ticket edit`.
-
-```bash
-uv run mw ticket view MB-19
-mw ticket edit MB-19 --state Implementing
-```
-
-The team's statuses are the workflow states (`Grilling`, `Speccing`, `Specced`, `Implementing`, `QA`, `Review`, `Merging`, `Merged`), not Linear's defaults.
-
-## Commits
-
-Pre-commit validation runs via lefthook. Run `uv run lefthook install` once per clone; Conductor does this via `.conductor/settings.toml`.
-
-Use conventional commits. Never add Claude as a co-author.
