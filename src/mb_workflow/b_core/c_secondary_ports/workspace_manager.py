@@ -59,6 +59,8 @@ class WorkspaceManager(Protocol):
 
     def set_display_name(self, path: WorktreePath, name: DisplayName) -> None: ...
 
+    def set_linked_issue(self, path: WorktreePath, issue: IssueIdentifier) -> None: ...
+
     def wait_for_idle(self, terminal: TerminalHandle, timeout: TimeoutMs) -> None: ...
 
     def send_text(self, terminal: TerminalHandle, text: TerminalText, submit: Submit) -> None: ...
@@ -135,6 +137,10 @@ class FakeWorkspaceManager(WorkspaceManager):
     @override
     def set_display_name(self, path: WorktreePath, name: DisplayName) -> None:
         self._replace(self._at(path).model_copy(update={"display_name": name}))
+
+    @override
+    def set_linked_issue(self, path: WorktreePath, issue: IssueIdentifier) -> None:
+        self._replace(self._at(path).model_copy(update={"issue": issue}))
 
     @override
     def wait_for_idle(self, terminal: TerminalHandle, timeout: TimeoutMs) -> None:

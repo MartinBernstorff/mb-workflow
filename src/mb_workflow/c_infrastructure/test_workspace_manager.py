@@ -286,3 +286,42 @@ def test_a_review_worktree_is_listed_with_the_pr_title_as_its_display_name(
     listed = manager.worktrees().at(created.path)
     assert listed is not None
     assert listed.display_name == DisplayName.of_pr(PrTitle.fake())
+
+
+def test_a_linked_issue_set_on_a_worktree_is_listed_back(
+    manager: WorkspaceManager, board: Board
+) -> None:
+    opened = manager.create_for_issue(
+        board.project, contract_name(), None, None, None, activate=Activate(False)
+    )
+    manager.set_linked_issue(opened.worktree.path, IssueIdentifier.fake())
+    listed = manager.worktrees().at(opened.worktree.path)
+    assert listed is not None
+    assert listed.issue == IssueIdentifier.fake()
+
+
+def test_setting_a_linked_issue_replaces_the_previous_one(
+    manager: WorkspaceManager, board: Board
+) -> None:
+    replacement = IssueIdentifier("MB-9999")
+    opened = manager.create_for_issue(
+        board.project,
+        contract_name(),
+        IssueIdentifier.fake(),
+        None,
+        None,
+        activate=Activate(False),
+    )
+    manager.set_linked_issue(opened.worktree.path, replacement)
+    listed = manager.worktrees().at(opened.worktree.path)
+    assert listed is not None
+    assert listed.issue == replacement
+
+
+def test_setting_a_linked_issue_on_an_unknown_worktree_is_refused(
+    manager: WorkspaceManager, board: Board
+) -> None:
+    with pytest.raises(WorkspaceManagerError):
+        manager.set_linked_issue(
+            board.here.sibling(WorktreeName("mw-contract-never-created")), IssueIdentifier.fake()
+        )

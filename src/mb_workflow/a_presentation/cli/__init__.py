@@ -13,6 +13,7 @@ from mb_workflow.b_core.a_features.autolabel import DryRun
 from mb_workflow.b_core.a_features.drain import DrainRequest
 from mb_workflow.b_core.a_features.drain_watch import WatchRequest
 from mb_workflow.b_core.a_features.init_config import Overwrite
+from mb_workflow.b_core.a_features.link import LinkRequest
 from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt
 from mb_workflow.b_core.a_features.start import StartRequest
 from mb_workflow.b_core.a_features.teardown import TeardownRequest
@@ -151,6 +152,29 @@ def workspace_start(
     )
     raise typer.Exit(
         code=commands.ticket_start(
+            request, WorkingDirectory(Path.cwd()), ConfigFileName.default()
+        ).root
+    )
+
+
+@app.command("link")
+def link(
+    *,
+    ticket: str = typer.Argument(..., help="Ticket to link the current worktree to, e.g. MB-33."),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Take the claim over from other hosts, and replace a link to another ticket.",
+    ),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Link the current worktree to a ticket, claiming it as start would, without typing a prompt."""
+    configure(LogLevel(logging.WARNING if quiet else logging.INFO))
+    request = LinkRequest(
+        ticket=IssueIdentifier(ticket), host=HostName.of_machine(), take_over=TakeOver(force)
+    )
+    raise typer.Exit(
+        code=commands.ticket_link(
             request, WorkingDirectory(Path.cwd()), ConfigFileName.default()
         ).root
     )

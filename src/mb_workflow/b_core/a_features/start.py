@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING
 from mb_workflow.b_core.b_domain_services.flow_label_check import require_flow_labels
 from mb_workflow.b_core.b_domain_services.flow_transition import put_in_state
 from mb_workflow.b_core.b_domain_services.next_action import next_action
-from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimRequest, LabelledClaim
-from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
+from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
+from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimRequest
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
     set_display_name_or_warn,
@@ -110,7 +110,6 @@ def start_ticket(
     statuses: TicketStatuses,
     request: StartRequest,
 ) -> None:
-    # Resolve the state before touching anything, so a ticket with no work left is neither claimed, assigned nor opened.
     detail = tracker.read_issue_detail(request.ticket)
     labelled_state = state_of(WorkflowChart, flow_labels, detail.issue.grouped)
     state = request.state_given(labelled_state)
@@ -126,40 +125,18 @@ def start_ticket(
         logger.info("Put %s in %s.", request.ticket.root, state.root)
 
     name = WorktreeName.of_issue(request.ticket)
-    holder = ClaimHolder(host=request.host, worktree=name)
-    Claiming.claim_ticket(
-        claims,
-        ClaimRequest(
+    TicketTaking.take_ticket(
+        claims=claims,
+        tracker=tracker,
+        workspace=workspace,
+        claim_settings=claim_settings,
+        request=ClaimRequest(
             ticket=request.ticket,
             status=status,
-            holder=holder,
+            holder=ClaimHolder(host=request.host, worktree=name),
             take_over=request.take_over,
         ),
     )
-    logger.info(
-        "Claimed %s for worktree %s on %s.",
-        request.ticket.root,
-        holder.worktree.root,
-        holder.host.root,
-    )
-    Claiming.label_claim_or_withdraw(
-        claims,
-        tracker,
-        LabelledClaim(ticket=request.ticket, holder=holder, label=claim_settings.label),
-    )
-
-    # Assignment is a convenience, not the point of starting a ticket, so never fail the run over it.
-    try:
-        tracker.assign(request.ticket, workspace.assignee)
-    except TicketTrackerError as error:
-        logger.warning(
-            "Could not assign %s to %s: %s",
-            request.ticket.root,
-            workspace.assignee.root,
-            error,
-        )
-    else:
-        logger.info("Assigned %s to %s.", request.ticket.root, workspace.assignee.root)
 
     opened = manager.create_for_issue(
         workspace.orca_project,
