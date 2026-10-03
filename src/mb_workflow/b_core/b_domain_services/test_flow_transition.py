@@ -158,14 +158,16 @@ def test_a_transition_writes_the_flow_label_of_the_tickets_own_team() -> None:
     tracker = tracker_with_team_groups(ops, {TeamKey.fake(): labels, ops: labels}, LabelNames(()))
     store = FakeStatusStore(StateName("Implementing"))
     _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
-    assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames((LabelName("QA"),))
+    qa = LabelName("QA")
+    assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames((qa,))
 
 
 def test_a_transition_falls_back_to_workspace_flow_labels() -> None:
     tracker = tracker_with_team_groups(TeamKey("OPS"), {}, FlowLabels.fake().labels)
     store = FakeStatusStore(StateName("Implementing"))
     _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
-    assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames((LabelName("QA"),))
+    qa = LabelName("QA")
+    assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames((qa,))
 
 
 def test_another_teams_flow_labels_leave_the_ticket_and_the_board_alone() -> None:

@@ -23,7 +23,7 @@ from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, f
 from mb_workflow.b_core.a_features.init_config import Overwrite, init_config
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
 from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt, create_workspaces
-from mb_workflow.b_core.a_features.seed_labels import WorkspaceCovers, seed_flow_labels
+from mb_workflow.b_core.a_features.seed_labels import CoveredByWorkspace, seed_flow_labels
 from mb_workflow.b_core.a_features.show_config import show_config
 from mb_workflow.b_core.a_features.show_flow import show_flow
 from mb_workflow.b_core.a_features.start import (
@@ -379,7 +379,7 @@ def flow_event(
 def flow_seed_labels(team: TeamName) -> ExitCode:
     wanted = flow_labels_of_chart()
     created = seed_flow_labels(linear(), wanted, team)
-    if isinstance(created, WorkspaceCovers):
+    if isinstance(created, CoveredByWorkspace):
         logger.info(
             "The workspace already has a %s label group, which covers %s. Created nothing.",
             created.group.root,

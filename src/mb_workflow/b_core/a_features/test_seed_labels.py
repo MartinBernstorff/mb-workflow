@@ -1,6 +1,6 @@
 import pytest
 
-from mb_workflow.b_core.a_features.seed_labels import WorkspaceCovers, seed_flow_labels
+from mb_workflow.b_core.a_features.seed_labels import CoveredByWorkspace, seed_flow_labels
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
     TicketTrackerError,
@@ -76,7 +76,7 @@ def workspace_seeded() -> FakeTicketTracker:
 
 def test_a_workspace_flow_group_covers_the_team() -> None:
     covered = seed_flow_labels(workspace_seeded(), FlowLabels.fake(), TeamName.fake())
-    assert covered == WorkspaceCovers(group=FlowLabels.fake().group)
+    assert covered == CoveredByWorkspace(group=FlowLabels.fake().group)
 
 
 def test_a_workspace_flow_group_leaves_the_team_without_labels() -> None:

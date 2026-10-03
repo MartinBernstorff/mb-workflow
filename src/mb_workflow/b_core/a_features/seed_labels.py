@@ -9,21 +9,21 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.issue import LabelNames, TeamName
 
 
-class WorkspaceCovers(Model):
+class CoveredByWorkspace(Model):
     group: LabelGroupName
 
     @staticmethod
-    def fake() -> WorkspaceCovers:
-        return WorkspaceCovers(group=LabelGroupName.fake())
+    def fake() -> CoveredByWorkspace:
+        return CoveredByWorkspace(group=LabelGroupName.fake())
 
 
 # A workspace-level group already serves every team, so seeding a team beside it would only shadow it.
 def seed_flow_labels(
     tracker: TicketTracker, wanted: FlowLabels, team: TeamName
-) -> LabelNames | WorkspaceCovers:
+) -> LabelNames | CoveredByWorkspace:
     key = tracker.team_named(team)
     if tracker.group_labels(wanted.group, None).root:
-        return WorkspaceCovers(group=wanted.group)
+        return CoveredByWorkspace(group=wanted.group)
     missing = wanted.missing(tracker.group_labels(wanted.group, key))
     if missing.root:
         tracker.create_group_labels(wanted.group, missing, key)

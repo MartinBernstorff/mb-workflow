@@ -3,7 +3,6 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, override
 
 from linear_python_client import (
-    FindLabelRequest,
     FindUserRequest,
     IssueAddLabelRequest,
     IssueLabelsRequest,
@@ -29,6 +28,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issues,
     IssueStatusName,
     IssueTitle,
+    IssueUpdate,
     IssueUrl,
     LabelGroupName,
     LabelName,
@@ -46,7 +46,7 @@ from mb_workflow.d_lib.models import Payload, Value
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from mb_workflow.b_core.d_domain_model.issue import IssueFilter, IssueUpdate, StatusTypes
+    from mb_workflow.b_core.d_domain_model.issue import IssueFilter, StatusTypes
     from mb_workflow.b_core.d_domain_model.pool import ViewSlug
 
 
@@ -730,16 +730,10 @@ class Linear(TicketTracker):
 
     @override
     def team_named(self, name: TeamName) -> TeamKey:
-        with translated_errors():
-            data = self._client.execute(
-                "query($name: String!) {"
-                " teams(first: 1, filter: { name: { eqIgnoreCase: $name } }) { nodes { id key } } }",
-                {"name": name.root},
-            )
-        teams = TeamRead.model_validate(data).teams
-        if not teams:
+        found = self._found_team({"name": {"eqIgnoreCase": name.root}})
+        if found is None:
             raise TicketTrackerError(f"No team is named {name.root}.")
-        return teams[0].key
+        return found.key
 
     @override
     def team_of(self, issue: IssueIdentifier) -> TeamKey:
@@ -750,16 +744,20 @@ class Linear(TicketTracker):
         return IssueTeamRead.model_validate(data).team
 
     def _team_id(self, team: TeamKey) -> TeamId:
+        found = self._found_team({"key": {"eqIgnoreCase": team.root}})
+        if found is None:
+            raise TicketTrackerError(f"No team has the key {team.root}.")
+        return found.id
+
+    def _found_team(self, team_filter: JsonValue) -> TeamRecord | None:
         with translated_errors():
             data = self._client.execute(
-                "query($key: String!) {"
-                " teams(first: 1, filter: { key: { eqIgnoreCase: $key } }) { nodes { id key } } }",
-                {"key": team.root},
+                "query($filter: TeamFilter!) {"
+                " teams(first: 1, filter: $filter) { nodes { id key } } }",
+                {"filter": team_filter},
             )
         teams = TeamRead.model_validate(data).teams
-        if not teams:
-            raise TicketTrackerError(f"No team has the key {team.root}.")
-        return teams[0].id
+        return teams[0] if teams else None
 
     def _found_group(self, group: LabelGroupName, team: TeamKey | None) -> LabelGroupRecord | None:
         with translated_errors():
@@ -908,13 +906,13 @@ class Linear(TicketTracker):
 
     @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
-        label_id = self._label_id(label)
+        (label_id,) = self._label_ids(issue, LabelNames((label,)))
         with translated_errors():
             _ = self._client.add_label(IssueAddLabelRequest(id=issue.root, label_id=label_id.root))
 
     @override
     def remove_label(self, issue: IssueIdentifier, label: LabelName) -> None:
-        label_id = self._label_id(label)
+        (label_id,) = self._label_ids(issue, LabelNames((label,)))
         with translated_errors():
             _ = self._client.remove_label(
                 IssueRemoveLabelRequest(id=issue.root, label_id=label_id.root)
@@ -922,7 +920,7 @@ class Linear(TicketTracker):
 
     @override
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
-        label_ids = [self._label_id(label).root for label in labels.root]
+        label_ids = [label_id.root for label_id in self._label_ids(issue, labels)]
         with translated_errors():
             _ = self._client.update_issue(IssueUpdateRequest(id=issue.root, label_ids=label_ids))
 
@@ -1115,9 +1113,6 @@ class Linear(TicketTracker):
             )
         return UpdateLookup.model_validate(data)
 
-    def _label_id(self, label: LabelName) -> LabelId:
-        with translated_errors():
-            found = self._client.find_label(FindLabelRequest(name=label.root)).label
-        if found is None or found.id is None:
-            raise TicketTrackerError(f"No label is named {label.root}.")
-        return LabelId(found.id)
+    def _label_ids(self, issue: IssueIdentifier, labels: LabelNames) -> tuple[LabelId, ...]:
+        found = self._lookup(issue, IssueUpdate.nothing().model_copy(update={"labels": labels}))
+        return found.label_ids(labels, found.team)

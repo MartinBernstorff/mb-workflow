@@ -726,6 +726,23 @@ def test_an_issue_takes_its_own_teams_label_over_a_namesake_in_another_team(
     assert groupless.read_issue(backlog.identifier(Seed.done)).labels == LabelNames((QA,))
 
 
+def test_setting_labels_takes_the_issues_own_teams_label_over_a_namesake(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((QA,)), backlog.other_team)
+    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((QA,)), backlog.team)
+    groupless.set_labels(backlog.identifier(Seed.done), LabelNames((QA,)))
+    assert groupless.read_issue(backlog.identifier(Seed.done)).labels == LabelNames((QA,))
+
+
+def test_adding_a_label_cannot_take_another_teams_label(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(LabelGroupName.fake(), LabelNames((QA,)), backlog.other_team)
+    with pytest.raises(TicketTrackerError, match=QA.root):
+        groupless.add_label(backlog.identifier(Seed.done), QA)
+
+
 def test_an_issue_takes_a_workspace_label_its_team_lacks(
     groupless: TicketTracker, backlog: Backlog
 ) -> None:
