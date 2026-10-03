@@ -368,8 +368,11 @@ def ticket_view(issue: IssueIdentifier) -> ExitCode:
 
 
 @guarded
-def ticket_edit(issue: IssueIdentifier, edit: TicketEdit) -> ExitCode:
-    TicketEditor.apply_edit(linear(), issue, edit, flow_labels_of_chart()).unwrap()
+def ticket_edit(
+    issue: IssueIdentifier, edit: TicketEdit, directory: WorkingDirectory, name: ConfigFileName
+) -> ExitCode:
+    statuses = resolved_configuration(directory, name).settings.ticket_statuses
+    TicketEditor.apply_edit(linear(), issue, edit, flow_labels_of_chart(), statuses).unwrap()
     write(Output(f"{issue.root}\n"))
     return ExitCode(0)
 
