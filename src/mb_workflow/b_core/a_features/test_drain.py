@@ -38,6 +38,7 @@ from mb_workflow.b_core.d_domain_model.pool import (
     Priority,
     Refusal,
 )
+from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 from mb_workflow.b_core.d_domain_model.workspace import (
     ProjectSelector,
     TerminalText,
@@ -212,6 +213,7 @@ def draining(
         workspace=WorkspaceSettings.fake(),
         claim_settings=ClaimSettings(label=LabelName("claimed")),
         flow_labels=FlowLabels.fake(),
+        statuses=TicketStatuses.fake(),
         pool=pool or PoolSettings.fake(),
         request=request or DrainRequest.fake(),
     )
