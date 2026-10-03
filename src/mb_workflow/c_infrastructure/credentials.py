@@ -80,6 +80,17 @@ class ProjectCredentials(BaseSettings):
         return (init_settings,)
 
 
+# The same file holds the developer's project setting overrides, so credentials read only these.
+class CredentialTables(Value[frozenset[str]]):
+    @staticmethod
+    def fake() -> CredentialTables:
+        return CredentialTables.of_credentials()
+
+    @staticmethod
+    def of_credentials() -> CredentialTables:
+        return CredentialTables(frozenset(ProjectCredentials.model_fields))
+
+
 class CredentialsPath(Value[Path]):
     @staticmethod
     def fake() -> CredentialsPath:
@@ -90,10 +101,24 @@ class CredentialsPath(Value[Path]):
             raise MissingCredentialsError(
                 f'No credentials at {self.root}. Create it with:\n[linear]\napi_key = "lin_api_…"'
             )
+        table = TomlConfigSettingsSource(ProjectCredentials, self.root)()
+        credential_tables = CredentialTables.of_credentials().root
         try:
-            return ProjectCredentials(**TomlConfigSettingsSource(ProjectCredentials, self.root)())
+            return ProjectCredentials(
+                **{key: value for key, value in table.items() if key in credential_tables}
+            )
         except ValidationError as error:
             raise InvalidCredentialsError(f"{self.root} is not valid. {error}") from error
+
+
+class HomeDirectory(Value[Path]):
+    @staticmethod
+    def fake() -> HomeDirectory:
+        return HomeDirectory(Path("/tmp/mb-workflow-fake/home"))
+
+    @staticmethod
+    def of_user() -> HomeDirectory:
+        return HomeDirectory(Path.home())
 
 
 class CredentialsDirectory(Value[Path]):
@@ -103,7 +128,11 @@ class CredentialsDirectory(Value[Path]):
 
     @staticmethod
     def of_user() -> CredentialsDirectory:
-        return CredentialsDirectory(Path.home() / ".config" / "mb-workflow" / "projects")
+        return CredentialsDirectory.of_home(HomeDirectory.of_user())
+
+    @staticmethod
+    def of_home(home: HomeDirectory) -> CredentialsDirectory:
+        return CredentialsDirectory(home.root / ".config" / "mb-workflow" / "projects")
 
     def path_for(self, repository: RepositorySlug) -> CredentialsPath:
         return CredentialsPath(self.root / f"{repository.root}.toml")

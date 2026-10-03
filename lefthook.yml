@@ -1,21 +1,5 @@
 pre-commit:
-  parallel: false
   jobs:
-    - name: lint-fix
-      run: moon run lint-fix
+    - name: phase-1
+      run: moon run phase-1 && git add docs/flow.svg docs/flow.md
       stage_fixed: true
-    - name: format-fix
-      run: moon run format-fix
-      stage_fixed: true
-    - name: diagram
-      run: moon run diagram && git add docs/flow.svg docs/flow.md
-    - name: types
-      run: moon run types
-    - name: modularity
-      run: moon run modularity
-    - name: noprim
-      run: moon run noprim
-    - name: actionlint
-      run: moon run actionlint
-    - name: test
-      run: moon run test

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import typer
 
 from mb_workflow.a_presentation import commands
+from mb_workflow.a_presentation.cli.dev import dev_app
 from mb_workflow.a_presentation.cli.group import AlphabeticalGroup
 from mb_workflow.a_presentation.cli.ticket import ticket_app
 from mb_workflow.a_presentation.diagram import DiagramPath, diagram
@@ -45,6 +46,7 @@ if TYPE_CHECKING:
 app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
 config_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
 app.add_typer(config_app, name="config")
+app.add_typer(dev_app, name="dev")
 flow_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
 app.add_typer(flow_app, name="flow")
 review_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)

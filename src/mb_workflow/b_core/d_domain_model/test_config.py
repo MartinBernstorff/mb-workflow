@@ -2,14 +2,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from safe_result import Err
 
 from mb_workflow.b_core.d_domain_model.config import (
     ClaimSettings,
     ConfigFileName,
+    ConfigPath,
     Configuration,
     InvalidConfigError,
     LinearTracker,
     MissingConfigError,
+    NoRepoFile,
     OrcaStatus,
     PoolSettings,
     ProjectTag,
@@ -20,6 +23,12 @@ from mb_workflow.b_core.d_domain_model.config import (
     TodoistTracker,
     WorkingDirectory,
     WorkspaceSettings,
+)
+from mb_workflow.b_core.d_domain_model.config_override import (
+    NoOverrideFile,
+    OverrideFile,
+    OverridePath,
+    SettingsTable,
 )
 from mb_workflow.b_core.d_domain_model.flow import StateName
 from mb_workflow.b_core.d_domain_model.issue import (
@@ -53,6 +62,54 @@ def test_the_search_starts_at_the_working_directory_and_walks_up() -> None:
     assert searched.root == (Path("/a/b/c"), Path("/a/b"), Path("/a"), Path("/"))
 
 
+def test_a_configuration_in_the_working_directory_of_a_repository_is_found(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    _ = (tmp_path / "repo" / "mb-workflow.toml").write_text("")
+
+    located = SearchedDirectories.of(WorkingDirectory(tmp_path / "repo")).find(
+        ConfigFileName.fake()
+    )
+
+    assert located == ConfigPath((tmp_path / "repo" / "mb-workflow.toml").resolve())
+
+
+def test_a_configuration_in_a_parent_within_the_repository_is_found(tmp_path: Path) -> None:
+    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    (tmp_path / "repo" / "src" / "pkg").mkdir(parents=True)
+    _ = (tmp_path / "repo" / "mb-workflow.toml").write_text("")
+
+    located = SearchedDirectories.of(WorkingDirectory(tmp_path / "repo" / "src" / "pkg")).find(
+        ConfigFileName.fake()
+    )
+
+    assert located == ConfigPath((tmp_path / "repo" / "mb-workflow.toml").resolve())
+
+
+def test_a_configuration_above_the_repository_root_is_not_found(tmp_path: Path) -> None:
+    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    (tmp_path / "repo" / "src").mkdir()
+    _ = (tmp_path / "mb-workflow.toml").write_text("")
+
+    searched = SearchedDirectories.of(WorkingDirectory(tmp_path / "repo" / "src"))
+
+    assert searched.find(ConfigFileName.fake()) is None
+    assert searched.root == ((tmp_path / "repo" / "src").resolve(), (tmp_path / "repo").resolve())
+
+
+def test_a_worktree_git_file_marks_the_repository_root(tmp_path: Path) -> None:
+    (tmp_path / "worktree" / "src").mkdir(parents=True)
+    _ = (tmp_path / "worktree" / ".git").write_text("gitdir: /elsewhere/.git/worktrees/worktree\n")
+
+    searched = SearchedDirectories.of(WorkingDirectory(tmp_path / "worktree" / "src"))
+
+    assert searched.root == (
+        (tmp_path / "worktree" / "src").resolve(),
+        (tmp_path / "worktree").resolve(),
+    )
+
+
 def test_the_nearest_configuration_file_wins(tmp_path: Path) -> None:
     (tmp_path / "repo" / "src").mkdir(parents=True)
     _ = (tmp_path / "repo" / "mb-workflow.toml").write_text(
@@ -71,10 +128,10 @@ def test_the_nearest_configuration_file_wins(tmp_path: Path) -> None:
     )
 
     resolved = Configuration.resolved(
-        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.fake()
-    )
+        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.fake(), NoOverrideFile.fake()
+    ).unwrap()
 
-    assert resolved.origin.root == tmp_path / "repo" / "src" / "mb-workflow.toml"
+    assert resolved.origin == ConfigPath(tmp_path / "repo" / "src" / "mb-workflow.toml")
     assert resolved.settings.issues == TodoistTracker.fake()
 
 
@@ -89,10 +146,10 @@ def test_the_search_walks_up_when_the_working_directory_holds_no_file(tmp_path: 
     )
 
     resolved = Configuration.resolved(
-        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.fake()
-    )
+        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.fake(), NoOverrideFile.fake()
+    ).unwrap()
 
-    assert resolved.origin.root == tmp_path / "repo" / "mb-workflow.toml"
+    assert resolved.origin == ConfigPath(tmp_path / "repo" / "mb-workflow.toml")
 
 
 def test_a_configuration_in_a_parent_is_not_merged_into_the_nearest_one(tmp_path: Path) -> None:
@@ -113,8 +170,8 @@ def test_a_configuration_in_a_parent_is_not_merged_into_the_nearest_one(tmp_path
     )
 
     resolved = Configuration.resolved(
-        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.fake()
-    )
+        WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.fake(), NoOverrideFile.fake()
+    ).unwrap()
 
     assert resolved.settings == Settings(
         issues=LinearTracker(tracker=TicketTracker.linear),
@@ -123,21 +180,67 @@ def test_a_configuration_in_a_parent_is_not_merged_into_the_nearest_one(tmp_path
     )
 
 
-def test_an_absent_configuration_file_lists_the_directories_searched(tmp_path: Path) -> None:
-    (tmp_path / "repo").mkdir()
-    with pytest.raises(MissingConfigError) as raised:
-        _ = Configuration.resolved(
-            WorkingDirectory(tmp_path / "repo"), ConfigFileName("absent.toml")
-        )
-    assert "absent.toml" in str(raised.value)
-    assert str(tmp_path / "repo") in str(raised.value)
-    assert str(tmp_path) in str(raised.value)
+def test_without_either_file_the_error_names_the_directories_searched_and_the_override_path(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    expected = OverridePath(tmp_path / "override.toml")
+
+    resolved = Configuration.resolved(
+        WorkingDirectory(tmp_path / "repo"),
+        ConfigFileName("absent.toml"),
+        NoOverrideFile(expected=expected),
+    )
+
+    assert isinstance(resolved, Err)
+    assert isinstance(resolved.error, MissingConfigError)
+    assert "absent.toml" in str(resolved.error)
+    assert str((tmp_path / "repo").resolve()) in str(resolved.error)
+    assert str(expected.root) in str(resolved.error)
+
+
+def test_without_either_file_or_an_origin_remote_the_error_says_so(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+
+    resolved = Configuration.resolved(
+        WorkingDirectory(tmp_path), ConfigFileName.fake(), NoOverrideFile(expected=None)
+    )
+
+    assert isinstance(resolved, Err)
+    assert "no origin remote" in str(resolved.error)
+
+
+def test_an_override_file_alone_resolves_the_configuration(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    override = OverrideFile(path=OverridePath.fake(), table=Configuration.fake().table)
+
+    resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake(), override)
+
+    assert resolved.unwrap().settings == Settings.fake()
+    assert resolved.unwrap().origin == NoRepoFile(
+        name=ConfigFileName.fake(), searched=SearchedDirectories((tmp_path.resolve(),))
+    )
+
+
+def test_an_invalid_override_file_alone_is_an_error_naming_it(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    override = OverrideFile(
+        path=OverridePath.fake(), table=SettingsTable({"issues": {"tracker": "jira"}})
+    )
+
+    resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake(), override)
+
+    assert isinstance(resolved, Err)
+    assert isinstance(resolved.error, InvalidConfigError)
+    assert str(OverridePath.fake().root) in str(resolved.error)
 
 
 def test_a_malformed_configuration_file_names_itself(tmp_path: Path) -> None:
     _ = (tmp_path / "mb-workflow.toml").write_text('[issues]\ntracker = "jira"\n')
     with pytest.raises(InvalidConfigError) as raised:
-        _ = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake())
+        _ = Configuration.resolved(
+            WorkingDirectory(tmp_path), ConfigFileName.fake(), NoOverrideFile.fake()
+        ).unwrap()
     assert str(tmp_path / "mb-workflow.toml") in str(raised.value)
 
 
@@ -321,7 +424,9 @@ def test_the_pool_limits_table_sets_the_limits(tmp_path: Path) -> None:
         '[pool]\nview = "4efb86b38740"\n'
         "[pool.limits]\ntotal = 6\n[pool.limits.states]\nQA = 2\n[pool.limits.labels]\nrefactor = 1\n"
     )
-    resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake())
+    resolved = Configuration.resolved(
+        WorkingDirectory(tmp_path), ConfigFileName.fake(), NoOverrideFile.fake()
+    ).unwrap()
     assert resolved.settings.required_pool().limits == PoolLimits(
         total=Limit(6),
         states={StateName("Grilling"): Limit(1), StateName("QA"): Limit(2)},
@@ -340,7 +445,9 @@ def test_a_limit_on_a_state_outside_the_chart_is_a_config_error(tmp_path: Path) 
         "[pool.limits.states]\nTodo = 1\n"
     )
     with pytest.raises(InvalidConfigError, match="Todo"):
-        _ = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake())
+        _ = Configuration.resolved(
+            WorkingDirectory(tmp_path), ConfigFileName.fake(), NoOverrideFile.fake()
+        ).unwrap()
 
 
 def test_the_ticket_statuses_table_maps_each_flow_state_to_a_ticket_status(
@@ -353,7 +460,9 @@ def test_the_ticket_statuses_table_maps_each_flow_state_to_a_ticket_status(
         'Implementing = "In Progress"\nQA = "In Progress"\nReview = "In Review"\n'
         'Merging = "Ready For Release"\nMerged = "Done"\n'
     )
-    resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake())
+    resolved = Configuration.resolved(
+        WorkingDirectory(tmp_path), ConfigFileName.fake(), NoOverrideFile.fake()
+    ).unwrap()
     assert resolved.settings.ticket_statuses.of(StateName("Merging")) == IssueStatusName(
         "Ready For Release"
     )
@@ -370,7 +479,9 @@ def test_a_ticket_statuses_table_with_a_gap_is_a_config_error_naming_the_state(
         'Merged = "Done"\n'
     )
     with pytest.raises(InvalidConfigError, match="lacks Merging"):
-        _ = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake())
+        _ = Configuration.resolved(
+            WorkingDirectory(tmp_path), ConfigFileName.fake(), NoOverrideFile.fake()
+        ).unwrap()
 
 
 def test_a_configuration_without_a_ticket_statuses_table_is_refused() -> None:
@@ -381,3 +492,64 @@ def test_a_configuration_without_a_ticket_statuses_table_is_refused() -> None:
                 "workspace": WorkspaceSettings.fake().model_dump(mode="json"),
             }
         )
+
+
+def test_an_override_file_sets_one_nested_key_and_keeps_its_siblings(tmp_path: Path) -> None:
+    _ = (tmp_path / "mb-workflow.toml").write_text(
+        '[issues]\ntracker = "linear"\n'
+        '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
+        '[ticket_statuses]\nGrilling = "Maturing"\nSpeccing = "Maturing"\nSpecced = "Todo"\n'
+        'Implementing = "In Progress"\nQA = "In Progress"\nReview = "In Review"\n'
+        'Merging = "Ready For Release"\nMerged = "Done"\n'
+    )
+    override = OverrideFile(
+        path=OverridePath.fake(),
+        table=SettingsTable({"workspace": {"assignee": "me@example.com"}}),
+    )
+
+    resolved = Configuration.resolved(
+        WorkingDirectory(tmp_path), ConfigFileName.fake(), override
+    ).unwrap()
+
+    assert resolved.settings.workspace == WorkspaceSettings(
+        orca_project=WorkspaceSettings.fake().orca_project, assignee=Assignee("me@example.com")
+    )
+
+
+def test_an_override_making_the_configuration_invalid_is_an_error_naming_both_files(
+    tmp_path: Path,
+) -> None:
+    _ = (tmp_path / "mb-workflow.toml").write_text(
+        '[issues]\ntracker = "linear"\n'
+        '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
+        '[ticket_statuses]\nGrilling = "Maturing"\nSpeccing = "Maturing"\nSpecced = "Todo"\n'
+        'Implementing = "In Progress"\nQA = "In Progress"\nReview = "In Review"\n'
+        'Merging = "Ready For Release"\nMerged = "Done"\n'
+    )
+    override = OverrideFile(
+        path=OverridePath.fake(), table=SettingsTable({"workspace": {"assigne": "typo"}})
+    )
+
+    resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake(), override)
+
+    assert isinstance(resolved, Err)
+    assert isinstance(resolved.error, InvalidConfigError)
+    assert str(tmp_path / "mb-workflow.toml") in str(resolved.error)
+    assert str(OverridePath.fake().root) in str(resolved.error)
+
+
+def test_an_override_may_supply_a_setting_the_repository_file_lacks(tmp_path: Path) -> None:
+    _ = (tmp_path / "mb-workflow.toml").write_text(
+        '[issues]\ntracker = "linear"\n'
+        '[workspace]\norca_project = "github:flowbasedk/flowbase"\n'
+        '[ticket_statuses]\nGrilling = "Maturing"\nSpeccing = "Maturing"\nSpecced = "Todo"\n'
+        'Implementing = "In Progress"\nQA = "In Progress"\nReview = "In Review"\n'
+        'Merging = "Ready For Release"\nMerged = "Done"\n'
+    )
+    override = OverrideFile(
+        path=OverridePath.fake(), table=SettingsTable({"workspace": {"assignee": "me@example.com"}})
+    )
+
+    resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake(), override)
+
+    assert resolved.unwrap().settings.workspace.assignee == Assignee("me@example.com")

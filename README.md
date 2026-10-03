@@ -3,8 +3,7 @@
 Workflow automation CLI.
 
 ```sh
-uv sync
-uv run lefthook install
+uv run mw dev setup
 uv run mb-workflow workspace create-reviews
 ```
 

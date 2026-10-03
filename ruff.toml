@@ -42,9 +42,6 @@ ignore = [
 [lint.per-file-ignores]
 "**/test_*.py" = ["PLR2004", "ARG"]
 
-[lint.pydocstyle]
-convention = "google"
-
 [lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 
