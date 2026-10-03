@@ -338,7 +338,6 @@ class IssueUpdate(Model):
     project: ProjectName | Cleared | None
     status: IssueStatusName | None
     milestone: Milestone | Cleared | None
-    # Relations to add; those the issue already holds are kept.
     blocks: tuple[IssueIdentifier, ...]
     blocked_by: tuple[IssueIdentifier, ...]
 
