@@ -32,35 +32,35 @@ class SeededTeam(Model):
         return SeededTeam(created=LabelNames.fake(), recolored=LabelNames(()))
 
 
-# A complete workspace-level group already serves every team, so seeding a team beside it would only shadow it.
-def seed_flow_labels(
-    tracker: TicketTracker, wanted: FlowLabels, team: TeamName
-) -> Result[CoveredByWorkspace | SeededTeam, TicketTrackerError]:
-    key = tracker.team_named(team)
-    if isinstance(key, Err):
-        return key
-    workspace = tracker.group_labels(wanted.group, None)
-    if isinstance(workspace, Err):
-        return workspace
-    if not wanted.missing(workspace.value.label_names()).root:
-        recolored = FlowLabelSeeding.recolor(tracker, wanted, workspace.value, None)
-        return Ok(CoveredByWorkspace(group=wanted.group, recolored=recolored))
-    held = tracker.group_labels(wanted.group, key.value)
-    if isinstance(held, Err):
-        return held
-    missing = wanted.missing(
-        LabelNames((*held.value.label_names().root, *workspace.value.label_names().root))
-    )
-    if missing.root:
-        tracker.create_group_labels(wanted.group, wanted.colored(missing), key.value)
-    recolored = (
-        *FlowLabelSeeding.recolor(tracker, wanted, held.value, key.value).root,
-        *FlowLabelSeeding.recolor(tracker, wanted, workspace.value, None).root,
-    )
-    return Ok(SeededTeam(created=missing, recolored=LabelNames(recolored)))
-
-
 class FlowLabelSeeding:
+    # A complete workspace-level group already serves every team, so seeding a team beside it would only shadow it.
+    @staticmethod
+    def seed_flow_labels(
+        tracker: TicketTracker, wanted: FlowLabels, team: TeamName
+    ) -> Result[CoveredByWorkspace | SeededTeam, TicketTrackerError]:
+        key = tracker.team_named(team)
+        if isinstance(key, Err):
+            return key
+        workspace = tracker.group_labels(wanted.group, None)
+        if isinstance(workspace, Err):
+            return workspace
+        if not wanted.missing(workspace.value.label_names()).root:
+            recolored = FlowLabelSeeding.recolor(tracker, wanted, workspace.value, None)
+            return Ok(CoveredByWorkspace(group=wanted.group, recolored=recolored))
+        held = tracker.group_labels(wanted.group, key.value)
+        if isinstance(held, Err):
+            return held
+        missing = wanted.missing(
+            LabelNames((*held.value.label_names().root, *workspace.value.label_names().root))
+        )
+        if missing.root:
+            tracker.create_group_labels(wanted.group, wanted.colored(missing), key.value)
+        recolored = (
+            *FlowLabelSeeding.recolor(tracker, wanted, held.value, key.value).root,
+            *FlowLabelSeeding.recolor(tracker, wanted, workspace.value, None).root,
+        )
+        return Ok(SeededTeam(created=missing, recolored=LabelNames(recolored)))
+
     @staticmethod
     def recolor(
         tracker: TicketTracker, wanted: FlowLabels, held: ColoredLabels, team: TeamKey | None

@@ -17,20 +17,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def unclaim_ticket(
-    *,
-    registry: ClaimRegistry,
-    tracker: TicketTracker,
-    claim_settings: ClaimSettings,
-    ticket: IssueIdentifier,
-) -> Result[None, TicketTrackerError]:
-    held = registry.claims(ticket)
-    if isinstance(held, Err):
-        return held
-    if held.value.root:
-        Claiming.withdraw_claims(registry, ticket, held.value)
-    else:
-        logger.info("%s has no claim.", ticket.root)
-    tracker.remove_label(ticket, claim_settings.label)
-    logger.info("Removed the %s label from %s.", claim_settings.label.root, ticket.root)
-    return Ok(None)
+class TicketUnclaiming:
+    @staticmethod
+    def unclaim_ticket(
+        *,
+        registry: ClaimRegistry,
+        tracker: TicketTracker,
+        claim_settings: ClaimSettings,
+        ticket: IssueIdentifier,
+    ) -> Result[None, TicketTrackerError]:
+        held = registry.claims(ticket)
+        if isinstance(held, Err):
+            return held
+        if held.value.root:
+            Claiming.withdraw_claims(registry, ticket, held.value)
+        else:
+            logger.info("%s has no claim.", ticket.root)
+        tracker.remove_label(ticket, claim_settings.label)
+        logger.info("Removed the %s label from %s.", claim_settings.label.root, ticket.root)
+        return Ok(None)

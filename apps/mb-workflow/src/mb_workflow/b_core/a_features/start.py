@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, override
 
 from safe_result import Err, Ok, Result
 
-from mb_workflow.b_core.b_domain_services.flow_transition import put_in_state
+from mb_workflow.b_core.b_domain_services.flow_transition import FlowTransition
 from mb_workflow.b_core.b_domain_services.next_action import next_action
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimRequest
@@ -191,7 +191,9 @@ class TicketStart:
         status = detail.issue.status
         if labelled_state is None:
             with Activity(f"Putting {request.ticket.root} in {state.root}").logged(logger):
-                put = put_in_state(tracker, request.ticket, flow_labels, statuses, state)
+                put = FlowTransition.put_in_state(
+                    tracker, request.ticket, flow_labels, statuses, state
+                )
             if isinstance(put, Err):
                 return put
             status = statuses.of(state)

@@ -687,15 +687,15 @@ class ViewRead(Payload):
         return ViewRead(issues=PoolTicketPage.fake())
 
 
-@contextmanager
-def translated_errors() -> Generator[None]:
-    try:
-        yield
-    except LinearError as error:
-        raise TicketTrackerError(str(error)) from error
-
-
 class LinearCall:
+    @staticmethod
+    @contextmanager
+    def translated_errors() -> Generator[None]:
+        try:
+            yield
+        except LinearError as error:
+            raise TicketTrackerError(str(error)) from error
+
     # Converts the client's exceptions at the edge, so a failed call comes back as a value.
     @staticmethod
     def answered[T](call: Callable[[], T]) -> Result[T, TicketTrackerError]:
@@ -799,7 +799,7 @@ class Linear(TicketTracker):
                 raise TicketTrackerError(
                     f"The {group.root} group holds no label named {label.name.root}."
                 )
-            with translated_errors():
+            with LinearCall.translated_errors():
                 _ = self._client.execute(
                     "mutation($id: String!, $input: IssueLabelUpdateInput!) {"
                     " issueLabelUpdate(id: $id, input: $input) { success } }",
@@ -876,7 +876,7 @@ class Linear(TicketTracker):
                 return failed
 
     def _created_label(self, label: JsonValue) -> LabelId:
-        with translated_errors():
+        with LinearCall.translated_errors():
             data = self._client.execute(
                 "mutation($input: IssueLabelCreateInput!) {"
                 " issueLabelCreate(input: $input) { issueLabel { id } } }",
@@ -1016,13 +1016,13 @@ class Linear(TicketTracker):
     @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
         (label_id,) = self._label_ids(issue, LabelNames((label,)))
-        with translated_errors():
+        with LinearCall.translated_errors():
             _ = self._client.add_label(IssueAddLabelRequest(id=issue.root, label_id=label_id.root))
 
     @override
     def remove_label(self, issue: IssueIdentifier, label: LabelName) -> None:
         (label_id,) = self._label_ids(issue, LabelNames((label,)))
-        with translated_errors():
+        with LinearCall.translated_errors():
             _ = self._client.remove_label(
                 IssueRemoveLabelRequest(id=issue.root, label_id=label_id.root)
             )
@@ -1030,12 +1030,12 @@ class Linear(TicketTracker):
     @override
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
         label_ids = [label_id.root for label_id in self._label_ids(issue, labels)]
-        with translated_errors():
+        with LinearCall.translated_errors():
             _ = self._client.update_issue(IssueUpdateRequest(id=issue.root, label_ids=label_ids))
 
     @override
     def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None:
-        with translated_errors():
+        with LinearCall.translated_errors():
             user = self._client.find_user(FindUserRequest(email=assignee.root)).user
             if user is None or user.id is None:
                 raise TicketTrackerError(f"No Linear user has the email {assignee.root}.")
@@ -1060,7 +1060,7 @@ class Linear(TicketTracker):
         if update.milestone is not None:
             changes["project_milestone_id"] = found.milestone_id(update.milestone)
         wanted = IssueChanges.model_validate(changes)
-        with translated_errors():
+        with LinearCall.translated_errors():
             _ = self._client.execute(
                 "mutation($id: String!, $input: IssueUpdateInput!) {"
                 " issueUpdate(id: $id, input: $input) { success } }",
@@ -1073,7 +1073,7 @@ class Linear(TicketTracker):
     @override
     def create_issue(self, new: NewIssue) -> CreatedIssue:
         creation = self._creation_lookup(new).creation(new)
-        with translated_errors():
+        with LinearCall.translated_errors():
             data = self._client.execute(
                 "mutation($input: IssueCreateInput!) {"
                 " issueCreate(input: $input) { issue { identifier url } } }",
@@ -1108,7 +1108,7 @@ class Linear(TicketTracker):
                 return failed
 
     def _relate(self, *, blocker: IssueIdentifier, blocked: IssueIdentifier) -> None:
-        with translated_errors():
+        with LinearCall.translated_errors():
             _ = self._client.execute(
                 "mutation($input: IssueRelationCreateInput!) {"
                 " issueRelationCreate(input: $input) { success } }",
@@ -1122,7 +1122,7 @@ class Linear(TicketTracker):
             )
 
     def _creation_lookup(self, new: NewIssue) -> CreationLookup:
-        with translated_errors():
+        with LinearCall.translated_errors():
             data = self._client.execute(
                 """
                 query(
@@ -1182,7 +1182,7 @@ class Linear(TicketTracker):
         milestone = update.milestone if isinstance(update.milestone, Milestone) else None
         if not (labels or assignee or project or milestone or update.status):
             return UpdateLookup()
-        with translated_errors():
+        with LinearCall.translated_errors():
             data = self._client.execute(
                 """
                 query(

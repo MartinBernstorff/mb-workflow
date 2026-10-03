@@ -10,8 +10,8 @@ from mb_workflow.b_core.a_features.review_workspaces import (
     Narrator,
     Outcome,
     ReviewPrompt,
+    ReviewWorkspaces,
     Unchanged,
-    create_workspaces,
 )
 from mb_workflow.b_core.c_secondary_ports.claims import FakeClaimRegistry
 from mb_workflow.b_core.c_secondary_ports.code_review import FakeCodeReview, MergedPullRequest
@@ -102,7 +102,7 @@ def run_review_workspaces(
     claims: FakeClaimRegistry | None = None,
     prompt: ReviewPrompt | None = None,
 ) -> Outcome:
-    return create_workspaces(
+    return ReviewWorkspaces.create_workspaces(
         review=review,
         manager=manager,
         claims=FakeClaimRegistry() if claims is None else claims,

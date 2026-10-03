@@ -1,6 +1,6 @@
 from safe_result import Err
 
-from mb_workflow.b_core.a_features.create_ticket import create_ticket
+from mb_workflow.b_core.a_features.create_ticket import TicketCreation
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
@@ -48,7 +48,7 @@ def tracking(groups: LabelNames = FlowLabels.fake().labels) -> FakeTicketTracker
 
 def created(tracker: FakeTicketTracker, draft: TicketDraft) -> IssueIdentifier:
     return (
-        create_ticket(
+        TicketCreation.create_ticket(
             tracker=tracker,
             draft=draft,
             defaults=TicketDefaults.fake(),
@@ -83,7 +83,7 @@ def test_a_relation_to_an_unknown_issue_is_refused_before_the_ticket_is_created(
     tracker = tracking()
     unknown = IssueIdentifier("E-404")
     draft = TicketDraft.fake().model_copy(update={"blocked_by": (unknown,)})
-    refused = create_ticket(
+    refused = TicketCreation.create_ticket(
         tracker=tracker,
         draft=draft,
         defaults=TicketDefaults.fake(),
@@ -96,7 +96,7 @@ def test_a_relation_to_an_unknown_issue_is_refused_before_the_ticket_is_created(
 
 
 def test_creating_a_ticket_before_the_flow_labels_exist_is_refused() -> None:
-    refused = create_ticket(
+    refused = TicketCreation.create_ticket(
         tracker=tracking(groups=LabelNames(())),
         draft=TicketDraft.fake(),
         defaults=TicketDefaults.fake(),
@@ -110,7 +110,7 @@ def test_creating_a_ticket_before_the_flow_labels_exist_is_refused() -> None:
 def test_a_flow_label_passed_as_a_label_creates_no_ticket() -> None:
     tracker = tracking()
     draft = TicketDraft.fake().model_copy(update={"labels": LabelNames((LabelName("Specced"),))})
-    refused = create_ticket(
+    refused = TicketCreation.create_ticket(
         tracker=tracker,
         draft=draft,
         defaults=TicketDefaults.fake(),

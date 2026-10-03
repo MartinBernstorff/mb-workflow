@@ -14,7 +14,7 @@ from mb_workflow.b_core.d_domain_model.claim import (
     Claims,
     CommentBody,
 )
-from mb_workflow.c_infrastructure.linear import LinearApiKey, LinearCall, translated_errors
+from mb_workflow.c_infrastructure.linear import LinearApiKey, LinearCall
 from mb_workflow.d_lib.models import Payload, Value
 
 if TYPE_CHECKING:
@@ -122,7 +122,7 @@ class LinearClaims(ClaimRegistry):
     def post(self, ticket: IssueIdentifier, holder: ClaimHolder) -> ClaimId:
         # Writes still raise; MB-130 returns their errors as values too.
         issue = self._thread(ticket).unwrap().id
-        with translated_errors():
+        with LinearCall.translated_errors():
             data = self._client.execute(
                 "mutation($input: CommentCreateInput!) {"
                 " commentCreate(input: $input) { success comment { id } } }",
@@ -135,7 +135,7 @@ class LinearClaims(ClaimRegistry):
 
     @override
     def withdraw(self, ticket: IssueIdentifier, claim: ClaimId) -> None:
-        with translated_errors():
+        with LinearCall.translated_errors():
             data = self._client.execute(
                 "mutation($id: String!) { commentDelete(id: $id) { success } }",
                 {"id": claim.root},

@@ -17,24 +17,26 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
 
-def transition(
-    *,
-    store: WorkspaceStatusStore,
-    tracker: TicketTracker,
-    manager: WorkspaceManager,
-    wanted: FlowLabels,
-    statuses: TicketStatuses,
-    event: EventName,
-    force: flow_transition.Force,
-) -> Result[StateName, TicketTrackerError | MissingFlowLabelsError]:
-    issue = manager.current().linked_issue()
-    return flow_transition.transition(
-        chart=WorkflowChart,
-        store=store,
-        tracker=tracker,
-        issue=issue,
-        wanted=wanted,
-        statuses=statuses,
-        event=event,
-        force=force,
-    )
+class LinkedTicketTransition:
+    @staticmethod
+    def transition_linked_ticket(
+        *,
+        store: WorkspaceStatusStore,
+        tracker: TicketTracker,
+        manager: WorkspaceManager,
+        wanted: FlowLabels,
+        statuses: TicketStatuses,
+        event: EventName,
+        force: flow_transition.Force,
+    ) -> Result[StateName, TicketTrackerError | MissingFlowLabelsError]:
+        issue = manager.current().linked_issue()
+        return flow_transition.FlowTransition.transition_issue(
+            chart=WorkflowChart,
+            store=store,
+            tracker=tracker,
+            issue=issue,
+            wanted=wanted,
+            statuses=statuses,
+            event=event,
+            force=force,
+        )

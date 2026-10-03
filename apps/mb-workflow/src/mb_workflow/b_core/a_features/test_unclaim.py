@@ -1,4 +1,4 @@
-from mb_workflow.b_core.a_features.unclaim import unclaim_ticket
+from mb_workflow.b_core.a_features.unclaim import TicketUnclaiming
 from mb_workflow.b_core.c_secondary_ports.claims import FakeClaimRegistry
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracker, TrackedIssue
 from mb_workflow.b_core.d_domain_model.claim import Claim, ClaimId, Claims
@@ -18,7 +18,7 @@ def tracker_with_the_claim_label() -> FakeTicketTracker:
 
 
 def unclaim(claims: FakeClaimRegistry, tracker: FakeTicketTracker) -> None:
-    unclaim_ticket(
+    TicketUnclaiming.unclaim_ticket(
         registry=claims,
         tracker=tracker,
         claim_settings=ClaimSettings.fake(),

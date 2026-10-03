@@ -73,62 +73,66 @@ class Outcome(Model):
         return self.labelled
 
 
-def label_eligible_issues(
-    tracker: TicketTracker,
-    ledger_store: LedgerStore,
-    request: AutolabelRequest,
-    window: CreatedAfter,
-) -> Result[Outcome, TicketTrackerError | UnknownLabelError]:
-    known = tracker.workspace_labels()
-    if isinstance(known, Err):
-        return known
-    if not known.value.has(request.label).root:
-        return Err(UnknownLabelError(f"No label is named {request.label.root}."))
+class AutoLabelling:
+    @staticmethod
+    def label_eligible_issues(
+        tracker: TicketTracker,
+        ledger_store: LedgerStore,
+        request: AutolabelRequest,
+        window: CreatedAfter,
+    ) -> Result[Outcome, TicketTrackerError | UnknownLabelError]:
+        known = tracker.workspace_labels()
+        if isinstance(known, Err):
+            return known
+        if not known.value.has(request.label).root:
+            return Err(UnknownLabelError(f"No label is named {request.label.root}."))
 
-    recorded = ledger_store.read(request.label)
-    issues = tracker.list_issues(IssueFilter(creator=request.creator, created_after=window))
-    if isinstance(issues, Err):
-        return issues
-    logger.info(
-        "Sweeping %s issues created since %s", len(issues.value.root), window.root.isoformat()
-    )
+        recorded = ledger_store.read(request.label)
+        issues = tracker.list_issues(IssueFilter(creator=request.creator, created_after=window))
+        if isinstance(issues, Err):
+            return issues
+        logger.info(
+            "Sweeping %s issues created since %s", len(issues.value.root), window.root.isoformat()
+        )
 
-    group = tracker.label_group(request.label)
-    if isinstance(group, Err):
-        return group
-    criteria = AutoLabelCriteria(
-        label=request.label,
-        exclusions=request.exclusions,
-        ledger=recorded,
-        group=group.value,
-    )
-    outcome = add_label_to_eligible(tracker, Selection.of(issues.value, criteria), request)
+        group = tracker.label_group(request.label)
+        if isinstance(group, Err):
+            return group
+        criteria = AutoLabelCriteria(
+            label=request.label,
+            exclusions=request.exclusions,
+            ledger=recorded,
+            group=group.value,
+        )
+        outcome = AutoLabelling.add_label_to_eligible(
+            tracker, Selection.of(issues.value, criteria), request
+        )
 
-    if not request.dry_run.root and len(outcome.labelled) > 0:
-        ledger_store.write(request.label, recorded.extended(outcome.labelled))
+        if not request.dry_run.root and len(outcome.labelled) > 0:
+            ledger_store.write(request.label, recorded.extended(outcome.labelled))
 
-    return Ok(outcome)
+        return Ok(outcome)
 
+    @staticmethod
+    def add_label_to_eligible(
+        tracker: TicketTracker, selection: Selection, request: AutolabelRequest
+    ) -> Outcome:
+        if request.dry_run.root:
+            return Outcome(selection=selection, dry_run=request.dry_run, labelled=(), failed=())
 
-def add_label_to_eligible(
-    tracker: TicketTracker, selection: Selection, request: AutolabelRequest
-) -> Outcome:
-    if request.dry_run.root:
-        return Outcome(selection=selection, dry_run=request.dry_run, labelled=(), failed=())
-
-    added: list[IssueIdentifier] = []
-    failed: list[IssueIdentifier] = []
-    for issue in selection.labellable().root:
-        try:
-            tracker.add_label(issue.identifier, request.label)
-        except TicketTrackerError as error:
-            logger.error("%s could not be labelled: %s", issue.identifier.root, error)
-            failed.append(issue.identifier)
-        else:
-            added.append(issue.identifier)
-    return Outcome(
-        selection=selection,
-        dry_run=request.dry_run,
-        labelled=tuple(added),
-        failed=tuple(failed),
-    )
+        added: list[IssueIdentifier] = []
+        failed: list[IssueIdentifier] = []
+        for issue in selection.labellable().root:
+            try:
+                tracker.add_label(issue.identifier, request.label)
+            except TicketTrackerError as error:
+                logger.error("%s could not be labelled: %s", issue.identifier.root, error)
+                failed.append(issue.identifier)
+            else:
+                added.append(issue.identifier)
+        return Outcome(
+            selection=selection,
+            dry_run=request.dry_run,
+            labelled=tuple(added),
+            failed=tuple(failed),
+        )
