@@ -7,6 +7,7 @@ from mb_workflow.b_core.d_domain_model.config import (
     ConfigFileName,
     Configuration,
     InvalidConfigError,
+    MissingConfigError,
     WorkingDirectory,
 )
 
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 
 def show_config(
     directory: WorkingDirectory, name: ConfigFileName, override: ProjectOverride
-) -> Result[ConfigReport, InvalidConfigError]:
+) -> Result[ConfigReport, InvalidConfigError | MissingConfigError]:
     match Configuration.resolved(directory, name, override):
         case Ok(config):
             return Ok(ConfigReport.of(config))

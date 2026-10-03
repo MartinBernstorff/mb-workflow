@@ -209,17 +209,41 @@ class SearchedDirectories(Value[tuple[Path, ...]]):
             None,
         )
 
-    def locate(self, name: ConfigFileName) -> ConfigPath:
-        found = self.find(name)
-        if found is not None:
-            return found
-        listed = ", ".join(str(directory) for directory in self.root)
-        raise MissingConfigError(f"No {name.root} found. Searched {listed}.")
+    def listed(self) -> DirectoryListing:
+        return DirectoryListing(", ".join(str(directory) for directory in self.root))
+
+
+class DirectoryListing(Value[str]):
+    @staticmethod
+    def fake() -> DirectoryListing:
+        return SearchedDirectories.fake().listed()
+
+
+class NoRepoFile(Model):
+    name: ConfigFileName
+    searched: SearchedDirectories
+
+    @staticmethod
+    def fake() -> NoRepoFile:
+        return NoRepoFile(name=ConfigFileName.fake(), searched=SearchedDirectories.fake())
+
+    def missing(self, override: NoOverrideFile) -> MissingConfigError:
+        expected = (
+            "no origin remote to name a per-developer override file after"
+            if override.expected is None
+            else f"no per-developer override file at {override.expected.root}"
+        )
+        return MissingConfigError(
+            f"No {self.name.root} found. Searched {self.searched.listed().root}, and {expected}."
+        )
+
+
+type RepoFile = ConfigPath | NoRepoFile
 
 
 class Configuration(Model):
     settings: Settings
-    origin: ConfigPath
+    origin: RepoFile
     table: SettingsTable
     override: ProjectOverride
 
@@ -243,22 +267,34 @@ class Configuration(Model):
     @staticmethod
     def resolved(
         directory: WorkingDirectory, name: ConfigFileName, override: ProjectOverride
-    ) -> Result[Configuration, InvalidConfigError]:
-        origin = SearchedDirectories.of(directory).locate(name)
-        table = origin.table()
-        merged = table.merged(override.table) if isinstance(override, OverrideFile) else table
+    ) -> Result[Configuration, InvalidConfigError | MissingConfigError]:
+        searched = SearchedDirectories.of(directory)
+        origin = searched.find(name) or NoRepoFile(name=name, searched=searched)
+        match origin:
+            case NoRepoFile():
+                if isinstance(override, NoOverrideFile):
+                    return Err(origin.missing(override))
+                table = SettingsTable.empty()
+                merged = override.table
+                described = f"{override.path.root} (with no {name.root} in the repository)"
+            case ConfigPath():
+                table = origin.table()
+                merged = (
+                    table.merged(override.table) if isinstance(override, OverrideFile) else table
+                )
+                overridden = (
+                    f" with overrides from {override.path.root}"
+                    if isinstance(override, OverrideFile)
+                    else ""
+                )
+                described = f"{origin.root}{overridden}"
         match Settings.parsed(merged):
             case Ok(settings):
                 return Ok(
                     Configuration(settings=settings, origin=origin, table=table, override=override)
                 )
             case Err(error):
-                overridden = (
-                    f" with overrides from {override.path.root}"
-                    if isinstance(override, OverrideFile)
-                    else ""
-                )
-                return Err(InvalidConfigError(f"{origin.root}{overridden} is not valid. {error}"))
+                return Err(InvalidConfigError(f"{described} is not valid. {error}"))
 
     def sources_of(self, key: SettingKey) -> SettingSources:
         return SettingSources.of(key, self.table, self.override)

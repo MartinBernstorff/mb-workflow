@@ -1,11 +1,11 @@
 from typing import TYPE_CHECKING
 
-import pytest
 from safe_result import Err, Ok
 
 from mb_workflow.b_core.a_features.show_config import show_config
 from mb_workflow.b_core.d_domain_model.config import (
     ConfigFileName,
+    Configuration,
     InvalidConfigError,
     MissingConfigError,
     WorkingDirectory,
@@ -16,6 +16,7 @@ from mb_workflow.b_core.d_domain_model.config_override import (
     OverridePath,
     SettingsTable,
 )
+from mb_workflow.b_core.d_domain_model.issue import Assignee
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -71,11 +72,30 @@ def test_the_report_notes_a_missing_override_file(tmp_path: Path) -> None:
     )
 
 
-def test_an_absent_configuration_file_fails_the_command(tmp_path: Path) -> None:
-    with pytest.raises(MissingConfigError):
-        _ = show_config(
-            WorkingDirectory(tmp_path), ConfigFileName("absent.toml"), NoOverrideFile.fake()
-        )
+def test_an_absent_configuration_file_is_an_error_value(tmp_path: Path) -> None:
+    report = show_config(
+        WorkingDirectory(tmp_path), ConfigFileName("absent.toml"), NoOverrideFile.fake()
+    )
+
+    assert isinstance(report, Err)
+    assert isinstance(report.error, MissingConfigError)
+
+
+def test_the_report_of_an_override_file_alone_notes_the_missing_repo_file(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    override = OverrideFile(
+        path=OverridePath(tmp_path / "override.toml"), table=Configuration.fake().table
+    )
+
+    report = show_config(WorkingDirectory(tmp_path), ConfigFileName.fake(), override)
+
+    lines = report.unwrap().root.splitlines()
+    assert lines[:2] == [
+        f"repo file: none (no {ConfigFileName.fake().root} in {tmp_path.resolve()})",
+        f"override file: {tmp_path / 'override.toml'}",
+    ]
+    assert f"assignee: {Assignee.fake().root} (override)" in lines
+    assert "status store: orca (override)" in lines
 
 
 def test_a_malformed_configuration_file_is_an_error_value(tmp_path: Path) -> None:

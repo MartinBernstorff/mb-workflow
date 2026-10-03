@@ -7,10 +7,12 @@ from safe_result import Err
 from mb_workflow.b_core.d_domain_model.config import (
     ClaimSettings,
     ConfigFileName,
+    ConfigPath,
     Configuration,
     InvalidConfigError,
     LinearTracker,
     MissingConfigError,
+    NoRepoFile,
     OrcaStatus,
     PoolSettings,
     ProjectTag,
@@ -66,11 +68,11 @@ def test_a_configuration_in_the_working_directory_of_a_repository_is_found(
     (tmp_path / "repo" / ".git").mkdir(parents=True)
     _ = (tmp_path / "repo" / "mb-workflow.toml").write_text("")
 
-    located = SearchedDirectories.of(WorkingDirectory(tmp_path / "repo")).locate(
+    located = SearchedDirectories.of(WorkingDirectory(tmp_path / "repo")).find(
         ConfigFileName.fake()
     )
 
-    assert located.root == (tmp_path / "repo" / "mb-workflow.toml").resolve()
+    assert located == ConfigPath((tmp_path / "repo" / "mb-workflow.toml").resolve())
 
 
 def test_a_configuration_in_a_parent_within_the_repository_is_found(tmp_path: Path) -> None:
@@ -78,11 +80,11 @@ def test_a_configuration_in_a_parent_within_the_repository_is_found(tmp_path: Pa
     (tmp_path / "repo" / "src" / "pkg").mkdir(parents=True)
     _ = (tmp_path / "repo" / "mb-workflow.toml").write_text("")
 
-    located = SearchedDirectories.of(WorkingDirectory(tmp_path / "repo" / "src" / "pkg")).locate(
+    located = SearchedDirectories.of(WorkingDirectory(tmp_path / "repo" / "src" / "pkg")).find(
         ConfigFileName.fake()
     )
 
-    assert located.root == (tmp_path / "repo" / "mb-workflow.toml").resolve()
+    assert located == ConfigPath((tmp_path / "repo" / "mb-workflow.toml").resolve())
 
 
 def test_a_configuration_above_the_repository_root_is_not_found(tmp_path: Path) -> None:
@@ -90,14 +92,10 @@ def test_a_configuration_above_the_repository_root_is_not_found(tmp_path: Path) 
     (tmp_path / "repo" / "src").mkdir()
     _ = (tmp_path / "mb-workflow.toml").write_text("")
 
-    with pytest.raises(MissingConfigError) as raised:
-        _ = SearchedDirectories.of(WorkingDirectory(tmp_path / "repo" / "src")).locate(
-            ConfigFileName.fake()
-        )
+    searched = SearchedDirectories.of(WorkingDirectory(tmp_path / "repo" / "src"))
 
-    assert str((tmp_path / "repo" / "src").resolve()) in str(raised.value)
-    assert str((tmp_path / "repo").resolve()) in str(raised.value)
-    assert f"{tmp_path.resolve()}," not in str(raised.value)
+    assert searched.find(ConfigFileName.fake()) is None
+    assert searched.root == ((tmp_path / "repo" / "src").resolve(), (tmp_path / "repo").resolve())
 
 
 def test_a_worktree_git_file_marks_the_repository_root(tmp_path: Path) -> None:
@@ -133,7 +131,7 @@ def test_the_nearest_configuration_file_wins(tmp_path: Path) -> None:
         WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.fake(), NoOverrideFile.fake()
     ).unwrap()
 
-    assert resolved.origin.root == tmp_path / "repo" / "src" / "mb-workflow.toml"
+    assert resolved.origin == ConfigPath(tmp_path / "repo" / "src" / "mb-workflow.toml")
     assert resolved.settings.issues == TodoistTracker.fake()
 
 
@@ -151,7 +149,7 @@ def test_the_search_walks_up_when_the_working_directory_holds_no_file(tmp_path: 
         WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.fake(), NoOverrideFile.fake()
     ).unwrap()
 
-    assert resolved.origin.root == tmp_path / "repo" / "mb-workflow.toml"
+    assert resolved.origin == ConfigPath(tmp_path / "repo" / "mb-workflow.toml")
 
 
 def test_a_configuration_in_a_parent_is_not_merged_into_the_nearest_one(tmp_path: Path) -> None:
@@ -182,17 +180,59 @@ def test_a_configuration_in_a_parent_is_not_merged_into_the_nearest_one(tmp_path
     )
 
 
-def test_an_absent_configuration_file_lists_the_directories_searched(tmp_path: Path) -> None:
-    (tmp_path / "repo").mkdir()
-    with pytest.raises(MissingConfigError) as raised:
-        _ = Configuration.resolved(
-            WorkingDirectory(tmp_path / "repo"),
-            ConfigFileName("absent.toml"),
-            NoOverrideFile.fake(),
-        ).unwrap()
-    assert "absent.toml" in str(raised.value)
-    assert str(tmp_path / "repo") in str(raised.value)
-    assert str(tmp_path) in str(raised.value)
+def test_without_either_file_the_error_names_the_directories_searched_and_the_override_path(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    expected = OverridePath(tmp_path / "override.toml")
+
+    resolved = Configuration.resolved(
+        WorkingDirectory(tmp_path / "repo"),
+        ConfigFileName("absent.toml"),
+        NoOverrideFile(expected=expected),
+    )
+
+    assert isinstance(resolved, Err)
+    assert isinstance(resolved.error, MissingConfigError)
+    assert "absent.toml" in str(resolved.error)
+    assert str((tmp_path / "repo").resolve()) in str(resolved.error)
+    assert str(expected.root) in str(resolved.error)
+
+
+def test_without_either_file_or_an_origin_remote_the_error_says_so(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+
+    resolved = Configuration.resolved(
+        WorkingDirectory(tmp_path), ConfigFileName.fake(), NoOverrideFile(expected=None)
+    )
+
+    assert isinstance(resolved, Err)
+    assert "no origin remote" in str(resolved.error)
+
+
+def test_an_override_file_alone_resolves_the_configuration(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    override = OverrideFile(path=OverridePath.fake(), table=Configuration.fake().table)
+
+    resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake(), override)
+
+    assert resolved.unwrap().settings == Settings.fake()
+    assert resolved.unwrap().origin == NoRepoFile(
+        name=ConfigFileName.fake(), searched=SearchedDirectories((tmp_path.resolve(),))
+    )
+
+
+def test_an_invalid_override_file_alone_is_an_error_naming_it(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    override = OverrideFile(
+        path=OverridePath.fake(), table=SettingsTable({"issues": {"tracker": "jira"}})
+    )
+
+    resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake(), override)
+
+    assert isinstance(resolved, Err)
+    assert isinstance(resolved.error, InvalidConfigError)
+    assert str(OverridePath.fake().root) in str(resolved.error)
 
 
 def test_a_malformed_configuration_file_names_itself(tmp_path: Path) -> None:

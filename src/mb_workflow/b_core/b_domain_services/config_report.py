@@ -1,4 +1,10 @@
-from mb_workflow.b_core.d_domain_model.config import Configuration, LinearTracker, TodoistTracker
+from mb_workflow.b_core.d_domain_model.config import (
+    ConfigPath,
+    Configuration,
+    LinearTracker,
+    NoRepoFile,
+    TodoistTracker,
+)
 from mb_workflow.b_core.d_domain_model.config_override import (
     NoOverrideFile,
     OverrideFile,
@@ -27,6 +33,11 @@ class ConfigReport(Value[str]):
     @staticmethod
     def of(config: Configuration) -> ConfigReport:
         settings = config.settings
+        match config.origin:
+            case ConfigPath() as found:
+                repo = f"repo file: {found.root}"
+            case NoRepoFile() as absent:
+                repo = f"repo file: none (no {absent.name.root} in {absent.searched.listed().root})"
         match config.override:
             case OverrideFile() as found:
                 override = f"override file: {found.path.root}"
@@ -84,7 +95,7 @@ class ConfigReport(Value[str]):
         return ConfigReport(
             "\n".join(
                 (
-                    f"repo file: {config.origin.root}",
+                    repo,
                     override,
                     *(
                         ReportLine.attributed(config, SettingKey(key), ReportLine(text)).root
