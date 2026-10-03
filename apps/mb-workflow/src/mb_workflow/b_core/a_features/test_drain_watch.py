@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, override
 
 import pytest
+from safe_result import Err
 
 from mb_workflow.b_core.a_features.autolabel import UnknownLabelError
 from mb_workflow.b_core.a_features.drain import Changed, DrainOutcome
@@ -34,6 +35,8 @@ from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, 
 from mb_workflow.b_core.d_domain_model.pool import Limit, PoolTickets, Priority
 
 if TYPE_CHECKING:
+    from safe_result import Result
+
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
     from mb_workflow.b_core.d_domain_model.pool import ViewSlug
 
@@ -72,10 +75,10 @@ class FlakyTracker(FakeTicketTracker):
         self.failing = True
 
     @override
-    def unblocked_view_tickets(self, view: ViewSlug) -> PoolTickets:
+    def unblocked_view_tickets(self, view: ViewSlug) -> Result[PoolTickets, TicketTrackerError]:
         if self.failing:
             self.failing = False
-            raise TicketTrackerError("Linear is unreachable")
+            return Err(TicketTrackerError("Linear is unreachable"))
         return super().unblocked_view_tickets(view)
 
 
@@ -87,7 +90,7 @@ class SignallingTracker(FakeTicketTracker):
         self.stop = stop
 
     @override
-    def unblocked_view_tickets(self, view: ViewSlug) -> PoolTickets:
+    def unblocked_view_tickets(self, view: ViewSlug) -> Result[PoolTickets, TicketTrackerError]:
         if self.stop is not None:
             self.stop.signal()
         return super().unblocked_view_tickets(view)

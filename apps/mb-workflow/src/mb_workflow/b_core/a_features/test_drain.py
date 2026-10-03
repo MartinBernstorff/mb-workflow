@@ -186,7 +186,7 @@ def rival() -> ClaimHolder:
 
 
 def holders(claims: FakeClaimRegistry, ticket: IssueIdentifier) -> tuple[ClaimHolder, ...]:
-    return tuple(claim.holder for claim in claims.claims(ticket).root)
+    return tuple(claim.holder for claim in claims.claims(ticket).unwrap().root)
 
 
 def opened_issues(manager: FakeWorkspaceManager) -> tuple[IssueIdentifier | None, ...]:
@@ -203,7 +203,7 @@ class RacedRegistry(FakeClaimRegistry):
 
     @override
     def post(self, ticket: IssueIdentifier, holder: ClaimHolder) -> ClaimId:
-        if ticket == self._contested and not self.claims(ticket).root:
+        if ticket == self._contested and not self.claims(ticket).unwrap().root:
             _ = super().post(ticket, rival())
         return super().post(ticket, holder)
 
@@ -230,7 +230,7 @@ def draining(
         statuses=TicketStatuses.fake(),
         pool=pool or PoolSettings.fake(),
         request=request or DrainRequest.fake(),
-    )
+    ).unwrap()
 
 
 def test_starts_the_top_ready_ticket_and_submits_its_prompt() -> None:
@@ -365,7 +365,9 @@ def test_a_start_that_fails_after_claiming_releases_the_claim() -> None:
     with pytest.raises(WorkspaceManagerError):
         _ = draining(tracker, manager=elsewhere, claims=claims)
     assert holders(claims, IssueIdentifier("MB-2")) == ()
-    assert tracker.read_issue(IssueIdentifier("MB-2")).labels == LabelNames((LabelName("Specced"),))
+    assert tracker.read_issue(IssueIdentifier("MB-2")).unwrap().labels == LabelNames(
+        (LabelName("Specced"),)
+    )
 
 
 # Raises as a second stop signal would, after the workspace call begins.
@@ -489,9 +491,9 @@ def test_a_started_ticket_loses_its_skip_limits_label() -> None:
     tracker = pool_of(pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()))
     _ = draining(tracker)
     assert (
-        tracker.read_issue(IssueIdentifier("MB-2")).labels.matching(
-            PoolSettings.fake().skip_limits_label
-        )
+        tracker.read_issue(IssueIdentifier("MB-2"))
+        .unwrap()
+        .labels.matching(PoolSettings.fake().skip_limits_label)
         is None
     )
 
@@ -501,9 +503,9 @@ def test_a_dry_run_keeps_the_skip_limits_label() -> None:
     dry = DrainRequest.fake().model_copy(update={"dry_run": DryRun(True)})
     _ = draining(tracker, request=dry)
     assert (
-        tracker.read_issue(IssueIdentifier("MB-2")).labels.matching(
-            PoolSettings.fake().skip_limits_label
-        )
+        tracker.read_issue(IssueIdentifier("MB-2"))
+        .unwrap()
+        .labels.matching(PoolSettings.fake().skip_limits_label)
         is not None
     )
 
@@ -512,9 +514,9 @@ def test_a_ticket_another_host_wins_keeps_its_skip_limits_label() -> None:
     tracker = pool_of(pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()))
     _ = draining(tracker, claims=RacedRegistry(IssueIdentifier("MB-2")))
     assert (
-        tracker.read_issue(IssueIdentifier("MB-2")).labels.matching(
-            PoolSettings.fake().skip_limits_label
-        )
+        tracker.read_issue(IssueIdentifier("MB-2"))
+        .unwrap()
+        .labels.matching(PoolSettings.fake().skip_limits_label)
         is not None
     )
 

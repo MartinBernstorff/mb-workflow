@@ -36,17 +36,19 @@ class TicketTaking:
         claim_settings: ClaimSettings,
         request: ClaimRequest,
         previous: Assignee | None,
-    ) -> None:
-        Saga.run(
-            TicketTaking.saga_steps(
-                claims=claims,
-                tracker=tracker,
-                workspace=workspace,
-                claim_settings=claim_settings,
-                request=request,
-                previous=previous,
-            )
-        ).unwrap()
+    ) -> Result[None, TicketTrackerError]:
+        steps = TicketTaking.saga_steps(
+            claims=claims,
+            tracker=tracker,
+            workspace=workspace,
+            claim_settings=claim_settings,
+            request=request,
+            previous=previous,
+        )
+        if isinstance(steps, Err):
+            return steps
+        Saga.run(steps.value).unwrap()
+        return Ok(None)
 
     # `previous` is the assignee before taking, restored when a later step fails.
     @staticmethod
@@ -58,15 +60,19 @@ class TicketTaking:
         claim_settings: ClaimSettings,
         request: ClaimRequest,
         previous: Assignee | None,
-    ) -> tuple[SagaStep, ...]:
-        Claiming.require_claim_label(tracker, claim_settings.label)
+    ) -> Result[tuple[SagaStep, ...], TicketTrackerError]:
+        checked = Claiming.require_claim_label(tracker, claim_settings.label)
+        if isinstance(checked, Err):
+            return checked
         labelled = LabelledClaim(
             ticket=request.ticket, holder=request.holder, label=claim_settings.label
         )
-        return (
-            ClaimStep(claims, request),
-            ClaimLabelStep(claims, tracker, labelled),
-            AssignmentStep(tracker, request.ticket, workspace.assignee, previous),
+        return Ok(
+            (
+                ClaimStep(claims, request),
+                ClaimLabelStep(claims, tracker, labelled),
+                AssignmentStep(tracker, request.ticket, workspace.assignee, previous),
+            )
         )
 
 
@@ -85,10 +91,15 @@ class ClaimStep(SagaStep):
                 f"Claiming {self.request.ticket.root} for worktree"
                 f" {self.request.holder.worktree.root} on {self.request.holder.host.root}"
             ).logged(logger):
-                self._posted = Claiming.claim_ticket(self.registry, self.request)
+                claimed = Claiming.claim_ticket(self.registry, self.request)
         except (ClaimRefusedError, TicketTrackerError) as error:
             return Err(error)
-        return Ok(None)
+        match claimed:
+            case Ok(posted):
+                self._posted = posted
+                return Ok(None)
+            case Err() as failed:
+                return failed
 
     # A claim this holder held before taking is left in place.
     @override
@@ -97,12 +108,11 @@ class ClaimStep(SagaStep):
             return Ok(None)
         try:
             with Activity(f"Withdrawing our claim on {self.request.ticket.root}").logged(logger):
-                Claiming.withdraw_holders_claims(
+                return Claiming.withdraw_holders_claims(
                     self.registry, self.request.ticket, self.request.holder
                 )
         except TicketTrackerError as error:
             return Err(error)
-        return Ok(None)
 
 
 # Whether the step put the label on, rather than finding it there already.
@@ -122,11 +132,10 @@ class ClaimLabelStep(SagaStep):
 
     @override
     def apply(self) -> Result[None, Exception]:
-        try:
-            labels = self.tracker.read_issue(self.request.ticket).labels
-        except TicketTrackerError as error:
-            return Err(error)
-        if labels.has(self.request.label).root:
+        held = self.tracker.read_issue(self.request.ticket)
+        if isinstance(held, Err):
+            return held
+        if held.value.labels.has(self.request.label).root:
             return Ok(None)
         labelled = Claiming.label_claim(self.tracker, self.request)
         self._added = Added(labelled.is_ok())
@@ -137,10 +146,12 @@ class ClaimLabelStep(SagaStep):
     def revert(self) -> Result[None, Exception]:
         if not self._added.root:
             return Ok(None)
+        held = self.registry.claims(self.request.ticket)
+        if isinstance(held, Err):
+            return held
+        if any(claim.holder != self.request.holder for claim in held.value.root):
+            return Ok(None)
         try:
-            held = self.registry.claims(self.request.ticket)
-            if any(claim.holder != self.request.holder for claim in held.root):
-                return Ok(None)
             with Activity(
                 f"Removing the {self.request.label.root} label from {self.request.ticket.root}"
             ).logged(logger):

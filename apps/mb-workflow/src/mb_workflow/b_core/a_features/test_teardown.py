@@ -55,7 +55,7 @@ def tracker_with_the_claimed_label() -> FakeTicketTracker:
 
 
 def holder_of_ticket(claims: FakeClaimRegistry) -> ClaimHolder | None:
-    held = claims.claims(IssueIdentifier.fake()).holding(IssueStatusName.fake())
+    held = claims.claims(IssueIdentifier.fake()).unwrap().holding(IssueStatusName.fake())
     return None if held is None else held.holder
 
 
@@ -75,7 +75,7 @@ def test_releases_the_claim_and_removes_the_worktree() -> None:
         manager=manager,
         claims=claims,
         request=TeardownRequest.fake(),
-    )
+    ).unwrap()
     assert holder_of_ticket(claims) is None
     assert manager.worktrees().at(WorktreePath.fake()) is None
 
@@ -91,8 +91,8 @@ def test_removes_the_claimed_label() -> None:
         tracker=tracker,
         claim_settings=ClaimSettings.fake(),
         request=TeardownRequest.fake(),
-    )
-    assert tracker.read_issue(IssueIdentifier.fake()).labels == Issue.fake().labels
+    ).unwrap()
+    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == Issue.fake().labels
 
 
 def test_withdraws_a_claim_held_from_another_host_and_removes_the_label() -> None:
@@ -107,9 +107,9 @@ def test_withdraws_a_claim_held_from_another_host_and_removes_the_label() -> Non
         tracker=tracker,
         claim_settings=ClaimSettings.fake(),
         request=TeardownRequest.fake(),
-    )
+    ).unwrap()
     assert holder_of_ticket(claims) is None
-    assert tracker.read_issue(IssueIdentifier.fake()).labels == Issue.fake().labels
+    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == Issue.fake().labels
 
 
 def test_tears_down_the_current_worktree_when_none_is_named() -> None:
@@ -122,7 +122,7 @@ def test_tears_down_the_current_worktree_when_none_is_named() -> None:
         tracker=tracker_with_the_claimed_label(),
         claim_settings=ClaimSettings.fake(),
         request=TeardownRequest(worktree=None),
-    )
+    ).unwrap()
     assert holder_of_ticket(claims) is None
     assert manager.worktrees().at(current.path) is None
 
@@ -136,7 +136,7 @@ def test_removes_a_worktree_linked_to_no_ticket() -> None:
         manager=manager,
         claims=FakeClaimRegistry(),
         request=TeardownRequest.fake(),
-    )
+    ).unwrap()
     assert manager.worktrees().at(WorktreePath.fake()) is None
 
 
@@ -154,7 +154,7 @@ def test_releases_the_claim_of_a_worktree_orca_suffixed() -> None:
         manager=managing(suffixed),
         claims=claims,
         request=request,
-    )
+    ).unwrap()
     assert holder_of_ticket(claims) is None
 
 
@@ -168,4 +168,4 @@ def test_refuses_a_worktree_that_does_not_exist() -> None:
             manager=manager,
             claims=FakeClaimRegistry(),
             request=request,
-        )
+        ).unwrap()

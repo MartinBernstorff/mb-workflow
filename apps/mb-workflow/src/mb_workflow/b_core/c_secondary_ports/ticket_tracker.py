@@ -2,6 +2,8 @@ import logging
 from itertools import count
 from typing import TYPE_CHECKING, Protocol, override
 
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.d_domain_model.claim import Released
 from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
@@ -57,12 +59,16 @@ class TicketTrackerError(Exception):
 
 
 class TicketTracker(Protocol):
-    def workspace_labels(self) -> LabelNames: ...
+    def workspace_labels(self) -> Result[LabelNames, TicketTrackerError]: ...
 
     # A team of None reads or creates the group at workspace level, outside every team.
-    def group_labels(self, group: LabelGroupName, team: TeamKey | None) -> ColoredLabels: ...
+    def group_labels(
+        self, group: LabelGroupName, team: TeamKey | None
+    ) -> Result[ColoredLabels, TicketTrackerError]: ...
 
-    def label_group(self, label: LabelName) -> LabelGroupName | None: ...
+    def label_group(
+        self, label: LabelName
+    ) -> Result[LabelGroupName | None, TicketTrackerError]: ...
 
     def create_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
@@ -72,19 +78,23 @@ class TicketTracker(Protocol):
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None: ...
 
-    def team_named(self, name: TeamName) -> TeamKey: ...
+    def team_named(self, name: TeamName) -> Result[TeamKey, TicketTrackerError]: ...
 
-    def team_of(self, issue: IssueIdentifier) -> TeamKey: ...
+    def team_of(self, issue: IssueIdentifier) -> Result[TeamKey, TicketTrackerError]: ...
 
-    def list_issues(self, wanted: IssueFilter) -> Issues: ...
+    def list_issues(self, wanted: IssueFilter) -> Result[Issues, TicketTrackerError]: ...
 
-    def unblocked_view_tickets(self, view: ViewSlug) -> PoolTickets: ...
+    def unblocked_view_tickets(self, view: ViewSlug) -> Result[PoolTickets, TicketTrackerError]: ...
 
-    def labelled_issues(self, label: LabelName, excluding: StatusTypes) -> Issues: ...
+    def labelled_issues(
+        self, label: LabelName, excluding: StatusTypes
+    ) -> Result[Issues, TicketTrackerError]: ...
 
-    def read_issue(self, issue: IssueIdentifier) -> Issue: ...
+    def read_issue(self, issue: IssueIdentifier) -> Result[Issue, TicketTrackerError]: ...
 
-    def read_issue_detail(self, issue: IssueIdentifier) -> IssueDetail: ...
+    def read_issue_detail(
+        self, issue: IssueIdentifier
+    ) -> Result[IssueDetail, TicketTrackerError]: ...
 
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None: ...
 
@@ -98,18 +108,27 @@ class TicketTracker(Protocol):
 
     def create_issue(self, new: NewIssue) -> CreatedIssue: ...
 
-    def blockers(self, issue: IssueIdentifier) -> tuple[IssueIdentifier, ...]: ...
+    def blockers(
+        self, issue: IssueIdentifier
+    ) -> Result[tuple[IssueIdentifier, ...], TicketTrackerError]: ...
 
-    def viewer(self) -> Assignee: ...
+    def viewer(self) -> Result[Assignee, TicketTrackerError]: ...
 
 
 class LabelCheck:
     @staticmethod
-    def require_label(tracker: TicketTracker, label: LabelName, missing: Exception) -> None:
+    def require_label(
+        tracker: TicketTracker, label: LabelName, missing: Exception
+    ) -> Result[None, TicketTrackerError]:
         with Activity(f"Checking that label {label.root} exists").logged(logger):
-            known = tracker.workspace_labels().matching(label)
-        if known is None:
-            raise missing
+            listed = tracker.workspace_labels()
+        match listed:
+            case Ok(known):
+                if known.matching(label) is None:
+                    raise missing
+                return Ok(None)
+            case Err() as failed:
+                return failed
 
 
 class TrackedIssue(Model):
@@ -170,43 +189,47 @@ class FakeTicketTracker(TicketTracker):
 
     # Linear lists every label, a team's own ones included.
     @override
-    def workspace_labels(self) -> LabelNames:
-        return LabelNames(
-            (
-                *self._labels.root,
-                *(
-                    label
-                    for held in self._team_groups.values()
-                    for label in held.label_names().root
-                ),
+    def workspace_labels(self) -> Result[LabelNames, TicketTrackerError]:
+        return Ok(
+            LabelNames(
+                (
+                    *self._labels.root,
+                    *(
+                        label
+                        for held in self._team_groups.values()
+                        for label in held.label_names().root
+                    ),
+                )
             )
         )
 
     @override
-    def group_labels(self, group: LabelGroupName, team: TeamKey | None) -> ColoredLabels:
-        if team is None:
-            return self._groups.get(group, ColoredLabels(()))
-        return self._team_groups.get((team, group), ColoredLabels(()))
+    def group_labels(
+        self, group: LabelGroupName, team: TeamKey | None
+    ) -> Result[ColoredLabels, TicketTrackerError]:
+        return Ok(self._held(group, team))
 
     @override
-    def label_group(self, label: LabelName) -> LabelGroupName | None:
-        return next(
-            (
-                group
-                for group, members in (
-                    *self._groups.items(),
-                    *((group, members) for (_, group), members in self._team_groups.items()),
-                )
-                if members.label_names().matching(label) is not None
-            ),
-            None,
+    def label_group(self, label: LabelName) -> Result[LabelGroupName | None, TicketTrackerError]:
+        return Ok(
+            next(
+                (
+                    group
+                    for group, members in (
+                        *self._groups.items(),
+                        *((group, members) for (_, group), members in self._team_groups.items()),
+                    )
+                    if members.label_names().matching(label) is not None
+                ),
+                None,
+            )
         )
 
     @override
     def create_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None:
-        held = ColoredLabels((*self.group_labels(group, team).root, *labels.root))
+        held = ColoredLabels((*self._held(group, team).root, *labels.root))
         if team is None:
             self._groups[group] = held
             self._labels = LabelNames((*self._labels.root, *labels.label_names().root))
@@ -217,7 +240,7 @@ class FakeTicketTracker(TicketTracker):
     def recolor_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None:
-        held = self.group_labels(group, team)
+        held = self._held(group, team)
         unknown = held.label_names().unmatched(labels.label_names())
         if unknown.root:
             raise TicketTrackerError(
@@ -239,79 +262,100 @@ class FakeTicketTracker(TicketTracker):
             self._team_groups[(team, group)] = recolored
 
     @override
-    def team_named(self, name: TeamName) -> TeamKey:
+    def team_named(self, name: TeamName) -> Result[TeamKey, TicketTrackerError]:
         found = next((team for team in self._teams if team.name.names(name).root), None)
         if found is None:
-            raise TicketTrackerError(f"No team is named {name.root}.")
-        return found.key
+            return Err(TicketTrackerError(f"No team is named {name.root}."))
+        return Ok(found.key)
 
     @override
-    def team_of(self, issue: IssueIdentifier) -> TeamKey:
-        return self._tracked(issue).team
+    def team_of(self, issue: IssueIdentifier) -> Result[TeamKey, TicketTrackerError]:
+        match self._found(issue):
+            case Ok(tracked):
+                return Ok(tracked.team)
+            case Err() as failed:
+                return failed
 
     @override
-    def list_issues(self, wanted: IssueFilter) -> Issues:
-        return Issues(
-            tuple(
-                self._read(tracked)
-                for tracked in self._issues.values()
-                if wanted.matches(tracked.creator, tracked.created_on).root
+    def list_issues(self, wanted: IssueFilter) -> Result[Issues, TicketTrackerError]:
+        return Ok(
+            Issues(
+                tuple(
+                    self._read(tracked)
+                    for tracked in self._issues.values()
+                    if wanted.matches(tracked.creator, tracked.created_on).root
+                )
             )
         )
 
     @override
-    def unblocked_view_tickets(self, view: ViewSlug) -> PoolTickets:
+    def unblocked_view_tickets(self, view: ViewSlug) -> Result[PoolTickets, TicketTrackerError]:
         listed = self._views.get(view)
         if listed is None:
-            raise TicketTrackerError(f"No view has the slug {view.root}.")
-        return PoolTickets(
-            tuple(
-                PoolTicket(issue=self._read(tracked), priority=tracked.priority)
-                for tracked in (self._tracked(identifier) for identifier in listed)
-                if not self._open_blockers(tracked)
+            return Err(TicketTrackerError(f"No view has the slug {view.root}."))
+        return Ok(
+            PoolTickets(
+                tuple(
+                    PoolTicket(issue=self._read(tracked), priority=tracked.priority)
+                    for tracked in (self._tracked(identifier) for identifier in listed)
+                    if not self._open_blockers(tracked)
+                )
             )
         )
 
     @override
-    def labelled_issues(self, label: LabelName, excluding: StatusTypes) -> Issues:
-        return Issues(
-            tuple(
-                self._read(tracked)
-                for tracked in self._issues.values()
-                if tracked.issue.labels.matching(label) is not None
-                and not excluding.has(self._status_named(tracked.issue.status).type).root
+    def labelled_issues(
+        self, label: LabelName, excluding: StatusTypes
+    ) -> Result[Issues, TicketTrackerError]:
+        return Ok(
+            Issues(
+                tuple(
+                    self._read(tracked)
+                    for tracked in self._issues.values()
+                    if tracked.issue.labels.matching(label) is not None
+                    and not excluding.has(self._status_named(tracked.issue.status).type).root
+                )
             )
         )
 
     @override
-    def read_issue(self, issue: IssueIdentifier) -> Issue:
-        return self._read(self._tracked(issue))
+    def read_issue(self, issue: IssueIdentifier) -> Result[Issue, TicketTrackerError]:
+        match self._found(issue):
+            case Ok(value):
+                return Ok(self._read(value))
+            case Err() as failed:
+                return failed
 
     @override
-    def read_issue_detail(self, issue: IssueIdentifier) -> IssueDetail:
-        tracked = self._tracked(issue)
-        return IssueDetail(
-            issue=self._read(tracked),
-            title=tracked.title,
-            description=tracked.description,
-            assignee=tracked.assignee,
-            milestone=tracked.milestone,
-            blocks=frozenset(
-                identifier
-                for identifier, other in self._issues.items()
-                if issue in other.blocked_by
-            ),
-            blocked_by=frozenset(tracked.blocked_by),
-        )
+    def read_issue_detail(self, issue: IssueIdentifier) -> Result[IssueDetail, TicketTrackerError]:
+        match self._found(issue):
+            case Ok(tracked):
+                return Ok(
+                    IssueDetail(
+                        issue=self._read(tracked),
+                        title=tracked.title,
+                        description=tracked.description,
+                        assignee=tracked.assignee,
+                        milestone=tracked.milestone,
+                        blocks=frozenset(
+                            identifier
+                            for identifier, other in self._issues.items()
+                            if issue in other.blocked_by
+                        ),
+                        blocked_by=frozenset(tracked.blocked_by),
+                    )
+                )
+            case Err() as failed:
+                return failed
 
     @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
-        self.set_labels(issue, LabelNames((*self.read_issue(issue).labels.root, label)))
+        self.set_labels(issue, LabelNames((*self._read(self._tracked(issue)).labels.root, label)))
 
     @override
     def remove_label(self, issue: IssueIdentifier, label: LabelName) -> None:
         (known,) = self._spelled(LabelNames((label,)), self._tracked(issue).team).root
-        self.set_labels(issue, self.read_issue(issue).labels.without(known))
+        self.set_labels(issue, self._read(self._tracked(issue)).labels.without(known))
 
     @override
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
@@ -408,12 +452,23 @@ class FakeTicketTracker(TicketTracker):
         )
 
     @override
-    def blockers(self, issue: IssueIdentifier) -> tuple[IssueIdentifier, ...]:
-        return self._tracked(issue).blocked_by
+    def blockers(
+        self, issue: IssueIdentifier
+    ) -> Result[tuple[IssueIdentifier, ...], TicketTrackerError]:
+        match self._found(issue):
+            case Ok(tracked):
+                return Ok(tracked.blocked_by)
+            case Err() as failed:
+                return failed
 
     @override
-    def viewer(self) -> Assignee:
-        return self._viewer
+    def viewer(self) -> Result[Assignee, TicketTrackerError]:
+        return Ok(self._viewer)
+
+    def _held(self, group: LabelGroupName, team: TeamKey | None) -> ColoredLabels:
+        if team is None:
+            return self._groups.get(group, ColoredLabels(()))
+        return self._team_groups.get((team, group), ColoredLabels(()))
 
     def _team(self, key: TeamKey | None, project: ProjectName | None) -> Team:
         if key is not None:
@@ -526,8 +581,16 @@ class FakeTicketTracker(TicketTracker):
         )
         return tracked.issue.model_copy(update={"grouped": grouped})
 
+    # Writes still raise; MB-130 returns their errors as values too.
     def _tracked(self, issue: IssueIdentifier) -> TrackedIssue:
+        match self._found(issue):
+            case Ok(tracked):
+                return tracked
+            case Err(error):
+                raise error
+
+    def _found(self, issue: IssueIdentifier) -> Result[TrackedIssue, TicketTrackerError]:
         tracked = self._issues.get(issue)
         if tracked is None:
-            raise TicketTrackerError(f"No issue is identified as {issue.root}.")
-        return tracked
+            return Err(TicketTrackerError(f"No issue is identified as {issue.root}."))
+        return Ok(tracked)

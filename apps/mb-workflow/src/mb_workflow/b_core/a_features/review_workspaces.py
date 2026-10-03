@@ -1,6 +1,8 @@
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, Protocol
 
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.a_features.start import PromptUndeliveredError, TicketStart
 from mb_workflow.b_core.a_features.teardown import release_and_remove
 from mb_workflow.b_core.b_domain_services.worktree_reconciliation import obsolete, uncovered
@@ -193,7 +195,7 @@ def reconcile_workspaces(
     for worktree in to_remove.root:
         try:
             narrator.removing(worktree.path)
-            release_and_remove(
+            released: Result[None, Exception] = release_and_remove(
                 manager=manager,
                 claims=claims,
                 tracker=tracker,
@@ -202,13 +204,16 @@ def reconcile_workspaces(
                 host=host,
             )
         except (TicketTrackerError, WorkspaceManagerError) as error:
-            failure = Failure(
-                subject=FailureSubject.of_path(worktree.path), reason=FailureReason(str(error))
-            )
-            narrator.removal_failed(failure)
-            failed.append(failure)
-        else:
-            removed.append(worktree.path)
+            released = Err(error)
+        match released:
+            case Ok():
+                removed.append(worktree.path)
+            case Err(error):
+                failure = Failure(
+                    subject=FailureSubject.of_path(worktree.path), reason=FailureReason(str(error))
+                )
+                narrator.removal_failed(failure)
+                failed.append(failure)
 
     missing = uncovered(requested, worktrees)
     narrator.found_uncovered(missing)

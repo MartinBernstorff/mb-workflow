@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 import pytest
+from safe_result import Err
 
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName
@@ -16,9 +17,15 @@ def missing_key() -> LinearApiKey:
 
 
 def test_a_lazy_registry_reads_no_key_until_it_is_used() -> None:
-    claims = LazyLinearClaims(missing_key)
-    with pytest.raises(TicketTrackerError, match="No Linear credentials"):
-        _ = claims.claims(IssueIdentifier.fake())
+    read = LazyLinearClaims(missing_key).claims(IssueIdentifier.fake())
+    assert isinstance(read, Err)
+    assert "No Linear credentials" in str(read.error)
+
+
+def test_a_lazy_tracker_returns_the_missing_key_from_a_lookup() -> None:
+    read = LazyLinear(missing_key).read_issue(IssueIdentifier.fake())
+    assert isinstance(read, Err)
+    assert "No Linear credentials" in str(read.error)
 
 
 def test_a_lazy_tracker_reads_no_key_until_it_is_used() -> None:

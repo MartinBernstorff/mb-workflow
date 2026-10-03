@@ -42,7 +42,10 @@ from mb_workflow.d_lib.saga import Saga, SagaStep
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
-    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+        TicketTracker,
+        TicketTrackerError,
+    )
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
@@ -170,19 +173,26 @@ class TicketStart:
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
         request: StartRequest,
-    ) -> None:
+    ) -> Result[None, TicketTrackerError]:
         with Activity(f"Reading {request.ticket.root}").logged(logger):
-            detail = tracker.read_issue_detail(request.ticket)
+            read = tracker.read_issue_detail(request.ticket)
+        if isinstance(read, Err):
+            return read
+        detail = read.value
         labelled_state = state_of(WorkflowChart, flow_labels, detail.issue.grouped)
         state = request.state_given(labelled_state)
         prompt = request.prompt_for(TicketStart.action_in(request.ticket, state))
-        Claiming.require_claim_label(tracker, claim_settings.label)
+        checked = Claiming.require_claim_label(tracker, claim_settings.label)
+        if isinstance(checked, Err):
+            return checked
 
         # Put an unlabelled ticket in the flow before claiming it, so a failed write leaves no claim behind.
         status = detail.issue.status
         if labelled_state is None:
             with Activity(f"Putting {request.ticket.root} in {state.root}").logged(logger):
-                put_in_state(tracker, request.ticket, flow_labels, statuses, state)
+                put = put_in_state(tracker, request.ticket, flow_labels, statuses, state)
+            if isinstance(put, Err):
+                return put
             status = statuses.of(state)
 
         name = WorktreeName.of_issue(request.ticket)
@@ -210,7 +220,9 @@ class TicketStart:
             ),
             previous=detail.assignee,
         )
-        Saga.run((*taking_steps, worktree_step)).unwrap()
+        if isinstance(taking_steps, Err):
+            return taking_steps
+        Saga.run((*taking_steps.value, worktree_step)).unwrap()
         opened = worktree_step.opened().unwrap()
 
         logger.info("Created worktree %s.", opened.worktree.path.root)
@@ -221,6 +233,7 @@ class TicketStart:
 
         if prompt is not None:
             TicketStart.send_prompt(manager, opened, prompt, request.idle_timeout, request.submit)
+        return Ok(None)
 
     @staticmethod
     def startable_states() -> AcceptedStates:

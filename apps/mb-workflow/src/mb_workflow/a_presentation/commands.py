@@ -222,7 +222,7 @@ def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode
 def linear_autolabel(request: AutolabelRequest, window: CreatedAfter) -> ExitCode:
     outcome = label_eligible_issues(
         linear(), FileLedgerStore(CacheDirectory.of_user()), request, window
-    )
+    ).unwrap()
     log_outcome(outcome)
     return ExitCode.of(outcome.failed_any())
 
@@ -244,7 +244,7 @@ def ticket_start(
         flow_labels=flow_labels_of_chart(),
         statuses=settings.ticket_statuses,
         request=request,
-    )
+    ).unwrap()
     return ExitCode(0)
 
 
@@ -264,7 +264,7 @@ def ticket_link(
         claim_settings=settings.claims,
         flow_labels=flow_labels_of_chart(),
         request=request,
-    )
+    ).unwrap()
     return ExitCode(0)
 
 
@@ -289,7 +289,7 @@ def drain(
         statuses=settings.ticket_statuses,
         pool=pool,
         request=request,
-    )
+    ).unwrap()
     DrainReport.log_pass(outcome)
     if request.dry_run.root:
         write(DrainReport.pick_listing(outcome.picked, flow_labels_of_chart()))
@@ -349,7 +349,7 @@ def teardown(
         tracker=LazyLinear(linear_key),
         claim_settings=resolved_configuration(directory, name).settings.claims,
         request=request,
-    )
+    ).unwrap()
     return ExitCode(0)
 
 
@@ -362,13 +362,13 @@ def ticket_unclaim(
         tracker=linear(),
         claim_settings=resolved_configuration(directory, name).settings.claims,
         ticket=ticket,
-    )
+    ).unwrap()
     return ExitCode(0)
 
 
 @guarded
 def ticket_view(issue: IssueIdentifier) -> ExitCode:
-    write(Output(view_ticket(linear(), issue).root))
+    write(Output(view_ticket(linear(), issue).unwrap().root))
     return ExitCode(0)
 
 
@@ -442,7 +442,7 @@ def flow_event(
         statuses=resolved_configuration(directory, name).settings.ticket_statuses,
         event=event,
         force=force,
-    )
+    ).unwrap()
     logger.info("Moved to %s.", moved_to.root)
     return ExitCode(0)
 
@@ -450,7 +450,7 @@ def flow_event(
 @guarded
 def flow_seed_labels(team: TeamName) -> ExitCode:
     wanted = flow_labels_of_chart()
-    seeded = seed_flow_labels(linear(), wanted, team)
+    seeded = seed_flow_labels(linear(), wanted, team).unwrap()
     if isinstance(seeded, CoveredByWorkspace):
         logger.info(
             "The workspace's %s label group holds every flow label, so it covers %s."

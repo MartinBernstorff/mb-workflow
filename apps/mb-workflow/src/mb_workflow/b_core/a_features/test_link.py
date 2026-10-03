@@ -88,7 +88,7 @@ def linking(
         claim_settings=ClaimSettings.fake(),
         flow_labels=FlowLabels.fake(),
         request=request,
-    )
+    ).unwrap()
 
 
 def linked(state: StateName | None, request: LinkRequest) -> Worktree:
@@ -117,7 +117,7 @@ def claimed_by_host(host: HostName) -> FakeClaimRegistry:
 
 
 def holders(claims: FakeClaimRegistry, ticket: IssueIdentifier) -> tuple[ClaimHolder, ...]:
-    return tuple(claim.holder for claim in claims.claims(ticket).root)
+    return tuple(claim.holder for claim in claims.claims(ticket).unwrap().root)
 
 
 def test_links_the_current_worktree_to_the_ticket() -> None:
@@ -153,7 +153,7 @@ def test_claims_the_ticket_under_the_tickets_name() -> None:
 def test_the_linked_ticket_carries_the_claim_label() -> None:
     tracker = tracking(StateName.fake())
     linking(managing(here_linked_to(None)), tracker, FakeClaimRegistry(), LinkRequest.fake())
-    labels = tracker.read_issue(IssueIdentifier.fake()).labels
+    labels = tracker.read_issue(IssueIdentifier.fake()).unwrap().labels
     assert labels.has(ClaimSettings.fake().label).root
 
 
@@ -168,7 +168,7 @@ def test_assigns_the_ticket_to_the_configured_assignee() -> None:
         LinkRequest.fake(),
         workspace=workspace,
     )
-    assert tracker.read_issue_detail(IssueIdentifier.fake()).assignee == assignee
+    assert tracker.read_issue_detail(IssueIdentifier.fake()).unwrap().assignee == assignee
 
 
 def test_relinking_the_ticket_already_linked_keeps_a_single_claim() -> None:
@@ -186,8 +186,8 @@ def test_a_ticket_without_a_flow_label_is_neither_claimed_nor_linked() -> None:
     with pytest.raises(FlowError, match="no flow label"):
         linking(manager, tracker, claims, LinkRequest.fake())
     assert manager.current().issue is None
-    assert claims.claims(IssueIdentifier.fake()) == Claims(())
-    assert tracker.read_issue(IssueIdentifier.fake()).assigned == Assigned(False)
+    assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
+    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().assigned == Assigned(False)
 
 
 def test_a_ticket_claimed_by_another_host_is_not_linked() -> None:
@@ -213,7 +213,7 @@ def test_a_worktree_linked_to_another_ticket_is_neither_relinked_nor_claimed() -
     with pytest.raises(AlreadyLinkedError, match=previous.root):
         linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake())
     assert manager.current().issue == previous
-    assert claims.claims(IssueIdentifier.fake()) == Claims(())
+    assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
 
 
 def test_force_replaces_the_link_to_another_ticket() -> None:

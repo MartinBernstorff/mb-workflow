@@ -1,6 +1,8 @@
 import logging
 from typing import TYPE_CHECKING
 
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.b_domain_services.label_selection import Selection
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.d_domain_model.autolabel import AutoLabelCriteria, Exclusions
@@ -76,26 +78,36 @@ def label_eligible_issues(
     ledger_store: LedgerStore,
     request: AutolabelRequest,
     window: CreatedAfter,
-) -> Outcome:
-    if not tracker.workspace_labels().has(request.label).root:
+) -> Result[Outcome, TicketTrackerError]:
+    known = tracker.workspace_labels()
+    if isinstance(known, Err):
+        return known
+    if not known.value.has(request.label).root:
         raise UnknownLabelError(f"No label is named {request.label.root}.")
 
     recorded = ledger_store.read(request.label)
     issues = tracker.list_issues(IssueFilter(creator=request.creator, created_after=window))
-    logger.info("Sweeping %s issues created since %s", len(issues.root), window.root.isoformat())
+    if isinstance(issues, Err):
+        return issues
+    logger.info(
+        "Sweeping %s issues created since %s", len(issues.value.root), window.root.isoformat()
+    )
 
+    group = tracker.label_group(request.label)
+    if isinstance(group, Err):
+        return group
     criteria = AutoLabelCriteria(
         label=request.label,
         exclusions=request.exclusions,
         ledger=recorded,
-        group=tracker.label_group(request.label),
+        group=group.value,
     )
-    outcome = add_label_to_eligible(tracker, Selection.of(issues, criteria), request)
+    outcome = add_label_to_eligible(tracker, Selection.of(issues.value, criteria), request)
 
     if not request.dry_run.root and len(outcome.labelled) > 0:
         ledger_store.write(request.label, recorded.extended(outcome.labelled))
 
-    return outcome
+    return Ok(outcome)
 
 
 def add_label_to_eligible(

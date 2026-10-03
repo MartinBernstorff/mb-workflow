@@ -38,5 +38,5 @@ def test_a_claim_that_cannot_be_labelled_is_withdrawn() -> None:
             claim_settings=ClaimSettings.fake(),
             request=ClaimRequest.fake(),
             previous=None,
-        )
-    assert claims.claims(IssueIdentifier.fake()) == Claims(())
+        ).unwrap()
+    assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())

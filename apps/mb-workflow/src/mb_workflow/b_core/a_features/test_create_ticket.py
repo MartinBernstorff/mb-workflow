@@ -5,7 +5,6 @@ from mb_workflow.b_core.a_features.create_ticket import create_ticket
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
-    TicketTrackerError,
     TrackedIssue,
 )
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
@@ -64,7 +63,7 @@ def created(tracker: FakeTicketTracker, draft: TicketDraft) -> IssueIdentifier:
 
 def test_a_created_ticket_starts_in_the_first_flow_state() -> None:
     tracker = tracking()
-    issue = tracker.read_issue(created(tracker, TicketDraft.fake()))
+    issue = tracker.read_issue(created(tracker, TicketDraft.fake())).unwrap()
     assert (issue.labels, issue.status) == (
         LabelNames((LabelName("Grilling"),)),
         IssueStatusName("Maturing"),
@@ -77,16 +76,23 @@ def test_a_created_ticket_is_related_to_the_issues_it_blocks_and_is_blocked_by()
         update={"blocks": (IssueIdentifier.fake(),), "blocked_by": (IssueIdentifier("E-1"),)}
     )
     identifier = created(tracker, draft)
-    assert tracker.blockers(identifier) == (IssueIdentifier("E-1"),)
-    assert tracker.blockers(IssueIdentifier.fake()) == (identifier,)
+    assert tracker.blockers(identifier).unwrap() == (IssueIdentifier("E-1"),)
+    assert tracker.blockers(IssueIdentifier.fake()).unwrap() == (identifier,)
 
 
 def test_a_relation_to_an_unknown_issue_is_refused_before_the_ticket_is_created() -> None:
     tracker = tracking()
     draft = TicketDraft.fake().model_copy(update={"blocked_by": (IssueIdentifier("E-404"),)})
-    with pytest.raises(TicketTrackerError, match="E-404"):
-        _ = created(tracker, draft)
-    assert tracker.labelled_issues(LabelName("Grilling"), StatusTypes(())).root == ()
+    refused = create_ticket(
+        tracker=tracker,
+        draft=draft,
+        defaults=TicketDefaults.fake(),
+        flow_labels=FlowLabels.fake(),
+        statuses=TicketStatuses.fake(),
+    )
+    assert isinstance(refused, Err)
+    assert "E-404" in str(refused.error)
+    assert tracker.labelled_issues(LabelName("Grilling"), StatusTypes(())).unwrap().root == ()
 
 
 def test_creating_a_ticket_before_the_flow_labels_exist_is_refused() -> None:
@@ -105,4 +111,4 @@ def test_a_flow_label_passed_as_a_label_creates_no_ticket() -> None:
         statuses=TicketStatuses.fake(),
     )
     assert isinstance(refused, Err)
-    assert tracker.labelled_issues(LabelName("Grilling"), StatusTypes(())).root == ()
+    assert tracker.labelled_issues(LabelName("Grilling"), StatusTypes(())).unwrap().root == ()

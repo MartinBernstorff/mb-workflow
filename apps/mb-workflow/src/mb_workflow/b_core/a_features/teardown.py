@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING
 
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.a_features.unclaim import unclaim_ticket
 from mb_workflow.b_core.c_secondary_ports.claims import Claiming, LabelledClaim
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
@@ -9,7 +11,10 @@ from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
-    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+        TicketTracker,
+        TicketTrackerError,
+    )
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings
     from mb_workflow.b_core.d_domain_model.workspace import Worktree
@@ -31,13 +36,16 @@ def teardown_worktree(
     tracker: TicketTracker,
     claim_settings: ClaimSettings,
     request: TeardownRequest,
-) -> None:
+) -> Result[None, TicketTrackerError]:
     worktree = targeted(manager, request.worktree)
     if worktree.issue is not None:
-        unclaim_ticket(
+        unclaimed = unclaim_ticket(
             registry=claims, tracker=tracker, claim_settings=claim_settings, ticket=worktree.issue
         )
+        if isinstance(unclaimed, Err):
+            return unclaimed
     manager.remove(worktree.path)
+    return Ok(None)
 
 
 def targeted(manager: WorkspaceManager, name: WorktreeName | None) -> Worktree:
@@ -59,12 +67,15 @@ def release_and_remove(
     claim_settings: ClaimSettings,
     worktree: Worktree,
     host: HostName,
-) -> None:
+) -> Result[None, TicketTrackerError]:
     if worktree.issue is not None:
         holder = ClaimHolder(host=host, worktree=WorktreeName.of_issue(worktree.issue))
-        Claiming.release_claim(
+        released = Claiming.release_claim(
             claims,
             tracker,
             LabelledClaim(ticket=worktree.issue, holder=holder, label=claim_settings.label),
         )
+        if isinstance(released, Err):
+            return released
     manager.remove(worktree.path)
+    return Ok(None)

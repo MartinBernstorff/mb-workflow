@@ -199,7 +199,7 @@ def test_releases_the_claim_of_a_workspace_it_removes(here: WorktreePath) -> Non
     _ = run_review_workspaces(
         FakeCodeReview(PullRequests(())), standing_in(here, stale), claims=claims
     )
-    assert claims.claims(IssueIdentifier.fake()).holding(IssueStatusName.fake()) is None
+    assert claims.claims(IssueIdentifier.fake()).unwrap().holding(IssueStatusName.fake()) is None
 
 
 def test_removes_a_workspace_whose_branch_merged_within_the_lookback(here: WorktreePath) -> None:

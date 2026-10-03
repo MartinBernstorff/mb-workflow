@@ -41,7 +41,9 @@ def test_editing_a_ticket_writes_the_title() -> None:
     _ = TicketEditor.apply_edit(
         tracker, IssueIdentifier.fake(), TicketEdit.fake(), FlowLabels.fake(), TicketStatuses.fake()
     ).unwrap()
-    assert tracker.read_issue_detail(IssueIdentifier.fake()).title == TicketEdit.fake().title
+    assert (
+        tracker.read_issue_detail(IssueIdentifier.fake()).unwrap().title == TicketEdit.fake().title
+    )
 
 
 def test_editing_a_ticket_self_assigns_with_me() -> None:
@@ -50,7 +52,7 @@ def test_editing_a_ticket_self_assigns_with_me() -> None:
     _ = TicketEditor.apply_edit(
         tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
     ).unwrap()
-    assert tracker.read_issue_detail(IssueIdentifier.fake()).assignee == Assignee.fake()
+    assert tracker.read_issue_detail(IssueIdentifier.fake()).unwrap().assignee == Assignee.fake()
 
 
 def test_editing_a_ticket_swaps_labels() -> None:
@@ -64,18 +66,21 @@ def test_editing_a_ticket_swaps_labels() -> None:
     _ = TicketEditor.apply_edit(
         tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
     ).unwrap()
-    assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames((LabelName("Backend"),))
+    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(
+        (LabelName("Backend"),)
+    )
 
 
 def test_editing_an_unknown_ticket_fails() -> None:
-    with pytest.raises(TicketTrackerError):
-        _ = TicketEditor.apply_edit(
-            tracking(),
-            IssueIdentifier("E-404"),
-            TicketEdit.fake(),
-            FlowLabels.fake(),
-            TicketStatuses.fake(),
-        )
+    refused = TicketEditor.apply_edit(
+        tracking(),
+        IssueIdentifier("E-404"),
+        TicketEdit.fake(),
+        FlowLabels.fake(),
+        TicketStatuses.fake(),
+    )
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, TicketTrackerError)
 
 
 def test_an_empty_edit_is_refused_before_the_ticket_is_read() -> None:
@@ -118,7 +123,7 @@ def test_a_ticket_jumps_to_a_state_the_chart_does_not_lead_to() -> None:
     _ = TicketEditor.apply_edit(
         tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
     ).unwrap()
-    issue = tracker.read_issue(IssueIdentifier.fake())
+    issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
     assert (issue.labels, issue.status) == (LabelNames((LabelName.fake(), merged)), done)
 
 
@@ -129,37 +134,37 @@ def test_moving_a_ticket_keeps_its_labels_outside_the_flow() -> None:
     _ = TicketEditor.apply_edit(
         tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
     ).unwrap()
-    assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames(
+    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(
         (LabelName.fake(), review)
     )
 
 
 def test_an_unknown_state_leaves_the_ticket_unchanged() -> None:
     tracker = in_grilling()
-    before = tracker.read_issue(IssueIdentifier.fake())
+    before = tracker.read_issue(IssueIdentifier.fake()).unwrap()
     edit = TicketEdit.nothing().model_copy(update={"state": StateName("Nowhere")})
     refused = TicketEditor.apply_edit(
         tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
     )
     assert isinstance(refused, Err)
     assert isinstance(refused.error, UnknownStateError)
-    assert tracker.read_issue(IssueIdentifier.fake()) == before
+    assert tracker.read_issue(IssueIdentifier.fake()).unwrap() == before
 
 
 def test_moving_a_ticket_without_seeded_flow_labels_leaves_it_unchanged() -> None:
     tracker = in_grilling(groups=LabelNames(()))
-    before = tracker.read_issue(IssueIdentifier.fake())
+    before = tracker.read_issue(IssueIdentifier.fake()).unwrap()
     edit = TicketEdit.nothing().model_copy(update={"state": StateName.fake()})
     with pytest.raises(MissingFlowLabelsError):
         _ = TicketEditor.apply_edit(
             tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
         )
-    assert tracker.read_issue(IssueIdentifier.fake()) == before
+    assert tracker.read_issue(IssueIdentifier.fake()).unwrap() == before
 
 
 def test_a_flow_label_passed_as_a_label_leaves_the_ticket_unchanged() -> None:
     tracker = tracking()
-    before = tracker.read_issue(IssueIdentifier.fake())
+    before = tracker.read_issue(IssueIdentifier.fake()).unwrap()
     edit = TicketEdit.nothing().model_copy(
         update={"add_labels": LabelNames((LabelName("Specced"),))}
     )
@@ -167,4 +172,4 @@ def test_a_flow_label_passed_as_a_label_leaves_the_ticket_unchanged() -> None:
         tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
     )
     assert isinstance(refused, Err)
-    assert tracker.read_issue(IssueIdentifier.fake()) == before
+    assert tracker.read_issue(IssueIdentifier.fake()).unwrap() == before
