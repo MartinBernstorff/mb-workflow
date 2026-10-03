@@ -3,7 +3,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field, ValidationError, model_validator
+from pydantic import Field, ValidationError, field_validator, model_validator
 from safe_result import Err, Ok, Result, safe_with
 
 from mb_workflow.b_core.d_domain_model.config_override import (
@@ -96,6 +96,12 @@ class WorkspaceSettings(Model):
     @staticmethod
     def fake() -> WorkspaceSettings:
         return WorkspaceSettings(orca_project=ProjectSelector.fake(), assignee=Assignee.fake())
+
+    @field_validator("orca_project")
+    @classmethod
+    def lowercase_as_orca_stores_it(cls, project: ProjectSelector) -> ProjectSelector:
+        # Orca stores project IDs in lowercase and matches them case-sensitively.
+        return ProjectSelector(project.root.lower())
 
 
 class ClaimSettings(Model):
