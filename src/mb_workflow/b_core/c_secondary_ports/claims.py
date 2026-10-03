@@ -11,6 +11,7 @@ from mb_workflow.b_core.d_domain_model.claim import (
     TakeOver,
 )
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName, LabelName
+from mb_workflow.d_lib.logging import Activity
 from mb_workflow.d_lib.models import Model
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,9 @@ class Claiming:
     # Checked before claiming, so a doomed claim never withdraws another holder's claim.
     @staticmethod
     def require_claim_label(tracker: TicketTracker, label: LabelName) -> None:
-        if tracker.workspace_labels().matching(label) is None:
+        with Activity(f"checking that label {label.root} exists").logged(logger):
+            known = tracker.workspace_labels().matching(label)
+        if known is None:
             raise UnknownClaimLabelError(
                 f"No label is named {label.root}. Create the label or change claims.label."
             )
@@ -108,14 +111,16 @@ class Claiming:
         registry: ClaimRegistry, tracker: TicketTracker, request: LabelledClaim
     ) -> None:
         try:
-            tracker.add_label(request.ticket, request.label)
+            with Activity(f"labelling {request.ticket.root} as {request.label.root}").logged(
+                logger
+            ):
+                tracker.add_label(request.ticket, request.label)
         except TicketTrackerError as error:
             Claiming.withdraw_holders_claims(registry, request.ticket, request.holder)
             raise ClaimRefusedError(
                 f"Could not label {request.ticket.root} as {request.label.root}, so the claim was"
                 f" withdrawn. Create the label or change claims.label. {error}"
             ) from error
-        logger.info("Labelled %s as %s.", request.ticket.root, request.label.root)
 
     @staticmethod
     def withdraw_holders_claims(
@@ -129,7 +134,8 @@ class Claiming:
     def release_claim(
         registry: ClaimRegistry, tracker: TicketTracker, request: LabelledClaim
     ) -> None:
-        Claiming.withdraw_holders_claims(registry, request.ticket, request.holder)
+        with Activity(f"withdrawing the claim on {request.ticket.root}").logged(logger):
+            Claiming.withdraw_holders_claims(registry, request.ticket, request.holder)
         if registry.claims(request.ticket).root:
             return
         try:

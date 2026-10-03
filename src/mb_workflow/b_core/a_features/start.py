@@ -30,6 +30,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     TimeoutMs,
     WorktreeName,
 )
+from mb_workflow.d_lib.logging import Activity
 from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
@@ -110,7 +111,8 @@ def start_ticket(
     statuses: TicketStatuses,
     request: StartRequest,
 ) -> None:
-    detail = tracker.read_issue_detail(request.ticket)
+    with Activity(f"reading {request.ticket.root}").logged(logger):
+        detail = tracker.read_issue_detail(request.ticket)
     labelled_state = state_of(WorkflowChart, flow_labels, detail.issue.grouped)
     state = request.state_given(labelled_state)
     prompt = request.prompt_for(action_in(request.ticket, state))
@@ -120,9 +122,9 @@ def start_ticket(
     status = detail.issue.status
     if labelled_state is None:
         require_flow_labels(tracker, flow_labels)
-        put_in_state(tracker, request.ticket, flow_labels, statuses, state)
+        with Activity(f"putting {request.ticket.root} in {state.root}").logged(logger):
+            put_in_state(tracker, request.ticket, flow_labels, statuses, state)
         status = statuses.of(state)
-        logger.info("Put %s in %s.", request.ticket.root, state.root)
 
     name = WorktreeName.of_issue(request.ticket)
     TicketTaking.take_ticket(
@@ -138,16 +140,18 @@ def start_ticket(
         ),
     )
 
-    opened = manager.create_for_issue(
-        workspace.orca_project,
-        name,
-        request.ticket,
-        None if prompt is None else AgentName.claude(),
-        board.status_for(state),
-        activate=request.activate,
-    )
+    with Activity(f"creating worktree {name.root}").logged(logger):
+        opened = manager.create_for_issue(
+            workspace.orca_project,
+            name,
+            request.ticket,
+            None if prompt is None else AgentName.claude(),
+            board.status_for(state),
+            activate=request.activate,
+        )
     logger.info("Created worktree %s.", opened.worktree.path.root)
-    set_display_name_or_warn(manager, opened.worktree.path, DisplayName.of_issue(detail.title))
+    with Activity(f"naming worktree {name.root}").logged(logger):
+        set_display_name_or_warn(manager, opened.worktree.path, DisplayName.of_issue(detail.title))
 
     if prompt is not None:
         send_prompt(manager, opened, prompt, request.idle_timeout, request.submit)
@@ -186,9 +190,10 @@ def send_prompt(
         raise PromptUndeliveredError("No agent terminal handle returned; prompt not typed.")
 
     try:
-        manager.wait_for_idle(opened.terminal, idle_timeout)
+        with Activity("waiting for the agent terminal to go idle").logged(logger):
+            manager.wait_for_idle(opened.terminal, idle_timeout)
     except WorkspaceManagerError:
         logger.warning("Agent terminal never went idle; typing the prompt anyway.")
 
-    manager.send_text(opened.terminal, prompt, submit)
-    logger.info("%s %s.", "Submitted" if submit.root else "Typed", prompt.root)
+    with Activity(f"{'submitting' if submit.root else 'typing'} {prompt.root}").logged(logger):
+        manager.send_text(opened.terminal, prompt, submit)
