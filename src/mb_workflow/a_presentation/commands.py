@@ -30,7 +30,7 @@ from mb_workflow.b_core.a_features.init_config import Overwrite, init_config
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
 from mb_workflow.b_core.a_features.link import AlreadyLinkedError, LinkRequest, TicketLinking
 from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt, create_workspaces
-from mb_workflow.b_core.a_features.seed_labels import seed_flow_labels
+from mb_workflow.b_core.a_features.seed_labels import CoveredByWorkspace, seed_flow_labels
 from mb_workflow.b_core.a_features.show_config import show_config
 from mb_workflow.b_core.a_features.show_flow import show_flow
 from mb_workflow.b_core.a_features.start import (
@@ -92,7 +92,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_report import AsJson
     from mb_workflow.b_core.b_domain_services.flow_transition import Force
     from mb_workflow.b_core.d_domain_model.claim import HostName
-    from mb_workflow.b_core.d_domain_model.issue import CreatedAfter, IssueIdentifier
+    from mb_workflow.b_core.d_domain_model.issue import CreatedAfter, IssueIdentifier, TeamName
     from mb_workflow.b_core.d_domain_model.pull_request import MergedSince, ReviewRequest
     from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDraft
     from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit
@@ -282,7 +282,7 @@ def drain(
         claims=LinearClaims.connected(key),
         manager=orca,
         board=workspace_board(orca),
-        lock=FlockRunLock(LockPath.of(lock)),
+        lock=FlockRunLock(LockPath.of_project(lock, settings.workspace.orca_project)),
         tie_break=RandomTieBreak(),
         workspace=settings.workspace,
         claim_settings=settings.claims,
@@ -319,6 +319,8 @@ class ConfiguredDrainSettings(DrainSettingsSource):
 def drain_watch(
     request: WatchRequest, lock: LockName, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
+    # The lock is taken once for the whole watch, so it uses the project configured at startup.
+    project = resolved_configuration(directory, name).settings.workspace.orca_project
     orca = Orca(here())
     key = linear_key()
     with SignalStop.installed(PollSeconds(0.2)) as stop:
@@ -327,7 +329,7 @@ def drain_watch(
             claims=LinearClaims.connected(key),
             manager=orca,
             board=workspace_board(orca),
-            lock=FlockRunLock(LockPath.of(lock)),
+            lock=FlockRunLock(LockPath.of_project(lock, project)),
             tie_break=RandomTieBreak(),
             flow_labels=flow_labels_of_chart(),
             settings=ConfiguredDrainSettings(directory, name),
@@ -444,15 +446,32 @@ def flow_event(
 
 
 @guarded
-def flow_seed_labels() -> ExitCode:
+def flow_seed_labels(team: TeamName) -> ExitCode:
     wanted = flow_labels_of_chart()
-    created = seed_flow_labels(linear(), wanted)
-    if created.root:
+    seeded = seed_flow_labels(linear(), wanted, team)
+    if isinstance(seeded, CoveredByWorkspace):
         logger.info(
-            "Created %s in the %s label group.",
-            ", ".join(label.root for label in created.root),
+            "The workspace's %s label group holds every flow label, so it covers %s."
+            " Created nothing.",
+            seeded.group.root,
+            team.root,
+        )
+    elif seeded.created.root:
+        logger.info(
+            "Created %s in the %s label group of %s.",
+            ", ".join(label.root for label in seeded.created.root),
             wanted.group.root,
+            team.root,
         )
     else:
-        logger.info("The %s label group already holds every flow label.", wanted.group.root)
+        logger.info(
+            "The %s label group of %s already holds every flow label.",
+            wanted.group.root,
+            team.root,
+        )
+    if seeded.recolored.root:
+        logger.info(
+            "Recolored %s, so entry labels are yellow and the rest grey.",
+            ", ".join(label.root for label in seeded.recolored.root),
+        )
     return ExitCode(0)

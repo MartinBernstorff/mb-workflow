@@ -60,6 +60,42 @@ class LabelNames(Value[tuple[LabelName, ...]]):
         )
 
 
+# Linear writes a label's color as a hex code, in whichever case it was given.
+class LabelColor(Value[str]):
+    @staticmethod
+    def fake() -> LabelColor:
+        return LabelColor.grey()
+
+    @staticmethod
+    def yellow() -> LabelColor:
+        return LabelColor("#f2c94c")
+
+    @staticmethod
+    def grey() -> LabelColor:
+        return LabelColor("#bec2c8")
+
+    def matches(self, other: LabelColor) -> Matches:
+        return Matches(self.root.casefold() == other.root.casefold())
+
+
+class ColoredLabel(Model):
+    name: LabelName
+    color: LabelColor
+
+    @staticmethod
+    def fake() -> ColoredLabel:
+        return ColoredLabel(name=LabelName.fake(), color=LabelColor.fake())
+
+
+class ColoredLabels(Value[tuple[ColoredLabel, ...]]):
+    @staticmethod
+    def fake() -> ColoredLabels:
+        return ColoredLabels((ColoredLabel.fake(),))
+
+    def label_names(self) -> LabelNames:
+        return LabelNames(tuple(label.name for label in self.root))
+
+
 class LabelGroupName(Value[str]):
     @staticmethod
     def fake() -> LabelGroupName:
@@ -334,13 +370,20 @@ class TeamKey(IssueText):
         return TeamKey("E")
 
 
+class TeamName(IssueText):
+    @staticmethod
+    def fake() -> TeamName:
+        return TeamName("Engineering")
+
+
 class Team(Model):
     key: TeamKey
+    name: TeamName
     projects: tuple[ProjectName, ...]
 
     @staticmethod
     def fake() -> Team:
-        return Team(key=TeamKey.fake(), projects=(ProjectName.fake(),))
+        return Team(key=TeamKey.fake(), name=TeamName.fake(), projects=(ProjectName.fake(),))
 
 
 class NewIssue(Model):

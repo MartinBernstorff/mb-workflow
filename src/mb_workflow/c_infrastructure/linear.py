@@ -3,7 +3,6 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, override
 
 from linear_python_client import (
-    FindLabelRequest,
     FindUserRequest,
     IssueAddLabelRequest,
     IssueLabelsRequest,
@@ -19,6 +18,8 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Assigned,
     Assignee,
     Cleared,
+    ColoredLabel,
+    ColoredLabels,
     CreatedIssue,
     GroupedLabel,
     GroupedLabels,
@@ -29,7 +30,9 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issues,
     IssueStatusName,
     IssueTitle,
+    IssueUpdate,
     IssueUrl,
+    LabelColor,
     LabelGroupName,
     LabelName,
     LabelNames,
@@ -38,6 +41,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     NewIssue,
     ProjectName,
     TeamKey,
+    TeamName,
 )
 from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority
 from mb_workflow.d_lib.models import Payload, Value
@@ -45,7 +49,7 @@ from mb_workflow.d_lib.models import Payload, Value
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from mb_workflow.b_core.d_domain_model.issue import IssueFilter, IssueUpdate, StatusTypes
+    from mb_workflow.b_core.d_domain_model.issue import IssueFilter, StatusTypes
     from mb_workflow.b_core.d_domain_model.pool import ViewSlug
 
 
@@ -163,24 +167,37 @@ class StateRecord(Payload):
 class LabelRecord(Payload):
     id: LabelId
     name: LabelName
+    team: TeamKey | None = Field(default=None, validation_alias=AliasPath("team", "key"))
 
     @staticmethod
     def fake() -> LabelRecord:
-        return LabelRecord(id=LabelId.fake(), name=LabelName.fake())
+        return LabelRecord(id=LabelId.fake(), name=LabelName.fake(), team=None)
+
+
+class GroupedLabelRecord(Payload):
+    id: LabelId
+    name: LabelName
+    color: LabelColor
+
+    @staticmethod
+    def fake() -> GroupedLabelRecord:
+        return GroupedLabelRecord(id=LabelId.fake(), name=LabelName.fake(), color=LabelColor.fake())
 
 
 class LabelGroupRecord(Payload):
     id: LabelId
-    children: tuple[LabelRecord, ...] = Field(
+    children: tuple[GroupedLabelRecord, ...] = Field(
         default=(), validation_alias=AliasPath("children", "nodes")
     )
 
     @staticmethod
     def fake() -> LabelGroupRecord:
-        return LabelGroupRecord(id=LabelId.fake(), children=(LabelRecord.fake(),))
+        return LabelGroupRecord(id=LabelId.fake(), children=(GroupedLabelRecord.fake(),))
 
-    def labels(self) -> LabelNames:
-        return LabelNames(tuple(child.name for child in self.children))
+    def labels(self) -> ColoredLabels:
+        return ColoredLabels(
+            tuple(ColoredLabel(name=child.name, color=child.color) for child in self.children)
+        )
 
 
 class LabelGroupRead(Payload):
@@ -189,6 +206,22 @@ class LabelGroupRead(Payload):
     @staticmethod
     def fake() -> LabelGroupRead:
         return LabelGroupRead(groups=(LabelGroupRecord.fake(),))
+
+
+class TeamRead(Payload):
+    teams: tuple[TeamRecord, ...] = Field(validation_alias=AliasPath("teams", "nodes"))
+
+    @staticmethod
+    def fake() -> TeamRead:
+        return TeamRead(teams=(TeamRecord.fake(),))
+
+
+class IssueTeamRead(Payload):
+    team: TeamKey = Field(validation_alias=AliasPath("issue", "team", "key"))
+
+    @staticmethod
+    def fake() -> IssueTeamRead:
+        return IssueTeamRead(team=TeamKey.fake())
 
 
 class LabelParentRead(Payload):
@@ -263,6 +296,7 @@ class UpdateLookup(Payload):
     states: tuple[StateRecord, ...] = Field(
         default=(), validation_alias=AliasPath("issue", "team", "states", "nodes")
     )
+    team: TeamKey | None = Field(default=None, validation_alias=AliasPath("issue", "team", "key"))
 
     @staticmethod
     def fake() -> UpdateLookup:
@@ -272,17 +306,25 @@ class UpdateLookup(Payload):
             projects=(ProjectRecord.fake(),),
             milestone_projects=(ProjectRecord.fake(),),
             states=(StateRecord.fake(),),
+            team=TeamKey.fake(),
         )
 
-    def label_ids(self, labels: LabelNames) -> tuple[LabelId, ...]:
-        known = LabelNames(tuple(record.name for record in self.labels))
+    # Teams may each hold a label of the same name, so the issue's own team's one wins, then the workspace's.
+    def label_ids(self, labels: LabelNames, team: TeamKey | None) -> tuple[LabelId, ...]:
+        own = tuple(
+            record
+            for record in self.labels
+            if record.team is not None and team is not None and record.team.names(team).root
+        )
+        usable = (*own, *(record for record in self.labels if record.team is None))
+        known = LabelNames(tuple(record.name for record in usable))
         unknown = known.unmatched(labels)
         if unknown.root:
             raise TicketTrackerError(
                 f"No label is named {', '.join(label.root for label in unknown.root)}."
             )
         return tuple(
-            next(record.id for record in self.labels if record.name == name)
+            next(record.id for record in usable if record.name == name)
             for name in known.spelled(labels).root
         )
 
@@ -376,7 +418,7 @@ class CreationLookup(UpdateLookup):
             team_id=team.id,
             title=new.title,
             description=new.description,
-            label_ids=self.label_ids(new.labels),
+            label_ids=self.label_ids(new.labels, team.key),
             assignee_id=self.user_id(new.assignee) if new.assignee is not None else None,
             project_id=project.id if project is not None else None,
             state_id=team.state_id(new.status),
@@ -666,9 +708,9 @@ class Linear(TicketTracker):
             return LabelNames(tuple(LabelName(label.name) for label in labels if label.name))
 
     @override
-    def group_labels(self, group: LabelGroupName) -> LabelNames:
-        found = self._found_group(group)
-        return found.labels() if found is not None else LabelNames(())
+    def group_labels(self, group: LabelGroupName, team: TeamKey | None) -> ColoredLabels:
+        found = self._found_group(group, team)
+        return found.labels() if found is not None else ColoredLabels(())
 
     @override
     def label_group(self, label: LabelName) -> LabelGroupName | None:
@@ -686,29 +728,104 @@ class Linear(TicketTracker):
         return LabelParentRead.model_validate(data).group()
 
     @override
-    def create_group_labels(self, group: LabelGroupName, labels: LabelNames) -> None:
-        found = self._found_group(group)
+    def create_group_labels(
+        self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
+    ) -> None:
+        found = self._found_group(group, team)
+        owner = {"teamId": self._team_id(team).root} if team is not None else {}
         parent = (
             found.id
             if found is not None
             else self._created_label(
-                {"name": group.root, "isGroup": True, "groupType": "singleSelect"}
+                {"name": group.root, "isGroup": True, "groupType": "singleSelect", **owner}
             )
         )
         for label in labels.root:
-            _ = self._created_label({"name": label.root, "parentId": parent.root})
+            _ = self._created_label(
+                {
+                    "name": label.name.root,
+                    "color": label.color.root,
+                    "parentId": parent.root,
+                    **owner,
+                }
+            )
 
-    def _found_group(self, group: LabelGroupName) -> LabelGroupRecord | None:
+    @override
+    def recolor_group_labels(
+        self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
+    ) -> None:
+        found = self._found_group(group, team)
+        children = found.children if found is not None else ()
+        for label in labels.root:
+            child = next(
+                (
+                    child
+                    for child in children
+                    if child.name.root.casefold() == label.name.root.casefold()
+                ),
+                None,
+            )
+            if child is None:
+                raise TicketTrackerError(
+                    f"The {group.root} group holds no label named {label.name.root}."
+                )
+            with translated_errors():
+                _ = self._client.execute(
+                    "mutation($id: String!, $input: IssueLabelUpdateInput!) {"
+                    " issueLabelUpdate(id: $id, input: $input) { success } }",
+                    {"id": child.id.root, "input": {"color": label.color.root}},
+                )
+
+    @override
+    def team_named(self, name: TeamName) -> TeamKey:
+        found = self._found_team({"name": {"eqIgnoreCase": name.root}})
+        if found is None:
+            raise TicketTrackerError(f"No team is named {name.root}.")
+        return found.key
+
+    @override
+    def team_of(self, issue: IssueIdentifier) -> TeamKey:
+        with translated_errors():
+            data = self._client.execute(
+                "query($id: String!) { issue(id: $id) { team { key } } }", {"id": issue.root}
+            )
+        return IssueTeamRead.model_validate(data).team
+
+    def _team_id(self, team: TeamKey) -> TeamId:
+        found = self._found_team({"key": {"eqIgnoreCase": team.root}})
+        if found is None:
+            raise TicketTrackerError(f"No team has the key {team.root}.")
+        return found.id
+
+    def _found_team(self, team_filter: JsonValue) -> TeamRecord | None:
+        with translated_errors():
+            data = self._client.execute(
+                "query($filter: TeamFilter!) {"
+                " teams(first: 1, filter: $filter) { nodes { id key } } }",
+                {"filter": team_filter},
+            )
+        teams = TeamRead.model_validate(data).teams
+        return teams[0] if teams else None
+
+    def _found_group(self, group: LabelGroupName, team: TeamKey | None) -> LabelGroupRecord | None:
         with translated_errors():
             data = self._client.execute(
                 """
-                query($name: String!) {
-                  issueLabels(first: 1, filter: { name: { eqIgnoreCase: $name }, isGroup: { eq: true } }) {
-                    nodes { id children(first: 250) { nodes { id name } } }
+                query($name: String!, $team: NullableTeamFilter!) {
+                  issueLabels(
+                    first: 1
+                    filter: { name: { eqIgnoreCase: $name }, isGroup: { eq: true }, team: $team }
+                  ) {
+                    nodes { id children(first: 250) { nodes { id name color } } }
                   }
                 }
                 """,
-                {"name": group.root},
+                {
+                    "name": group.root,
+                    "team": {"null": True}
+                    if team is None
+                    else {"key": {"eqIgnoreCase": team.root}},
+                },
             )
         groups = LabelGroupRead.model_validate(data).groups
         return groups[0] if groups else None
@@ -837,13 +954,13 @@ class Linear(TicketTracker):
 
     @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
-        label_id = self._label_id(label)
+        (label_id,) = self._label_ids(issue, LabelNames((label,)))
         with translated_errors():
             _ = self._client.add_label(IssueAddLabelRequest(id=issue.root, label_id=label_id.root))
 
     @override
     def remove_label(self, issue: IssueIdentifier, label: LabelName) -> None:
-        label_id = self._label_id(label)
+        (label_id,) = self._label_ids(issue, LabelNames((label,)))
         with translated_errors():
             _ = self._client.remove_label(
                 IssueRemoveLabelRequest(id=issue.root, label_id=label_id.root)
@@ -851,7 +968,7 @@ class Linear(TicketTracker):
 
     @override
     def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
-        label_ids = [self._label_id(label).root for label in labels.root]
+        label_ids = [label_id.root for label_id in self._label_ids(issue, labels)]
         with translated_errors():
             _ = self._client.update_issue(IssueUpdateRequest(id=issue.root, label_ids=label_ids))
 
@@ -872,7 +989,7 @@ class Linear(TicketTracker):
         if update.description is not None:
             changes["description"] = update.description
         if update.labels is not None:
-            changes["label_ids"] = found.label_ids(update.labels)
+            changes["label_ids"] = found.label_ids(update.labels, found.team)
         if update.assignee is not None:
             changes["assignee_id"] = found.user_id(update.assignee)
         if update.project is not None:
@@ -948,7 +1065,7 @@ class Linear(TicketTracker):
                   $team: TeamFilter, $withTeam: Boolean!
                 ) {
                   issueLabels(first: 250, filter: $labels) @include(if: $withLabels) {
-                    nodes { id name }
+                    nodes { id name team { key } }
                   }
                   users(first: 1, filter: $user) @include(if: $withUser) { nodes { id } }
                   project: projects(first: 1, filter: $project) @include(if: $withProject) {
@@ -1005,10 +1122,10 @@ class Linear(TicketTracker):
                   $user: UserFilter, $withUser: Boolean!
                   $project: ProjectFilter, $withProject: Boolean!
                   $milestoneProject: ProjectFilter, $withMilestone: Boolean!
-                  $withStates: Boolean!
+                  $withTeam: Boolean!, $withStates: Boolean!
                 ) {
                   issueLabels(first: 250, filter: $labels) @include(if: $withLabels) {
-                    nodes { id name }
+                    nodes { id name team { key } }
                   }
                   users(first: 1, filter: $user) @include(if: $withUser) { nodes { id } }
                   project: projects(first: 1, filter: $project) @include(if: $withProject) {
@@ -1018,8 +1135,11 @@ class Linear(TicketTracker):
                     @include(if: $withMilestone) {
                     nodes { id name projectMilestones { nodes { id name } } }
                   }
-                  issue(id: $issue) @include(if: $withStates) {
-                    team { states(first: 250) { nodes { id name } } }
+                  issue(id: $issue) @include(if: $withTeam) {
+                    team {
+                      key
+                      states(first: 250) @include(if: $withStates) { nodes { id name } }
+                    }
                   }
                 }
                 """,
@@ -1035,14 +1155,12 @@ class Linear(TicketTracker):
                         {"name": {"eqIgnoreCase": milestone.project.root}} if milestone else None
                     ),
                     "withMilestone": milestone is not None,
+                    "withTeam": bool(labels) or update.status is not None,
                     "withStates": update.status is not None,
                 },
             )
         return UpdateLookup.model_validate(data)
 
-    def _label_id(self, label: LabelName) -> LabelId:
-        with translated_errors():
-            found = self._client.find_label(FindLabelRequest(name=label.root)).label
-        if found is None or found.id is None:
-            raise TicketTrackerError(f"No label is named {label.root}.")
-        return LabelId(found.id)
+    def _label_ids(self, issue: IssueIdentifier, labels: LabelNames) -> tuple[LabelId, ...]:
+        found = self._lookup(issue, IssueUpdate.nothing().model_copy(update={"labels": labels}))
+        return found.label_ids(labels, found.team)

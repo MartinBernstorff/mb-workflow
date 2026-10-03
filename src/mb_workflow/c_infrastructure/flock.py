@@ -1,5 +1,6 @@
 import fcntl
 import logging
+import re
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, override
@@ -10,6 +11,8 @@ from mb_workflow.d_lib.models import Value
 
 if TYPE_CHECKING:
     from collections.abc import Generator
+
+    from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +31,12 @@ class LockPath(Value[Path]):
     @staticmethod
     def of(name: LockName) -> LockPath:
         return LockPath(CacheDirectory.of_user().root / f"{name.root}.lock")
+
+    # The selector holds characters like ":" and "/", so it is reduced to a single directory name.
+    @staticmethod
+    def of_project(name: LockName, project: ProjectSelector) -> LockPath:
+        directory = re.sub(r"[^A-Za-z0-9]+", "-", project.root).strip("-")
+        return LockPath(CacheDirectory.of_user().root / directory / f"{name.root}.lock")
 
 
 class FlockRunLock(RunLock):

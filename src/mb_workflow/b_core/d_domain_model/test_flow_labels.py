@@ -3,8 +3,11 @@ import pytest
 from mb_workflow.b_core.d_domain_model.flow import FlowError, StateName, WorkflowChart
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, state_of
 from mb_workflow.b_core.d_domain_model.issue import (
+    ColoredLabel,
+    ColoredLabels,
     GroupedLabel,
     GroupedLabels,
+    LabelColor,
     LabelGroupName,
     LabelName,
     LabelNames,
@@ -16,7 +19,7 @@ MERGED = LabelName("Merged")
 
 
 def flow_labels_of(*labels: LabelName) -> FlowLabels:
-    return FlowLabels(group=LabelGroupName.fake(), labels=LabelNames(labels))
+    return FlowLabels(group=LabelGroupName.fake(), labels=LabelNames(labels), entry=LabelNames(()))
 
 
 def test_every_state_of_the_chart_gets_a_label_in_chart_order() -> None:
@@ -35,6 +38,45 @@ def test_every_state_of_the_chart_gets_a_label_in_chart_order() -> None:
             )
         )
     )
+
+
+def test_the_chart_marks_grilling_speccing_and_specced_as_entry_labels() -> None:
+    entry = LabelNames((GRILLING, LabelName("Speccing"), LabelName("Specced")))
+    assert FlowLabels.fake().entry == entry
+
+
+def test_an_entry_label_is_colored_yellow() -> None:
+    assert FlowLabels.fake().colored(LabelNames((GRILLING,))) == ColoredLabels(
+        (ColoredLabel(name=GRILLING, color=LabelColor.yellow()),)
+    )
+
+
+def test_any_other_flow_label_is_colored_grey() -> None:
+    assert FlowLabels.fake().colored(LabelNames((QA,))) == ColoredLabels(
+        (ColoredLabel(name=QA, color=LabelColor.grey()),)
+    )
+
+
+def test_a_flow_label_held_in_the_wrong_color_is_miscolored() -> None:
+    held = ColoredLabels(
+        (
+            ColoredLabel(name=GRILLING, color=LabelColor.yellow()),
+            ColoredLabel(name=QA, color=LabelColor.yellow()),
+        )
+    )
+    assert FlowLabels.fake().miscolored(held) == LabelNames((QA,))
+
+
+def test_a_color_written_in_another_case_is_not_miscolored() -> None:
+    held = ColoredLabels(
+        (ColoredLabel(name=GRILLING, color=LabelColor(LabelColor.yellow().root.upper())),)
+    )
+    assert FlowLabels.fake().miscolored(held) == LabelNames(())
+
+
+def test_labels_outside_the_flow_are_never_miscolored() -> None:
+    held = ColoredLabels((ColoredLabel(name=LabelName("Blocked"), color=LabelColor.yellow()),))
+    assert FlowLabels.fake().miscolored(held) == LabelNames(())
 
 
 def test_an_empty_group_misses_every_flow_label() -> None:
