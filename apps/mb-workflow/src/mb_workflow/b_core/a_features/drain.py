@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from safe_result import Err, Ok
+from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
 from mb_workflow.b_core.a_features.start import StartRequest, TicketStart
@@ -33,6 +33,7 @@ if TYPE_CHECKING:
         PoolSettings,
         WorkspaceSettings,
     )
+    from mb_workflow.b_core.d_domain_model.flow import FlowError
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
@@ -183,7 +184,7 @@ class Drain:
         statuses: TicketStatuses,
         pool: PoolSettings,
         request: DrainRequest,
-    ) -> DrainOutcome:
+    ) -> Result[DrainOutcome, FlowError]:
         with lock.held(), Activity("Draining the pool").logged(logger):
             Claiming.require_claim_label(tracker, claim_settings.label)
             Drain.require_limited_labels(tracker, pool.limits)
@@ -202,7 +203,10 @@ class Drain:
                 logger
             ):
                 in_progress = tracker.labelled_issues(claim_settings.label, Released.types())
-            occupancy = Occupancy.of(in_progress, flow_labels)
+            counted = Occupancy.of(in_progress, flow_labels)
+            if isinstance(counted, Err):
+                return counted
+            occupancy = counted.value
             picked: list[PoolTicket] = []
             skipped: list[Skip] = []
             full: PoolFull | None = None
@@ -214,7 +218,10 @@ class Drain:
                         total=pool.limits.total, left=PoolTickets(ready.root[position:])
                     )
                     break
-                slot = ticket.slot(flow_labels)
+                found = ticket.slot(flow_labels)
+                if isinstance(found, Err):
+                    return found
+                slot = found.value
                 if slot is None:
                     skipped.append(Skip(ticket=ticket, refusal=Refusal("it has no flow state")))
                     continue
@@ -260,12 +267,14 @@ class Drain:
                                 )
                 # A ticket lost to another host is now in progress there, so it fills a slot too.
                 occupancy = occupancy.with_slot(slot)
-            return DrainOutcome(
-                ready=ready,
-                picked=PoolTickets(tuple(picked)),
-                skipped=tuple(skipped),
-                unready=unready,
-                full=full,
+            return Ok(
+                DrainOutcome(
+                    ready=ready,
+                    picked=PoolTickets(tuple(picked)),
+                    skipped=tuple(skipped),
+                    unready=unready,
+                    full=full,
+                )
             )
 
     @staticmethod

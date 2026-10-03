@@ -1,6 +1,8 @@
 import logging
 from typing import TYPE_CHECKING, Protocol
 
+from safe_result import Err, Ok
+
 from mb_workflow.b_core.a_features.autolabel import UnknownLabelError
 from mb_workflow.b_core.a_features.drain import Drain, DrainRequest
 from mb_workflow.b_core.c_secondary_ports.claims import UnknownClaimLabelError
@@ -119,6 +121,14 @@ class DrainWatch:
                     "The pass failed; retrying in %s seconds. %s", request.interval.root, error
                 )
             else:
-                narrator.passed(outcome, outcome.changed_since(previous))
-                previous = outcome
+                match outcome:
+                    case Ok(drained):
+                        narrator.passed(drained, drained.changed_since(previous))
+                        previous = drained
+                    case Err(error):
+                        logger.error(
+                            "The pass failed; retrying in %s seconds. %s",
+                            request.interval.root,
+                            error,
+                        )
             stop.wait(request.interval)

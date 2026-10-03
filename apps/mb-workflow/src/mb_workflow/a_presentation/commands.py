@@ -283,7 +283,7 @@ def drain(
     pool = settings.required_pool()
     orca = Orca(here())
     key = linear_key()
-    outcome = Drain.drain_pool(
+    drained = Drain.drain_pool(
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
         manager=orca,
@@ -297,6 +297,10 @@ def drain(
         pool=pool,
         request=request,
     )
+    if isinstance(drained, Err):
+        logger.error("%s", drained.error)
+        return ExitCode(1)
+    outcome = drained.value
     DrainReport.log_pass(outcome)
     if request.dry_run.root:
         write(DrainReport.pick_listing(outcome.picked, flow_labels_of_chart()))

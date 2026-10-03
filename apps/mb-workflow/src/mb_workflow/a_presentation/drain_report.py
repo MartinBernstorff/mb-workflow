@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class DrainReport:
+    # Only ready tickets are listed, and a ready ticket's flow labels always name its state.
     @staticmethod
     def pick_listing(ready: PoolTickets, flow_labels: FlowLabels) -> Output:
         return Output(

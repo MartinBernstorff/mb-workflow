@@ -2,6 +2,7 @@ from enum import IntEnum
 from typing import TYPE_CHECKING
 
 from pydantic import Field, JsonValue, NonNegativeInt, field_validator, model_validator
+from safe_result import Err, Ok
 
 from mb_workflow.b_core.d_domain_model.flow import (
     AcceptedStates,
@@ -86,7 +87,7 @@ class PoolTicket(Model):
     def flow_state(self, flow_labels: FlowLabels) -> Result[StateName | None, FlowError]:
         return state_of(WorkflowChart, flow_labels, self.issue.grouped)
 
-    def slot(self, flow_labels: FlowLabels) -> Slot | None:
+    def slot(self, flow_labels: FlowLabels) -> Result[Slot | None, FlowError]:
         return Slot.of(self.issue, flow_labels)
 
     def ready(self, claim_label: LabelName, flow_labels: FlowLabels) -> Ready:
@@ -140,10 +141,12 @@ class Slot(Model):
         return Slot(state=StateName("Implementing"), labels=LabelNames(()))
 
     @staticmethod
-    def of(issue: Issue, flow_labels: FlowLabels) -> Slot | None:
-        # A ticket whose flow labels name no single state fills no slot, like one without a flow label.
-        state = state_of(WorkflowChart, flow_labels, issue.grouped).unwrap_or(None)
-        return None if state is None else Slot(state=state, labels=issue.labels)
+    def of(issue: Issue, flow_labels: FlowLabels) -> Result[Slot | None, FlowError]:
+        match state_of(WorkflowChart, flow_labels, issue.grouped):
+            case Err() as unresolved:
+                return unresolved
+            case Ok(state):
+                return Ok(None if state is None else Slot(state=state, labels=issue.labels))
 
 
 class Occupancy(Value[tuple[Slot, ...]]):
@@ -151,10 +154,18 @@ class Occupancy(Value[tuple[Slot, ...]]):
     def fake() -> Occupancy:
         return Occupancy((Slot.fake(),))
 
+    # A ticket whose flow labels name no single state leaves the occupancy unknown, so no limit is trusted.
     @staticmethod
-    def of(issues: Issues, flow_labels: FlowLabels) -> Occupancy:
-        slots = (Slot.of(issue, flow_labels) for issue in issues.root)
-        return Occupancy(tuple(slot for slot in slots if slot is not None))
+    def of(issues: Issues, flow_labels: FlowLabels) -> Result[Occupancy, FlowError]:
+        slots: list[Slot] = []
+        for issue in issues.root:
+            match Slot.of(issue, flow_labels):
+                case Err() as unresolved:
+                    return unresolved
+                case Ok(slot):
+                    if slot is not None:
+                        slots.append(slot)
+        return Ok(Occupancy(tuple(slots)))
 
     def with_slot(self, slot: Slot) -> Occupancy:
         return Occupancy((*self.root, slot))
