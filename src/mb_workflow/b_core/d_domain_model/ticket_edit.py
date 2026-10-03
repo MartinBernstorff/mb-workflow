@@ -85,11 +85,11 @@ class TicketEdit(Model):
             LabelNames((*self.add_labels.root, *self.remove_labels.root))
         ):
             case Ok():
-                return self._spelled_state()
+                return self._with_state_spelled_as_chart()
             case Err() as failed:
                 return failed
 
-    def _spelled_state(self) -> Result[TicketEdit, UnknownStateError]:
+    def _with_state_spelled_as_chart(self) -> Result[TicketEdit, UnknownStateError]:
         if self.state is None:
             return Ok(self)
         match AcceptedStates.of_chart(WorkflowChart).named_ignoring_case(self.state):

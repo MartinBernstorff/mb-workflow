@@ -2,6 +2,7 @@ import pytest
 from safe_result import Err
 
 from mb_workflow.b_core.a_features.edit_ticket import TicketEditor
+from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
     TicketTrackerError,
@@ -89,13 +90,10 @@ def test_an_empty_edit_is_refused_before_the_ticket_is_read() -> None:
     assert isinstance(refused.error, TicketEditError)
 
 
-def in_grilling() -> FakeTicketTracker:
+def in_grilling(groups: LabelNames = FlowLabels.fake().labels) -> FakeTicketTracker:
     flow = FlowLabels.fake()
     grilling = Issue.fake().model_copy(
-        update={
-            "labels": LabelNames((LabelName.fake(), LabelName("Grilling"))),
-            "status": IssueStatusName("Maturing"),
-        }
+        update={"labels": LabelNames((LabelName.fake(), LabelName("Grilling")))}
     )
     return FakeTicketTracker(
         LabelNames((LabelName.fake(), *flow.labels.root)),
@@ -108,30 +106,32 @@ def in_grilling() -> FakeTicketTracker:
             )
         ),
         Assignee.fake(),
-        groups={flow.group: flow.labels},
+        groups={flow.group: groups},
     )
-
-
-def moved(tracker: FakeTicketTracker, state: StateName) -> Issue:
-    edit = TicketEdit.nothing().model_copy(update={"state": state})
-    _ = TicketEditor.apply_edit(
-        tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
-    ).unwrap()
-    return tracker.read_issue(IssueIdentifier.fake())
 
 
 def test_a_ticket_jumps_to_a_state_the_chart_does_not_lead_to() -> None:
-    merged = StateName("Merged")
-    issue = moved(in_grilling(), StateName("merged"))
-    assert (LabelName(merged.root) in issue.labels.root, issue.status) == (
-        True,
-        TicketStatuses.fake().of(merged),
-    )
+    tracker = in_grilling()
+    merged = LabelName("Merged")
+    done = IssueStatusName("Done")
+    edit = TicketEdit.nothing().model_copy(update={"state": StateName("merged")})
+    _ = TicketEditor.apply_edit(
+        tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
+    ).unwrap()
+    issue = tracker.read_issue(IssueIdentifier.fake())
+    assert (issue.labels, issue.status) == (LabelNames((LabelName.fake(), merged)), done)
 
 
 def test_moving_a_ticket_keeps_its_labels_outside_the_flow() -> None:
-    issue = moved(in_grilling(), StateName("Review"))
-    assert issue.labels == LabelNames((LabelName.fake(), LabelName("Review")))
+    tracker = in_grilling()
+    review = LabelName("Review")
+    edit = TicketEdit.nothing().model_copy(update={"state": StateName(review.root)})
+    _ = TicketEditor.apply_edit(
+        tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
+    ).unwrap()
+    assert tracker.read_issue(IssueIdentifier.fake()).labels == LabelNames(
+        (LabelName.fake(), review)
+    )
 
 
 def test_an_unknown_state_leaves_the_ticket_unchanged() -> None:
@@ -143,6 +143,17 @@ def test_an_unknown_state_leaves_the_ticket_unchanged() -> None:
     )
     assert isinstance(refused, Err)
     assert isinstance(refused.error, UnknownStateError)
+    assert tracker.read_issue(IssueIdentifier.fake()) == before
+
+
+def test_moving_a_ticket_without_seeded_flow_labels_leaves_it_unchanged() -> None:
+    tracker = in_grilling(groups=LabelNames(()))
+    before = tracker.read_issue(IssueIdentifier.fake())
+    edit = TicketEdit.nothing().model_copy(update={"state": StateName.fake()})
+    with pytest.raises(MissingFlowLabelsError):
+        _ = TicketEditor.apply_edit(
+            tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
+        )
     assert tracker.read_issue(IssueIdentifier.fake()) == before
 
 

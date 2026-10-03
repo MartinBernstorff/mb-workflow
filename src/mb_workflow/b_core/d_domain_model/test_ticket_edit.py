@@ -9,6 +9,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
     IssueDescription,
     IssueDetail,
+    IssueStatusName,
     IssueUpdate,
     LabelName,
     LabelNames,
@@ -45,17 +46,25 @@ def test_a_title_edit_changes_only_the_title() -> None:
 
 
 def test_the_body_becomes_the_description() -> None:
-    edit = TicketEdit.nothing().model_copy(update={"body": IssueDescription("New body.")})
-    assert edit.update(
-        IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
-    ).description == IssueDescription("New body.")
+    body = IssueDescription("New body.")
+    edit = TicketEdit.nothing().model_copy(update={"body": body})
+    assert (
+        edit.update(
+            IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
+        ).description
+        == body
+    )
 
 
 def test_the_body_file_becomes_the_description() -> None:
-    edit = TicketEdit.nothing().model_copy(update={"body_file": IssueDescription("From file.")})
-    assert edit.update(
-        IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
-    ).description == IssueDescription("From file.")
+    body_file = IssueDescription("From file.")
+    edit = TicketEdit.nothing().model_copy(update={"body_file": body_file})
+    assert (
+        edit.update(
+            IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
+        ).description
+        == body_file
+    )
 
 
 def test_a_body_and_a_body_file_together_are_refused() -> None:
@@ -68,12 +77,11 @@ def test_a_body_and_a_body_file_together_are_refused() -> None:
 
 
 def test_added_labels_join_the_held_ones() -> None:
-    edit = TicketEdit.nothing().model_copy(
-        update={"add_labels": LabelNames((LabelName("Backend"),))}
-    )
+    backend = LabelName("Backend")
+    edit = TicketEdit.nothing().model_copy(update={"add_labels": LabelNames((backend,))})
     assert edit.update(
         IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
-    ).labels == LabelNames((LabelName.fake(), LabelName("Backend")))
+    ).labels == LabelNames((LabelName.fake(), backend))
 
 
 def test_adding_a_held_label_in_another_case_carries_it_once() -> None:
@@ -105,10 +113,12 @@ def test_labels_are_left_alone_unless_named() -> None:
 
 
 def test_adding_an_assignee_replaces_the_held_one() -> None:
-    edit = TicketEdit.nothing().model_copy(update={"add_assignee": Assignee("other@flowbase.io")})
-    assert edit.update(
-        IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
-    ).assignee == Assignee("other@flowbase.io")
+    other = Assignee("other@flowbase.io")
+    edit = TicketEdit.nothing().model_copy(update={"add_assignee": other})
+    assert (
+        edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()).assignee
+        == other
+    )
 
 
 def test_me_resolves_to_the_viewer() -> None:
@@ -137,10 +147,12 @@ def test_removing_someone_not_assigned_leaves_the_assignee() -> None:
 
 
 def test_adding_a_project_moves_the_issue() -> None:
-    edit = TicketEdit.nothing().model_copy(update={"add_project": ProjectName("Other")})
-    assert edit.update(
-        IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
-    ).project == ProjectName("Other")
+    other = ProjectName("Other")
+    edit = TicketEdit.nothing().model_copy(update={"add_project": other})
+    assert (
+        edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()).project
+        == other
+    )
 
 
 def test_removing_the_held_project_clears_it_whatever_its_case() -> None:
@@ -172,12 +184,13 @@ def test_a_milestone_is_looked_up_in_the_held_project() -> None:
 
 
 def test_a_milestone_is_looked_up_in_the_project_being_moved_to() -> None:
+    other = ProjectName("Other")
     edit = TicketEdit.nothing().model_copy(
-        update={"add_project": ProjectName("Other"), "milestone": MilestoneName.fake()}
+        update={"add_project": other, "milestone": MilestoneName.fake()}
     )
     assert edit.update(
         IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
-    ).milestone == Milestone(project=ProjectName("Other"), name=MilestoneName.fake())
+    ).milestone == Milestone(project=other, name=MilestoneName.fake())
 
 
 def test_a_milestone_without_a_project_is_refused() -> None:
@@ -218,13 +231,11 @@ def test_label_flags_split_on_commas() -> None:
 
 
 def test_a_state_sets_its_flow_label_and_status() -> None:
-    review = StateName("Review")
-    edit = TicketEdit.nothing().model_copy(update={"state": review})
+    review = LabelName("Review")
+    in_review = IssueStatusName("In Review")
+    edit = TicketEdit.nothing().model_copy(update={"state": StateName(review.root)})
     update = edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake())
-    assert (update.labels, update.status) == (
-        LabelNames((LabelName.fake(), LabelName(review.root))),
-        TicketStatuses.fake().of(review),
-    )
+    assert (update.labels, update.status) == (LabelNames((LabelName.fake(), review)), in_review)
 
 
 def test_a_state_is_spelled_as_the_chart_spells_it() -> None:
