@@ -26,8 +26,10 @@ class ModuleName(Value[str]):
             parts = parts[:-1]
         return ModuleName(".".join(parts))
 
-    def within(self, package: ModuleName) -> TyperBoundary:
-        return TyperBoundary(self.root == package.root or self.root.startswith(f"{package.root}."))
+    def at_typer_boundary(self, typer_package: ModuleName) -> TyperBoundary:
+        return TyperBoundary(
+            self.root == typer_package.root or self.root.startswith(f"{typer_package.root}.")
+        )
 
 
 class RaiseCount(Value[int]):
@@ -49,27 +51,27 @@ class TyperBoundary(Value[bool]):
         return TyperBoundary(False)
 
 
-class RiseReport(Value[str]):
+class OverrunReport(Value[str]):
     @staticmethod
-    def fake() -> RiseReport:
-        return RiseReport.of(Rise.fake())
+    def fake() -> OverrunReport:
+        return OverrunReport.of(Overrun.fake())
 
     @staticmethod
-    def of(rise: Rise) -> RiseReport:
-        return RiseReport(
-            f"{rise.module.root} has {rise.found.root} disallowed raises, "
-            f"but its baseline allows {rise.baseline.root}. Return the error as a value instead."
+    def of(overrun: Overrun) -> OverrunReport:
+        return OverrunReport(
+            f"{overrun.module.root} has {overrun.found.root} disallowed raises, "
+            f"but its baseline allows {overrun.baseline.root}. Return the error as a value instead."
         )
 
 
-class Rise(Model):
+class Overrun(Model):
     module: ModuleName
     baseline: RaiseCount
     found: RaiseCount
 
     @staticmethod
-    def fake() -> Rise:
-        return Rise(module=ModuleName.fake(), baseline=RaiseCount(1), found=RaiseCount(2))
+    def fake() -> Overrun:
+        return Overrun(module=ModuleName.fake(), baseline=RaiseCount(1), found=RaiseCount(2))
 
 
 # The dotted name an expression calls or names, e.g. `typer.Exit` for `typer.Exit(code=1)`.
@@ -138,7 +140,9 @@ class RaiseCheck:
         found: dict[ModuleName, RaiseCount] = {}
         for path in sorted(root.root.rglob("*.py")):
             module = ModuleName.of_file(root, SourceFile(path))
-            count = RaiseCheck.count(ast.parse(path.read_text()), module.within(typer_package))
+            count = RaiseCheck.count(
+                ast.parse(path.read_text()), module.at_typer_boundary(typer_package)
+            )
             if count.root > 0:
                 found[module] = count
         return RaiseCounts(found)
@@ -182,16 +186,16 @@ class RaiseBaseline:
         path.parent.mkdir(parents=True, exist_ok=True)
         _ = path.write_text(f"{count.root}\n")
 
-    # Lowers the baseline of every module that now raises less, and returns the modules that raise more.
-    def burn_down(self, found: RaiseCounts) -> tuple[Rise, ...]:
+    # Lowers the baseline of every module that now raises less, and returns the modules that overrun it.
+    def burn_down(self, found: RaiseCounts) -> tuple[Overrun, ...]:
         recorded = self.counts().root
-        rises: list[Rise] = []
+        overruns: list[Overrun] = []
         names = sorted(module.root for module in recorded.keys() | found.root.keys())
         for module in map(ModuleName, names):
             baseline = recorded.get(module, RaiseCount(0))
             count = found.root.get(module, RaiseCount(0))
             if count.root > baseline.root:
-                rises.append(Rise(module=module, baseline=baseline, found=count))
+                overruns.append(Overrun(module=module, baseline=baseline, found=count))
             elif count.root < baseline.root:
                 self.record(module, count)
-        return tuple(rises)
+        return tuple(overruns)
