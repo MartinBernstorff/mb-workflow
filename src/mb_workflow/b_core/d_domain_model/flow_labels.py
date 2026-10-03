@@ -1,3 +1,5 @@
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.d_domain_model.flow import (
     FlowError,
     Phase,
@@ -14,13 +16,11 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelName,
     LabelNames,
 )
-from mb_workflow.d_lib.models import Model, Value
+from mb_workflow.d_lib.models import Model
 
 
-class FlowLabelRefusal(Value[str]):
-    @staticmethod
-    def fake() -> FlowLabelRefusal:
-        return FlowLabelRefusal("Specced is a flow label.")
+class FlowLabelOptionError(ValueError):
+    pass
 
 
 class FlowLabels(Model):
@@ -66,13 +66,17 @@ class FlowLabels(Model):
         return held.unmatched(self.labels)
 
     # A flow label set by hand would disagree with the status, so the state is moved with --state instead.
-    def label_option_refusal(self, requested: LabelNames) -> FlowLabelRefusal | None:
+    def checked_label_options(
+        self, requested: LabelNames
+    ) -> Result[LabelNames, FlowLabelOptionError]:
         passed = self.labels.spelled(requested)
         if not passed.root:
-            return None
+            return Ok(requested)
         listed = ", ".join(label.root for label in passed.root)
-        return FlowLabelRefusal(
-            f"{listed} is a flow label. Move the ticket with `mw ticket edit --state` instead."
+        return Err(
+            FlowLabelOptionError(
+                f"{listed} is a flow label. Move the ticket with `mw ticket edit --state` instead."
+            )
         )
 
     def relabelled(self, held: LabelNames, state: StateName) -> LabelNames:

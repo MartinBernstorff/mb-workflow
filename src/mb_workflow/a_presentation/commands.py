@@ -24,7 +24,7 @@ from mb_workflow.b_core.a_features.drain_watch import (
     DrainWatch,
     WatchRequest,
 )
-from mb_workflow.b_core.a_features.edit_ticket import edit_ticket
+from mb_workflow.b_core.a_features.edit_ticket import TicketEditor
 from mb_workflow.b_core.a_features.finalize_review import NotFinalizableError, finalize
 from mb_workflow.b_core.a_features.init_config import Overwrite, init_config
 from mb_workflow.b_core.a_features.label import LabelRequest, UnlinkedWorktreeError, change_label
@@ -375,7 +375,7 @@ def ticket_view(issue: IssueIdentifier) -> ExitCode:
 
 @guarded
 def ticket_edit(issue: IssueIdentifier, edit: TicketEdit) -> ExitCode:
-    edit_ticket(linear(), issue, edit, flow_labels_of_chart())
+    TicketEditor.apply_edit(linear(), issue, edit, flow_labels_of_chart()).unwrap()
     write(Output(f"{issue.root}\n"))
     return ExitCode(0)
 
@@ -391,7 +391,7 @@ def ticket_create(
         defaults=settings.ticket_defaults(),
         flow_labels=flow_labels_of_chart(),
         statuses=settings.ticket_statuses,
-    )
+    ).unwrap()
     write(Output(f"{created.identifier.root} {created.url.root}\n"))
     return ExitCode(0)
 
