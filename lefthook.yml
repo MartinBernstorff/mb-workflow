@@ -1,9 +1,5 @@
 pre-commit:
   jobs:
-    # phase-1 prunes fixed violations from the hemolint baselines, so their changes are staged too.
     - name: phase-1
-      run: >-
-        moon run :phase-1
-        && git add apps/mb-workflow/docs/flow.svg apps/mb-workflow/docs/flow.md
-        && git ls-files --cached --others --exclude-standard -- ':(glob)**/.hemolint/**' | xargs -r git add -A --
+      run: moon run :phase-1 && git add apps/mb-workflow/docs/flow.svg apps/mb-workflow/docs/flow.md
       stage_fixed: true

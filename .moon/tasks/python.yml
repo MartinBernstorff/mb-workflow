@@ -131,7 +131,7 @@ tasks:
       - "types"
       - "modularity"
       - "noprim"
-      - "fixit-prune"
+      - "fixit"
     inputs: []
     options:
       runDepsInParallel: false
