@@ -21,7 +21,6 @@ if TYPE_CHECKING:
 
 
 class BaselineCheck:
-    # Compares the current violations with the baseline, and leaves the baseline as it is.
     @staticmethod
     def check(
         output: LinterOutput,
