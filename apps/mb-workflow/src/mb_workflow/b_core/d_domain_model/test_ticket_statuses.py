@@ -1,4 +1,5 @@
 import pytest
+from assertions import Assert
 
 from mb_workflow.b_core.d_domain_model.flow import StateName
 from mb_workflow.b_core.d_domain_model.issue import IssueStatusName
@@ -6,7 +7,8 @@ from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
 
 def test_a_complete_mapping_gives_each_flow_state_its_ticket_status() -> None:
-    assert TicketStatuses.fake().of(StateName("review")) == IssueStatusName("In Review")
+    in_review = IssueStatusName("In Review")
+    Assert.that(TicketStatuses.fake().of(StateName("review"))).matches(in_review)
 
 
 def test_a_state_in_another_case_maps_the_state_as_the_chart_spells_it() -> None:
@@ -14,7 +16,7 @@ def test_a_state_in_another_case_maps_the_state_as_the_chart_spells_it() -> None
     table = {state.root: status.root for state, status in TicketStatuses.fake().root.items()}
     del table["review"]
     parsed = TicketStatuses.model_validate({**table, "Review": mapped})
-    assert parsed.of(StateName("review")) == IssueStatusName(mapped)
+    Assert.that(parsed.of(StateName("review"))).matches(IssueStatusName(mapped))
 
 
 def test_a_state_named_twice_in_different_cases_is_refused() -> None:
@@ -30,7 +32,8 @@ def test_a_mapping_with_a_gap_is_refused_naming_the_missing_flow_states() -> Non
         for state, status in TicketStatuses.fake().root.items()
         if state.root not in {"qa", "merged"}
     }
-    with pytest.raises(ValueError, match="lacks qa, merged"):
+    missing_states = "lacks qa, merged"
+    with pytest.raises(ValueError, match=missing_states):
         _ = TicketStatuses.model_validate(gapped)
 
 

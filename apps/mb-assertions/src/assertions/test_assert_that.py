@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pydantic
 import pytest
+from safe_result import Err, Ok, Result
 
 from assertions import Assert
 
@@ -434,6 +435,52 @@ def test_not_ends_with_reports_the_string_and_the_suffix() -> None:
         Assert.that(value).not_().ends_with(suffix)
 
 
+def test_is_err_returns_the_narrowed_error() -> None:
+    error = ValueError("a")
+    result: Result[int, Exception] = Err(error)
+
+    narrowed: ValueError = Assert.that(result).is_err(ValueError)
+
+    Assert.that(narrowed).matches(error)
+
+
+def test_is_err_reports_an_ok_result() -> None:
+    value = 1
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected an Err of ValueError, but got Ok: {value}"),
+    ):
+        _ = Assert.that(Ok(value)).is_err(ValueError)
+
+
+def test_is_err_reports_the_expected_and_actual_error_types() -> None:
+    error = KeyError("a")
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected an Err of ValueError, but got Err of KeyError: {error}"),
+    ):
+        _ = Assert.that(Err(error)).is_err(ValueError)
+
+
+def test_is_ok_returns_the_value() -> None:
+    value = 1
+    result: Result[int, Exception] = Ok(value)
+
+    Assert.that(Assert.that(result).is_ok()).matches(value)
+
+
+def test_is_ok_reports_the_error() -> None:
+    error = ValueError("a")
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected Ok, but got Err of ValueError: {error}"),
+    ):
+        _ = Assert.that(Err(error)).is_ok()
+
+
 class TestTypeChecks:
     @staticmethod
     def _pyrefly_error_kinds(source: str) -> list[str]:
@@ -486,6 +533,8 @@ class TestTypeChecks:
             ('Assert.that(1).not_().matches_pattern("a")', "[bad-argument-type]"),
             ('Assert.that(1).not_().starts_with("a")', "[bad-argument-type]"),
             ('Assert.that(1).not_().ends_with("a")', "[bad-argument-type]"),
+            ("Assert.that(1).is_err(ValueError)", "[bad-argument-type]"),
+            ("Assert.that(1).is_ok()", "[bad-argument-type]"),
             (
                 "narrowed: str = Assert.that(1 if 1 > 0 else None).exists()",
                 "[bad-assignment]",

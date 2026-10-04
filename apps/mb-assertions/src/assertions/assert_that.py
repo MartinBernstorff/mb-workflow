@@ -3,6 +3,7 @@ from collections.abc import Callable, Iterable, Sequence, Sized
 from typing import Protocol, overload, override
 
 import pydantic
+from safe_result import Err, Ok
 
 from assertions.populated_differences import (
     FieldDifference,
@@ -121,6 +122,30 @@ class That[T](_NegatableMatchers[T]):
         if self.actual is None:
             raise AssertionError("Expected value to exist, but it was None")
         return self.actual
+
+    def is_ok[V](self: _HoldsActual[Ok[V] | Err[Exception]]) -> V:
+        match self.actual:
+            case Ok():
+                return self.actual.value
+            case Err():
+                raise AssertionError(
+                    f"Expected Ok, but got Err of {type(self.actual.error).__name__}: "
+                    f"{self.actual.error}",
+                )
+
+    def is_err[S](self: _HoldsActual[Ok[object] | Err[Exception]], error_type: type[S]) -> S:
+        match self.actual:
+            case Ok():
+                raise AssertionError(
+                    f"Expected an Err of {error_type.__name__}, but got Ok: {self.actual.value}",
+                )
+            case Err() if isinstance(self.actual.error, error_type):
+                return self.actual.error
+            case Err():
+                raise AssertionError(
+                    f"Expected an Err of {error_type.__name__}, but got Err of "
+                    f"{type(self.actual.error).__name__}: {self.actual.error}",
+                )
 
     def not_(self) -> "Not[T]":
         return Not(self._actual)
