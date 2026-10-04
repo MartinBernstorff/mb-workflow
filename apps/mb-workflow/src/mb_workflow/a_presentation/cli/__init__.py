@@ -293,11 +293,14 @@ def flow_seed_labels(
     team: str = typer.Option(
         ..., "--team", help="Name of the Linear team to create the labels in."
     ),
+    force: bool = typer.Option(
+        False, "--force", help="Rename and delete labels, which changes the tickets carrying them."
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    """Create the flow label group in a Linear team, with one label per flow state."""
+    """Make the flow label group match the flow, one label per state, in the workspace and a team."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    raise typer.Exit(code=commands.flow_seed_labels(TeamName(team)).root)
+    raise typer.Exit(code=commands.flow_seed_labels(TeamName(team), Force(force)).root)
 
 
 def flow_event(event: EventName, force: Force) -> ExitCode:

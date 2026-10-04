@@ -43,6 +43,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     ProjectName,
     TeamKey,
     TeamName,
+    TicketCount,
 )
 from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority
 from mb_workflow.d_lib.models import Payload, Value
@@ -199,6 +200,31 @@ class LabelGroupRecord(Payload):
         return ColoredLabels(
             tuple(ColoredLabel(name=child.name, color=child.color) for child in self.children)
         )
+
+
+class LabelIssuePage(Payload):
+    nodes: tuple[IssueIdentifierRecord, ...]
+    page_info: PageInfo
+
+    @staticmethod
+    def fake() -> LabelIssuePage:
+        return LabelIssuePage(nodes=(IssueIdentifierRecord.fake(),), page_info=PageInfo.fake())
+
+
+class IssueIdentifierRecord(Payload):
+    identifier: IssueIdentifier
+
+    @staticmethod
+    def fake() -> IssueIdentifierRecord:
+        return IssueIdentifierRecord(identifier=IssueIdentifier.fake())
+
+
+class LabelIssuesRead(Payload):
+    issues: LabelIssuePage = Field(validation_alias=AliasPath("issueLabel", "issues"))
+
+    @staticmethod
+    def fake() -> LabelIssuesRead:
+        return LabelIssuesRead(issues=LabelIssuePage.fake())
 
 
 class LabelGroupRead(Payload):
@@ -784,27 +810,73 @@ class Linear(TicketTracker):
     def recolor_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None:
-        found = self._found_group(group, team).unwrap()
-        children = found.children if found is not None else ()
         for label in labels.root:
-            child = next(
-                (
-                    child
-                    for child in children
-                    if child.name.root.casefold() == label.name.root.casefold()
-                ),
-                None,
+            child = self._group_child(group, label.name, team).unwrap()
+            self._updated_label(child, {"color": label.color.root}).unwrap()
+
+    @override
+    def rename_group_label(
+        self, group: LabelGroupName, label: LabelName, renamed: LabelName, team: TeamKey | None
+    ) -> Result[None, TicketTrackerError]:
+        match self._group_child(group, label, team):
+            case Ok(child):
+                return self._updated_label(child, {"name": renamed.root})
+            case Err() as failed:
+                return failed
+
+    @override
+    def delete_group_label(
+        self, group: LabelGroupName, label: LabelName, team: TeamKey | None
+    ) -> Result[None, TicketTrackerError]:
+        match self._group_child(group, label, team):
+            case Ok(child):
+                match LinearCall.answered(
+                    lambda: self._client.execute(
+                        "mutation($id: String!) { issueLabelDelete(id: $id) { success } }",
+                        {"id": child.id.root},
+                    )
+                ):
+                    case Ok():
+                        return Ok(None)
+                    case Err() as failed:
+                        return failed
+            case Err() as failed:
+                return failed
+
+    @override
+    def labelled_ticket_count(
+        self, group: LabelGroupName, label: LabelName, team: TeamKey | None
+    ) -> Result[TicketCount, TicketTrackerError]:
+        match self._group_child(group, label, team):
+            case Ok(child):
+                pass
+            case Err() as failed:
+                return failed
+        counted = 0
+        cursor: PageCursor | None = None
+        while True:
+            read = LinearCall.answered(
+                lambda after=cursor: self._client.execute(
+                    """
+                    query($id: String!, $after: String) {
+                      issueLabel(id: $id) {
+                        issues(first: 250, after: $after) {
+                          nodes { identifier }
+                          pageInfo { hasNextPage endCursor }
+                        }
+                      }
+                    }
+                    """,
+                    {"id": child.id.root, "after": after.root if after is not None else None},
+                )
             )
-            if child is None:
-                raise TicketTrackerError(
-                    f"The {group.root} group holds no label named {label.name.root}."
-                )
-            with LinearCall.translated_errors():
-                _ = self._client.execute(
-                    "mutation($id: String!, $input: IssueLabelUpdateInput!) {"
-                    " issueLabelUpdate(id: $id, input: $input) { success } }",
-                    {"id": child.id.root, "input": {"color": label.color.root}},
-                )
+            if isinstance(read, Err):
+                return read
+            page = LabelIssuesRead.model_validate(read.value).issues
+            counted += len(page.nodes)
+            cursor = page.page_info.next_cursor()
+            if cursor is None:
+                return Ok(TicketCount(counted))
 
     @override
     def team_named(self, name: TeamName) -> Result[TeamKey, TicketTrackerError]:
@@ -872,6 +944,45 @@ class Linear(TicketTracker):
         ):
             case Ok(data):
                 return Ok(next(iter(LabelGroupRead.model_validate(data).groups), None))
+            case Err() as failed:
+                return failed
+
+    def _group_child(
+        self, group: LabelGroupName, label: LabelName, team: TeamKey | None
+    ) -> Result[GroupedLabelRecord, TicketTrackerError]:
+        match self._found_group(group, team):
+            case Ok(found):
+                children = found.children if found is not None else ()
+                child = next(
+                    (
+                        child
+                        for child in children
+                        if child.name.root.casefold() == label.root.casefold()
+                    ),
+                    None,
+                )
+                if child is None:
+                    return Err(
+                        TicketTrackerError(
+                            f"The {group.root} group holds no label named {label.root}."
+                        )
+                    )
+                return Ok(child)
+            case Err() as failed:
+                return failed
+
+    def _updated_label(
+        self, child: GroupedLabelRecord, update: JsonValue
+    ) -> Result[None, TicketTrackerError]:
+        match LinearCall.answered(
+            lambda: self._client.execute(
+                "mutation($id: String!, $input: IssueLabelUpdateInput!) {"
+                " issueLabelUpdate(id: $id, input: $input) { success } }",
+                {"id": child.id.root, "input": update},
+            )
+        ):
+            case Ok():
+                return Ok(None)
             case Err() as failed:
                 return failed
 

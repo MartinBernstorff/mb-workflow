@@ -96,6 +96,12 @@ class ColoredLabels(Value[tuple[ColoredLabel, ...]]):
         return LabelNames(tuple(label.name for label in self.root))
 
 
+class TicketCount(Value[int]):
+    @staticmethod
+    def fake() -> TicketCount:
+        return TicketCount(1)
+
+
 class LabelGroupName(Value[str]):
     @staticmethod
     def fake() -> LabelGroupName:

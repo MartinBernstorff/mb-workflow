@@ -477,9 +477,14 @@ def flow_event(
 
 
 @guarded
-def flow_seed_labels(team: TeamName) -> ExitCode:
+def flow_seed_labels(team: TeamName, force: Force) -> ExitCode:
     wanted = flow_labels_of_chart()
-    seeded = FlowLabelSeeding.seed_flow_labels(linear(), wanted, team).unwrap()
+    match FlowLabelSeeding.seed_flow_labels(linear(), wanted, team, force):
+        case Ok(seeded):
+            pass
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
     if isinstance(seeded, CoveredByWorkspace):
         logger.info(
             "The workspace's %s label group holds every flow label, so it covers %s."
@@ -500,9 +505,18 @@ def flow_seed_labels(team: TeamName) -> ExitCode:
             wanted.group.root,
             team.root,
         )
-    if seeded.recolored.root:
+    for sync in (seeded.workspace, seeded.team):
+        for rename in sync.renamed.root:
+            logger.info("Renamed %s to %s.", rename.held.root, rename.renamed.root)
+        if sync.deleted.root:
+            logger.info(
+                "Deleted %s, which no flow state names.",
+                ", ".join(label.root for label in sync.deleted.root),
+            )
+    recolored = (*seeded.workspace.recolored.root, *seeded.team.recolored.root)
+    if recolored:
         logger.info(
             "Recolored %s, so entry labels are yellow and the rest grey.",
-            ", ".join(label.root for label in seeded.recolored.root),
+            ", ".join(label.root for label in recolored),
         )
     return ExitCode(0)
