@@ -35,5 +35,11 @@ def test_finds_the_worktree_linked_to_an_issue() -> None:
     assert Worktrees((other, linked)).linked_to(IssueIdentifier.fake()) == linked
 
 
+def test_an_issue_typed_in_lowercase_finds_its_worktree() -> None:
+    lowercase = IssueIdentifier(IssueIdentifier.fake().root.lower())
+    assert Worktrees.fake().linked_to(lowercase) == Worktree.fake()
+
+
 def test_an_issue_no_worktree_links_to_finds_none() -> None:
-    assert Worktrees.fake().linked_to(IssueIdentifier("MB-1")) is None
+    unlinked_issue = IssueIdentifier("MB-1")
+    assert Worktrees.fake().linked_to(unlinked_issue) is None

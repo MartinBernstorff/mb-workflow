@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
-    from mb_workflow.b_core.d_domain_model.workspace import Worktree, WorktreePath
+    from mb_workflow.b_core.d_domain_model.workspace import Worktree
 
 
 # Moves a ticket and the board column of the worktree linked to it: the named ticket, or the one
@@ -32,7 +32,7 @@ class LinkedTicketTransition:
     @staticmethod
     def move_linked_ticket(
         *,
-        board_at: Callable[[WorktreePath], WorkspaceStatusStore],
+        board_at: Callable[[Worktree], WorkspaceStatusStore],
         tracker: TicketTracker,
         manager: WorkspaceManager,
         wanted: FlowLabels,
@@ -53,7 +53,7 @@ class LinkedTicketTransition:
             return located
         return FlowTransition.move_ticket(
             chart=WorkflowChart,
-            store=board_at(located.value.path),
+            store=board_at(located.value),
             tracker=tracker,
             issue=located.value.linked_issue(),
             wanted=wanted,

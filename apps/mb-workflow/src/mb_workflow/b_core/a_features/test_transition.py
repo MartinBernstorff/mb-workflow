@@ -22,10 +22,6 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 )
 
 
-def there() -> WorktreePath:
-    return WorktreePath.fake().sibling(WorktreeName("there"))
-
-
 def seeded_tracker() -> FakeTicketTracker:
     wanted = FlowLabels.fake()
     return FakeTicketTracker(
@@ -33,13 +29,6 @@ def seeded_tracker() -> FakeTicketTracker:
         (TrackedIssue.fake(),),
         groups={wanted.group: wanted.labels},
     )
-
-
-# The fake issue's worktree stands beside an unlinked one you stand in.
-def standing_in_unlinked() -> FakeWorkspaceManager:
-    unlinked = Worktree.fake().model_copy(update={"issue": None})
-    linked = Worktree.fake().model_copy(update={"path": there()})
-    return FakeWorkspaceManager(Worktrees((unlinked, linked)), unlinked.path)
 
 
 def test_labels_the_issue_linked_to_the_worktree_you_stand_in() -> None:
@@ -99,14 +88,15 @@ def test_a_named_ticket_moves_the_board_of_the_worktree_linked_to_it() -> None:
     implementing = StateName("implementing")
     qa = StateName("qa")
     tracker = seeded_tracker()
-    boards = {
-        WorktreePath.fake(): FakeStatusStore(implementing),
-        there(): FakeStatusStore(implementing),
-    }
+    here = Worktree.fake().model_copy(update={"issue": None})
+    linked = Worktree.fake().model_copy(
+        update={"path": WorktreePath.fake().sibling(WorktreeName("linked"))}
+    )
+    boards = {here.path: FakeStatusStore(implementing), linked.path: FakeStatusStore(implementing)}
     moved = LinkedTicketTransition.move_linked_ticket(
-        board_at=boards.__getitem__,
+        board_at=lambda worktree: boards[worktree.path],
         tracker=tracker,
-        manager=standing_in_unlinked(),
+        manager=FakeWorkspaceManager(Worktrees((here, linked)), here.path),
         wanted=FlowLabels.fake(),
         statuses=TicketStatuses.fake(),
         event=EventName(qa.root),
@@ -114,8 +104,8 @@ def test_a_named_ticket_moves_the_board_of_the_worktree_linked_to_it() -> None:
         ticket=IssueIdentifier.fake(),
     )
     assert moved.unwrap() == qa
-    assert boards[there()].read().unwrap() == qa
-    assert boards[WorktreePath.fake()].read().unwrap() == implementing
+    assert boards[linked.path].read().unwrap() == qa
+    assert boards[here.path].read().unwrap() == implementing
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(
         (LabelName.fake(), LabelName(qa.root))
     )
