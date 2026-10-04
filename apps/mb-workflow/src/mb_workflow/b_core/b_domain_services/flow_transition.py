@@ -12,6 +12,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
     FlowError,
     StateName,
     WorkflowChart,
+    WorkspaceOpening,
 )
 from mb_workflow.b_core.d_domain_model.issue import IssueUpdate
 from mb_workflow.d_lib.logging import Activity
@@ -24,8 +25,9 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
-    from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName
+    from mb_workflow.b_core.d_domain_model.issue import Issue, IssueIdentifier, IssueStatusName
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
+    from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus
 
 logger = logging.getLogger(__name__)
 
@@ -141,3 +143,51 @@ class FlowStateStep(SagaStep[TicketTrackerError]):
                     update={"labels": labels, "status": self.previous_status}
                 ),
             )
+
+
+# The state a ticket opens a workspace in, its status and board column there, and the steps
+# that move it there; a ticket held elsewhere moves first, so its claim records the status it
+# moves to.
+@dataclass(frozen=True)
+class OpeningEntry:
+    state: StateName
+    status: IssueStatusName
+    column: WorkspaceStatus
+    steps: tuple[SagaStep[TicketTrackerError], ...]
+
+    @staticmethod
+    def planned(
+        *,
+        tracker: TicketTracker,
+        board: WorkspaceStatusStore,
+        flow_labels: FlowLabels,
+        statuses: TicketStatuses,
+        issue: Issue,
+        labelled_state: StateName | None,
+        state: StateName,
+    ) -> Result[OpeningEntry, TicketTrackerError | MissingFlowLabelsError | WorkspaceManagerError]:
+        opened = WorkspaceOpening.state_opened_in(WorkflowChart, state)
+        column = board.status_for(opened)
+        if isinstance(column, Err):
+            return column
+        if labelled_state == opened:
+            return Ok(
+                OpeningEntry(state=opened, status=issue.status, column=column.value, steps=())
+            )
+        checked = FlowLabelCheck.require_for_issue(tracker, flow_labels, issue.identifier)
+        if isinstance(checked, Err):
+            return checked
+        entering = FlowStateStep(
+            tracker=tracker,
+            issue=issue.identifier,
+            wanted=flow_labels,
+            statuses=statuses,
+            state=opened,
+            previous_state=labelled_state,
+            previous_status=issue.status,
+        )
+        return Ok(
+            OpeningEntry(
+                state=opened, status=statuses.of(opened), column=column.value, steps=(entering,)
+            )
+        )

@@ -223,7 +223,7 @@ def test_a_taken_name_puts_the_second_worktree_elsewhere(
     second = manager.create_for_issue(
         board.project, contract_name(), None, None, None, activate=Activate(False)
     ).unwrap()
-    Assert.that(first.worktree.path).does_not_match(second.worktree.path)
+    Assert.that(first.worktree.path).not_().matches(second.worktree.path)
     _ = Assert.that(manager.worktrees().unwrap().at(first.worktree.path)).exists()
     _ = Assert.that(manager.worktrees().unwrap().at(second.worktree.path)).exists()
 

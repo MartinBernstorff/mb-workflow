@@ -1,8 +1,8 @@
 import logging
-import re
 from typing import TYPE_CHECKING
 
 import pytest
+from assertions import Assert
 
 from mb_workflow.d_lib.logging import Activity, LogLevel
 
@@ -26,8 +26,8 @@ def test_http_loggers_hide_info_but_show_warnings(name: str) -> None:
     LogLevel(logging.INFO).configure()
 
     logger = logging.getLogger(name)
-    assert not logger.isEnabledFor(logging.INFO)
-    assert logger.isEnabledFor(logging.WARNING)
+    Assert.that(logger.isEnabledFor(logging.INFO)).is_false()
+    Assert.that(logger.isEnabledFor(logging.WARNING)).is_true()
 
 
 def test_an_activity_logs_its_start_before_the_work_and_its_finish_after(
@@ -40,9 +40,9 @@ def test_an_activity_logs_its_start_before_the_work_and_its_finish_after(
         logger.info(work)
 
     started, worked, finished = caplog.messages
-    assert started == f"{activity.root}…"
-    assert worked == work
-    assert re.fullmatch(rf"{activity.root} took \d+\.\ds\.", finished)
+    Assert.that(started).matches(f"{activity.root}…")
+    Assert.that(worked).matches(work)
+    Assert.that(finished).matches_pattern(rf"\A{activity.root} took \d+\.\ds\.\Z")
 
 
 def test_an_activity_that_raises_logs_its_failure_and_reraises(
@@ -53,4 +53,4 @@ def test_an_activity_that_raises_logs_its_failure_and_reraises(
         raise LookupError
 
     _, failed = caplog.messages
-    assert re.fullmatch(rf"{activity.root} failed after \d+\.\ds\.", failed)
+    Assert.that(failed).matches_pattern(rf"\A{activity.root} failed after \d+\.\ds\.\Z")
