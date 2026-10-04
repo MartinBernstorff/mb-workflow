@@ -1,0 +1,11 @@
+[pytest]
+strict = true
+addopts = [
+    "--report-chars=a",
+    "--exitfirst",
+    "--numprocesses=auto",
+    "--quiet",
+    "--tb=short",
+]
+testpaths = ["src"]
+python_files = ["test_*.py"]
