@@ -18,8 +18,6 @@ class _HoldsActual[T](Protocol):
 
 
 class _NegatableMatchers[T](Protocol):
-    """The matchers both That and Not implement, so negation stays in sync."""
-
     @property
     def actual(self) -> T: ...
 

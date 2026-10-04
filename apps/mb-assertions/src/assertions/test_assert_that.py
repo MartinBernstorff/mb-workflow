@@ -504,7 +504,6 @@ class TestTypeChecks:
                 check=False,
             )
         output = result.stdout + result.stderr
-        # Without the summary line, pyrefly crashed rather than checked the snippet.
         if not re.search(r"INFO \d+ errors?$", output, re.MULTILINE):
             pytest.fail(f"pyrefly did not check the snippet:\n{output}")
         return [line.rsplit(" ", 1)[-1] for line in output.splitlines() if line.startswith("ERROR")]

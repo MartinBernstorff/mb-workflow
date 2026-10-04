@@ -56,8 +56,6 @@ class FieldDifference(pydantic.BaseModel):
 
 
 class PopulatedDifferences:
-    """Compares only the fields populated on the expected value, recursing into models and lists."""
-
     @staticmethod
     def between[T](actual: T, expected: T, comparison: ListComparison) -> list[FieldDifference]:
         return PopulatedDifferences._at(actual, expected, FieldPath(""), comparison)
