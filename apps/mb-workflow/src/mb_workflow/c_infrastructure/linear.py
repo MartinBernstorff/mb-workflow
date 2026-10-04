@@ -1,4 +1,3 @@
-from contextlib import contextmanager
 from enum import StrEnum
 from typing import TYPE_CHECKING, override
 
@@ -49,7 +48,7 @@ from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Prio
 from mb_workflow.d_lib.models import Payload, Value
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator
+    from collections.abc import Callable
 
     from mb_workflow.b_core.d_domain_model.issue import IssueFilter, StatusTypes
     from mb_workflow.b_core.d_domain_model.pool import ViewSlug
@@ -301,11 +300,11 @@ class ProjectRecord(Payload):
             id=ProjectId.fake(), name=ProjectName.fake(), milestones=(MilestoneRecord.fake(),)
         )
 
-    def milestone(self, name: MilestoneName) -> MilestoneId:
+    def milestone(self, name: MilestoneName) -> Result[MilestoneId, TicketTrackerError]:
         found = next((known for known in self.milestones if known.name.names(name).root), None)
         if found is None:
-            raise TicketTrackerError(f"{self.name.root} has no milestone named {name.root}.")
-        return found.id
+            return Err(TicketTrackerError(f"{self.name.root} has no milestone named {name.root}."))
+        return Ok(found.id)
 
 
 # One read resolves every name an update carries, each part included only when the update needs it.
@@ -339,7 +338,9 @@ class UpdateLookup(Payload):
         )
 
     # Teams may each hold a label of the same name, so the issue's own team's one wins, then the workspace's.
-    def label_ids(self, labels: LabelNames, team: TeamKey | None) -> tuple[LabelId, ...]:
+    def label_ids(
+        self, labels: LabelNames, team: TeamKey | None
+    ) -> Result[tuple[LabelId, ...], TicketTrackerError]:
         own = tuple(
             record
             for record in self.labels
@@ -349,40 +350,48 @@ class UpdateLookup(Payload):
         known = LabelNames(tuple(record.name for record in usable))
         unknown = known.unmatched(labels)
         if unknown.root:
-            raise TicketTrackerError(
-                f"No label is named {', '.join(label.root for label in unknown.root)}."
+            return Err(
+                TicketTrackerError(
+                    f"No label is named {', '.join(label.root for label in unknown.root)}."
+                )
             )
-        return tuple(
-            next(record.id for record in usable if record.name == name)
-            for name in known.spelled(labels).root
+        return Ok(
+            tuple(
+                next(record.id for record in usable if record.name == name)
+                for name in known.spelled(labels).root
+            )
         )
 
-    def user_id(self, assignee: Assignee | Cleared) -> UserId | None:
+    def user_id(self, assignee: Assignee | Cleared) -> Result[UserId | None, TicketTrackerError]:
         if isinstance(assignee, Cleared):
-            return None
+            return Ok(None)
         if not self.users:
-            raise TicketTrackerError(f"No Linear user has the email {assignee.root}.")
-        return self.users[0].id
+            return Err(TicketTrackerError(f"No Linear user has the email {assignee.root}."))
+        return Ok(self.users[0].id)
 
-    def project_id(self, project: ProjectName | Cleared) -> ProjectId | None:
+    def project_id(
+        self, project: ProjectName | Cleared
+    ) -> Result[ProjectId | None, TicketTrackerError]:
         if isinstance(project, Cleared):
-            return None
+            return Ok(None)
         if not self.projects:
-            raise TicketTrackerError(f"No project is named {project.root}.")
-        return self.projects[0].id
+            return Err(TicketTrackerError(f"No project is named {project.root}."))
+        return Ok(self.projects[0].id)
 
-    def milestone_id(self, milestone: Milestone | Cleared) -> MilestoneId | None:
+    def milestone_id(
+        self, milestone: Milestone | Cleared
+    ) -> Result[MilestoneId | None, TicketTrackerError]:
         if isinstance(milestone, Cleared):
-            return None
+            return Ok(None)
         if not self.milestone_projects:
-            raise TicketTrackerError(f"No project is named {milestone.project.root}.")
+            return Err(TicketTrackerError(f"No project is named {milestone.project.root}."))
         return self.milestone_projects[0].milestone(milestone.name)
 
-    def state_id(self, status: IssueStatusName) -> StateId:
+    def state_id(self, status: IssueStatusName) -> Result[StateId, TicketTrackerError]:
         found = next((known for known in self.states if known.name.names(status).root), None)
         if found is None:
-            raise TicketTrackerError(f"No status is named {status.root}.")
-        return found.id
+            return Err(TicketTrackerError(f"No status is named {status.root}."))
+        return Ok(found.id)
 
 
 class TeamId(Value[str]):
@@ -402,11 +411,11 @@ class TeamRecord(Payload):
     def fake() -> TeamRecord:
         return TeamRecord(id=TeamId.fake(), key=TeamKey.fake(), states=(StateRecord.fake(),))
 
-    def state_id(self, status: IssueStatusName) -> StateId:
+    def state_id(self, status: IssueStatusName) -> Result[StateId, TicketTrackerError]:
         found = next((known for known in self.states if known.name.names(status).root), None)
         if found is None:
-            raise TicketTrackerError(f"{self.key.root} has no status named {status.root}.")
-        return found.id
+            return Err(TicketTrackerError(f"{self.key.root} has no status named {status.root}."))
+        return Ok(found.id)
 
 
 class TeamProjectRecord(ProjectRecord):
@@ -440,41 +449,74 @@ class CreationLookup(UpdateLookup):
             teams=(TeamRecord.fake(),),
         )
 
-    def creation(self, new: NewIssue) -> IssueCreation:
-        project = self._project(new.project) if new.project is not None else None
-        team = self._team(new.team, project)
-        return IssueCreation(
-            team_id=team.id,
-            title=new.title,
-            description=new.description,
-            label_ids=self.label_ids(new.labels, team.key),
-            assignee_id=self.user_id(new.assignee) if new.assignee is not None else None,
-            project_id=project.id if project is not None else None,
-            state_id=team.state_id(new.status),
-            project_milestone_id=(
-                project.milestone(new.milestone.name)
-                if project is not None and new.milestone is not None
-                else None
-            ),
+    def creation(self, new: NewIssue) -> Result[IssueCreation, TicketTrackerError]:
+        owners = self._owners(new)
+        if isinstance(owners, Err):
+            return owners
+        project, team = owners.value
+        label_ids = self.label_ids(new.labels, team.key)
+        if isinstance(label_ids, Err):
+            return label_ids
+        assignee_id = self.user_id(new.assignee) if new.assignee is not None else Ok(None)
+        if isinstance(assignee_id, Err):
+            return assignee_id
+        state_id = team.state_id(new.status)
+        if isinstance(state_id, Err):
+            return state_id
+        milestone_id = (
+            project.milestone(new.milestone.name)
+            if project is not None and new.milestone is not None
+            else Ok(None)
+        )
+        if isinstance(milestone_id, Err):
+            return milestone_id
+        return Ok(
+            IssueCreation(
+                team_id=team.id,
+                title=new.title,
+                description=new.description,
+                label_ids=label_ids.value,
+                assignee_id=assignee_id.value,
+                project_id=project.id if project is not None else None,
+                state_id=state_id.value,
+                project_milestone_id=milestone_id.value,
+            )
         )
 
-    def _project(self, name: ProjectName) -> TeamProjectRecord:
-        if not self.projects:
-            raise TicketTrackerError(f"No project is named {name.root}.")
-        return self.projects[0]
+    # The project, if the new issue names one, and the team it goes in.
+    def _owners(
+        self, new: NewIssue
+    ) -> Result[tuple[TeamProjectRecord | None, TeamRecord], TicketTrackerError]:
+        project = self._project(new.project) if new.project is not None else Ok(None)
+        if isinstance(project, Err):
+            return project
+        match self._team(new.team, project.value):
+            case Ok(team):
+                return Ok((project.value, team))
+            case Err() as failed:
+                return failed
 
-    def _team(self, key: TeamKey | None, project: TeamProjectRecord | None) -> TeamRecord:
+    def _project(self, name: ProjectName) -> Result[TeamProjectRecord, TicketTrackerError]:
+        if not self.projects:
+            return Err(TicketTrackerError(f"No project is named {name.root}."))
+        return Ok(self.projects[0])
+
+    def _team(
+        self, key: TeamKey | None, project: TeamProjectRecord | None
+    ) -> Result[TeamRecord, TicketTrackerError]:
         if key is not None:
             if not self.teams:
-                raise TicketTrackerError(f"No team has the key {key.root}.")
-            return self.teams[0]
+                return Err(TicketTrackerError(f"No team has the key {key.root}."))
+            return Ok(self.teams[0])
         if project is None:
-            raise TicketTrackerError("Name a team or a project to create the issue in.")
+            return Err(TicketTrackerError("Name a team or a project to create the issue in."))
         if len(project.teams) != 1:
-            raise TicketTrackerError(
-                f"{project.name.root} belongs to several teams. Set [issues] team to pick one."
+            return Err(
+                TicketTrackerError(
+                    f"{project.name.root} belongs to several teams. Set [issues] team to pick one."
+                )
             )
-        return project.teams[0]
+        return Ok(project.teams[0])
 
 
 class IssueCreation(Payload):
@@ -714,14 +756,6 @@ class ViewRead(Payload):
 
 
 class LinearCall:
-    @staticmethod
-    @contextmanager
-    def translated_errors() -> Generator[None]:
-        try:
-            yield
-        except LinearError as error:
-            raise TicketTrackerError(str(error)) from error
-
     # Converts the client's exceptions at the edge, so a failed call comes back as a value.
     @staticmethod
     def answered[T](call: Callable[[], T]) -> Result[T, TicketTrackerError]:
@@ -730,6 +764,15 @@ class LinearCall:
                 return Ok(value)
             case Err(error):
                 return Err(TicketTrackerError(str(error)))
+
+    # Runs a write whose answer the caller does not need.
+    @staticmethod
+    def written[T](call: Callable[[], T]) -> Result[None, TicketTrackerError]:
+        match LinearCall.answered(call):
+            case Ok():
+                return Ok(None)
+            case Err() as failed:
+                return failed
 
 
 # The client's own issue queries leave out the project, which the sweep's exclusions read.
@@ -785,34 +828,50 @@ class Linear(TicketTracker):
     @override
     def create_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
-    ) -> None:
-        # Writes still raise; MB-130 returns their errors as values too.
-        found = self._found_group(group, team).unwrap()
-        owner = {"teamId": self._team_id(team).root} if team is not None else {}
+    ) -> Result[None, TicketTrackerError]:
+        found = self._found_group(group, team)
+        if isinstance(found, Err):
+            return found
+        owner: dict[str, JsonValue] = {}
+        if team is not None:
+            team_id = self._team_id(team)
+            if isinstance(team_id, Err):
+                return team_id
+            owner = {"teamId": team_id.value.root}
         parent = (
-            found.id
-            if found is not None
+            Ok(found.value.id)
+            if found.value is not None
             else self._created_label(
                 {"name": group.root, "isGroup": True, "groupType": "singleSelect", **owner}
             )
         )
+        if isinstance(parent, Err):
+            return parent
         for label in labels.root:
-            _ = self._created_label(
+            created = self._created_label(
                 {
                     "name": label.name.root,
                     "color": label.color.root,
-                    "parentId": parent.root,
+                    "parentId": parent.value.root,
                     **owner,
                 }
             )
+            if isinstance(created, Err):
+                return created
+        return Ok(None)
 
     @override
     def recolor_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
-    ) -> None:
+    ) -> Result[None, TicketTrackerError]:
         for label in labels.root:
-            child = self._group_child(group, label.name, team).unwrap()
-            self._updated_label(child, {"color": label.color.root}).unwrap()
+            child = self._group_child(group, label.name, team)
+            if isinstance(child, Err):
+                return child
+            updated = self._updated_label(child.value, {"color": label.color.root})
+            if isinstance(updated, Err):
+                return updated
+        return Ok(None)
 
     @override
     def rename_group_label(
@@ -900,11 +959,14 @@ class Linear(TicketTracker):
             case Err() as failed:
                 return failed
 
-    def _team_id(self, team: TeamKey) -> TeamId:
-        found = self._found_team({"key": {"eqIgnoreCase": team.root}}).unwrap()
-        if found is None:
-            raise TicketTrackerError(f"No team has the key {team.root}.")
-        return found.id
+    def _team_id(self, team: TeamKey) -> Result[TeamId, TicketTrackerError]:
+        match self._found_team({"key": {"eqIgnoreCase": team.root}}):
+            case Ok(found):
+                if found is None:
+                    return Err(TicketTrackerError(f"No team has the key {team.root}."))
+                return Ok(found.id)
+            case Err() as failed:
+                return failed
 
     def _found_team(self, team_filter: JsonValue) -> Result[TeamRecord | None, TicketTrackerError]:
         match LinearCall.answered(
@@ -986,14 +1048,18 @@ class Linear(TicketTracker):
             case Err() as failed:
                 return failed
 
-    def _created_label(self, label: JsonValue) -> LabelId:
-        with LinearCall.translated_errors():
-            data = self._client.execute(
+    def _created_label(self, label: JsonValue) -> Result[LabelId, TicketTrackerError]:
+        match LinearCall.answered(
+            lambda: self._client.execute(
                 "mutation($input: IssueLabelCreateInput!) {"
                 " issueLabelCreate(input: $input) { issueLabel { id } } }",
                 {"input": label},
             )
-        return CreatedLabel.model_validate(data).id
+        ):
+            case Ok(data):
+                return Ok(CreatedLabel.model_validate(data).id)
+            case Err() as failed:
+                return failed
 
     @override
     def list_issues(self, wanted: IssueFilter) -> Result[Issues, TicketTrackerError]:
@@ -1125,55 +1191,74 @@ class Linear(TicketTracker):
                 return failed
 
     @override
-    def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
-        (label_id,) = self._label_ids(issue, LabelNames((label,)))
-        with LinearCall.translated_errors():
-            _ = self._client.add_label(IssueAddLabelRequest(id=issue.root, label_id=label_id.root))
+    def add_label(
+        self, issue: IssueIdentifier, label: LabelName
+    ) -> Result[None, TicketTrackerError]:
+        label_ids = self._label_ids(issue, LabelNames((label,)))
+        if isinstance(label_ids, Err):
+            return label_ids
+        (label_id,) = label_ids.value
+        return LinearCall.written(
+            lambda: self._client.add_label(
+                IssueAddLabelRequest(id=issue.root, label_id=label_id.root)
+            )
+        )
 
     @override
-    def remove_label(self, issue: IssueIdentifier, label: LabelName) -> None:
-        (label_id,) = self._label_ids(issue, LabelNames((label,)))
-        with LinearCall.translated_errors():
-            _ = self._client.remove_label(
+    def remove_label(
+        self, issue: IssueIdentifier, label: LabelName
+    ) -> Result[None, TicketTrackerError]:
+        label_ids = self._label_ids(issue, LabelNames((label,)))
+        if isinstance(label_ids, Err):
+            return label_ids
+        (label_id,) = label_ids.value
+        return LinearCall.written(
+            lambda: self._client.remove_label(
                 IssueRemoveLabelRequest(id=issue.root, label_id=label_id.root)
             )
+        )
 
     @override
-    def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
-        label_ids = [label_id.root for label_id in self._label_ids(issue, labels)]
-        with LinearCall.translated_errors():
-            _ = self._client.update_issue(IssueUpdateRequest(id=issue.root, label_ids=label_ids))
+    def set_labels(
+        self, issue: IssueIdentifier, labels: LabelNames
+    ) -> Result[None, TicketTrackerError]:
+        label_ids = self._label_ids(issue, labels)
+        if isinstance(label_ids, Err):
+            return label_ids
+        wanted = [label_id.root for label_id in label_ids.value]
+        return LinearCall.written(
+            lambda: self._client.update_issue(IssueUpdateRequest(id=issue.root, label_ids=wanted))
+        )
 
     @override
-    def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None:
-        with LinearCall.translated_errors():
-            user = self._client.find_user(FindUserRequest(email=assignee.root)).user
-            if user is None or user.id is None:
-                raise TicketTrackerError(f"No Linear user has the email {assignee.root}.")
-            _ = self._client.update_issue(IssueUpdateRequest(id=issue.root, assignee_id=user.id))
+    def assign(
+        self, issue: IssueIdentifier, assignee: Assignee
+    ) -> Result[None, TicketTrackerError]:
+        found = LinearCall.answered(
+            lambda: self._client.find_user(FindUserRequest(email=assignee.root)).user
+        )
+        if isinstance(found, Err):
+            return found
+        user_id = found.value.id if found.value is not None else None
+        if user_id is None:
+            return Err(TicketTrackerError(f"No Linear user has the email {assignee.root}."))
+        return LinearCall.written(
+            lambda: self._client.update_issue(
+                IssueUpdateRequest(id=issue.root, assignee_id=user_id)
+            )
+        )
 
     @override
-    def update_issue(self, issue: IssueIdentifier, update: IssueUpdate) -> None:
-        found = self._lookup(issue, update)
-        changes: dict[str, object] = {}
-        if update.title is not None:
-            changes["title"] = update.title
-        if update.description is not None:
-            changes["description"] = update.description
-        if update.labels is not None:
-            changes["label_ids"] = found.label_ids(update.labels, found.issue_team)
-        if update.assignee is not None:
-            changes["assignee_id"] = found.user_id(update.assignee)
-        if update.project is not None:
-            changes["project_id"] = found.project_id(update.project)
-        if update.status is not None:
-            changes["state_id"] = found.state_id(update.status)
-        if update.milestone is not None:
-            changes["project_milestone_id"] = found.milestone_id(update.milestone)
-        if changes:
-            wanted = IssueChanges.model_validate(changes)
-            with LinearCall.translated_errors():
-                _ = self._client.execute(
+    def update_issue(
+        self, issue: IssueIdentifier, update: IssueUpdate
+    ) -> Result[None, TicketTrackerError]:
+        changes = self._changes(issue, update)
+        if isinstance(changes, Err):
+            return changes
+        if changes.value.model_fields_set:
+            wanted = changes.value
+            updated = LinearCall.answered(
+                lambda: self._client.execute(
                     "mutation($id: String!, $input: IssueUpdateInput!) {"
                     " issueUpdate(id: $id, input: $input) { success } }",
                     {
@@ -1181,20 +1266,63 @@ class Linear(TicketTracker):
                         "input": wanted.model_dump(mode="json", by_alias=True, exclude_unset=True),
                     },
                 )
-        self._relate_all(issue, blocks=update.blocks, blocked_by=update.blocked_by)
+            )
+            if isinstance(updated, Err):
+                return updated
+        return self._relate_all(issue, blocks=update.blocks, blocked_by=update.blocked_by)
+
+    # Resolves every name the update carries, setting only the fields it changes.
+    def _changes(
+        self, issue: IssueIdentifier, update: IssueUpdate
+    ) -> Result[IssueChanges, TicketTrackerError]:
+        looked_up = self._lookup(issue, update)
+        if isinstance(looked_up, Err):
+            return looked_up
+        found = looked_up.value
+        resolving: dict[str, Result[object, TicketTrackerError]] = {}
+        if update.title is not None:
+            resolving["title"] = Ok(update.title)
+        if update.description is not None:
+            resolving["description"] = Ok(update.description)
+        if update.labels is not None:
+            resolving["label_ids"] = found.label_ids(update.labels, found.issue_team)
+        if update.assignee is not None:
+            resolving["assignee_id"] = found.user_id(update.assignee)
+        if update.project is not None:
+            resolving["project_id"] = found.project_id(update.project)
+        if update.status is not None:
+            resolving["state_id"] = found.state_id(update.status)
+        if update.milestone is not None:
+            resolving["project_milestone_id"] = found.milestone_id(update.milestone)
+        changes: dict[str, object] = {}
+        for field_name, resolved in resolving.items():
+            if isinstance(resolved, Err):
+                return resolved
+            changes[field_name] = resolved.value
+        return Ok(IssueChanges.model_validate(changes))
 
     @override
-    def create_issue(self, new: NewIssue) -> CreatedIssue:
-        creation = self._creation_lookup(new).creation(new)
-        with LinearCall.translated_errors():
-            data = self._client.execute(
+    def create_issue(self, new: NewIssue) -> Result[CreatedIssue, TicketTrackerError]:
+        looked_up = self._creation_lookup(new)
+        if isinstance(looked_up, Err):
+            return looked_up
+        creation = looked_up.value.creation(new)
+        if isinstance(creation, Err):
+            return creation
+        answered = LinearCall.answered(
+            lambda: self._client.execute(
                 "mutation($input: IssueCreateInput!) {"
                 " issueCreate(input: $input) { issue { identifier url } } }",
-                {"input": creation.model_dump(mode="json", by_alias=True, exclude_none=True)},
+                {"input": creation.value.model_dump(mode="json", by_alias=True, exclude_none=True)},
             )
-        created = CreatedIssueRead.model_validate(data).created()
-        self._relate_all(created.identifier, blocks=new.blocks, blocked_by=new.blocked_by)
-        return created
+        )
+        if isinstance(answered, Err):
+            return answered
+        created = CreatedIssueRead.model_validate(answered.value).created()
+        related = self._relate_all(created.identifier, blocks=new.blocks, blocked_by=new.blocked_by)
+        if isinstance(related, Err):
+            return related
+        return Ok(created)
 
     @override
     def blockers(
@@ -1223,15 +1351,22 @@ class Linear(TicketTracker):
         *,
         blocks: tuple[IssueIdentifier, ...],
         blocked_by: tuple[IssueIdentifier, ...],
-    ) -> None:
-        for blocked in blocks:
-            self._relate(blocker=issue, blocked=blocked)
-        for blocker in blocked_by:
-            self._relate(blocker=blocker, blocked=issue)
+    ) -> Result[None, TicketTrackerError]:
+        pairs = (
+            *((issue, blocked) for blocked in blocks),
+            *((blocker, issue) for blocker in blocked_by),
+        )
+        for blocker, blocked in pairs:
+            related = self._relate(blocker=blocker, blocked=blocked)
+            if isinstance(related, Err):
+                return related
+        return Ok(None)
 
-    def _relate(self, *, blocker: IssueIdentifier, blocked: IssueIdentifier) -> None:
-        with LinearCall.translated_errors():
-            _ = self._client.execute(
+    def _relate(
+        self, *, blocker: IssueIdentifier, blocked: IssueIdentifier
+    ) -> Result[None, TicketTrackerError]:
+        return LinearCall.written(
+            lambda: self._client.execute(
                 "mutation($input: IssueRelationCreateInput!) {"
                 " issueRelationCreate(input: $input) { success } }",
                 {
@@ -1242,10 +1377,11 @@ class Linear(TicketTracker):
                     }
                 },
             )
+        )
 
-    def _creation_lookup(self, new: NewIssue) -> CreationLookup:
-        with LinearCall.translated_errors():
-            data = self._client.execute(
+    def _creation_lookup(self, new: NewIssue) -> Result[CreationLookup, TicketTrackerError]:
+        match LinearCall.answered(
+            lambda: self._client.execute(
                 """
                 query(
                   $labels: IssueLabelFilter, $withLabels: Boolean!
@@ -1285,7 +1421,11 @@ class Linear(TicketTracker):
                     "withTeam": new.team is not None,
                 },
             )
-        return CreationLookup.model_validate(data)
+        ):
+            case Ok(data):
+                return Ok(CreationLookup.model_validate(data))
+            case Err() as failed:
+                return failed
 
     @override
     def viewer(self) -> Result[Assignee, TicketTrackerError]:
@@ -1297,15 +1437,17 @@ class Linear(TicketTracker):
             case Err() as failed:
                 return failed
 
-    def _lookup(self, issue: IssueIdentifier, update: IssueUpdate) -> UpdateLookup:
+    def _lookup(
+        self, issue: IssueIdentifier, update: IssueUpdate
+    ) -> Result[UpdateLookup, TicketTrackerError]:
         labels = update.labels.root if update.labels is not None else ()
         assignee = update.assignee if isinstance(update.assignee, Assignee) else None
         project = update.project if isinstance(update.project, ProjectName) else None
         milestone = update.milestone if isinstance(update.milestone, Milestone) else None
         if not (labels or assignee or project or milestone or update.status):
-            return UpdateLookup()
-        with LinearCall.translated_errors():
-            data = self._client.execute(
+            return Ok(UpdateLookup())
+        match LinearCall.answered(
+            lambda: self._client.execute(
                 """
                 query(
                   $issue: String!
@@ -1350,8 +1492,17 @@ class Linear(TicketTracker):
                     "withStates": update.status is not None,
                 },
             )
-        return UpdateLookup.model_validate(data)
+        ):
+            case Ok(data):
+                return Ok(UpdateLookup.model_validate(data))
+            case Err() as failed:
+                return failed
 
-    def _label_ids(self, issue: IssueIdentifier, labels: LabelNames) -> tuple[LabelId, ...]:
-        found = self._lookup(issue, IssueUpdate.nothing().model_copy(update={"labels": labels}))
-        return found.label_ids(labels, found.issue_team)
+    def _label_ids(
+        self, issue: IssueIdentifier, labels: LabelNames
+    ) -> Result[tuple[LabelId, ...], TicketTrackerError]:
+        match self._lookup(issue, IssueUpdate.nothing().model_copy(update={"labels": labels})):
+            case Ok(found):
+                return found.label_ids(labels, found.issue_team)
+            case Err() as failed:
+                return failed

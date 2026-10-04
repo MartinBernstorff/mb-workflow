@@ -526,7 +526,7 @@ def test_a_failed_forced_start_does_not_restore_the_rivals_claim() -> None:
 
 def test_a_failed_start_keeps_the_claim_and_label_this_worktree_already_held() -> None:
     tracker = tracking(StateName("Specced"))
-    tracker.add_label(IssueIdentifier.fake(), ClaimSettings.fake().label)
+    tracker.add_label(IssueIdentifier.fake(), ClaimSettings.fake().label).unwrap()
     claims = FakeClaimRegistry(
         {IssueIdentifier.fake(): Claims((Claim(id=ClaimId("ours"), holder=ours()),))}
     )

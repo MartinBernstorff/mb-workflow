@@ -19,7 +19,11 @@ from mb_workflow.b_core.c_secondary_ports.claims import (
 )
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, FakeRunLock
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
-from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracker, TrackedIssue
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+    FakeTicketTracker,
+    TicketTrackerError,
+    TrackedIssue,
+)
 from mb_workflow.b_core.c_secondary_ports.tie_break import ReversingTieBreak
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     FakeWorkspaceManager,
@@ -211,7 +215,9 @@ class RacedRegistry(FakeClaimRegistry):
         self._contested = contested
 
     @override
-    def post(self, ticket: IssueIdentifier, holder: ClaimHolder) -> ClaimId:
+    def post(
+        self, ticket: IssueIdentifier, holder: ClaimHolder
+    ) -> Result[ClaimId, TicketTrackerError]:
         if ticket == self._contested and not self.claims(ticket).unwrap().root:
             _ = super().post(ticket, rival())
         return super().post(ticket, holder)

@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from safe_result import Err, Ok, Result
+from safe_result import Err, Result
 
 from mb_workflow.b_core.b_domain_services.flow_label_check import FlowLabelCheck
 
@@ -50,7 +50,6 @@ class TicketEditor:
         viewer = tracker.viewer()
         if isinstance(viewer, Err):
             return viewer
-        tracker.update_issue(
+        return tracker.update_issue(
             issue, checked.value.update(current.value, viewer.value, flow_labels, statuses)
         )
-        return Ok(None)

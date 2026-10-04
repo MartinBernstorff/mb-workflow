@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.b_domain_services.label_selection import Selection
-from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.d_domain_model.autolabel import AutoLabelCriteria, Exclusions
 from mb_workflow.b_core.d_domain_model.issue import (
     CreatedAfter,
@@ -18,7 +17,10 @@ from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.ledger_store import LedgerStore
-    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+        TicketTracker,
+        TicketTrackerError,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -123,13 +125,12 @@ class AutoLabelling:
         added: list[IssueIdentifier] = []
         failed: list[IssueIdentifier] = []
         for issue in selection.labellable().root:
-            try:
-                tracker.add_label(issue.identifier, request.label)
-            except TicketTrackerError as error:
-                logger.error("%s could not be labelled: %s", issue.identifier.root, error)
-                failed.append(issue.identifier)
-            else:
-                added.append(issue.identifier)
+            match tracker.add_label(issue.identifier, request.label):
+                case Ok():
+                    added.append(issue.identifier)
+                case Err(error):
+                    logger.error("%s could not be labelled: %s", issue.identifier.root, error)
+                    failed.append(issue.identifier)
         return Outcome(
             selection=selection,
             dry_run=request.dry_run,
