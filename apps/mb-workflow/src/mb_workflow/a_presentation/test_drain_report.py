@@ -1,6 +1,8 @@
 import logging
 from typing import TYPE_CHECKING
 
+from assertions import Assert
+
 from mb_workflow.a_presentation.console import Output
 from mb_workflow.a_presentation.drain_report import DrainReport, LoggingDrainNarrator
 from mb_workflow.b_core.a_features.drain import (
@@ -41,28 +43,27 @@ def test_the_listing_names_each_ready_ticket_its_priority_and_state_in_order() -
             "priority": Priority.no_priority,
         }
     )
-    assert DrainReport.pick_listing(
-        PoolTickets((urgent, unprioritised)), FlowLabels.fake()
-    ) == Output("E-2\turgent\ttodo\nE-1\tno_priority\ttodo\n")
+    Assert.that(
+        DrainReport.pick_listing(PoolTickets((urgent, unprioritised)), FlowLabels.fake())
+    ).matches(Output("E-2\turgent\ttodo\nE-1\tno_priority\ttodo\n"))
 
 
 def test_the_listing_marks_a_ticket_without_a_flow_label_as_stateless() -> None:
     unlabelled = PoolTicket.fake().model_copy(
         update={"issue": PoolTicket.fake().issue.model_copy(update={"grouped": GroupedLabels(())})}
     )
-    assert DrainReport.pick_listing(PoolTickets((unlabelled,)), FlowLabels.fake()).root.endswith(
-        "\t-\n"
-    )
+    Assert.that(
+        DrainReport.pick_listing(PoolTickets((unlabelled,)), FlowLabels.fake()).root
+    ).matches_pattern(r"\t-\n\Z")
 
 
 def test_each_skipped_ticket_is_logged_with_its_reason(caplog: pytest.LogCaptureFixture) -> None:
     skip = Skip(ticket=PoolTicket.fake(), refusal=Refusal("label refactor is at its limit of 1"))
     with caplog.at_level(logging.INFO):
         DrainReport.log_pass(DrainOutcome.fake().model_copy(update={"skipped": (skip,)}))
-    assert (
+    Assert.that(
         f"Skipped {PoolTicket.fake().issue.identifier.root}: label refactor is at its limit of 1."
-        in caplog.messages
-    )
+    ).in_container(caplog.messages)
 
 
 def test_each_unready_ticket_is_logged_with_its_reason(caplog: pytest.LogCaptureFixture) -> None:
@@ -70,7 +71,9 @@ def test_each_unready_ticket_is_logged_with_its_reason(caplog: pytest.LogCapture
     unready = Unready(ticket=PoolTicket.fake(), reason=reason)
     with caplog.at_level(logging.INFO):
         DrainReport.log_pass(DrainOutcome.fake().model_copy(update={"unready": (unready,)}))
-    assert f"Skipped {PoolTicket.fake().issue.identifier.root}: {reason.root}." in caplog.messages
+    Assert.that(f"Skipped {PoolTicket.fake().issue.identifier.root}: {reason.root}.").in_container(
+        caplog.messages
+    )
 
 
 def test_a_full_pool_is_logged_with_the_tickets_it_left(caplog: pytest.LogCaptureFixture) -> None:
@@ -79,19 +82,21 @@ def test_a_full_pool_is_logged_with_the_tickets_it_left(caplog: pytest.LogCaptur
     with caplog.at_level(logging.INFO):
         DrainReport.log_pass(DrainOutcome.fake().model_copy(update={"full": full}))
     left = PoolTicket.fake().issue.identifier.root
-    assert f"The pool is full at {total.root} tickets; leaving {left} unstarted." in caplog.messages
+    Assert.that(
+        f"The pool is full at {total.root} tickets; leaving {left} unstarted."
+    ).in_container(caplog.messages)
 
 
 def test_an_unchanged_pass_logs_one_line(caplog: pytest.LogCaptureFixture) -> None:
     quiet = DrainOutcome.fake().model_copy(update={"picked": PoolTickets(())})
     with caplog.at_level(logging.INFO):
         LoggingDrainNarrator().passed(quiet, Changed(False))
-    assert caplog.messages == ["No change; 1 ready."]
+    Assert.that(caplog.messages).matches(["No change; 1 ready."])
 
 
 def test_a_changed_pass_logs_in_full(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.INFO):
         LoggingDrainNarrator().passed(DrainOutcome.fake(), Changed(True))
     identifier = PoolTicket.fake().issue.identifier.root
-    assert f"Skipped {identifier}: {Refusal.fake().root}." in caplog.messages
-    assert f"Started {identifier}." in caplog.messages
+    Assert.that(f"Skipped {identifier}: {Refusal.fake().root}.").in_container(caplog.messages)
+    Assert.that(f"Started {identifier}.").in_container(caplog.messages)

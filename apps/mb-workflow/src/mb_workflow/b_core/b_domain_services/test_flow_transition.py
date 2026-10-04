@@ -1,6 +1,6 @@
-import re
 from typing import TYPE_CHECKING
 
+from assertions import Assert
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
@@ -72,16 +72,16 @@ def test_a_legal_event_writes_the_target_state_to_the_store() -> None:
     store = FakeStatusStore(StateName("implementing"))
     tracker = seeded_tracker(LabelNames(()))
     target = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
-    assert target == Ok(StateName("qa"))
-    assert store.read().unwrap() == StateName("qa")
+    Assert.that(target).matches(Ok(StateName("qa")))
+    Assert.that(store.read().unwrap()).matches(StateName("qa"))
 
 
 def test_a_legal_event_writes_the_relabelled_labels_to_the_ticket() -> None:
     tracker = seeded_tracker(LabelNames((LabelName("implementing"), LabelName.fake())))
     store = FakeStatusStore(StateName("implementing"))
     _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False)).unwrap()
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(
-        (LabelName.fake(), LabelName("qa"))
+    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(
+        LabelNames((LabelName.fake(), LabelName("qa")))
     )
 
 
@@ -89,8 +89,8 @@ def test_a_legal_event_sets_the_ticket_to_the_status_the_target_state_maps_to() 
     store = FakeStatusStore(StateName("qa"))
     tracker = seeded_tracker(LabelNames(()))
     _ = transition_with_fake_flow_labels(store, tracker, EventName("ready"), Force(False)).unwrap()
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().status == IssueStatusName(
-        "In Review"
+    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().status).matches(
+        IssueStatusName("In Review")
     )
 
 
@@ -98,14 +98,15 @@ def test_an_illegal_event_leaves_the_store_and_the_ticket_where_they_were() -> N
     store = FakeStatusStore(StateName("grill"))
     tracker = seeded_tracker(LabelNames((LabelName("grill"),)))
     refused = transition_with_fake_flow_labels(store, tracker, EventName("merge"), Force(False))
-    assert isinstance(refused, Err)
-    assert isinstance(refused.error, FlowError)
-    assert re.search("merge is not legal from grill", str(refused.error))
-    assert store.read().unwrap() == StateName("grill")
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(
-        (LabelName("grill"),)
+    error = Assert.that(refused.error).is_instance(FlowError)
+    Assert.that(str(error)).matches_pattern("merge is not legal from grill")
+    Assert.that(store.read().unwrap()).matches(StateName("grill"))
+    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(
+        LabelNames((LabelName("grill"),))
     )
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().status == IssueStatusName.fake()
+    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().status).matches(
+        IssueStatusName.fake()
+    )
 
 
 def test_an_unreachable_board_leaves_the_ticket_where_it_was() -> None:
@@ -113,9 +114,9 @@ def test_an_unreachable_board_leaves_the_ticket_where_it_was() -> None:
     refused = transition_with_fake_flow_labels(
         UnreachableStatusStore(), tracker, EventName("qa"), Force(False)
     )
-    assert refused == Err(WorkspaceManagerError("The workspace board is unreachable."))
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(
-        (LabelName("implementing"),)
+    Assert.that(refused).matches(Err(WorkspaceManagerError("The workspace board is unreachable.")))
+    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(
+        LabelNames((LabelName("implementing"),))
     )
 
 
@@ -123,12 +124,14 @@ def test_forcing_writes_the_target_state_without_validating() -> None:
     store = FakeStatusStore(StateName("grill"))
     tracker = seeded_tracker(LabelNames(()))
     target = transition_with_fake_flow_labels(store, tracker, EventName("merged"), Force(True))
-    assert target == Ok(StateName("merged"))
-    assert store.read().unwrap() == StateName("merged")
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(
-        (LabelName("merged"),)
+    Assert.that(target).matches(Ok(StateName("merged")))
+    Assert.that(store.read().unwrap()).matches(StateName("merged"))
+    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(
+        LabelNames((LabelName("merged"),))
     )
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().status == IssueStatusName("Done")
+    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().status).matches(
+        IssueStatusName("Done")
+    )
 
 
 def test_a_refused_ticket_write_leaves_the_board_where_it_was() -> None:
@@ -142,10 +145,12 @@ def test_a_refused_ticket_write_leaves_the_board_where_it_was() -> None:
         groups={wanted.group: wanted.labels},
     )
     refused = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
-    assert isinstance(refused, Err)
-    assert LabelName.fake().root in str(refused.error)
-    assert store.read().unwrap() == StateName("implementing")
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().status == IssueStatusName.fake()
+    error = Assert.that(refused.error).exists()
+    Assert.that(str(error)).contains(LabelName.fake().root)
+    Assert.that(store.read().unwrap()).matches(StateName("implementing"))
+    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().status).matches(
+        IssueStatusName.fake()
+    )
 
 
 def test_a_status_the_tracker_lacks_leaves_the_ticket_and_the_board_where_they_were() -> None:
@@ -159,20 +164,21 @@ def test_a_status_the_tracker_lacks_leaves_the_ticket_and_the_board_where_they_w
     )
     in_review = TicketStatuses.fake().of(StateName("review"))
     refused = transition_with_fake_flow_labels(store, tracker, EventName("ready"), Force(False))
-    assert isinstance(refused, Err)
-    assert in_review.root in str(refused.error)
-    assert store.read().unwrap() == StateName("qa")
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == Issue.fake().labels
+    error = Assert.that(refused.error).exists()
+    Assert.that(str(error)).contains(in_review.root)
+    Assert.that(store.read().unwrap()).matches(StateName("qa"))
+    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(
+        Issue.fake().labels
+    )
 
 
 def test_missing_flow_labels_point_to_seed_labels_and_leave_the_board_alone() -> None:
     store = FakeStatusStore(StateName("implementing"))
     tracker = FakeTicketTracker(LabelNames.fake(), (TrackedIssue.fake(),))
     refused = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
-    assert isinstance(refused, Err)
-    assert isinstance(refused.error, MissingFlowLabelsError)
-    assert "mw flow seed-labels" in str(refused.error)
-    assert store.read().unwrap() == StateName("implementing")
+    error = Assert.that(refused.error).is_instance(MissingFlowLabelsError)
+    Assert.that(str(error)).contains("mw flow seed-labels")
+    Assert.that(store.read().unwrap()).matches(StateName("implementing"))
 
 
 # The ticket carries no labels, so only the flow label a transition writes is left on it.
@@ -201,7 +207,9 @@ def test_a_transition_writes_the_flow_label_of_the_tickets_own_team() -> None:
     store = FakeStatusStore(StateName("implementing"))
     _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False)).unwrap()
     qa = LabelName("qa")
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames((qa,))
+    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(
+        LabelNames((qa,))
+    )
 
 
 def test_a_transition_falls_back_to_workspace_flow_labels() -> None:
@@ -209,7 +217,9 @@ def test_a_transition_falls_back_to_workspace_flow_labels() -> None:
     store = FakeStatusStore(StateName("implementing"))
     _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False)).unwrap()
     qa = LabelName("qa")
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames((qa,))
+    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(
+        LabelNames((qa,))
+    )
 
 
 def test_another_teams_flow_labels_leave_the_ticket_and_the_board_alone() -> None:
@@ -218,10 +228,9 @@ def test_another_teams_flow_labels_leave_the_ticket_and_the_board_alone() -> Non
     )
     store = FakeStatusStore(StateName("implementing"))
     refused = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
-    assert isinstance(refused, Err)
-    assert isinstance(refused.error, MissingFlowLabelsError)
-    assert store.read().unwrap() == StateName("implementing")
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(())
+    _ = Assert.that(refused.error).is_instance(MissingFlowLabelsError)
+    Assert.that(store.read().unwrap()).matches(StateName("implementing"))
+    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(LabelNames(()))
 
 
 def entering(
@@ -245,11 +254,11 @@ def test_entering_the_flow_labels_the_ticket_and_sets_the_states_status() -> Non
     tracker = seeded_tracker(LabelNames((LabelName.fake(),)))
     todo = StateName("todo")
     todo_status = IssueStatusName("Todo")
-    assert TicketStatuses.fake().of(todo) == todo_status
-    assert entering(tracker, todo, None, IssueStatusName.fake()).apply() == Ok(None)
+    Assert.that(TicketStatuses.fake().of(todo)).matches(todo_status)
+    Assert.that(entering(tracker, todo, None, IssueStatusName.fake()).apply()).matches(Ok(None))
     issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
-    assert issue.labels == LabelNames((LabelName.fake(), LabelName(todo.root)))
-    assert issue.status == todo_status
+    Assert.that(issue.labels).matches(LabelNames((LabelName.fake(), LabelName(todo.root))))
+    Assert.that(issue.status).matches(todo_status)
 
 
 def test_reverting_the_flow_entry_restores_the_labels_and_status() -> None:
@@ -258,10 +267,10 @@ def test_reverting_the_flow_entry_restores_the_labels_and_status() -> None:
     maturing = IssueStatusName("Maturing")
     step = entering(tracker, StateName("todo"), None, maturing)
     _ = step.apply().unwrap()
-    assert step.revert() == Ok(None)
+    Assert.that(step.revert()).matches(Ok(None))
     issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
-    assert issue.labels == held
-    assert issue.status == maturing
+    Assert.that(issue.labels).matches(held)
+    Assert.that(issue.status).matches(maturing)
 
 
 def test_reverting_the_flow_entry_keeps_labels_added_since() -> None:
@@ -271,7 +280,9 @@ def test_reverting_the_flow_entry_keeps_labels_added_since() -> None:
     added = LabelName.fake()
     tracker.add_label(IssueIdentifier.fake(), added).unwrap()
     _ = step.revert().unwrap()
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames((added,))
+    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(
+        LabelNames((added,))
+    )
 
 
 def test_reverting_the_flow_state_change_writes_back_the_replaced_flow_label() -> None:
@@ -280,7 +291,7 @@ def test_reverting_the_flow_state_change_writes_back_the_replaced_flow_label() -
     maturing = IssueStatusName("Maturing")
     step = entering(tracker, StateName("todo"), grill, maturing)
     _ = step.apply().unwrap()
-    assert step.revert() == Ok(None)
+    Assert.that(step.revert()).matches(Ok(None))
     issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
-    assert issue.labels == LabelNames((LabelName.fake(), LabelName(grill.root)))
-    assert issue.status == maturing
+    Assert.that(issue.labels).matches(LabelNames((LabelName.fake(), LabelName(grill.root))))
+    Assert.that(issue.status).matches(maturing)

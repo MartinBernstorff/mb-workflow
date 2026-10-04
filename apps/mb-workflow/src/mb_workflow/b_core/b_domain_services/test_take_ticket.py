@@ -1,5 +1,6 @@
 from typing import override
 
+from assertions import Assert
 from safe_result import Err, Result
 
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
@@ -40,5 +41,5 @@ def test_a_claim_that_cannot_be_labelled_is_withdrawn() -> None:
         request=ClaimRequest.fake(),
         previous=None,
     )
-    assert isinstance(taken.error, ClaimRefusedError)
-    assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
+    _ = Assert.that(taken.error).is_instance(ClaimRefusedError)
+    Assert.that(claims.claims(IssueIdentifier.fake()).unwrap()).matches(Claims(()))

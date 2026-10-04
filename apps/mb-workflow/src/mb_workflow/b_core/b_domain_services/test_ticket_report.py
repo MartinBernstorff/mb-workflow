@@ -1,3 +1,5 @@
+from assertions import Assert
+
 from mb_workflow.b_core.b_domain_services.ticket_report import TicketReport
 from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
@@ -10,7 +12,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
 
 
 def test_reports_the_heading_the_fields_and_the_description() -> None:
-    assert TicketReport.of(IssueDetail.fake()).root == (
+    Assert.that(TicketReport.of(IssueDetail.fake()).root).matches(
         "E-4289 Add widget\n"
         "status: Todo\n"
         "project: BE: Campaigns MVP\n"
@@ -27,7 +29,7 @@ def test_an_issue_without_a_project_labels_or_description_reports_none_of_them()
             "description": None,
         }
     )
-    assert TicketReport.of(bare).root == "E-4289 Add widget\nstatus: Todo\n"
+    Assert.that(TicketReport.of(bare).root).matches("E-4289 Add widget\nstatus: Todo\n")
 
 
 def test_labels_are_joined_by_commas() -> None:
@@ -38,12 +40,12 @@ def test_labels_are_joined_by_commas() -> None:
             )
         }
     )
-    assert "labels: Backend, d-grill\n" in TicketReport.of(labelled).root
+    Assert.that(TicketReport.of(labelled).root).contains("labels: Backend, d-grill\n")
 
 
 def test_an_empty_description_reports_no_body() -> None:
     blank = IssueDetail.fake().model_copy(update={"description": IssueDescription("")})
-    assert TicketReport.of(blank).root.endswith("labels: d-implement\n")
+    Assert.that(TicketReport.of(blank).root).matches_pattern(r"labels: d-implement\n\Z")
 
 
 def test_relations_are_reported_after_the_labels_in_identifier_order() -> None:
@@ -53,6 +55,6 @@ def test_relations_are_reported_after_the_labels_in_identifier_order() -> None:
             "blocked_by": frozenset({IssueIdentifier("E-1")}),
         }
     )
-    assert "labels: d-implement\nblocks: E-2, E-3\nblocked by: E-1\n" in (
-        TicketReport.of(related).root
+    Assert.that(TicketReport.of(related).root).contains(
+        "labels: d-implement\nblocks: E-2, E-3\nblocked by: E-1\n"
     )
