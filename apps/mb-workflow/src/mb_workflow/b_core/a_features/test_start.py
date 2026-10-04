@@ -481,6 +481,16 @@ def test_a_failed_worktree_creation_leaves_an_unassigned_ticket_unassigned() -> 
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().assigned == Assigned(False)
 
 
+def test_a_failed_worktree_creation_takes_an_unlabelled_ticket_back_out_of_the_flow() -> None:
+    before = IssueStatusName("Maturing")
+    tracker = tracking(None, status=before)
+    with pytest.raises(WorkspaceManagerError):
+        _ = starting(refusing_manager(), tracker, starting_in(StateName("Specced")))
+    issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
+    assert issue.labels == labelled(None)
+    assert issue.status == before
+
+
 def test_a_failed_forced_start_does_not_restore_the_rivals_claim() -> None:
     claims = claimed_by_a_rival()
     forcing = StartRequest.fake().model_copy(update={"take_over": TakeOver(True)})

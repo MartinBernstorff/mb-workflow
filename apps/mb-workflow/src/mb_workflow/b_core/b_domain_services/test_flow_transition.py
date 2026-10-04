@@ -4,7 +4,11 @@ import pytest
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
-from mb_workflow.b_core.b_domain_services.flow_transition import FlowTransition, Force
+from mb_workflow.b_core.b_domain_services.flow_transition import (
+    FlowEntryStep,
+    FlowTransition,
+    Force,
+)
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
@@ -200,3 +204,43 @@ def test_another_teams_flow_labels_leave_the_ticket_and_the_board_alone() -> Non
     assert isinstance(refused.error, MissingFlowLabelsError)
     assert store.read() == StateName("Implementing")
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(())
+
+
+def entering_specced(tracker: FakeTicketTracker) -> FlowEntryStep:
+    return FlowEntryStep(
+        tracker=tracker,
+        issue=IssueIdentifier.fake(),
+        wanted=FlowLabels.fake(),
+        statuses=TicketStatuses.fake(),
+        state=StateName("Specced"),
+        previous=IssueStatusName("Maturing"),
+    )
+
+
+def test_entering_the_flow_labels_the_ticket_and_sets_the_states_status() -> None:
+    tracker = seeded_tracker(LabelNames((LabelName.fake(),)))
+    assert entering_specced(tracker).apply() == Ok(None)
+    issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
+    assert issue.labels == LabelNames((LabelName.fake(), LabelName("Specced")))
+    assert issue.status == IssueStatusName("Todo")
+
+
+def test_reverting_the_flow_entry_restores_the_labels_and_status() -> None:
+    tracker = seeded_tracker(LabelNames((LabelName.fake(),)))
+    step = entering_specced(tracker)
+    _ = step.apply().unwrap()
+    assert step.revert() == Ok(None)
+    issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
+    assert issue.labels == LabelNames((LabelName.fake(),))
+    assert issue.status == IssueStatusName("Maturing")
+
+
+def test_reverting_the_flow_entry_keeps_labels_added_since() -> None:
+    tracker = seeded_tracker(LabelNames(()))
+    step = entering_specced(tracker)
+    _ = step.apply().unwrap()
+    tracker.add_label(IssueIdentifier.fake(), LabelName.fake())
+    _ = step.revert().unwrap()
+    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(
+        (LabelName.fake(),)
+    )

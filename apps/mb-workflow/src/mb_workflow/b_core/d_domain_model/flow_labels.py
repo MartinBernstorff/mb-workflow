@@ -80,8 +80,12 @@ class FlowLabels(Model):
         )
 
     def relabelled(self, held: LabelNames, state: StateName) -> LabelNames:
-        kept = tuple(label for label in held.root if self.labels.matching(label) is None)
-        return LabelNames((*kept, LabelName(state.root)))
+        return LabelNames((*self.unlabelled(held).root, LabelName(state.root)))
+
+    def unlabelled(self, held: LabelNames) -> LabelNames:
+        return LabelNames(
+            tuple(label for label in held.root if self.labels.matching(label) is None)
+        )
 
     @staticmethod
     def chart_labels(chart: type[WorkflowChart]) -> LabelNames:
