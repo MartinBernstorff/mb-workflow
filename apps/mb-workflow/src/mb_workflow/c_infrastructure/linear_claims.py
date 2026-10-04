@@ -119,29 +119,40 @@ class LinearClaims(ClaimRegistry):
                 return failed
 
     @override
-    def post(self, ticket: IssueIdentifier, holder: ClaimHolder) -> ClaimId:
-        # Writes still raise; MB-130 returns their errors as values too.
-        issue = self._thread(ticket).unwrap().id
-        with LinearCall.translated_errors():
-            data = self._client.execute(
+    def post(
+        self, ticket: IssueIdentifier, holder: ClaimHolder
+    ) -> Result[ClaimId, TicketTrackerError]:
+        thread = self._thread(ticket)
+        if isinstance(thread, Err):
+            return thread
+        answered = LinearCall.answered(
+            lambda: self._client.execute(
                 "mutation($input: CommentCreateInput!) {"
                 " commentCreate(input: $input) { success comment { id } } }",
-                {"input": {"issueId": issue.root, "body": holder.comment().root}},
+                {"input": {"issueId": thread.value.id.root, "body": holder.comment().root}},
             )
-        posted = PostedComment.model_validate(data)
+        )
+        if isinstance(answered, Err):
+            return answered
+        posted = PostedComment.model_validate(answered.value)
         if not posted.success.root or posted.id is None:
-            raise TicketTrackerError(f"Linear did not post the claim on {ticket.root}.")
-        return posted.id
+            return Err(TicketTrackerError(f"Linear did not post the claim on {ticket.root}."))
+        return Ok(posted.id)
 
     @override
-    def withdraw(self, ticket: IssueIdentifier, claim: ClaimId) -> None:
-        with LinearCall.translated_errors():
-            data = self._client.execute(
+    def withdraw(self, ticket: IssueIdentifier, claim: ClaimId) -> Result[None, TicketTrackerError]:
+        match LinearCall.answered(
+            lambda: self._client.execute(
                 "mutation($id: String!) { commentDelete(id: $id) { success } }",
                 {"id": claim.root},
             )
-        if not DeletedComment.model_validate(data).success.root:
-            raise TicketTrackerError(f"Linear did not delete the claim {claim.root}.")
+        ):
+            case Ok(data):
+                if not DeletedComment.model_validate(data).success.root:
+                    return Err(TicketTrackerError(f"Linear did not delete the claim {claim.root}."))
+                return Ok(None)
+            case Err() as failed:
+                return failed
 
     def _thread(self, ticket: IssueIdentifier) -> Result[CommentThread, TicketTrackerError]:
         match LinearCall.answered(

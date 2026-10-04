@@ -41,9 +41,13 @@ class UnknownClaimLabelError(ClaimRefusedError):
 class ClaimRegistry(Protocol):
     def claims(self, ticket: IssueIdentifier) -> Result[Claims, TicketTrackerError]: ...
 
-    def post(self, ticket: IssueIdentifier, holder: ClaimHolder) -> ClaimId: ...
+    def post(
+        self, ticket: IssueIdentifier, holder: ClaimHolder
+    ) -> Result[ClaimId, TicketTrackerError]: ...
 
-    def withdraw(self, ticket: IssueIdentifier, claim: ClaimId) -> None: ...
+    def withdraw(
+        self, ticket: IssueIdentifier, claim: ClaimId
+    ) -> Result[None, TicketTrackerError]: ...
 
 
 class ClaimRequest(Model):
@@ -76,33 +80,49 @@ class Claiming:
             return Ok(Posted(False))
         if current is not None and not request.take_over.root:
             raise Claiming.claimed_error(request.ticket, current)
-        Claiming.withdraw_claims(registry, request.ticket, held.value)
+        withdrawn = Claiming.withdraw_claims(registry, request.ticket, held.value)
+        if isinstance(withdrawn, Err):
+            return withdrawn
+        return Claiming.post_claim(registry, request)
 
+    @staticmethod
+    def post_claim(
+        registry: ClaimRegistry, request: ClaimRequest
+    ) -> Result[Posted, TicketTrackerError]:
         # Every claimer posts before reading, so each reads back the same earliest claim, provided Linear serves a just-posted comment at once.
         with Activity(f"Posting a claim on {request.ticket.root}").logged(logger):
             posted = registry.post(request.ticket, request.holder)
+        if isinstance(posted, Err):
+            return posted
         with Activity(f"Reading back the claims on {request.ticket.root}").logged(logger):
             read_back = registry.claims(request.ticket)
         if isinstance(read_back, Err):
             return read_back
         winner = read_back.value.holding(request.status)
-        if winner is not None and winner.id == posted:
+        if winner is not None and winner.id == posted.value:
             return Ok(Posted(True))
-        if posted in read_back.value.ids():
+        if posted.value in read_back.value.ids():
             with Activity(f"Withdrawing our claim on {request.ticket.root}").logged(logger):
-                registry.withdraw(request.ticket, posted)
+                ours = registry.withdraw(request.ticket, posted.value)
+            if isinstance(ours, Err):
+                return ours
         if winner is None:
             raise ClaimLostError(f"Our claim on {request.ticket.root} was withdrawn by another.")
         raise Claiming.claimed_error(request.ticket, winner)
 
     @staticmethod
-    def withdraw_claims(registry: ClaimRegistry, ticket: IssueIdentifier, held: Claims) -> None:
+    def withdraw_claims(
+        registry: ClaimRegistry, ticket: IssueIdentifier, held: Claims
+    ) -> Result[None, TicketTrackerError]:
         for claim in held.root:
             with Activity(
                 f"Withdrawing the claim of worktree {claim.holder.worktree.root}"
                 f" on {claim.holder.host.root}"
             ).logged(logger):
-                registry.withdraw(ticket, claim.id)
+                withdrawn = registry.withdraw(ticket, claim.id)
+            if isinstance(withdrawn, Err):
+                return withdrawn
+        return Ok(None)
 
     @staticmethod
     def claimed_error(ticket: IssueIdentifier, holder: Claim) -> ClaimLostError:
@@ -128,19 +148,18 @@ class Claiming:
     def label_claim(
         tracker: TicketTracker, request: LabelledClaim
     ) -> Result[None, ClaimRefusedError]:
-        try:
-            with Activity(f"Labelling {request.ticket.root} as {request.label.root}").logged(
-                logger
-            ):
-                tracker.add_label(request.ticket, request.label)
-        except TicketTrackerError as error:
-            return Err(
-                ClaimRefusedError(
-                    f"Could not label {request.ticket.root} as {request.label.root}."
-                    f" Create the label or change claims.label. {error}"
+        with Activity(f"Labelling {request.ticket.root} as {request.label.root}").logged(logger):
+            labelled = tracker.add_label(request.ticket, request.label)
+        match labelled:
+            case Ok():
+                return Ok(None)
+            case Err(error):
+                return Err(
+                    ClaimRefusedError(
+                        f"Could not label {request.ticket.root} as {request.label.root}."
+                        f" Create the label or change claims.label. {error}"
+                    )
                 )
-            )
-        return Ok(None)
 
     @staticmethod
     def withdraw_holders_claims(
@@ -150,7 +169,9 @@ class Claiming:
             case Ok(held):
                 for claim in held.root:
                     if claim.holder == holder:
-                        registry.withdraw(ticket, claim.id)
+                        withdrawn = registry.withdraw(ticket, claim.id)
+                        if isinstance(withdrawn, Err):
+                            return withdrawn
                 return Ok(None)
             case Err() as failed:
                 return failed
@@ -168,14 +189,13 @@ class Claiming:
                 return left
             if left.value.root:
                 return Ok(None)
-            try:
-                tracker.remove_label(request.ticket, request.label)
-            except TicketTrackerError as error:
+            removed = tracker.remove_label(request.ticket, request.label)
+            if isinstance(removed, Err):
                 logger.warning(
                     "Could not remove the %s label from %s: %s",
                     request.label.root,
                     request.ticket.root,
-                    error,
+                    removed.error,
                 )
             return Ok(None)
 
@@ -202,16 +222,19 @@ class FakeClaimRegistry(ClaimRegistry):
         return Ok(self._held_claims(ticket))
 
     @override
-    def post(self, ticket: IssueIdentifier, holder: ClaimHolder) -> ClaimId:
+    def post(
+        self, ticket: IssueIdentifier, holder: ClaimHolder
+    ) -> Result[ClaimId, TicketTrackerError]:
         posted = Claim(id=ClaimId(f"claim-{next(self._ids)}"), holder=holder)
         self._claims[ticket] = Claims((*self._held_claims(ticket).root, posted))
-        return posted.id
+        return Ok(posted.id)
 
     @override
-    def withdraw(self, ticket: IssueIdentifier, claim: ClaimId) -> None:
+    def withdraw(self, ticket: IssueIdentifier, claim: ClaimId) -> Result[None, TicketTrackerError]:
         self._claims[ticket] = Claims(
             tuple(held for held in self._held_claims(ticket).root if held.id != claim)
         )
+        return Ok(None)
 
     def _held_claims(self, ticket: IssueIdentifier) -> Claims:
         return self._claims.get(ticket, Claims(()))

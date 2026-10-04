@@ -362,14 +362,11 @@ class Drain:
                         return started
                     if started.value.root:
                         picked.append(ticket)
-                        if skips_limits:
-                            with Activity(
-                                f"Removing label {pool.skip_limits_label.root}"
-                                f" from {ticket.issue.identifier.root}"
-                            ).logged(logger):
-                                tracker.remove_label(
-                                    ticket.issue.identifier, pool.skip_limits_label
-                                )
+                        removed = Drain.remove_skip_limits_label(
+                            tracker, ticket, pool.skip_limits_label
+                        )
+                        if isinstance(removed, Err):
+                            return removed
                 # A ticket lost to another host is now in progress there, so it fills a slot too.
                 occupancy = occupancy.with_slot(slot)
             return Ok(
@@ -381,6 +378,17 @@ class Drain:
                     full=full,
                 )
             )
+
+    @staticmethod
+    def remove_skip_limits_label(
+        tracker: TicketTracker, ticket: PoolTicket, label: LabelName
+    ) -> Result[None, TicketTrackerError]:
+        if not ticket.skips_limits(label).root:
+            return Ok(None)
+        with Activity(f"Removing label {label.root} from {ticket.issue.identifier.root}").logged(
+            logger
+        ):
+            return tracker.remove_label(ticket.issue.identifier, label)
 
     @staticmethod
     def try_start_ticket(

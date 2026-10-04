@@ -1,6 +1,7 @@
 from typing import override
 
 import pytest
+from safe_result import Err, Result
 
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import (
@@ -21,8 +22,10 @@ from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, 
 # Knows the claim label, yet fails to put it on a ticket, as Linear may.
 class LabelRefusingTracker(FakeTicketTracker):
     @override
-    def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
-        raise TicketTrackerError(f"Linear refused the label {label.root}.")
+    def add_label(
+        self, issue: IssueIdentifier, label: LabelName
+    ) -> Result[None, TicketTrackerError]:
+        return Err(TicketTrackerError(f"Linear refused the label {label.root}."))
 
 
 def test_a_claim_that_cannot_be_labelled_is_withdrawn() -> None:

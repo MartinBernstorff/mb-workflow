@@ -73,11 +73,11 @@ class TicketTracker(Protocol):
 
     def create_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
-    ) -> None: ...
+    ) -> Result[None, TicketTrackerError]: ...
 
     def recolor_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
-    ) -> None: ...
+    ) -> Result[None, TicketTrackerError]: ...
 
     def rename_group_label(
         self, group: LabelGroupName, label: LabelName, renamed: LabelName, team: TeamKey | None
@@ -110,17 +110,27 @@ class TicketTracker(Protocol):
         self, issue: IssueIdentifier
     ) -> Result[IssueDetail, TicketTrackerError]: ...
 
-    def add_label(self, issue: IssueIdentifier, label: LabelName) -> None: ...
+    def add_label(
+        self, issue: IssueIdentifier, label: LabelName
+    ) -> Result[None, TicketTrackerError]: ...
 
-    def remove_label(self, issue: IssueIdentifier, label: LabelName) -> None: ...
+    def remove_label(
+        self, issue: IssueIdentifier, label: LabelName
+    ) -> Result[None, TicketTrackerError]: ...
 
-    def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None: ...
+    def set_labels(
+        self, issue: IssueIdentifier, labels: LabelNames
+    ) -> Result[None, TicketTrackerError]: ...
 
-    def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None: ...
+    def assign(
+        self, issue: IssueIdentifier, assignee: Assignee
+    ) -> Result[None, TicketTrackerError]: ...
 
-    def update_issue(self, issue: IssueIdentifier, update: IssueUpdate) -> None: ...
+    def update_issue(
+        self, issue: IssueIdentifier, update: IssueUpdate
+    ) -> Result[None, TicketTrackerError]: ...
 
-    def create_issue(self, new: NewIssue) -> CreatedIssue: ...
+    def create_issue(self, new: NewIssue) -> Result[CreatedIssue, TicketTrackerError]: ...
 
     def blockers(
         self, issue: IssueIdentifier
@@ -242,24 +252,27 @@ class FakeTicketTracker(TicketTracker):
     @override
     def create_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
-    ) -> None:
+    ) -> Result[None, TicketTrackerError]:
         held = ColoredLabels((*self._group_members(group, team).root, *labels.root))
         if team is None:
             self._groups[group] = held
             self._labels = LabelNames((*self._labels.root, *labels.label_names().root))
         else:
             self._team_groups[(team, group)] = held
+        return Ok(None)
 
     @override
     def recolor_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
-    ) -> None:
+    ) -> Result[None, TicketTrackerError]:
         held = self._group_members(group, team)
         unknown = held.label_names().unmatched(labels.label_names())
         if unknown.root:
-            raise TicketTrackerError(
-                f"The {group.root} group holds no label named"
-                f" {', '.join(label.root for label in unknown.root)}."
+            return Err(
+                TicketTrackerError(
+                    f"The {group.root} group holds no label named"
+                    f" {', '.join(label.root for label in unknown.root)}."
+                )
             )
         colors = {label.name.root.casefold(): label.color for label in labels.root}
         recolored = ColoredLabels(
@@ -271,6 +284,7 @@ class FakeTicketTracker(TicketTracker):
             )
         )
         self._store_group(group, team, recolored)
+        return Ok(None)
 
     @override
     def rename_group_label(
@@ -361,30 +375,34 @@ class FakeTicketTracker(TicketTracker):
         listed = self._views.get(view)
         if listed is None:
             return Err(TicketTrackerError(f"No view has the slug {view.root}."))
-        return Ok(
-            PoolTickets(
-                tuple(
-                    PoolTicket(issue=self._read(tracked), priority=tracked.priority)
-                    for tracked in (self._tracked(identifier) for identifier in listed)
-                    if not self._open_blockers(tracked)
+        unblocked: list[PoolTicket] = []
+        for identifier in listed:
+            found = self._found(identifier)
+            if isinstance(found, Err):
+                return found
+            blockers = self._open_blockers(found.value)
+            if isinstance(blockers, Err):
+                return blockers
+            if not blockers.value:
+                unblocked.append(
+                    PoolTicket(issue=self._read(found.value), priority=found.value.priority)
                 )
-            )
-        )
+        return Ok(PoolTickets(tuple(unblocked)))
 
     @override
     def labelled_issues(
         self, label: LabelName, excluding: StatusTypes
     ) -> Result[Issues, TicketTrackerError]:
-        return Ok(
-            Issues(
-                tuple(
-                    self._read(tracked)
-                    for tracked in self._issues.values()
-                    if tracked.issue.labels.matching(label) is not None
-                    and not excluding.has(self._status_named(tracked.issue.status).type).root
-                )
-            )
-        )
+        labelled: list[Issue] = []
+        for tracked in self._issues.values():
+            if tracked.issue.labels.matching(label) is None:
+                continue
+            status = self._status_named(tracked.issue.status)
+            if isinstance(status, Err):
+                return status
+            if not excluding.has(status.value.type).root:
+                labelled.append(self._read(tracked))
+        return Ok(Issues(tuple(labelled)))
 
     @override
     def read_issue(self, issue: IssueIdentifier) -> Result[Issue, TicketTrackerError]:
@@ -417,114 +435,102 @@ class FakeTicketTracker(TicketTracker):
                 return failed
 
     @override
-    def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
-        self.set_labels(issue, LabelNames((*self._read(self._tracked(issue)).labels.root, label)))
+    def add_label(
+        self, issue: IssueIdentifier, label: LabelName
+    ) -> Result[None, TicketTrackerError]:
+        match self._found(issue):
+            case Ok(tracked):
+                return self.set_labels(issue, LabelNames((*tracked.issue.labels.root, label)))
+            case Err() as failed:
+                return failed
 
     @override
-    def remove_label(self, issue: IssueIdentifier, label: LabelName) -> None:
-        (known,) = self._spelled(LabelNames((label,)), self._tracked(issue).team).root
-        self.set_labels(issue, self._read(self._tracked(issue)).labels.without(known))
+    def remove_label(
+        self, issue: IssueIdentifier, label: LabelName
+    ) -> Result[None, TicketTrackerError]:
+        found = self._found(issue)
+        if isinstance(found, Err):
+            return found
+        spelled = self._spelled(LabelNames((label,)), found.value.team)
+        if isinstance(spelled, Err):
+            return spelled
+        (known,) = spelled.value.root
+        return self.set_labels(issue, found.value.issue.labels.without(known))
 
     @override
-    def set_labels(self, issue: IssueIdentifier, labels: LabelNames) -> None:
-        tracked = self._tracked(issue)
-        spelled = self._spelled(labels, tracked.team)
-        self._issues[issue] = tracked.model_copy(
-            update={"issue": tracked.issue.model_copy(update={"labels": spelled})}
-        )
+    def set_labels(
+        self, issue: IssueIdentifier, labels: LabelNames
+    ) -> Result[None, TicketTrackerError]:
+        found = self._found(issue)
+        if isinstance(found, Err):
+            return found
+        spelled = self._spelled(labels, found.value.team)
+        if isinstance(spelled, Err):
+            return spelled
+        self._relabel(found.value, spelled.value)
+        return Ok(None)
 
     @override
-    def assign(self, issue: IssueIdentifier, assignee: Assignee) -> None:
-        tracked = self._tracked(issue)
-        self._issues[issue] = tracked.model_copy(
-            update={
-                "issue": tracked.issue.model_copy(update={"assigned": Assigned(True)}),
-                "assignee": assignee,
-            }
-        )
-
-    @override
-    def update_issue(self, issue: IssueIdentifier, update: IssueUpdate) -> None:
-        tracked = self._tracked(issue)
-        labels = (
-            tracked.issue.labels
-            if update.labels is None
-            else self._spelled(update.labels, tracked.team)
-        )
-        project = self._moved(tracked.issue.project, update.project)
-        status = (
-            tracked.issue.status
-            if update.status is None
-            else self._status_named(update.status).name
-        )
-        milestone = self._pinned(
-            None if update.project is not None else tracked.milestone, update.milestone
-        )
-        assignee = tracked.assignee if update.assignee is None else update.assignee
-        held = assignee if isinstance(assignee, Assignee) else None
-        for related in (*update.blocks, *update.blocked_by):
-            _ = self._tracked(related)
-        self._issues[issue] = tracked.model_copy(
-            update={
-                "issue": tracked.issue.model_copy(
+    def assign(
+        self, issue: IssueIdentifier, assignee: Assignee
+    ) -> Result[None, TicketTrackerError]:
+        match self._found(issue):
+            case Ok(tracked):
+                self._issues[issue] = tracked.model_copy(
                     update={
-                        "labels": labels,
-                        "project": project,
-                        "status": status,
-                        "assigned": Assigned(held is not None),
+                        "issue": tracked.issue.model_copy(update={"assigned": Assigned(True)}),
+                        "assignee": assignee,
                     }
-                ),
-                "title": tracked.title if update.title is None else update.title,
-                "description": (
-                    tracked.description if update.description is None else update.description
-                ),
-                "assignee": held,
-                "milestone": milestone,
-                "blocked_by": (*tracked.blocked_by, *update.blocked_by),
-            }
-        )
+                )
+                return Ok(None)
+            case Err() as failed:
+                return failed
+
+    @override
+    def update_issue(
+        self, issue: IssueIdentifier, update: IssueUpdate
+    ) -> Result[None, TicketTrackerError]:
+        found = self._found(issue)
+        if isinstance(found, Err):
+            return found
+        updated = self._updated(found.value, update)
+        if isinstance(updated, Err):
+            return updated
+        related = self._all_found((*update.blocks, *update.blocked_by))
+        if isinstance(related, Err):
+            return related
+        self._issues[issue] = updated.value
         for blocked in update.blocks:
-            other = self._tracked(blocked)
+            other = self._issues[blocked]
             self._issues[blocked] = other.model_copy(
                 update={"blocked_by": (*other.blocked_by, issue)}
             )
+        return Ok(None)
 
     @override
-    def create_issue(self, new: NewIssue) -> CreatedIssue:
-        team = self._team(new.team, new.project)
-        for blocker in new.blocked_by:
-            _ = self._tracked(blocker)
-        blocked = tuple(self._tracked(issue) for issue in new.blocks)
+    def create_issue(self, new: NewIssue) -> Result[CreatedIssue, TicketTrackerError]:
         identifier = next(
             candidate
             for candidate in (IssueIdentifier(f"E-{n}") for n in count(len(self._issues) + 1))
             if candidate not in self._issues
         )
-        self._issues[identifier] = TrackedIssue(
-            issue=Issue(
-                identifier=identifier,
-                status=self._status_named(new.status).name,
-                project=self._moved(None, new.project),
-                labels=self._spelled(new.labels, team.key),
-                grouped=GroupedLabels(()),
-                assigned=Assigned(new.assignee is not None),
-            ),
-            title=new.title,
-            description=new.description,
-            assignee=new.assignee,
-            milestone=self._pinned(None, new.milestone),
-            creator=Creator(self._viewer.root),
-            created_on=CreatedOn.fake(),
-            priority=Priority.no_priority,
-            blocked_by=new.blocked_by,
-            team=team.key,
-        )
-        for tracked in blocked:
-            self._issues[tracked.issue.identifier] = tracked.model_copy(
-                update={"blocked_by": (*tracked.blocked_by, identifier)}
+        created = self._created(identifier, new)
+        if isinstance(created, Err):
+            return created
+        related = self._all_found((*new.blocked_by, *new.blocks))
+        if isinstance(related, Err):
+            return related
+        self._issues[identifier] = created.value
+        for blocked in new.blocks:
+            other = self._issues[blocked]
+            self._issues[blocked] = other.model_copy(
+                update={"blocked_by": (*other.blocked_by, identifier)}
             )
-        return CreatedIssue(
-            identifier=identifier, url=IssueUrl(f"https://linear.app/fake/issue/{identifier.root}")
+        return Ok(
+            CreatedIssue(
+                identifier=identifier,
+                url=IssueUrl(f"https://linear.app/fake/issue/{identifier.root}"),
+            )
         )
 
     @override
@@ -578,86 +584,203 @@ class FakeTicketTracker(TicketTracker):
             update={"issue": tracked.issue.model_copy(update={"labels": labels})}
         )
 
-    def _team(self, key: TeamKey | None, project: ProjectName | None) -> Team:
+    def _updated(
+        self, tracked: TrackedIssue, update: IssueUpdate
+    ) -> Result[TrackedIssue, TicketTrackerError]:
+        labels = (
+            Ok(tracked.issue.labels)
+            if update.labels is None
+            else self._spelled(update.labels, tracked.team)
+        )
+        if isinstance(labels, Err):
+            return labels
+        project = self._moved(tracked.issue.project, update.project)
+        if isinstance(project, Err):
+            return project
+        status = None if update.status is None else self._status_named(update.status)
+        if isinstance(status, Err):
+            return status
+        milestone = self._pinned(
+            None if update.project is not None else tracked.milestone, update.milestone
+        )
+        if isinstance(milestone, Err):
+            return milestone
+        assignee = tracked.assignee if update.assignee is None else update.assignee
+        held = assignee if isinstance(assignee, Assignee) else None
+        return Ok(
+            tracked.model_copy(
+                update={
+                    "issue": tracked.issue.model_copy(
+                        update={
+                            "labels": labels.value,
+                            "project": project.value,
+                            "status": tracked.issue.status if status is None else status.value.name,
+                            "assigned": Assigned(held is not None),
+                        }
+                    ),
+                    "title": tracked.title if update.title is None else update.title,
+                    "description": (
+                        tracked.description if update.description is None else update.description
+                    ),
+                    "assignee": held,
+                    "milestone": milestone.value,
+                    "blocked_by": (*tracked.blocked_by, *update.blocked_by),
+                }
+            )
+        )
+
+    def _created(
+        self, identifier: IssueIdentifier, new: NewIssue
+    ) -> Result[TrackedIssue, TicketTrackerError]:
+        team = self._team(new.team, new.project)
+        if isinstance(team, Err):
+            return team
+        status = self._status_named(new.status)
+        if isinstance(status, Err):
+            return status
+        project = self._moved(None, new.project)
+        if isinstance(project, Err):
+            return project
+        labels = self._spelled(new.labels, team.value.key)
+        if isinstance(labels, Err):
+            return labels
+        milestone = self._pinned(None, new.milestone)
+        if isinstance(milestone, Err):
+            return milestone
+        return Ok(
+            TrackedIssue(
+                issue=Issue(
+                    identifier=identifier,
+                    status=status.value.name,
+                    project=project.value,
+                    labels=labels.value,
+                    grouped=GroupedLabels(()),
+                    assigned=Assigned(new.assignee is not None),
+                ),
+                title=new.title,
+                description=new.description,
+                assignee=new.assignee,
+                milestone=milestone.value,
+                creator=Creator(self._viewer.root),
+                created_on=CreatedOn.fake(),
+                priority=Priority.no_priority,
+                blocked_by=new.blocked_by,
+                team=team.value.key,
+            )
+        )
+
+    def _all_found(self, issues: tuple[IssueIdentifier, ...]) -> Result[None, TicketTrackerError]:
+        for issue in issues:
+            found = self._found(issue)
+            if isinstance(found, Err):
+                return found
+        return Ok(None)
+
+    def _team(
+        self, key: TeamKey | None, project: ProjectName | None
+    ) -> Result[Team, TicketTrackerError]:
         if key is not None:
             found = next((team for team in self._teams if team.key.names(key).root), None)
             if found is None:
-                raise TicketTrackerError(f"No team has the key {key.root}.")
-            return found
+                return Err(TicketTrackerError(f"No team has the key {key.root}."))
+            return Ok(found)
         if project is None:
-            raise TicketTrackerError("Name a team or a project to create the issue in.")
-        spelled = self._project(project).name
+            return Err(TicketTrackerError("Name a team or a project to create the issue in."))
+        known = self._project(project)
+        if isinstance(known, Err):
+            return known
+        spelled = known.value.name
         owners = tuple(team for team in self._teams if spelled in team.projects)
         if len(owners) != 1:
-            raise TicketTrackerError(
-                f"{spelled.root} belongs to several teams. Set [issues] team to pick one."
+            return Err(
+                TicketTrackerError(
+                    f"{spelled.root} belongs to several teams. Set [issues] team to pick one."
+                )
             )
-        return owners[0]
+        return Ok(owners[0])
 
     # An issue carries only workspace labels and those of its own team.
-    def _spelled(self, labels: LabelNames, team: TeamKey) -> LabelNames:
+    def _spelled(self, labels: LabelNames, team: TeamKey) -> Result[LabelNames, TicketTrackerError]:
         groups = self._groups_of(team)
         known = LabelNames(
             (*self._labels.root, *(label for _, members in groups for label in members.root))
         )
         unknown = known.unmatched(labels)
         if len(unknown.root) > 0:
-            raise TicketTrackerError(
-                f"No label is named {', '.join(label.root for label in unknown.root)}."
+            return Err(
+                TicketTrackerError(
+                    f"No label is named {', '.join(label.root for label in unknown.root)}."
+                )
             )
         spelled = known.spelled(labels)
         for group, members in groups:
             held = members.spelled(spelled)
             if len(held.root) > 1:
-                raise TicketTrackerError(
-                    f"{', '.join(label.root for label in held.root)} are all in the"
-                    f" {group.root} group, and an issue carries at most one label of a group."
+                return Err(
+                    TicketTrackerError(
+                        f"{', '.join(label.root for label in held.root)} are all in the"
+                        f" {group.root} group, and an issue carries at most one label of a group."
+                    )
                 )
-        return spelled
+        return Ok(spelled)
 
     def _moved(
         self, held: ProjectName | None, wanted: ProjectName | Cleared | None
-    ) -> ProjectName | None:
+    ) -> Result[ProjectName | None, TicketTrackerError]:
         if wanted is None:
-            return held
+            return Ok(held)
         if isinstance(wanted, Cleared):
-            return None
-        return self._project(wanted).name
+            return Ok(None)
+        match self._project(wanted):
+            case Ok(project):
+                return Ok(project.name)
+            case Err() as failed:
+                return failed
 
     def _pinned(
         self, held: MilestoneName | None, wanted: Milestone | Cleared | None
-    ) -> MilestoneName | None:
+    ) -> Result[MilestoneName | None, TicketTrackerError]:
         if wanted is None:
-            return held
+            return Ok(held)
         if isinstance(wanted, Cleared):
-            return None
-        found = self._project(wanted.project).milestones.matching(wanted.name)
+            return Ok(None)
+        project = self._project(wanted.project)
+        if isinstance(project, Err):
+            return project
+        found = project.value.milestones.matching(wanted.name)
         if found is None:
-            raise TicketTrackerError(
-                f"{wanted.project.root} has no milestone named {wanted.name.root}."
+            return Err(
+                TicketTrackerError(
+                    f"{wanted.project.root} has no milestone named {wanted.name.root}."
+                )
             )
-        return found
+        return Ok(found)
 
-    def _status_named(self, name: IssueStatusName) -> IssueStatus:
+    def _status_named(self, name: IssueStatusName) -> Result[IssueStatus, TicketTrackerError]:
         status = self._statuses.matching(name)
         if status is None:
-            raise TicketTrackerError(f"No status is named {name.root}.")
-        return status
+            return Err(TicketTrackerError(f"No status is named {name.root}."))
+        return Ok(status)
 
-    def _project(self, name: ProjectName) -> Project:
+    def _project(self, name: ProjectName) -> Result[Project, TicketTrackerError]:
         project = self._projects.matching(name)
         if project is None:
-            raise TicketTrackerError(f"No project is named {name.root}.")
-        return project
+            return Err(TicketTrackerError(f"No project is named {name.root}."))
+        return Ok(project)
 
     # Linear counts a blocker as open until it reaches a completed or canceled state.
-    def _open_blockers(self, tracked: TrackedIssue) -> tuple[IssueIdentifier, ...]:
+    def _open_blockers(
+        self, tracked: TrackedIssue
+    ) -> Result[tuple[IssueIdentifier, ...], TicketTrackerError]:
         finished = StatusNames((*Released.statuses().root, IssueStatusName("Done")))
-        return tuple(
-            blocker
-            for blocker in tracked.blocked_by
-            if finished.matching(self._tracked(blocker).issue.status) is None
-        )
+        still_open: list[IssueIdentifier] = []
+        for blocker in tracked.blocked_by:
+            found = self._found(blocker)
+            if isinstance(found, Err):
+                return found
+            if finished.matching(found.value.issue.status) is None:
+                still_open.append(blocker)
+        return Ok(tuple(still_open))
 
     # A team's group may share its name with a workspace group, yet Linear keeps the two apart.
     def _groups_of(self, team: TeamKey) -> tuple[tuple[LabelGroupName, LabelNames], ...]:
@@ -688,14 +811,6 @@ class FakeTicketTracker(TicketTracker):
             )
         )
         return tracked.issue.model_copy(update={"grouped": grouped})
-
-    # Writes still raise; MB-130 returns their errors as values too.
-    def _tracked(self, issue: IssueIdentifier) -> TrackedIssue:
-        match self._found(issue):
-            case Ok(tracked):
-                return tracked
-            case Err(error):
-                raise error
 
     def _found(self, issue: IssueIdentifier) -> Result[TrackedIssue, TicketTrackerError]:
         tracked = self._issues.get(issue)

@@ -1,7 +1,6 @@
 import re
 from typing import TYPE_CHECKING
 
-import pytest
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
@@ -142,8 +141,9 @@ def test_a_refused_ticket_write_leaves_the_board_where_it_was() -> None:
         statuses=mapped_statuses(),
         groups={wanted.group: wanted.labels},
     )
-    with pytest.raises(TicketTrackerError, match=f"No label is named {LabelName.fake().root}"):
-        _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False)).unwrap()
+    refused = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
+    assert isinstance(refused, Err)
+    assert LabelName.fake().root in str(refused.error)
     assert store.read().unwrap() == StateName("Implementing")
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().status == IssueStatusName.fake()
 
@@ -157,10 +157,9 @@ def test_a_status_the_tracker_lacks_leaves_the_ticket_and_the_board_where_they_w
         statuses=IssueStatuses((IssueStatus.fake(),)),
         groups={wanted.group: wanted.labels},
     )
-    with pytest.raises(TicketTrackerError, match="No status is named In Review"):
-        _ = transition_with_fake_flow_labels(
-            store, tracker, EventName("ready"), Force(False)
-        ).unwrap()
+    refused = transition_with_fake_flow_labels(store, tracker, EventName("ready"), Force(False))
+    assert isinstance(refused, Err)
+    assert TicketStatuses.fake().of(StateName("Review")).root in str(refused.error)
     assert store.read().unwrap() == StateName("QA")
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == Issue.fake().labels
 
@@ -269,7 +268,7 @@ def test_reverting_the_flow_entry_keeps_labels_added_since() -> None:
     step = entering(tracker, StateName("Specced"), None, IssueStatusName("Maturing"))
     _ = step.apply().unwrap()
     added = LabelName.fake()
-    tracker.add_label(IssueIdentifier.fake(), added)
+    tracker.add_label(IssueIdentifier.fake(), added).unwrap()
     _ = step.revert().unwrap()
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames((added,))
 

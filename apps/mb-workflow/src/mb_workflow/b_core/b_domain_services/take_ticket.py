@@ -9,7 +9,6 @@ from mb_workflow.b_core.c_secondary_ports.claims import (
     ClaimRefusedError,
     LabelledClaim,
 )
-from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.d_domain_model.claim import Posted
 from mb_workflow.b_core.d_domain_model.issue import Cleared, IssueUpdate
 from mb_workflow.d_lib.logging import Activity
@@ -22,7 +21,10 @@ if TYPE_CHECKING:
         ClaimRequest,
         UnknownClaimLabelError,
     )
-    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+        TicketTracker,
+        TicketTrackerError,
+    )
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.issue import Assignee, IssueIdentifier
 
@@ -96,7 +98,7 @@ class ClaimStep(SagaStep):
                 f" {self.request.holder.worktree.root} on {self.request.holder.host.root}"
             ).logged(logger):
                 claimed = Claiming.claim_ticket(self.registry, self.request)
-        except (ClaimRefusedError, TicketTrackerError) as error:
+        except ClaimRefusedError as error:
             return Err(error)
         match claimed:
             case Ok(posted):
@@ -110,13 +112,10 @@ class ClaimStep(SagaStep):
     def revert(self) -> Result[None, Exception]:
         if not self._posted.root:
             return Ok(None)
-        try:
-            with Activity(f"Withdrawing our claim on {self.request.ticket.root}").logged(logger):
-                return Claiming.withdraw_holders_claims(
-                    self.registry, self.request.ticket, self.request.holder
-                )
-        except TicketTrackerError as error:
-            return Err(error)
+        with Activity(f"Withdrawing our claim on {self.request.ticket.root}").logged(logger):
+            return Claiming.withdraw_holders_claims(
+                self.registry, self.request.ticket, self.request.holder
+            )
 
 
 # Whether the step put the label on, rather than finding it there already.
@@ -155,14 +154,10 @@ class ClaimLabelStep(SagaStep):
             return held
         if any(claim.holder != self.request.holder for claim in held.value.root):
             return Ok(None)
-        try:
-            with Activity(
-                f"Removing the {self.request.label.root} label from {self.request.ticket.root}"
-            ).logged(logger):
-                self.tracker.remove_label(self.request.ticket, self.request.label)
-        except TicketTrackerError as error:
-            return Err(error)
-        return Ok(None)
+        with Activity(
+            f"Removing the {self.request.label.root} label from {self.request.ticket.root}"
+        ).logged(logger):
+            return self.tracker.remove_label(self.request.ticket, self.request.label)
 
 
 @dataclass(frozen=True)
@@ -175,29 +170,24 @@ class AssignmentStep(SagaStep):
     # Assignment is a convenience, not the point of taking a ticket, so never fail the run over it.
     @override
     def apply(self) -> Result[None, Exception]:
-        try:
-            with Activity(f"Assigning {self.ticket.root} to {self.assignee.root}").logged(logger):
-                self.tracker.assign(self.ticket, self.assignee)
-        except TicketTrackerError as error:
+        with Activity(f"Assigning {self.ticket.root} to {self.assignee.root}").logged(logger):
+            assigned = self.tracker.assign(self.ticket, self.assignee)
+        if isinstance(assigned, Err):
             logger.warning(
-                "Could not assign %s to %s: %s", self.ticket.root, self.assignee.root, error
+                "Could not assign %s to %s: %s",
+                self.ticket.root,
+                self.assignee.root,
+                assigned.error,
             )
         return Ok(None)
 
     @override
     def revert(self) -> Result[None, Exception]:
-        try:
-            if self.previous is None:
-                with Activity(f"Unassigning {self.ticket.root}").logged(logger):
-                    self.tracker.update_issue(
-                        self.ticket,
-                        IssueUpdate.nothing().model_copy(update={"assignee": Cleared()}),
-                    )
-            else:
-                with Activity(f"Assigning {self.ticket.root} back to {self.previous.root}").logged(
-                    logger
-                ):
-                    self.tracker.assign(self.ticket, self.previous)
-        except TicketTrackerError as error:
-            return Err(error)
-        return Ok(None)
+        if self.previous is None:
+            with Activity(f"Unassigning {self.ticket.root}").logged(logger):
+                return self.tracker.update_issue(
+                    self.ticket,
+                    IssueUpdate.nothing().model_copy(update={"assignee": Cleared()}),
+                )
+        with Activity(f"Assigning {self.ticket.root} back to {self.previous.root}").logged(logger):
+            return self.tracker.assign(self.ticket, self.previous)
