@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     )
 
 
-# Adding a linter means adding a member and its parser.
+# Adding a linter means adding a member, its linter name, and its parser.
 class LinterFormat(StrEnum):
     fixit = "fixit"
     ruff_json = "ruff-json"

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
+from pydantic import ConfigDict, TypeAdapter, ValidationError
 from safe_result import Err, Ok, Result
 
 from hemolint.b_core.d_domain_model.linter_output import (
@@ -13,7 +13,7 @@ from hemolint.b_core.d_domain_model.violation import (
     RuleName,
     SourcePath,
 )
-from hemolint.d_lib.models import Value
+from hemolint.d_lib.models import Model, Value
 
 
 class ColumnNumber(Value[int]):
@@ -29,7 +29,7 @@ class RuffMessage(Value[str]):
 
 
 # Ruff's JSON holds more fields than hemolint reads, so the rest are ignored.
-class _RuffModel(BaseModel):
+class _RuffModel(Model):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
 
@@ -45,7 +45,7 @@ class _RuffViolation(_RuffModel):
     message: RuffMessage
 
     # Ruff's concise output format, so a new violation prints the way ruff would print it.
-    def reported_as(self) -> LinterLine:
+    def to_linter_line(self) -> LinterLine:
         return LinterLine(
             f"{self.filename.root}:{self.location.row.root}:{self.location.column.root}: "
             f"{self.code.root} {self.message.root}"
@@ -55,7 +55,7 @@ class _RuffViolation(_RuffModel):
 class RuffJsonParser:
     _OUTPUT = TypeAdapter(tuple[_RuffViolation, ...])
 
-    # Ruff reports absolute paths; finding the violations makes them relative.
+    # Keeps ruff's absolute paths; ViolationFinder makes them relative to the working directory.
     @staticmethod
     def parse(output: LinterOutput) -> Result[ReportedViolations, UnparsableLineError]:
         try:
@@ -69,7 +69,7 @@ class RuffJsonParser:
                         source=entry.filename,
                         line=entry.location.row,
                         rule=entry.code,
-                        reported_as=entry.reported_as(),
+                        reported_as=entry.to_linter_line(),
                     )
                     for entry in entries
                 )

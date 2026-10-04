@@ -4,7 +4,7 @@ from pathlib import Path
 from safe_result import Err
 
 from hemolint.b_core.d_domain_model.linter_output import LinterOutput, UnparsableLineError
-from hemolint.b_core.d_domain_model.ruff_json import ColumnNumber, RuffJsonParser, RuffMessage
+from hemolint.b_core.d_domain_model.ruff_json import RuffJsonParser, RuffMessage
 from hemolint.b_core.d_domain_model.violation import (
     LineNumber,
     LinterLine,
@@ -17,40 +17,38 @@ from hemolint.b_core.d_domain_model.violation import (
 class RuffJson:
     # `ruff check --output-format json` with one violation, without the fields hemolint ignores.
     @staticmethod
-    def output(
-        filename: SourcePath,
-        rule: RuleName | None,
-        row: LineNumber | None = None,
-        message: RuffMessage | None = None,
-        column: ColumnNumber | None = None,
-    ) -> LinterOutput:
+    def output(filename: SourcePath, rule: RuleName | None) -> LinterOutput:
         entry = {
             "code": None if rule is None else rule.root,
             "filename": str(filename.root),
-            "location": {
-                "column": (column or ColumnNumber.fake()).root,
-                "row": (row or LineNumber.fake()).root,
-            },
-            "message": (message or RuffMessage.fake()).root,
-            "name": "unused-import",
+            "location": {"column": 1, "row": 1},
+            "message": RuffMessage.fake().root,
         }
         return LinterOutput(json.dumps([entry]))
 
 
 def test_a_violation_parses_to_its_source_line_and_rule() -> None:
-    filename = SourcePath(Path("/Users/me/project/src/a.py"))
-    row = LineNumber(3)
-    rule = RuleName("F401")
-    message = RuffMessage("`os` imported but unused")
-    column = ColumnNumber(8)
-    output = RuffJson.output(filename, rule, row, message, column)
+    filename = "/Users/me/project/src/a.py"
+    row = 3
+    rule = "F401"
+    output = LinterOutput(
+        json.dumps(
+            [
+                {
+                    "code": rule,
+                    "filename": filename,
+                    "location": {"column": 8, "row": row},
+                    "message": "`os` imported but unused",
+                    "name": "unused-import",
+                }
+            ]
+        )
+    )
     expected = ReportedViolation(
-        source=filename,
-        line=row,
-        rule=rule,
-        reported_as=LinterLine(
-            f"{filename.root}:{row.root}:{column.root}: {rule.root} {message.root}"
-        ),
+        source=SourcePath(Path(filename)),
+        line=LineNumber(row),
+        rule=RuleName(rule),
+        reported_as=LinterLine("/Users/me/project/src/a.py:3:8: F401 `os` imported but unused"),
     )
     assert RuffJsonParser.parse(output).unwrap().root == (expected,)
 
@@ -61,7 +59,7 @@ def test_a_path_outside_the_working_directory_is_kept_as_reported() -> None:
     assert RuffJsonParser.parse(output).unwrap().root[0].source == filename
 
 
-def test_no_violations_parses_to_none() -> None:
+def test_an_empty_list_holds_no_violations() -> None:
     assert RuffJsonParser.parse(LinterOutput("[]")).unwrap().root == ()
 
 
