@@ -130,7 +130,10 @@ def test_a_global_violation_is_recorded_under_the_global_source_without_reading_
         FakeSourceLines({}),
         store,
     ).unwrap()
-    [recorded] = store.baseline.root
-    assert recorded.file == BaselineFile(
-        source=SourcePath.global_diagnostics(), linter=LinterName("tach"), rule=kind
+    recorded = Violation(
+        file=BaselineFile(
+            source=SourcePath.global_diagnostics(), linter=LinterName("tach"), rule=kind
+        ),
+        fingerprint=Fingerprint('{"dependency":"b"}'),
     )
+    assert store.baseline == Baseline.of((recorded,))

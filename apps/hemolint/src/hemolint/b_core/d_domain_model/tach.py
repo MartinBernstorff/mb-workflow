@@ -46,18 +46,28 @@ class _TachModel(Model):
 # One kind under one category, e.g. `{"Code": {"UndeclaredDependency": {...}}}`.
 class _TachDetails(Value[dict[TachCategory, dict[RuleName, JsonValue]]]):
     def code_kind(self) -> Result[tuple[RuleName, JsonValue], UnparsableOutputError]:
+        if TachCategory.configuration in self.root:
+            return Err(
+                UnparsableOutputError(f"tach could not check everything: {self._as_output().root}")
+            )
         code = self.root.get(TachCategory.code)
         if len(self.root) != 1 or code is None or len(code) != 1:
-            # RuleName keys dump as their repr, so the keys are unwrapped first.
-            details = {
-                category.value: {kind.root: payload for kind, payload in kinds.items()}
-                for category, kinds in self.root.items()
-            }
             return Err(
-                UnparsableOutputError(f"tach could not check everything: {json.dumps(details)}")
+                UnparsableOutputError(f"Not one tach diagnostic kind: {self._as_output().root}")
             )
         [(kind, payload)] = code.items()
         return Ok((kind, payload))
+
+    # The details as tach printed them. RuleName keys dump as their repr, so they are unwrapped.
+    def _as_output(self) -> LinterOutput:
+        return LinterOutput(
+            json.dumps(
+                {
+                    category.value: {kind.root: payload for kind, payload in kinds.items()}
+                    for category, kinds in self.root.items()
+                }
+            )
+        )
 
 
 class _TachGlobal(_TachModel):
@@ -93,59 +103,55 @@ class TachParser:
         try:
             entries = TachParser._OUTPUT.validate_json(output.root)
         except ValidationError as error:
-            return Err(TachParser._failure(output, error))
+            return Err(TachParser._unparsable_error(output, error))
         violations: list[LocatedViolation | GlobalViolation] = []
         for entry in entries:
-            violation = TachParser._violation(entry)
+            violation = TachParser._parse_entry(entry)
             if isinstance(violation, Err):
                 return violation
             violations.append(violation.value)
         return Ok(ReportedViolations(tuple(violations)))
 
     @staticmethod
-    def _violation(
+    def _parse_entry(
         entry: _TachLocatedEntry | _TachGlobalEntry,
     ) -> Result[LocatedViolation | GlobalViolation, UnparsableOutputError]:
-        match entry:
-            case _TachLocatedEntry(located=located):
-                kind = located.details.code_kind()
-                if isinstance(kind, Err):
-                    return kind
-                rule, payload = kind.value
-                return Ok(
-                    LocatedViolation(
-                        source=located.file_path,
-                        line=located.line_number,
-                        rule=rule,
-                        reported_as=LinterLine(
-                            f"{located.file_path.root}:{located.line_number.root}: "
-                            f"{rule.root} {TachParser._fingerprint(payload).root}"
-                        ),
-                    )
+        diagnostic = entry.located if isinstance(entry, _TachLocatedEntry) else entry.global_
+        code_kind = diagnostic.details.code_kind()
+        if isinstance(code_kind, Err):
+            return code_kind
+        rule, payload = code_kind.value
+        # Fingerprints a global violation; a located one is fingerprinted by its source line later.
+        fingerprint = TachParser._fingerprint_of(payload)
+        if isinstance(diagnostic, _TachLocated):
+            return Ok(
+                LocatedViolation(
+                    source=diagnostic.file_path,
+                    line=diagnostic.line_number,
+                    rule=rule,
+                    reported_as=LinterLine(
+                        f"{diagnostic.file_path.root}:{diagnostic.line_number.root}: "
+                        f"{rule.root} {fingerprint.root}"
+                    ),
                 )
-            case _TachGlobalEntry(global_=global_):
-                kind = global_.details.code_kind()
-                if isinstance(kind, Err):
-                    return kind
-                rule, payload = kind.value
-                fingerprint = TachParser._fingerprint(payload)
-                return Ok(
-                    GlobalViolation(
-                        rule=rule,
-                        fingerprint=fingerprint,
-                        reported_as=LinterLine(f"{rule.root} {fingerprint.root}"),
-                    )
-                )
+            )
+        return Ok(
+            GlobalViolation(
+                rule=rule,
+                fingerprint=fingerprint,
+                reported_as=LinterLine(f"{rule.root} {fingerprint.root}"),
+            )
+        )
 
     # Sorted keys, so tach reordering a payload does not change its fingerprint.
     @staticmethod
-    def _fingerprint(payload: JsonValue) -> Fingerprint:
+    def _fingerprint_of(payload: JsonValue) -> Fingerprint:
         return Fingerprint(
             json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         )
 
     @staticmethod
-    def _failure(output: LinterOutput, error: ValidationError) -> UnparsableOutputError:
+    def _unparsable_error(output: LinterOutput, error: ValidationError) -> UnparsableOutputError:
         try:
             failure = TachParser._ERROR.validate_json(output.root)
         except ValidationError:

@@ -7,8 +7,10 @@ from safe_result import Err
 from hemolint.b_core.d_domain_model.linter_output import LinterOutput, UnparsableOutputError
 from hemolint.b_core.d_domain_model.tach import TachCategory, TachParser, TachSeverity
 from hemolint.b_core.d_domain_model.violation import (
+    Fingerprint,
     GlobalViolation,
     LineNumber,
+    LinterLine,
     LocatedViolation,
     RuleName,
     SourcePath,
@@ -22,17 +24,17 @@ class TachJson:
     # One diagnostic in `tach check --output json`, without the fields hemolint ignores.
     @staticmethod
     def located(
-        severity: TachSeverity, category: TachCategory, kind: RuleName, payload: JsonValue
+        at: LocatedViolation, severity: TachSeverity, category: TachCategory, payload: JsonValue
     ) -> LinterOutput:
         return LinterOutput(
             json.dumps(
                 [
                     {
                         "Located": {
-                            "file_path": "src/a/mod.py",
-                            "line_number": 3,
+                            "file_path": str(at.source.root),
+                            "line_number": at.line.root,
                             "severity": severity.value,
-                            "details": {category.value: {kind.root: payload}},
+                            "details": {category.value: {at.rule.root: payload}},
                         }
                     }
                 ]
@@ -40,9 +42,21 @@ class TachJson:
         )
 
     @staticmethod
-    def global_(category: TachCategory, kind: RuleName, payload: JsonValue) -> LinterOutput:
+    def global_(
+        severity: TachSeverity, category: TachCategory, kind: RuleName, payload: JsonValue
+    ) -> LinterOutput:
         details = {category.value: {kind.root: payload}}
-        return LinterOutput(json.dumps([{"Global": {"severity": "Error", "details": details}}]))
+        return LinterOutput(
+            json.dumps([{"Global": {"severity": severity.value, "details": details}}])
+        )
+
+    # Parses one global code diagnostic holding the payload.
+    @staticmethod
+    def global_fingerprint(payload: JsonValue) -> Fingerprint:
+        output = TachJson.global_(TachSeverity.error, TachCategory.code, RuleName.fake(), payload)
+        violation = TachParser.parse(output).unwrap().root[0]
+        assert isinstance(violation, GlobalViolation)
+        return violation.fingerprint
 
 
 dependency: dict[str, JsonValue] = {
@@ -53,63 +67,46 @@ dependency: dict[str, JsonValue] = {
 
 
 def test_a_located_code_error_parses_to_its_source_line_and_kind() -> None:
-    kind = RuleName("UndeclaredDependency")
-    output = TachJson.located(TachSeverity.error, TachCategory.code, kind, dependency)
+    at = LocatedViolation(
+        source=SourcePath(Path("src/a/mod.py")),
+        line=LineNumber(3),
+        rule=RuleName("UndeclaredDependency"),
+        reported_as=LinterLine.fake(),
+    )
+    output = TachJson.located(at, TachSeverity.error, TachCategory.code, dependency)
     violation = TachParser.parse(output).unwrap().root[0]
     assert isinstance(violation, LocatedViolation)
-    assert (violation.source, violation.line, violation.rule) == (
-        SourcePath(Path("src/a/mod.py")),
-        LineNumber(3),
-        kind,
-    )
+    assert (violation.source, violation.line, violation.rule) == (at.source, at.line, at.rule)
 
 
 def test_a_located_code_warning_is_a_violation_too() -> None:
-    kind = RuleName("UnusedIgnoreDirective")
-    output = TachJson.located(TachSeverity.warning, TachCategory.code, kind, [])
-    assert TachParser.parse(output).unwrap().root[0].rule == kind
+    at = LocatedViolation.fake().model_copy(update={"rule": RuleName("UnusedIgnoreDirective")})
+    output = TachJson.located(at, TachSeverity.warning, TachCategory.code, [])
+    assert TachParser.parse(output).unwrap().root[0].rule == at.rule
 
 
 def test_a_global_code_diagnostic_parses_to_its_kind_without_a_source() -> None:
     kind = RuleName("UnusedDependencies")
-    output = TachJson.global_(TachCategory.code, kind, dependency)
+    output = TachJson.global_(TachSeverity.error, TachCategory.code, kind, dependency)
     violation = TachParser.parse(output).unwrap().root[0]
     assert isinstance(violation, GlobalViolation)
     assert violation.rule == kind
 
 
+def test_a_global_code_warning_is_a_violation_too() -> None:
+    kind = RuleName("UnusedDependencies")
+    output = TachJson.global_(TachSeverity.warning, TachCategory.code, kind, dependency)
+    assert TachParser.parse(output).unwrap().root[0].rule == kind
+
+
 def test_a_reordered_global_payload_has_the_same_fingerprint() -> None:
     reordered: JsonValue = dict(reversed(dependency.items()))
-    original = (
-        TachParser.parse(TachJson.global_(TachCategory.code, RuleName.fake(), dependency))
-        .unwrap()
-        .root[0]
-    )
-    swapped = (
-        TachParser.parse(TachJson.global_(TachCategory.code, RuleName.fake(), reordered))
-        .unwrap()
-        .root[0]
-    )
-    assert isinstance(original, GlobalViolation)
-    assert isinstance(swapped, GlobalViolation)
-    assert original.fingerprint == swapped.fingerprint
+    assert TachJson.global_fingerprint(dependency) == TachJson.global_fingerprint(reordered)
 
 
 def test_another_global_payload_has_another_fingerprint() -> None:
     other: JsonValue = {**dependency, "dependency": "b.y"}
-    first = (
-        TachParser.parse(TachJson.global_(TachCategory.code, RuleName.fake(), dependency))
-        .unwrap()
-        .root[0]
-    )
-    second = (
-        TachParser.parse(TachJson.global_(TachCategory.code, RuleName.fake(), other))
-        .unwrap()
-        .root[0]
-    )
-    assert isinstance(first, GlobalViolation)
-    assert isinstance(second, GlobalViolation)
-    assert first.fingerprint != second.fingerprint
+    assert TachJson.global_fingerprint(dependency) != TachJson.global_fingerprint(other)
 
 
 def test_an_empty_list_holds_no_violations() -> None:
@@ -117,9 +114,8 @@ def test_an_empty_list_holds_no_violations() -> None:
 
 
 def test_a_located_configuration_diagnostic_is_a_parse_error() -> None:
-    output = TachJson.located(
-        TachSeverity.error, TachCategory.configuration, RuleName("ModuleConfigNotFound"), []
-    )
+    at = LocatedViolation.fake().model_copy(update={"rule": RuleName("ModuleConfigNotFound")})
+    output = TachJson.located(at, TachSeverity.error, TachCategory.configuration, [])
     result = TachParser.parse(output)
     assert isinstance(result, Err)
     assert isinstance(result.error, UnparsableOutputError)
@@ -127,14 +123,19 @@ def test_a_located_configuration_diagnostic_is_a_parse_error() -> None:
 
 def test_a_global_configuration_diagnostic_is_a_parse_error() -> None:
     output = TachJson.global_(
-        TachCategory.configuration, RuleName("ModuleNotFound"), {"file_mod_path": "c"}
+        TachSeverity.error,
+        TachCategory.configuration,
+        RuleName("ModuleNotFound"),
+        {"file_mod_path": "c"},
     )
     assert isinstance(TachParser.parse(output), Err)
 
 
 def test_a_skipped_file_is_a_parse_error() -> None:
     skipped = RuleName("SkippedFileSyntaxError")
-    output = TachJson.global_(TachCategory.configuration, skipped, {"file_path": "a/bad.py"})
+    output = TachJson.global_(
+        TachSeverity.error, TachCategory.configuration, skipped, {"file_path": "a/bad.py"}
+    )
     result = TachParser.parse(output)
     assert isinstance(result, Err)
     assert f'"{skipped.root}"' in str(result.error)

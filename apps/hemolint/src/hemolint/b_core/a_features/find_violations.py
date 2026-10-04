@@ -40,47 +40,35 @@ class ViolationFinder:
         for violation in reported.value.root:
             match violation:
                 case LocatedViolation():
-                    located = ViolationFinder._located(violation, linter_format, directory, lines)
-                    if isinstance(located, Err):
-                        return located
-                    found.append(located.value)
+                    placed = ViolationFinder._place_located(violation, directory, lines)
+                    if isinstance(placed, Err):
+                        return placed
+                    source, fingerprint = placed.value
                 case GlobalViolation():
-                    found.append(ViolationFinder._global(violation, linter_format))
+                    # Kept under the global source with its own fingerprint, so no line is read.
+                    source, fingerprint = SourcePath.global_diagnostics(), violation.fingerprint
+            file = BaselineFile(
+                source=source, linter=linter_format.linter_name(), rule=violation.rule
+            )
+            found.append(
+                FoundViolation(
+                    violation=Violation(file=file, fingerprint=fingerprint),
+                    reported_as=violation.reported_as,
+                )
+            )
         return Ok(tuple(found))
 
-    # Fingerprinted by its source line.
+    # Relative to the working directory, and fingerprinted by its source line.
     @staticmethod
-    def _located(
-        violation: LocatedViolation,
-        linter_format: LinterFormat,
-        directory: WorkingDirectory,
-        lines: SourceLines,
-    ) -> Result[FoundViolation, OutsideWorkingDirectoryError | MissingSourceLineError]:
+    def _place_located(
+        violation: LocatedViolation, directory: WorkingDirectory, lines: SourceLines
+    ) -> Result[
+        tuple[SourcePath, Fingerprint], OutsideWorkingDirectoryError | MissingSourceLineError
+    ]:
         source = violation.source.relative_to_working_directory(directory)
         if isinstance(source, Err):
             return source
         line = lines.read(source.value, violation.line)
         if isinstance(line, Err):
             return line
-        file = BaselineFile(
-            source=source.value, linter=linter_format.linter_name(), rule=violation.rule
-        )
-        return Ok(
-            FoundViolation(
-                violation=Violation(file=file, fingerprint=Fingerprint.of(line.value)),
-                reported_as=violation.reported_as,
-            )
-        )
-
-    # Carries its own fingerprint and is kept under the global source, so no line is read.
-    @staticmethod
-    def _global(violation: GlobalViolation, linter_format: LinterFormat) -> FoundViolation:
-        file = BaselineFile(
-            source=SourcePath.global_diagnostics(),
-            linter=linter_format.linter_name(),
-            rule=violation.rule,
-        )
-        return FoundViolation(
-            violation=Violation(file=file, fingerprint=violation.fingerprint),
-            reported_as=violation.reported_as,
-        )
+        return Ok((source.value, Fingerprint.of(line.value)))
