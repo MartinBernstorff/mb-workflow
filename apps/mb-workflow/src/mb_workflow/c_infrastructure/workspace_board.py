@@ -159,7 +159,6 @@ class WorkspaceBoard(WorkspaceStatusStore):
             case Err() as failed:
                 return failed
 
-    # The same board, read and written at a given worktree rather than the one you stand in.
     def at(self, worktree: Worktree) -> WorkspaceBoard:
         return WorkspaceBoard(self._manager, self._read_columns, self._start, lambda: Ok(worktree))
 

@@ -26,8 +26,6 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.workspace import Worktree
 
 
-# Moves a ticket and the board column of the worktree linked to it: the named ticket, or the one
-# linked to the worktree you stand in.
 class LinkedTicketTransition:
     @staticmethod
     def move_linked_ticket(
