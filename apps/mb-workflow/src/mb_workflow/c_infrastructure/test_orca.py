@@ -21,13 +21,13 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 from mb_workflow.c_infrastructure.orca import (
     Acknowledgement,
     ColumnLabel,
-    Envelope,
     ErrorMessage,
     Orca,
     SingleWorktree,
     WorktreeComment,
     WorktreeList,
     WorktreeSelector,
+    orca_refusal,
     refusal_of,
     status_assignment,
 )
@@ -163,14 +163,12 @@ def test_a_refusal_carries_the_message_orca_gave() -> None:
     output = CommandOutput(
         '{"ok":false,"error":{"code":"invalid_argument","message":"Unknown workspace status."}}'
     )
-    envelope = Envelope[Acknowledgement].model_validate_json(output.root)
-    assert envelope.refusal() == Ok(ErrorMessage("Unknown workspace status."))
+    assert orca_refusal(output) == Ok(ErrorMessage("Unknown workspace status."))
 
 
 def test_a_command_orca_accepted_holds_no_refusal() -> None:
     output = CommandOutput('{"ok":true,"result":{}}')
-    envelope = Envelope[Acknowledgement].model_validate_json(output.root)
-    refused = envelope.refusal()
+    refused = orca_refusal(output)
     assert isinstance(refused, Err)
     assert "meant to refuse" in str(refused.error)
 

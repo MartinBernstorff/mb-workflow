@@ -110,10 +110,25 @@ class Succeeded(Value[bool]):
         return Succeeded(True)
 
 
-class Envelope[T](Payload):
+class OrcaEnvelope[T](Payload):
     ok: Succeeded
     result: T | None = None
     error: EnvelopeError | None = None
+
+    @staticmethod
+    def read(
+        envelope: type[OrcaEnvelope[T]], output: CommandOutput
+    ) -> Result[OrcaEnvelope[T], WorkspaceManagerError]:
+        match OrcaEnvelope._validated(envelope, output):
+            case Ok(read):
+                return Ok(read)
+            case Err(error):
+                return Err(WorkspaceManagerError(f"orca printed an unreadable reply: {error}"))
+
+    @staticmethod
+    @safe_with(ValidationError)
+    def _validated(envelope: type[OrcaEnvelope[T]], output: CommandOutput) -> OrcaEnvelope[T]:
+        return envelope.model_validate_json(output.root)
 
     def refusal(self) -> Result[ErrorMessage, WorkspaceManagerError]:
         if self.ok.root or self.error is None:
@@ -130,31 +145,20 @@ class Envelope[T](Payload):
         return Ok(self.result)
 
 
-class OrcaReply:
-    @staticmethod
-    def answer_of[T](
-        envelope: type[Envelope[T]], output: CommandOutput
-    ) -> Result[T, WorkspaceManagerError]:
-        match OrcaReply.envelope_of(envelope, output):
-            case Ok(read):
-                return read.answer()
-            case Err() as unreadable:
-                return unreadable
+def orca_reply[T](payload: type[T], output: CommandOutput) -> Result[T, WorkspaceManagerError]:
+    match OrcaEnvelope.read(OrcaEnvelope[payload], output):
+        case Ok(read):
+            return read.answer()
+        case Err() as unreadable:
+            return unreadable
 
-    @staticmethod
-    def envelope_of[T](
-        envelope: type[Envelope[T]], output: CommandOutput
-    ) -> Result[Envelope[T], WorkspaceManagerError]:
-        match OrcaReply._validated(envelope, output):
-            case Ok(read):
-                return Ok(read)
-            case Err(error):
-                return Err(WorkspaceManagerError(f"orca printed an unreadable reply: {error}"))
 
-    @staticmethod
-    @safe_with(ValidationError)
-    def _validated[T](envelope: type[Envelope[T]], output: CommandOutput) -> Envelope[T]:
-        return envelope.model_validate_json(output.root)
+def orca_refusal(output: CommandOutput) -> Result[ErrorMessage, WorkspaceManagerError]:
+    match OrcaEnvelope.read(OrcaEnvelope[Acknowledgement], output):
+        case Ok(read):
+            return read.refusal()
+        case Err() as unreadable:
+            return unreadable
 
 
 class WorktreePayload(Payload):
@@ -199,7 +203,7 @@ class WorktreeList(Payload):
 
     @staticmethod
     def parse(output: CommandOutput) -> Result[Worktrees, WorkspaceManagerError]:
-        match OrcaReply.answer_of(Envelope[WorktreeList], output):
+        match orca_reply(WorktreeList, output):
             case Ok(listed):
                 return Ok(Worktrees(tuple(worktree.worktree() for worktree in listed.worktrees)))
             case Err() as unreadable:
@@ -213,7 +217,7 @@ class Acknowledgement(Payload):
 
     @staticmethod
     def parse(output: CommandOutput) -> Result[Acknowledgement, WorkspaceManagerError]:
-        return OrcaReply.answer_of(Envelope[Acknowledgement], output)
+        return orca_reply(Acknowledgement, output)
 
 
 class StartupTerminal(Payload):
@@ -239,7 +243,7 @@ class SingleWorktree(Payload):
 
     @staticmethod
     def parse(output: CommandOutput) -> Result[SingleWorktree, WorkspaceManagerError]:
-        return OrcaReply.answer_of(Envelope[SingleWorktree], output)
+        return orca_reply(SingleWorktree, output)
 
     def terminal(self) -> TerminalHandle | None:
         if self.agent_terminal_handle is not None:
@@ -257,13 +261,9 @@ def printed_by(error: CalledProcessError) -> CommandOutput:
 
 # Orca exits non-zero on a refusal but still prints the envelope, whose message says why.
 def refusal_of(error: CalledProcessError) -> ErrorMessage:
-    match OrcaReply.envelope_of(Envelope[Acknowledgement], printed_by(error)):
-        case Ok(read):
-            match read.refusal():
-                case Ok(message):
-                    return message
-                case Err():
-                    return ErrorMessage(str(error))
+    match orca_refusal(printed_by(error)):
+        case Ok(message):
+            return message
         case Err():
             return ErrorMessage(str(error))
 
@@ -475,11 +475,7 @@ class Orca(WorkspaceManager):
                 pass
             case Err(refused):
                 output = printed_by(refused)
-        match OrcaReply.envelope_of(Envelope[Acknowledgement], output):
-            case Ok(read):
-                return read.refusal()
-            case Err() as unreadable:
-                return unreadable
+        return orca_refusal(output)
 
     def _opened(self, command: Command) -> Result[OpenedWorktree, WorkspaceManagerError]:
         match self._single(command):
