@@ -9,6 +9,10 @@ Clean as you go. Whenever you touch a file that has violations, fix those violat
 * TE-m8: Mocking and patching is not allowed. Tests should never assert on implementation.
 * TE-9c: Do _not_ maintain a `tests` folder. Instead, place tests next to the code they test, as `test_<module>.py`, or in the same file when possible.
 
+## Comments
+
+* CM-1: No comments or docstrings. Say it in the code: names, types, named methods. If a comment is unavoidable, ask the user what to do.
+
 ## Observability
 
 * OB-A7: Whenever something retries, log the retry and/or update a metric.
