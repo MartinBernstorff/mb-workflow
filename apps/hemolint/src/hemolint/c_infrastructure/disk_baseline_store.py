@@ -1,5 +1,6 @@
 import json
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import override
 
 from pydantic import TypeAdapter, ValidationError
@@ -45,29 +46,47 @@ class BaselineFileText(Value[str]):
         return Ok(Counter({Fingerprint(code): count for code, count in counts.items()}))
 
 
+# Where one baseline file lives: `<source path>/<linter>-<rule>.json` under the baseline directory.
+class BaselineFilePath(Value[Path]):
+    @staticmethod
+    def fake() -> BaselineFilePath:
+        return BaselineFilePath.of(BaselineDirectory.fake(), BaselineFile.fake())
+
+    @staticmethod
+    def of(directory: BaselineDirectory, file: BaselineFile) -> BaselineFilePath:
+        return BaselineFilePath(
+            directory.root / file.source.root / f"{file.linter.root}-{file.rule.root}.json"
+        )
+
+    # Linter names hold no "-", so the first one separates the linter from the rule.
+    def decode(self, directory: BaselineDirectory) -> BaselineFile | None:
+        linter, separator, rule = self.root.stem.partition("-")
+        if not separator or self.root.suffix != ".json":
+            return None
+        return BaselineFile(
+            source=SourcePath(self.root.parent.relative_to(directory.root)),
+            linter=LinterName(linter),
+            rule=RuleName(rule),
+        )
+
+
 class DiskBaselineStore(BaselineStore):
     def __init__(self, directory: BaselineDirectory) -> None:
         self._directory = directory
 
     @override
     def read(self) -> Result[Baseline, BaselineStoreError]:
-        root = self._directory.root
         violations: list[Violation] = []
-        for path in sorted(root.rglob("*.json")):
-            linter, separator, rule = path.stem.partition("-")
-            if not separator:
-                return Err(BaselineStoreError(f"{path} is not named <linter>-<rule>.json."))
-            file = BaselineFile(
-                source=SourcePath(path.parent.relative_to(root)),
-                linter=LinterName(linter),
-                rule=RuleName(rule),
-            )
+        for path in self._baseline_file_paths():
+            file = path.decode(self._directory)
+            if file is None:
+                return Err(BaselineStoreError(f"{path.root} is not named <linter>-<rule>.json."))
             try:
-                counts = BaselineFileText(path.read_text()).decode()
+                counts = BaselineFileText(path.root.read_text()).decode()
             except OSError as error:
-                return Err(BaselineStoreError(f"Cannot read {path}: {error}"))
+                return Err(BaselineStoreError(f"Cannot read {path.root}: {error}"))
             if isinstance(counts, Err):
-                return Err(BaselineStoreError(f"{path} is no baseline file: {counts.error}"))
+                return Err(BaselineStoreError(f"{path.root} is no baseline file: {counts.error}"))
             violations.extend(
                 Violation(file=file, fingerprint=fingerprint)
                 for fingerprint in counts.value.elements()
@@ -81,21 +100,26 @@ class DiskBaselineStore(BaselineStore):
         for violation in baseline.root:
             by_file[violation.file][violation.fingerprint] += 1
         wanted = {
-            root / file.source.root / f"{file.linter.root}-{file.rule.root}.json": counts
-            for file, counts in by_file.items()
+            BaselineFilePath.of(self._directory, file): counts for file, counts in by_file.items()
         }
         try:
-            if root.exists():
-                for stale in root.rglob("*.json"):
-                    if stale not in wanted:
-                        stale.unlink()
+            for stale in self._baseline_file_paths():
+                if stale not in wanted:
+                    stale.root.unlink()
             for path, counts in wanted.items():
-                path.parent.mkdir(parents=True, exist_ok=True)
-                _ = path.write_text(BaselineFileText.of(counts).root)
+                path.root.parent.mkdir(parents=True, exist_ok=True)
+                _ = path.root.write_text(BaselineFileText.of(counts).root)
             self._remove_empty_directories()
         except OSError as error:
             return Err(BaselineStoreError(f"Cannot write the baseline to {root}: {error}"))
         return Ok(None)
+
+    # A source file may itself end in .json, so its baseline directory does too.
+    def _baseline_file_paths(self) -> list[BaselineFilePath]:
+        root = self._directory.root
+        if not root.exists():
+            return []
+        return [BaselineFilePath(path) for path in sorted(root.rglob("*.json")) if path.is_file()]
 
     # Drops the directories of source files that no longer hold violations, deepest first.
     def _remove_empty_directories(self) -> None:

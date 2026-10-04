@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 class LinterFormat(StrEnum):
     fixit = "fixit"
 
-    def linter(self) -> LinterName:
+    def linter_name(self) -> LinterName:
         return LinterName(self.value)
 
     def parse(self, output: LinterOutput) -> Result[ReportedViolations, UnparsableLineError]:

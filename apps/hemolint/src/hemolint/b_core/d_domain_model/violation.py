@@ -10,6 +10,10 @@ class OutsideWorkingDirectoryError(Exception):
     pass
 
 
+class MissingSourceLineError(Exception):
+    pass
+
+
 class WorkingDirectory(Value[Path]):
     @staticmethod
     def fake() -> WorkingDirectory:
@@ -26,7 +30,7 @@ class SourcePath(Value[Path]):
     def fake() -> SourcePath:
         return SourcePath(Path("src/app.py"))
 
-    def within(
+    def relative_to_working_directory(
         self, directory: WorkingDirectory
     ) -> Result[SourcePath, OutsideWorkingDirectoryError]:
         # normpath folds ".." without touching the disk, so a path cannot climb out unnoticed.
@@ -81,12 +85,14 @@ class SourceText(Value[str]):
     def fake() -> SourceText:
         return SourceText("if x == None:\n    pass\n")
 
-    # None when the text has no such line; lines count from 1.
-    def line(self, number: LineNumber) -> SourceLine | None:
+    # Lines count from 1.
+    def line_at(
+        self, source: SourcePath, number: LineNumber
+    ) -> Result[SourceLine, MissingSourceLineError]:
         lines = self.root.splitlines()
         if not 1 <= number.root <= len(lines):
-            return None
-        return SourceLine(lines[number.root - 1])
+            return Err(MissingSourceLineError(f"{source.root} has no line {number.root}."))
+        return Ok(SourceLine(lines[number.root - 1]))
 
 
 # Leaves out the line number, so a violation that moves to another line still matches.

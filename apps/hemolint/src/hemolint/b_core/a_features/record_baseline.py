@@ -10,14 +10,12 @@ if TYPE_CHECKING:
         BaselineStore,
         BaselineStoreError,
     )
-    from hemolint.b_core.c_secondary_ports.source_lines import (
-        MissingSourceLineError,
-        SourceLines,
-    )
+    from hemolint.b_core.c_secondary_ports.source_lines import SourceLines
     from hemolint.b_core.d_domain_model.baseline import BaselineChange
     from hemolint.b_core.d_domain_model.linter_format import LinterFormat
     from hemolint.b_core.d_domain_model.linter_output import LinterOutput, UnparsableLineError
     from hemolint.b_core.d_domain_model.violation import (
+        MissingSourceLineError,
         OutsideWorkingDirectoryError,
         WorkingDirectory,
     )
@@ -44,14 +42,14 @@ class BaselineRecording:
             return reported
         violations: list[Violation] = []
         for violation in reported.value.root:
-            source = violation.source.within(directory)
+            source = violation.source.relative_to_working_directory(directory)
             if isinstance(source, Err):
                 return source
             line = lines.read(source.value, violation.line)
             if isinstance(line, Err):
                 return line
             file = BaselineFile(
-                source=source.value, linter=linter_format.linter(), rule=violation.rule
+                source=source.value, linter=linter_format.linter_name(), rule=violation.rule
             )
             violations.append(Violation(file=file, fingerprint=Fingerprint.of(line.value)))
         current = Baseline.of(violations)

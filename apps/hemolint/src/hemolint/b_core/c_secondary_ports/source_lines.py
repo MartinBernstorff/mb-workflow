@@ -1,6 +1,8 @@
 from typing import TYPE_CHECKING, Protocol, override
 
-from safe_result import Err, Ok, Result
+from safe_result import Err, Result
+
+from hemolint.b_core.d_domain_model.violation import MissingSourceLineError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -11,10 +13,6 @@ if TYPE_CHECKING:
         SourcePath,
         SourceText,
     )
-
-
-class MissingSourceLineError(Exception):
-    pass
 
 
 class SourceLines(Protocol):
@@ -34,7 +32,4 @@ class FakeSourceLines(SourceLines):
         text = self._files.get(source)
         if text is None:
             return Err(MissingSourceLineError(f"{source.root} does not exist."))
-        found = text.line(line)
-        if found is None:
-            return Err(MissingSourceLineError(f"{source.root} has no line {line.root}."))
-        return Ok(found)
+        return text.line_at(source, line)

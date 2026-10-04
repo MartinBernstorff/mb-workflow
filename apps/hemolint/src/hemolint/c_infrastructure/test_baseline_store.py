@@ -32,18 +32,13 @@ def store(request: pytest.FixtureRequest, tmp_path: Path) -> BaselineStore:
     return DiskBaselineStore(BaselineDirectory(tmp_path / ".hemolint"))
 
 
-def file_of(source: SourcePath) -> BaselineFile:
-    return BaselineFile(source=source, linter=LinterName("fixit"), rule=RuleName("UseFstring"))
-
-
-def baseline() -> Baseline:
-    known = Violation(
-        file=file_of(SourcePath(Path("src/a.py"))), fingerprint=Fingerprint("x = '%s' % y")
-    )
-    other = Violation(
-        file=file_of(SourcePath(Path("b.py"))), fingerprint=Fingerprint("z = '%s' % y")
-    )
-    return Baseline.of((known, known, other))
+linter = LinterName("fixit")
+rule = RuleName("UseFstring")
+nested = BaselineFile(source=SourcePath(Path("src/a.py")), linter=linter, rule=rule)
+top_level = BaselineFile(source=SourcePath(Path("b.py")), linter=linter, rule=rule)
+known = Violation(file=nested, fingerprint=Fingerprint.fake())
+other = Violation(file=top_level, fingerprint=Fingerprint.fake())
+baseline = Baseline.of((known, known, other))
 
 
 def test_a_baseline_never_written_reads_as_empty(store: BaselineStore) -> None:
@@ -51,42 +46,55 @@ def test_a_baseline_never_written_reads_as_empty(store: BaselineStore) -> None:
 
 
 def test_a_written_baseline_reads_back(store: BaselineStore) -> None:
-    _ = store.write(baseline()).unwrap()
-    assert store.read().unwrap() == baseline()
+    _ = store.write(baseline).unwrap()
+    assert store.read().unwrap() == baseline
 
 
 def test_a_second_write_replaces_the_first(store: BaselineStore) -> None:
-    remaining = Baseline.of(baseline().root[:1])
-    _ = store.write(baseline()).unwrap()
+    remaining = Baseline.of((other,))
+    _ = store.write(baseline).unwrap()
     _ = store.write(remaining).unwrap()
     assert store.read().unwrap() == remaining
 
 
 def test_an_empty_write_empties_the_baseline(store: BaselineStore) -> None:
-    _ = store.write(baseline()).unwrap()
+    _ = store.write(baseline).unwrap()
     _ = store.write(Baseline.of(())).unwrap()
     assert store.read().unwrap() == Baseline.of(())
 
 
+def test_a_source_file_named_like_a_baseline_file_reads_back(store: BaselineStore) -> None:
+    json_source = Baseline.of(
+        (
+            Violation(
+                file=BaselineFile(source=SourcePath(Path("data.json")), linter=linter, rule=rule),
+                fingerprint=Fingerprint.fake(),
+            ),
+        )
+    )
+    _ = store.write(json_source).unwrap()
+    _ = store.write(json_source).unwrap()
+    assert store.read().unwrap() == json_source
+
+
 def test_the_disk_baseline_keeps_one_sorted_file_per_source_file_per_rule(tmp_path: Path) -> None:
     directory = tmp_path / ".hemolint"
-    first, second = Fingerprint("b = '%s' % y"), Fingerprint("a = '%s' % y")
-    file = file_of(SourcePath(Path("src/a.py")))
+    later, earlier = Fingerprint("b = '%s' % y"), Fingerprint("a = '%s' % y")
     _ = (
         DiskBaselineStore(BaselineDirectory(directory))
         .write(
             Baseline.of(
                 (
-                    Violation(file=file, fingerprint=first),
-                    Violation(file=file, fingerprint=second),
-                    Violation(file=file, fingerprint=second),
+                    Violation(file=nested, fingerprint=later),
+                    Violation(file=nested, fingerprint=earlier),
+                    Violation(file=nested, fingerprint=earlier),
                 )
             )
         )
         .unwrap()
     )
-    written = directory / "src/a.py" / "fixit-UseFstring.json"
-    expected = {second.root: 2, first.root: 1}
+    written = directory / nested.source.root / f"{linter.root}-{rule.root}.json"
+    expected = {earlier.root: 2, later.root: 1}
     assert json.loads(written.read_text()) == expected
     assert list(json.loads(written.read_text())) == sorted(expected)
 
@@ -96,16 +104,13 @@ def test_the_disk_baseline_drops_the_directory_of_a_source_file_without_violatio
 ) -> None:
     directory = tmp_path / ".hemolint"
     store = DiskBaselineStore(BaselineDirectory(directory))
-    kept = Violation(
-        file=file_of(SourcePath(Path("b.py"))), fingerprint=Fingerprint("z = '%s' % y")
-    )
-    _ = store.write(baseline()).unwrap()
-    _ = store.write(Baseline.of((kept,))).unwrap()
-    assert not (directory / "src").exists()
+    _ = store.write(baseline).unwrap()
+    _ = store.write(Baseline.of((other,))).unwrap()
+    assert not (directory / nested.source.root.parts[0]).exists()
 
 
 def test_a_baseline_file_that_is_no_json_is_an_error(tmp_path: Path) -> None:
     directory = tmp_path / ".hemolint"
     (directory / "a.py").mkdir(parents=True)
-    _ = (directory / "a.py" / "fixit-UseFstring.json").write_text("{")
+    _ = (directory / "a.py" / f"{linter.root}-{rule.root}.json").write_text("{")
     assert DiskBaselineStore(BaselineDirectory(directory)).read().is_err()

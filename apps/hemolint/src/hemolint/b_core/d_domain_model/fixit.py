@@ -17,8 +17,9 @@ from hemolint.b_core.d_domain_model.violation import (
 
 
 class FixitParser:
-    # `<path>@<line>:<column> <rule>: <message>`; the greedy path allows an @ inside it.
-    _VIOLATION = re.compile(r"(?P<path>.+)@(?P<line>\d+):\d+ (?P<rule>\w+): .*")
+    # `<path>@<line>:<column> <rule>: <message>`. The greedy path allows an @ inside it, but no
+    # ": ", so an EXCEPTION line whose message looks like a violation is still rejected.
+    _VIOLATION = re.compile(r"(?P<path>(?:(?!: ).)+)@(?P<line>\d+):\d+ (?P<rule>\w+): .*")
 
     @staticmethod
     def parse(output: LinterOutput) -> Result[ReportedViolations, UnparsableLineError]:

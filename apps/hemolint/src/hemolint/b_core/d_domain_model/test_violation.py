@@ -13,23 +13,29 @@ from hemolint.b_core.d_domain_model.violation import (
 
 def test_a_relative_source_path_stays_as_it_is() -> None:
     source = SourcePath(Path("src/a.py"))
-    assert source.within(WorkingDirectory.fake()).unwrap() == source
+    assert source.relative_to_working_directory(WorkingDirectory.fake()).unwrap() == source
 
 
 def test_an_absolute_source_path_becomes_relative_to_the_working_directory() -> None:
     relative = Path("src/a.py")
     absolute = SourcePath(WorkingDirectory.fake().root / relative)
-    assert absolute.within(WorkingDirectory.fake()).unwrap() == SourcePath(relative)
+    assert absolute.relative_to_working_directory(WorkingDirectory.fake()).unwrap() == SourcePath(
+        relative
+    )
 
 
 def test_a_source_path_that_climbs_out_of_the_working_directory_is_an_error() -> None:
-    result = SourcePath(Path("src/../../a.py")).within(WorkingDirectory.fake())
+    result = SourcePath(Path("src/../../a.py")).relative_to_working_directory(
+        WorkingDirectory.fake()
+    )
     assert isinstance(result, Err)
     assert isinstance(result.error, OutsideWorkingDirectoryError)
 
 
 def test_an_absolute_source_path_outside_the_working_directory_is_an_error() -> None:
-    result = SourcePath(Path("/elsewhere/a.py")).within(WorkingDirectory.fake())
+    result = SourcePath(Path("/elsewhere/a.py")).relative_to_working_directory(
+        WorkingDirectory.fake()
+    )
     assert isinstance(result, Err)
 
 

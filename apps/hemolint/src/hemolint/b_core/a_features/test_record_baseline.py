@@ -16,7 +16,6 @@ from hemolint.b_core.d_domain_model.linter_format import LinterFormat
 from hemolint.b_core.d_domain_model.linter_output import LinterOutput, UnparsableLineError
 from hemolint.b_core.d_domain_model.violation import (
     Fingerprint,
-    LineNumber,
     LinterName,
     RuleName,
     SourcePath,
@@ -27,61 +26,87 @@ from hemolint.b_core.d_domain_model.violation import (
 source = SourcePath(Path("a.py"))
 rule = RuleName("CompareSingletonPrimitivesByIs")
 code = Fingerprint("if x == None:")
-file = BaselineFile(source=source, linter=LinterName("fixit"), rule=rule)
+known = Violation(
+    file=BaselineFile(source=source, linter=LinterName("fixit"), rule=rule), fingerprint=code
+)
+on_line_1 = LinterOutput(f"{source.root}@1:0 {rule.root}: Use `is`.\n")
+on_line_2 = LinterOutput(f"{source.root}@2:0 {rule.root}: Use `is`.\n")
 
 
-def output_at(*lines: LineNumber) -> LinterOutput:
-    return LinterOutput(
-        "".join(f"{source.root}@{line.root}:3 {rule.root}: Use `is`.\n" for line in lines)
-    )
-
-
-def record(
-    output: LinterOutput, text: SourceText, store: FakeBaselineStore
-) -> BaselineChange | Exception:
-    result = BaselineRecording.record(
-        output, LinterFormat.fixit, WorkingDirectory.fake(), FakeSourceLines({source: text}), store
-    )
-    return result.error if isinstance(result, Err) else result.value
+def lines_of(text: SourceText) -> FakeSourceLines:
+    return FakeSourceLines({source: text})
 
 
 def test_each_reported_violation_is_recorded_under_its_source_line() -> None:
     store = FakeBaselineStore()
-    _ = record(output_at(LineNumber(2)), SourceText(f"x = 1\n    {code.root}\n"), store)
-    assert store.baseline == Baseline.of((Violation(file=file, fingerprint=code),))
+    _ = BaselineRecording.record(
+        on_line_2,
+        LinterFormat.fixit,
+        WorkingDirectory.fake(),
+        lines_of(SourceText(f"x = 1\n    {code.root}\n")),
+        store,
+    ).unwrap()
+    assert store.baseline == Baseline.of((known,))
 
 
 def test_recording_reports_what_it_added() -> None:
-    change = record(output_at(LineNumber(1)), SourceText(f"{code.root}\n"), FakeBaselineStore())
-    assert change == BaselineChange(added=Count(1), removed=Count(0))
+    change = BaselineRecording.record(
+        on_line_1,
+        LinterFormat.fixit,
+        WorkingDirectory.fake(),
+        lines_of(SourceText(f"{code.root}\n")),
+        FakeBaselineStore(),
+    ).unwrap()
+    one_added = BaselineChange(added=Count(1), removed=Count(0))
+    assert change == one_added
 
 
 def test_a_violation_that_moved_to_another_line_still_matches() -> None:
-    store = FakeBaselineStore(Baseline.of((Violation(file=file, fingerprint=code),)))
-    change = record(output_at(LineNumber(3)), SourceText(f"\n\n{code.root}\n"), store)
-    assert change == BaselineChange(added=Count(0), removed=Count(0))
+    store = FakeBaselineStore(Baseline.of((known,)))
+    _ = BaselineRecording.record(
+        on_line_2,
+        LinterFormat.fixit,
+        WorkingDirectory.fake(),
+        lines_of(SourceText(f"\n{code.root}\n")),
+        store,
+    ).unwrap()
+    assert store.baseline == Baseline.of((known,))
 
 
 def test_an_extra_copy_of_a_known_violation_is_recorded_as_new() -> None:
-    known = Violation(file=file, fingerprint=code)
     store = FakeBaselineStore(Baseline.of((known,)))
-    change = record(
-        output_at(LineNumber(1), LineNumber(2)), SourceText(f"{code.root}\n{code.root}\n"), store
-    )
-    assert change == BaselineChange(added=Count(1), removed=Count(0))
+    _ = BaselineRecording.record(
+        LinterOutput(on_line_1.root + on_line_2.root),
+        LinterFormat.fixit,
+        WorkingDirectory.fake(),
+        lines_of(SourceText(f"{code.root}\n{code.root}\n")),
+        store,
+    ).unwrap()
     assert store.baseline == Baseline.of((known, known))
 
 
 def test_a_fixed_violation_is_removed() -> None:
-    store = FakeBaselineStore(Baseline.of((Violation(file=file, fingerprint=code),)))
-    change = record(LinterOutput(""), SourceText(""), store)
-    assert change == BaselineChange(added=Count(0), removed=Count(1))
+    store = FakeBaselineStore(Baseline.of((known,)))
+    _ = BaselineRecording.record(
+        LinterOutput(""),
+        LinterFormat.fixit,
+        WorkingDirectory.fake(),
+        lines_of(SourceText("")),
+        store,
+    ).unwrap()
     assert store.baseline == Baseline.of(())
 
 
 def test_unparsable_output_writes_nothing() -> None:
-    previous = Baseline.of((Violation(file=file, fingerprint=code),))
+    previous = Baseline.of((known,))
     store = FakeBaselineStore(previous)
-    output = LinterOutput(f"{output_at().root}b.py: EXCEPTION: Syntax Error @ 1:1.\n")
-    assert isinstance(record(output, SourceText(""), store), UnparsableLineError)
+    result = BaselineRecording.record(
+        LinterOutput(f"{on_line_1.root}b.py: EXCEPTION: Syntax Error @ 1:1.\n"),
+        LinterFormat.fixit,
+        WorkingDirectory.fake(),
+        lines_of(SourceText(f"{code.root}\n")),
+        store,
+    )
+    assert isinstance(result, Err)
+    assert isinstance(result.error, UnparsableLineError)
     assert store.baseline == previous

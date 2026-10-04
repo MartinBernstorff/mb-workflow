@@ -1,10 +1,11 @@
 from typing import override
 
-from safe_result import Err, Ok, Result
+from safe_result import Err, Result
 
-from hemolint.b_core.c_secondary_ports.source_lines import MissingSourceLineError, SourceLines
+from hemolint.b_core.c_secondary_ports.source_lines import SourceLines
 from hemolint.b_core.d_domain_model.violation import (
     LineNumber,
+    MissingSourceLineError,
     SourceLine,
     SourcePath,
     SourceText,
@@ -29,7 +30,4 @@ class DiskSourceLines(SourceLines):
             except (OSError, UnicodeDecodeError) as error:
                 return Err(MissingSourceLineError(f"Cannot read {source.root}: {error}"))
             self._texts[source] = text
-        found = text.line(line)
-        if found is None:
-            return Err(MissingSourceLineError(f"{source.root} has no line {line.root}."))
-        return Ok(found)
+        return text.line_at(source, line)

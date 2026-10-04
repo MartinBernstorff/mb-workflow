@@ -4,13 +4,10 @@ from pathlib import Path
 import pytest
 from safe_result import Err
 
-from hemolint.b_core.c_secondary_ports.source_lines import (
-    FakeSourceLines,
-    MissingSourceLineError,
-    SourceLines,
-)
+from hemolint.b_core.c_secondary_ports.source_lines import FakeSourceLines, SourceLines
 from hemolint.b_core.d_domain_model.violation import (
     LineNumber,
+    MissingSourceLineError,
     SourceLine,
     SourcePath,
     SourceText,

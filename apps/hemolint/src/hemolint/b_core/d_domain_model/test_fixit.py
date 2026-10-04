@@ -40,8 +40,9 @@ def test_a_path_holding_an_at_sign_parses_whole() -> None:
 
 
 def test_blank_lines_are_skipped() -> None:
-    output = LinterOutput("\n  \na.py@1:0 UseFstring: Use an f-string.\n\n")
-    assert len(FixitParser.parse(output).unwrap().root) == 1
+    violation = "a.py@1:0 UseFstring: Use an f-string."
+    output = LinterOutput(f"\n  \n{violation}\n\n")
+    assert FixitParser.parse(output).unwrap() == FixitParser.parse(LinterOutput(violation)).unwrap()
 
 
 def test_empty_output_holds_no_violations() -> None:
@@ -55,6 +56,11 @@ def test_an_exception_line_is_a_parse_error() -> None:
     assert isinstance(result, Err)
     assert isinstance(result.error, UnparsableLineError)
     assert exception in str(result.error)
+
+
+def test_an_exception_line_whose_message_looks_like_a_violation_is_a_parse_error() -> None:
+    output = LinterOutput("b.py: EXCEPTION: bad x@1:2 UseFstring: Use an f-string.")
+    assert isinstance(FixitParser.parse(output), Err)
 
 
 def test_a_traceback_line_is_a_parse_error() -> None:
