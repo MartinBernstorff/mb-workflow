@@ -170,7 +170,7 @@ def linear() -> Linear:
 
 def flow_labels_of_chart() -> FlowLabels:
     return FlowLabels.of_chart(
-        WorkflowChart, LabelGroupName("flowy"), LabelRenames.former_stage_names()
+        WorkflowChart, LabelGroupName("flowy"), LabelRenames.former_state_labels()
     )
 
 

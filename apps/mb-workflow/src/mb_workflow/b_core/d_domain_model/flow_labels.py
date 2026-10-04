@@ -29,7 +29,7 @@ class LabelRename(Model):
 
     @staticmethod
     def fake() -> LabelRename:
-        return LabelRename(held=LabelName("implementing"), renamed=LabelName("implementing"))
+        return LabelRename(held=LabelName("Implementing"), renamed=LabelName("implementing"))
 
 
 class LabelRenames(Value[tuple[LabelRename, ...]]):
@@ -39,7 +39,7 @@ class LabelRenames(Value[tuple[LabelRename, ...]]):
 
     # The entry states were renamed, so tickets labelled before the rename keep their state.
     @staticmethod
-    def former_stage_names() -> LabelRenames:
+    def former_state_labels() -> LabelRenames:
         return LabelRenames(
             tuple(
                 LabelRename(held=LabelName(held), renamed=LabelName(renamed))
@@ -51,7 +51,7 @@ class LabelRenames(Value[tuple[LabelRename, ...]]):
             )
         )
 
-    def of_held(self, label: LabelName) -> LabelName | None:
+    def renamed_from(self, label: LabelName) -> LabelName | None:
         wanted = label.root.casefold()
         return next(
             (rename.renamed for rename in self.root if rename.held.root.casefold() == wanted),
@@ -86,7 +86,7 @@ class FlowLabels(Model):
     @staticmethod
     def fake() -> FlowLabels:
         return FlowLabels.of_chart(
-            WorkflowChart, LabelGroupName.fake(), LabelRenames.former_stage_names()
+            WorkflowChart, LabelGroupName.fake(), LabelRenames.former_state_labels()
         )
 
     @staticmethod
@@ -154,7 +154,7 @@ class FlowLabels(Model):
                 if spelled != label:
                     renames.append(LabelRename(held=label, renamed=spelled))
                 continue
-            current = self.former.of_held(label)
+            current = self.former.renamed_from(label)
             if current is not None and held.matching(current) is None:
                 renames.append(LabelRename(held=label, renamed=current))
         return LabelRenames(tuple(renames))

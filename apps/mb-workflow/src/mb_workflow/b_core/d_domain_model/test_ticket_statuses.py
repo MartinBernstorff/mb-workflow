@@ -10,17 +10,18 @@ def test_a_complete_mapping_gives_each_flow_state_its_ticket_status() -> None:
 
 
 def test_a_state_in_another_case_maps_the_state_as_the_chart_spells_it() -> None:
-    status = "In Review"
+    mapped = "In Review"
     table = {state.root: status.root for state, status in TicketStatuses.fake().root.items()}
     del table["review"]
-    parsed = TicketStatuses.model_validate({**table, "Review": status})
-    assert parsed.of(StateName("review")) == IssueStatusName(status)
+    parsed = TicketStatuses.model_validate({**table, "Review": mapped})
+    assert parsed.of(StateName("review")) == IssueStatusName(mapped)
 
 
 def test_a_state_named_twice_in_different_cases_is_refused() -> None:
     table = {state.root: status.root for state, status in TicketStatuses.fake().root.items()}
-    with pytest.raises(ValueError, match="review, Review both map review"):
-        _ = TicketStatuses.model_validate({**table, "Review": "In Review"})
+    typed = "Review"
+    with pytest.raises(ValueError, match=f"review, {typed} both map review"):
+        _ = TicketStatuses.model_validate({**table, typed: "In Review"})
 
 
 def test_a_mapping_with_a_gap_is_refused_naming_the_missing_flow_states() -> None:
@@ -35,5 +36,6 @@ def test_a_mapping_with_a_gap_is_refused_naming_the_missing_flow_states() -> Non
 
 def test_a_mapping_naming_a_former_state_is_refused() -> None:
     table = {state.root: status.root for state, status in TicketStatuses.fake().root.items()}
-    with pytest.raises(ValueError, match="The chart has no state named Specced"):
-        _ = TicketStatuses.model_validate({**table, "Specced": "Todo"})
+    former = "Specced"
+    with pytest.raises(ValueError, match=f"The chart has no state named {former}"):
+        _ = TicketStatuses.model_validate({**table, former: "Todo"})

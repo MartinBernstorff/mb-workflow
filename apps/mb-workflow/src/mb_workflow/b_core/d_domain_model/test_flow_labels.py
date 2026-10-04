@@ -161,8 +161,8 @@ def test_a_former_flow_label_is_renamed_to_its_current_name() -> None:
 
 
 def test_a_former_flow_label_in_another_case_is_renamed_to_its_current_name() -> None:
-    held = LabelName("grilling")
-    synced = renaming(LabelName("Grilling"), GRILL).sync_plan(grey(held))
+    former, held = LabelName("Grilling"), LabelName("grilling")
+    synced = renaming(former, GRILL).sync_plan(grey(held))
     assert synced.renamed == LabelRenames((LabelRename(held=held, renamed=GRILL),))
 
 
@@ -174,9 +174,8 @@ def test_a_former_flow_label_is_deleted_when_its_current_name_is_held() -> None:
 
 
 def test_a_former_flow_label_counts_as_its_current_name() -> None:
-    assert renaming(LabelName("Grilling"), GRILL).missing(
-        LabelNames((LabelName("Grilling"),))
-    ) == LabelNames(())
+    former = LabelName("Grilling")
+    assert renaming(former, GRILL).missing(LabelNames((former,))) == LabelNames(())
 
 
 def test_the_chart_renames_the_former_entry_labels() -> None:
