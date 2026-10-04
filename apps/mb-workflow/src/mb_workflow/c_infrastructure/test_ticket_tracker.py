@@ -729,6 +729,30 @@ def test_a_renamed_label_stays_on_its_tickets(groupless: TicketTracker, backlog:
     assert renamed in groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels.root
 
 
+def test_a_renamed_team_label_stays_on_the_teams_tickets(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
+    )
+    groupless.add_label(backlog.identifier(Seed.done), QA)
+    renamed = LabelName("qa")
+    groupless.rename_group_label(LabelGroupName.fake(), QA, renamed, backlog.team).unwrap()
+    assert renamed in groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels.root
+
+
+def test_a_deleted_team_label_leaves_the_teams_tickets(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
+    )
+    groupless.add_label(backlog.identifier(Seed.done), QA)
+    groupless.delete_group_label(LabelGroupName.fake(), QA, backlog.team).unwrap()
+    held = groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels
+    assert held.matching(QA) is None
+
+
 def test_renaming_a_label_the_group_lacks_is_refused(
     groupless: TicketTracker, backlog: Backlog
 ) -> None:

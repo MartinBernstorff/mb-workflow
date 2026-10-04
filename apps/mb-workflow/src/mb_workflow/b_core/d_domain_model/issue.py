@@ -37,6 +37,9 @@ class LabelNames(Value[tuple[LabelName, ...]]):
     def without(self, label: LabelName) -> LabelNames:
         return LabelNames(tuple(name for name in self.root if name != label))
 
+    def replaced(self, label: LabelName, replacement: LabelName) -> LabelNames:
+        return LabelNames(tuple(replacement if name == label else name for name in self.root))
+
     # Linear resolves a label name ignoring case, so these three take a workspace's labels as self.
     def matching(self, label: LabelName) -> LabelName | None:
         wanted = label.root.casefold()

@@ -15,7 +15,6 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelGroupName,
     LabelName,
     LabelNames,
-    Matches,
 )
 from mb_workflow.d_lib.models import Model, Value
 
@@ -48,16 +47,12 @@ class GroupSync(Model):
     @staticmethod
     def fake() -> GroupSync:
         return GroupSync(
-            renamed=LabelRenames.fake(), deleted=LabelNames.fake(), recolored=LabelNames(())
+            renamed=LabelRenames.fake(), deleted=LabelNames.fake(), recolored=LabelNames.fake()
         )
 
     @staticmethod
     def unchanged() -> GroupSync:
         return GroupSync(renamed=LabelRenames(()), deleted=LabelNames(()), recolored=LabelNames(()))
-
-    # Renaming or deleting a label touches every ticket that carries it.
-    def destructive(self) -> Matches:
-        return Matches(bool(self.renamed.root or self.deleted.root))
 
 
 class FlowLabels(Model):
@@ -102,7 +97,7 @@ class FlowLabels(Model):
     def missing(self, held: LabelNames) -> LabelNames:
         return held.unmatched(self.labels)
 
-    def synced(self, held: ColoredLabels) -> GroupSync:
+    def sync_plan(self, held: ColoredLabels) -> GroupSync:
         names = held.label_names().root
         return GroupSync(
             renamed=LabelRenames(

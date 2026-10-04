@@ -31,7 +31,7 @@ class CoveredByWorkspace(Model):
     @staticmethod
     def fake() -> CoveredByWorkspace:
         return CoveredByWorkspace(
-            group=LabelGroupName.fake(), workspace=GroupSync.unchanged(), team=GroupSync.unchanged()
+            group=LabelGroupName.fake(), workspace=GroupSync.fake(), team=GroupSync.fake()
         )
 
 
@@ -43,7 +43,7 @@ class SeededTeam(Model):
     @staticmethod
     def fake() -> SeededTeam:
         return SeededTeam(
-            created=LabelNames.fake(), workspace=GroupSync.unchanged(), team=GroupSync.unchanged()
+            created=LabelNames.fake(), workspace=GroupSync.fake(), team=GroupSync.fake()
         )
 
 
@@ -72,9 +72,9 @@ class FlowLabelSeeding:
         held = tracker.group_labels(wanted.group, key.value)
         if isinstance(held, Err):
             return held
-        workspace_sync = wanted.synced(workspace.value)
-        team_sync = wanted.synced(held.value)
-        synced = FlowLabelSeeding.synced(
+        workspace_sync = wanted.sync_plan(workspace.value)
+        team_sync = wanted.sync_plan(held.value)
+        synced = FlowLabelSeeding.sync_groups(
             tracker,
             wanted,
             (
@@ -89,32 +89,34 @@ class FlowLabelSeeding:
             return Ok(
                 CoveredByWorkspace(group=wanted.group, workspace=workspace_sync, team=team_sync)
             )
-        missing = FlowLabelSeeding.missing(wanted, workspace.value, held.value)
+        missing = FlowLabelSeeding.missing_labels(wanted, workspace.value, held.value)
         if missing.root:
             tracker.create_group_labels(wanted.group, wanted.colored(missing), key.value)
         return Ok(SeededTeam(created=missing, workspace=workspace_sync, team=team_sync))
 
     @staticmethod
-    def missing(wanted: FlowLabels, workspace: ColoredLabels, held: ColoredLabels) -> LabelNames:
+    def missing_labels(
+        wanted: FlowLabels, workspace: ColoredLabels, held: ColoredLabels
+    ) -> LabelNames:
         return wanted.missing(LabelNames((*held.label_names().root, *workspace.label_names().root)))
 
     @staticmethod
-    def synced(
+    def sync_groups(
         tracker: TicketTracker, wanted: FlowLabels, plans: tuple[PlannedGroup, ...], force: Force
     ) -> Result[None, TicketTrackerError | PendingLabelChangesError]:
         if not force.root:
-            checked = FlowLabelSeeding.checked(tracker, wanted.group, plans)
+            checked = FlowLabelSeeding.refuse_unforced_changes(tracker, wanted.group, plans)
             if isinstance(checked, Err):
                 return checked
         for plan in plans:
-            applied = FlowLabelSeeding.applied(tracker, wanted, plan)
+            applied = FlowLabelSeeding.apply_sync(tracker, wanted, plan)
             if isinstance(applied, Err):
                 return applied
         return Ok(None)
 
     # Renaming or deleting a label changes every ticket that carries it, so it waits for --force.
     @staticmethod
-    def checked(
+    def refuse_unforced_changes(
         tracker: TicketTracker, group: LabelGroupName, plans: tuple[PlannedGroup, ...]
     ) -> Result[None, TicketTrackerError | PendingLabelChangesError]:
         pending: list[str] = []
@@ -124,22 +126,19 @@ class FlowLabelSeeding:
                 if plan.team is None
                 else f"the {group.root} group of team {plan.team.root}"
             )
-            for rename in plan.sync.renamed.root:
-                counted = tracker.labelled_ticket_count(group, rename.held, plan.team)
-                if isinstance(counted, Err):
-                    return counted
-                pending.append(
-                    f"Rename {rename.held.root} to {rename.renamed.root} in {place}"
-                    f" (on {counted.value.root} ticket{'' if counted.value.root == 1 else 's'})"
-                )
-            for label in plan.sync.deleted.root:
+            changes = (
+                *(
+                    (rename.held, f"Rename {rename.held.root} to {rename.renamed.root} in {place}")
+                    for rename in plan.sync.renamed.root
+                ),
+                *((label, f"Delete {label.root} from {place}") for label in plan.sync.deleted.root),
+            )
+            for label, change in changes:
                 counted = tracker.labelled_ticket_count(group, label, plan.team)
                 if isinstance(counted, Err):
                     return counted
-                pending.append(
-                    f"Delete {label.root} from {place}"
-                    f" (on {counted.value.root} ticket{'' if counted.value.root == 1 else 's'})"
-                )
+                tickets = counted.value.root
+                pending.append(f"{change} (on {tickets} ticket{'' if tickets == 1 else 's'})")
         if not pending:
             return Ok(None)
         listed = "\n".join(f"  {change}" for change in pending)
@@ -151,7 +150,7 @@ class FlowLabelSeeding:
         )
 
     @staticmethod
-    def applied(
+    def apply_sync(
         tracker: TicketTracker, wanted: FlowLabels, plan: PlannedGroup
     ) -> Result[None, TicketTrackerError]:
         for rename in plan.sync.renamed.root:

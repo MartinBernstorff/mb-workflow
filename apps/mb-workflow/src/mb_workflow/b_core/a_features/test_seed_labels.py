@@ -231,7 +231,7 @@ def test_an_unknown_team_fails_and_creates_nothing() -> None:
 
 
 def test_unforced_seeding_with_a_pending_rename_changes_nothing() -> None:
-    held = LabelName("implementing")
+    held = LabelName(FlowLabels.fake().labels.root[0].root.casefold())
     tracker = SeedingTrackers.with_team_ticket_carrying(held)
     refused = FlowLabelSeeding.seed_flow_labels(
         tracker, FlowLabels.fake(), TeamName.fake(), Force(False)
@@ -250,8 +250,10 @@ def test_unforced_seeding_with_a_pending_deletion_changes_nothing() -> None:
 
 
 def test_the_refusal_lists_each_pending_rename_with_its_ticket_count() -> None:
-    held = LabelName("implementing")
-    renamed = LabelName("Implementing")
+    renamed = FlowLabels.fake().labels.root[0]
+    held = LabelName(renamed.root.casefold())
+    one_ticket = "on 1 ticket"
+    rerun = "--force"
     refused = FlowLabelSeeding.seed_flow_labels(
         SeedingTrackers.with_team_ticket_carrying(held),
         FlowLabels.fake(),
@@ -260,12 +262,13 @@ def test_the_refusal_lists_each_pending_rename_with_its_ticket_count() -> None:
     )
     assert isinstance(refused, Err)
     assert f"Rename {held.root} to {renamed.root}" in str(refused.error)
-    assert "1 ticket" in str(refused.error)
-    assert "--force" in str(refused.error)
+    assert one_ticket in str(refused.error)
+    assert rerun in str(refused.error)
 
 
 def test_the_refusal_lists_each_pending_deletion_with_its_ticket_count() -> None:
     obsolete = LabelName("Obsolete")
+    one_ticket = "on 1 ticket"
     refused = FlowLabelSeeding.seed_flow_labels(
         SeedingTrackers.with_workspace_ticket_carrying(obsolete),
         FlowLabels.fake(),
@@ -274,20 +277,21 @@ def test_the_refusal_lists_each_pending_deletion_with_its_ticket_count() -> None
     )
     assert isinstance(refused, Err)
     assert f"Delete {obsolete.root}" in str(refused.error)
-    assert "1 ticket" in str(refused.error)
+    assert one_ticket in str(refused.error)
 
 
 def test_forced_seeding_renames_a_team_label_spelled_in_another_case() -> None:
     wanted = FlowLabels.fake()
-    tracker = SeedingTrackers.with_team_ticket_carrying(LabelName("implementing"))
+    held = LabelName(wanted.labels.root[0].root.casefold())
+    tracker = SeedingTrackers.with_team_ticket_carrying(held)
     _ = FlowLabelSeeding.seed_flow_labels(tracker, wanted, TeamName.fake(), Force(True)).unwrap()
     group = tracker.group_labels(wanted.group, TeamKey.fake()).unwrap()
     assert set(group.label_names().root) == set(wanted.labels.root)
 
 
 def test_forced_seeding_keeps_a_renamed_label_on_its_tickets() -> None:
-    renamed = LabelName("Implementing")
-    tracker = SeedingTrackers.with_team_ticket_carrying(LabelName("implementing"))
+    renamed = FlowLabels.fake().labels.root[0]
+    tracker = SeedingTrackers.with_team_ticket_carrying(LabelName(renamed.root.casefold()))
     _ = FlowLabelSeeding.seed_flow_labels(
         tracker, FlowLabels.fake(), TeamName.fake(), Force(True)
     ).unwrap()
@@ -308,7 +312,13 @@ def test_forced_seeding_deletes_a_team_label_outside_the_spec_from_the_group_and
 def test_forced_seeding_renames_and_deletes_in_the_workspace_group() -> None:
     wanted = FlowLabels.fake()
     tracker = SeedingTrackers.with_workspace_group(
-        LabelNames((*wanted.labels.root[1:], LabelName("grilling"), LabelName("Obsolete")))
+        LabelNames(
+            (
+                *wanted.labels.root[1:],
+                LabelName(wanted.labels.root[0].root.casefold()),
+                LabelName("Obsolete"),
+            )
+        )
     )
     _ = FlowLabelSeeding.seed_flow_labels(tracker, wanted, TeamName.fake(), Force(True)).unwrap()
     group = tracker.group_labels(wanted.group, None).unwrap()
@@ -316,9 +326,9 @@ def test_forced_seeding_renames_and_deletes_in_the_workspace_group() -> None:
 
 
 def test_forced_seeding_reports_its_renames_and_deletions() -> None:
-    held = LabelName("grilling")
-    obsolete = LabelName("Obsolete")
     wanted = FlowLabels.fake()
+    held = LabelName(wanted.labels.root[0].root.casefold())
+    obsolete = LabelName("Obsolete")
     tracker = SeedingTrackers.with_workspace_group(
         LabelNames((*wanted.labels.root[1:], held, obsolete))
     )

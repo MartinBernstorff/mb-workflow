@@ -292,19 +292,9 @@ class FakeTicketTracker(TicketTracker):
                     ),
                 )
                 if team is None:
-                    self._labels = LabelNames(
-                        tuple(renamed if name == known else name for name in self._labels.root)
-                    )
+                    self._labels = self._labels.replaced(known, renamed)
                 for tracked in self._carrying(known, team):
-                    self._relabel(
-                        tracked,
-                        LabelNames(
-                            tuple(
-                                renamed if name == known else name
-                                for name in tracked.issue.labels.root
-                            )
-                        ),
-                    )
+                    self._relabel(tracked, tracked.issue.labels.replaced(known, renamed))
                 return Ok(None)
             case Err() as failed:
                 return failed

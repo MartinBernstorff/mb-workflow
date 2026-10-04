@@ -19,7 +19,6 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelGroupName,
     LabelName,
     LabelNames,
-    Matches,
 )
 
 GRILLING = LabelName("Grilling")
@@ -119,42 +118,32 @@ def grey(*labels: LabelName) -> ColoredLabels:
 
 
 def test_a_group_matching_the_spec_needs_no_sync() -> None:
-    assert flow_labels_of(QA, MERGED).synced(grey(QA, MERGED)) == GroupSync.unchanged()
+    assert flow_labels_of(QA, MERGED).sync_plan(grey(QA, MERGED)) == GroupSync.unchanged()
 
 
 def test_a_flow_label_spelled_in_another_case_is_renamed_to_the_spec() -> None:
     held = LabelName("qa")
-    synced = flow_labels_of(QA).synced(grey(held))
+    synced = flow_labels_of(QA).sync_plan(grey(held))
     assert synced.renamed == LabelRenames((LabelRename(held=held, renamed=QA),))
 
 
 def test_a_flow_label_spelled_as_the_spec_is_not_renamed() -> None:
-    assert flow_labels_of(QA).synced(grey(QA)).renamed == LabelRenames(())
+    assert flow_labels_of(QA).sync_plan(grey(QA)).renamed == LabelRenames(())
 
 
 def test_a_label_outside_the_spec_is_deleted() -> None:
     obsolete = LabelName("Obsolete")
-    assert flow_labels_of(QA).synced(grey(QA, obsolete)).deleted == LabelNames((obsolete,))
+    assert flow_labels_of(QA).sync_plan(grey(QA, obsolete)).deleted == LabelNames((obsolete,))
 
 
 def test_a_renamed_label_is_not_deleted() -> None:
-    assert flow_labels_of(QA).synced(grey(LabelName("qa"))).deleted == LabelNames(())
+    assert flow_labels_of(QA).sync_plan(grey(LabelName("qa"))).deleted == LabelNames(())
 
 
 def test_a_label_in_the_wrong_color_is_recolored_under_its_spec_name() -> None:
     held = ColoredLabels((ColoredLabel(name=LabelName("grilling"), color=LabelColor.grey()),))
-    synced = FlowLabels.fake().synced(held)
+    synced = FlowLabels.fake().sync_plan(held)
     assert synced.recolored == LabelNames((GRILLING,))
-
-
-def test_renames_and_deletions_are_destructive() -> None:
-    assert flow_labels_of(QA).synced(grey(LabelName("qa"))).destructive() == Matches(True)
-    assert flow_labels_of(QA).synced(grey(QA, MERGED)).destructive() == Matches(True)
-
-
-def test_recoloring_alone_is_not_destructive() -> None:
-    held = ColoredLabels((ColoredLabel(name=GRILLING, color=LabelColor.grey()),))
-    assert FlowLabels.fake().synced(held).destructive() == Matches(False)
 
 
 def test_relabelling_adds_the_label_of_the_state() -> None:
