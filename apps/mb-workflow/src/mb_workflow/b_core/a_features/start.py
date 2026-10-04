@@ -19,10 +19,10 @@ from mb_workflow.b_core.d_domain_model.flow import (
     AwaitingHuman,
     Finished,
     FlowError,
-    OpenedStates,
     Skill,
     StateName,
     WorkflowChart,
+    WorkspaceOpening,
     WorkState,
 )
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
@@ -338,7 +338,7 @@ class TicketStart:
         action = TicketStart.action_in(request.ticket, given.value)
         if isinstance(action, Err):
             return action
-        opened = OpenedStates.opened_in(WorkflowChart, given.value)
+        opened = WorkspaceOpening.state_opened_in(WorkflowChart, given.value)
         column = board.status_for(opened)
         if isinstance(column, Err):
             return column

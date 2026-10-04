@@ -237,12 +237,13 @@ def test_seeds_the_board_column_from_the_flow_label() -> None:
 
 def test_a_todo_ticket_opens_in_implementing() -> None:
     manager = fake_manager()
-    tracker = tracking(StateName("todo"))
+    todo = StateName("todo")
+    tracker = tracking(todo)
     implementing = StateName("implementing")
     assert starting(manager, tracker, StartRequest.fake()) == Ok(None)
     issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
     assert issue.labels.has(LabelName(implementing.root)).root
-    assert not issue.labels.has(LabelName("todo")).root
+    assert not issue.labels.has(LabelName(todo.root)).root
     assert issue.status == TicketStatuses.fake().of(implementing)
     assert opened_in(manager).status == fake_board().status_for(implementing).unwrap()
 
@@ -311,15 +312,14 @@ def test_a_state_typed_in_uppercase_puts_the_ticket_in_the_chart_state() -> None
 
 
 def test_a_ticket_without_a_flow_label_started_in_todo_opens_in_implementing() -> None:
+    manager = fake_manager()
     tracker = tracking(None)
     implementing = StateName("implementing")
-    assert starting(fake_manager(), tracker, starting_in(StateName("todo"))) == Ok(None)
-    assert (
-        tracker.read_issue(IssueIdentifier.fake())
-        .unwrap()
-        .labels.has(LabelName(implementing.root))
-        .root
-    )
+    assert starting(manager, tracker, starting_in(StateName("todo"))) == Ok(None)
+    issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
+    assert issue.labels.has(LabelName(implementing.root)).root
+    assert issue.status == TicketStatuses.fake().of(implementing)
+    assert opened_in(manager).status == fake_board().status_for(implementing).unwrap()
 
 
 def test_a_ticket_with_a_flow_label_started_in_a_state_is_not_claimed() -> None:

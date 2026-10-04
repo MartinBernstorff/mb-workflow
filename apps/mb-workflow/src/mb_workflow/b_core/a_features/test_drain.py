@@ -308,9 +308,10 @@ def test_starts_the_top_ready_ticket_and_submits_its_prompt() -> None:
 
 def test_a_drained_todo_ticket_opens_in_the_implementing_column() -> None:
     manager = fake_manager()
+    implementing = StateName("implementing")
     _ = draining(standard_pool(), manager=manager, pool=pool_with_total(Limit(1)))
     (opened,) = manager.worktrees().unwrap().without(WorktreePath.fake()).root
-    assert opened.status == fake_board().status_for(StateName("implementing")).unwrap()
+    assert opened.status == fake_board().status_for(implementing).unwrap()
 
 
 def test_started_tickets_open_in_the_background() -> None:

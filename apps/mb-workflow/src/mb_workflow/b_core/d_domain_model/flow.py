@@ -95,15 +95,15 @@ class WorkflowChart(StateChart[ChartModel]):
 
 # An entry state whose skill a delivery state also runs hands its work to that delivery state
 # once a workspace opens, so the ticket shows as delivering while the skill runs.
-class OpenedStates:
+class WorkspaceOpening:
     @staticmethod
-    def opened_in(chart: type[WorkflowChart], state: StateName) -> StateName:
+    def state_opened_in(chart: type[WorkflowChart], state: StateName) -> StateName:
+        work_states = [held for held in chart.states if isinstance(held, WorkState)]
         entry = next(
             (
                 held
-                for held in chart.states
-                if isinstance(held, WorkState)
-                and held.name == state.root
+                for held in work_states
+                if held.name == state.root
                 and held.phase == Phase.entry
                 and isinstance(held.action, Skill)
             ),
@@ -111,14 +111,14 @@ class OpenedStates:
         )
         if entry is None:
             return state
-        for held in chart.states:
-            if (
-                isinstance(held, WorkState)
-                and held.phase == Phase.delivery
-                and held.action == entry.action
-            ):
-                return StateName(held.name)
-        return state
+        return next(
+            (
+                StateName(held.name)
+                for held in work_states
+                if held.phase == Phase.delivery and held.action == entry.action
+            ),
+            state,
+        )
 
 
 class EventName(Value[str]):

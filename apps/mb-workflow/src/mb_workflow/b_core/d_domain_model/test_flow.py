@@ -12,11 +12,11 @@ from mb_workflow.b_core.d_domain_model.flow import (
     EventNames,
     FlowError,
     FlowStatus,
-    OpenedStates,
     StateName,
     StateNames,
     UnknownStateError,
     WorkflowChart,
+    WorkspaceOpening,
     WorkState,
 )
 
@@ -142,12 +142,11 @@ def test_implementing_again_keeps_the_work_in_implementing() -> None:
 
 
 def test_only_todo_opens_in_the_delivery_state_running_the_same_skill() -> None:
-    states = StateNames.of_chart(WorkflowChart).root
-    moved = {
-        state: OpenedStates.opened_in(WorkflowChart, state)
-        for state in states
-        if OpenedStates.opened_in(WorkflowChart, state) != state
+    opened = {
+        state: WorkspaceOpening.state_opened_in(WorkflowChart, state)
+        for state in StateNames.of_chart(WorkflowChart).root
     }
+    moved = {state: target for state, target in opened.items() if target != state}
     assert moved == {TODO: IMPLEMENTING}
 
 
