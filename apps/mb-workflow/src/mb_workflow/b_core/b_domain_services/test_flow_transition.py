@@ -5,7 +5,7 @@ from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
 from mb_workflow.b_core.b_domain_services.flow_transition import (
-    FlowEntryStep,
+    FlowStateStep,
     FlowTransition,
     Force,
 )
@@ -207,14 +207,18 @@ def test_another_teams_flow_labels_leave_the_ticket_and_the_board_alone() -> Non
 
 
 def entering(
-    tracker: FakeTicketTracker, state: StateName, previous_status: IssueStatusName
-) -> FlowEntryStep:
-    return FlowEntryStep(
+    tracker: FakeTicketTracker,
+    state: StateName,
+    previous_state: StateName | None,
+    previous_status: IssueStatusName,
+) -> FlowStateStep:
+    return FlowStateStep(
         tracker=tracker,
         issue=IssueIdentifier.fake(),
         wanted=FlowLabels.fake(),
         statuses=TicketStatuses.fake(),
         state=state,
+        previous_state=previous_state,
         previous_status=previous_status,
     )
 
@@ -224,7 +228,7 @@ def test_entering_the_flow_labels_the_ticket_and_sets_the_states_status() -> Non
     specced = StateName("Specced")
     todo = IssueStatusName("Todo")
     assert TicketStatuses.fake().of(specced) == todo
-    assert entering(tracker, specced, IssueStatusName.fake()).apply() == Ok(None)
+    assert entering(tracker, specced, None, IssueStatusName.fake()).apply() == Ok(None)
     issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
     assert issue.labels == LabelNames((LabelName.fake(), LabelName(specced.root)))
     assert issue.status == todo
@@ -234,7 +238,7 @@ def test_reverting_the_flow_entry_restores_the_labels_and_status() -> None:
     held = LabelNames((LabelName.fake(),))
     tracker = seeded_tracker(held)
     maturing = IssueStatusName("Maturing")
-    step = entering(tracker, StateName("Specced"), maturing)
+    step = entering(tracker, StateName("Specced"), None, maturing)
     _ = step.apply().unwrap()
     assert step.revert() == Ok(None)
     issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
@@ -244,9 +248,21 @@ def test_reverting_the_flow_entry_restores_the_labels_and_status() -> None:
 
 def test_reverting_the_flow_entry_keeps_labels_added_since() -> None:
     tracker = seeded_tracker(LabelNames(()))
-    step = entering(tracker, StateName("Specced"), IssueStatusName("Maturing"))
+    step = entering(tracker, StateName("Specced"), None, IssueStatusName("Maturing"))
     _ = step.apply().unwrap()
     added = LabelName.fake()
     tracker.add_label(IssueIdentifier.fake(), added)
     _ = step.revert().unwrap()
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames((added,))
+
+
+def test_reverting_the_flow_state_change_writes_back_the_replaced_flow_label() -> None:
+    grilling = StateName("Grilling")
+    tracker = seeded_tracker(LabelNames((LabelName.fake(), LabelName(grilling.root))))
+    maturing = IssueStatusName("Maturing")
+    step = entering(tracker, StateName("Specced"), grilling, maturing)
+    _ = step.apply().unwrap()
+    assert step.revert() == Ok(None)
+    issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
+    assert issue.labels == LabelNames((LabelName.fake(), LabelName(grilling.root)))
+    assert issue.status == maturing

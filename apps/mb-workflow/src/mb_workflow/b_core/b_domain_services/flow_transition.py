@@ -93,15 +93,16 @@ class FlowTransition:
         return Ok(None)
 
 
-# Puts a ticket without a flow label in the flow. Reverting takes the flow label off again and
-# restores the status the ticket had, keeping labels added since.
+# Puts a ticket in a flow state. Reverting writes back the flow label it replaced (none, for a
+# ticket that was not in the flow) and the status the ticket had, keeping labels added since.
 @dataclass(frozen=True)
-class FlowEntryStep(SagaStep):
+class FlowStateStep(SagaStep):
     tracker: TicketTracker
     issue: IssueIdentifier
     wanted: FlowLabels
     statuses: TicketStatuses
     state: StateName
+    previous_state: StateName | None
     previous_status: IssueStatusName
 
     @override
@@ -119,17 +120,21 @@ class FlowEntryStep(SagaStep):
         held = self.tracker.read_issue(self.issue)
         if isinstance(held, Err):
             return held
+        labels = (
+            self.wanted.without_flow_labels(held.value.labels)
+            if self.previous_state is None
+            else self.wanted.relabelled(held.value.labels, self.previous_state)
+        )
         try:
             with Activity(
-                f"Taking {self.issue.root} out of the flow, back to {self.previous_status.root}"
+                f"Moving {self.issue.root} back to"
+                f" {'no flow state' if self.previous_state is None else self.previous_state.root}"
+                f" and {self.previous_status.root}"
             ).logged(logger):
                 self.tracker.update_issue(
                     self.issue,
                     IssueUpdate.nothing().model_copy(
-                        update={
-                            "labels": self.wanted.without_flow_labels(held.value.labels),
-                            "status": self.previous_status,
-                        }
+                        update={"labels": labels, "status": self.previous_status}
                     ),
                 )
         except TicketTrackerError as error:

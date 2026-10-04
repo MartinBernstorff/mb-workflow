@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, override
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.b_domain_services.flow_label_check import FlowLabelCheck
-from mb_workflow.b_core.b_domain_services.flow_transition import FlowEntryStep
+from mb_workflow.b_core.b_domain_services.flow_transition import FlowStateStep
 from mb_workflow.b_core.b_domain_services.next_action import TicketState
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimRequest
@@ -204,12 +204,13 @@ class TicketStart:
             if isinstance(flow_checked, Err):
                 return flow_checked
             entry_steps = (
-                FlowEntryStep(
+                FlowStateStep(
                     tracker=tracker,
                     issue=request.ticket,
                     wanted=flow_labels,
                     statuses=statuses,
                     state=state,
+                    previous_state=labelled_state,
                     previous_status=detail.issue.status,
                 ),
             )
