@@ -3,6 +3,7 @@ from typing import ClassVar, Literal, override
 
 import libcst as cst
 from fixit import Invalid, LintRule, Valid
+from libcst.metadata import CodePosition, CodeRange
 
 Body = Sequence[cst.BaseStatement | cst.BaseSmallStatement]
 Surface = Literal["Parameter", "Return type", "Attribute"]
@@ -149,6 +150,12 @@ class NoPrimitives(LintRule):
         Valid(
             """
             class Thing:
+                UserId = NewType("UserId", str)
+            """
+        ),
+        Valid(
+            """
+            class Thing:
                 def m(self: "Thing") -> None: ...
 
                 @classmethod
@@ -273,6 +280,7 @@ class NoPrimitives(LintRule):
         Invalid("def greet(name: Annotated[str, Field(min_length=1)]) -> None: ..."),
         Invalid("def greet(names: list[list[dict[Name, str]]]) -> None: ..."),
         Invalid("def greet(payload: Any) -> None: ..."),
+        Invalid("def greet(payload: dict[str, Any]) -> None: ..."),
         Invalid("def greet(payload: object) -> None: ..."),
         Invalid("def greet(*names: str) -> None: ..."),
         Invalid("def greet(**names: str) -> None: ..."),
@@ -309,6 +317,18 @@ class NoPrimitives(LintRule):
         ),
         Invalid(
             """
+            class Thing(NamedTuple):
+                count: int
+            """
+        ),
+        Invalid(
+            """
+            class Thing(Protocol):
+                count: int
+            """
+        ),
+        Invalid(
+            """
             class Thing:
                 meta: Any
             """
@@ -334,6 +354,7 @@ class NoPrimitives(LintRule):
                 def save(self, force: Name) -> str: ...
             """
         ),
+        # Only the stub is reported, not the implementation.
         Invalid(
             """
             @overload
@@ -341,7 +362,10 @@ class NoPrimitives(LintRule):
             @overload
             def f(x: Name) -> Name: ...
             def f(x: object) -> object: ...
-            """
+            """,
+            range=CodeRange(
+                start=CodePosition(line=2, column=9), end=CodePosition(line=2, column=12)
+            ),
         ),
         # Only the parameters of a test are pytest's.
         Invalid("def test_walks(x: Name) -> str: ..."),
@@ -432,7 +456,7 @@ class NoPrimitives(LintRule):
             # Click decides flag-ness from the annotation being literally bool.
             if owned_by_typer and names == {"bool"}:
                 continue
-            if names & (NoPrimitives.DENIED | NoPrimitives.TOP_TYPES):
+            if NoPrimitives._is_flagged(names):
                 self._report(annotation, "Parameter", parameter.name)
 
     def _check_return(self, returns: cst.Annotation) -> None:
@@ -453,7 +477,7 @@ class NoPrimitives(LintRule):
                 statement.target
             ):
                 names = TypeNames.of(statement.annotation.annotation)
-                if names & (NoPrimitives.DENIED | NoPrimitives.TOP_TYPES):
+                if NoPrimitives._is_flagged(names):
                     self._report(statement.annotation.annotation, "Attribute", statement.target)
         self._check_body(body)
 
@@ -467,6 +491,10 @@ class NoPrimitives(LintRule):
             f'{subject} is annotated "{empty.code_for_node(annotation)}". '
             "Use a domain type, e.g. a Pydantic RootModel, instead of a primitive (TY-c1).",
         )
+
+    @staticmethod
+    def _is_flagged(names: TypeNames) -> bool:
+        return bool(names & (NoPrimitives.DENIED | NoPrimitives.TOP_TYPES))
 
     @staticmethod
     def _has_exempt_signature(function: cst.FunctionDef, siblings: Body) -> bool:
