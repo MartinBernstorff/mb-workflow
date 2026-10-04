@@ -12,3 +12,19 @@ runtime-evaluated-base-classes = [
     "mb_workflow.d_lib.models.Payload",
     "mb_workflow.d_lib.models.Value",
 ]
+
+[lint]
+ignore = [
+    # Errors are moving to values (TY-7e); raise-baseline/ ratchets the remaining raises down.
+    "TRY003",
+    # Logged errors are user-facing messages; a traceback would be noise.
+    "TRY400",
+    # Bools are passed wrapped in Value[bool] types, e.g. Force(True), so the call site names them.
+    "FBT003",
+]
+
+[lint.extend-per-file-ignores]
+# A Typer command's bool parameter is a CLI flag, not a boolean trap.
+"src/mb_workflow/a_presentation/cli/**" = ["FBT001"]
+# pytest passes parametrized values by name.
+"**/test_*.py" = ["FBT001"]
