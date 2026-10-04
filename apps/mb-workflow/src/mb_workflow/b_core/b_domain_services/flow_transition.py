@@ -71,7 +71,6 @@ class FlowTransition:
             return checked
         return FlowTransition.put_in_state_unchecked(tracker, issue, wanted, statuses, state)
 
-    # Assumes the flow labels exist, which put_in_state checks.
     @staticmethod
     def put_in_state_unchecked(
         tracker: TicketTracker,
@@ -93,8 +92,6 @@ class FlowTransition:
         return Ok(None)
 
 
-# Puts a ticket in a flow state. Reverting writes back the flow label it replaced (none, for a
-# ticket that was not in the flow) and the status the ticket had, keeping labels added since.
 @dataclass(frozen=True)
 class FlowStateStep(SagaStep):
     tracker: TicketTracker

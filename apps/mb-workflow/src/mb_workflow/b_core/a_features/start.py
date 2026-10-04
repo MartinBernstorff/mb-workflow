@@ -196,7 +196,6 @@ class TicketStart:
         if isinstance(checked, Err):
             return checked
 
-        # An unlabelled ticket enters the flow before it is claimed, so a failed write leaves no claim behind.
         entry_steps: tuple[SagaStep, ...] = ()
         status = detail.issue.status
         if labelled_state is None:
