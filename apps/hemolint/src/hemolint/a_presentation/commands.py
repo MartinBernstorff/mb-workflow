@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 from safe_result import Err, Ok
 
 from hemolint.b_core.a_features.check_baseline import BaselineCheck
+from hemolint.b_core.a_features.prune_baseline import BaselinePruning
 from hemolint.b_core.a_features.record_baseline import BaselineRecording
 from hemolint.b_core.d_domain_model.linter_output import UnparsableLineError
 from hemolint.c_infrastructure.disk_baseline_store import DiskBaselineStore
@@ -46,6 +47,22 @@ class DriftReport(Value[str]):
         return DriftReport("".join(f"{line}\n" for line in lines))
 
 
+# New violations as the linter reported them, then how many fixed violations were removed.
+class PruneReport(Value[str]):
+    @staticmethod
+    def fake() -> PruneReport:
+        return PruneReport("0 new violations. Removed 0 fixed violations from the baseline.\n")
+
+    @staticmethod
+    def of(drift: Drift) -> PruneReport:
+        lines = [violation.reported_as.root for violation in drift.new]
+        lines.append(
+            f"{len(drift.new)} new violations. "
+            f"Removed {len(drift.fixed.root)} fixed violations from the baseline."
+        )
+        return PruneReport("".join(f"{line}\n" for line in lines))
+
+
 class Commands:
     @staticmethod
     def record_baseline(
@@ -86,6 +103,26 @@ class Commands:
             case Ok(drift):
                 _ = sys.stdout.write(DriftReport.of(drift).root)
                 return ExitCode(1) if drift.exists() else ExitCode(0)
+            case Err(error):
+                return Commands._report_error(error)
+
+    @staticmethod
+    def prune_baseline(
+        output: LinterOutput,
+        linter_format: LinterFormat,
+        working: WorkingDirectory,
+        baseline: BaselineDirectory,
+    ) -> ExitCode:
+        match BaselinePruning.prune(
+            output,
+            linter_format,
+            working,
+            DiskSourceLines(working),
+            DiskBaselineStore(baseline),
+        ):
+            case Ok(drift):
+                _ = sys.stdout.write(PruneReport.of(drift).root)
+                return ExitCode(1) if drift.new else ExitCode(0)
             case Err(error):
                 return Commands._report_error(error)
 

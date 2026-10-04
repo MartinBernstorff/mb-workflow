@@ -39,11 +39,13 @@ def check(
     if prune and baseline:
         _ = sys.stderr.write("--prune and --baseline cannot be used together.\n")
         raise typer.Exit(code=2)
-    if prune:
-        _ = sys.stderr.write("hemolint check --prune is not implemented yet.\n")
-        raise typer.Exit(code=2)
     working = WorkingDirectory.current()
-    command = Commands.record_baseline if baseline else Commands.check_baseline
+    if baseline:
+        command = Commands.record_baseline
+    elif prune:
+        command = Commands.prune_baseline
+    else:
+        command = Commands.check_baseline
     code = command(
         LinterOutput(sys.stdin.read()),
         linter_format,

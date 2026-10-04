@@ -49,3 +49,9 @@ def test_the_same_line_under_another_rule_is_another_violation() -> None:
     after = Baseline.of((Violation(file=other_rule, fingerprint=code),))
     one_swapped = BaselineChange(added=Count(1), removed=Count(1))
     assert after.change_from(before) == one_swapped
+
+
+def test_removing_a_baseline_removes_one_copy_per_copy_it_holds() -> None:
+    known = Violations.with_fingerprint(Fingerprint("a == None"))
+    remaining = Baseline.of((known, known)).without(Baseline.of((known,)))
+    assert remaining == Baseline.of((known,))

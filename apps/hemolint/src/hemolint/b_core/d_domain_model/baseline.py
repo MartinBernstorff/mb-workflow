@@ -90,6 +90,10 @@ class Baseline(Value[tuple[Violation, ...]]):
             )
         )
 
+    # Removes one held copy per copy in the other baseline.
+    def without(self, other: Baseline) -> Baseline:
+        return Baseline.of((Counter(self.root) - Counter(other.root)).elements())
+
     def change_from(self, previous: Baseline) -> BaselineChange:
         now, before = Counter(self.root), Counter(previous.root)
         return BaselineChange(
