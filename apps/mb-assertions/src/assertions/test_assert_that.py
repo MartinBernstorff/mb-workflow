@@ -81,9 +81,12 @@ def test_matches_compares_models_by_value() -> None:
 
 
 def test_matches_compares_models_holding_a_frozenset_of_models() -> None:
-    tags = frozenset({Tag(name="a"), Tag(name="b")})
+    first = "a"
+    second = "b"
 
-    Assert.that(Tags(tags)).matches(Tags(frozenset(tags)))
+    Assert.that(Tags(frozenset({Tag(name=first), Tag(name=second)}))).matches(
+        Tags(frozenset({Tag(name=second), Tag(name=first)})),
+    )
 
 
 def test_matches_rejects_root_models_of_different_classes() -> None:
@@ -102,10 +105,14 @@ def test_matches_rejects_field_less_models_of_different_classes() -> None:
 
 def test_matches_reports_both_model_reprs() -> None:
     actual: pydantic.RootModel[bool] = Ready(True)
-    expected = Recorded(True)
 
-    with pytest.raises(AssertionError, match=re.escape(f"{actual!r} != {expected!r}")):
-        Assert.that(actual).matches(expected)
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(
+            "Expected values to match, but they did not: Ready(root=True) != Recorded(root=True)",
+        ),
+    ):
+        Assert.that(actual).matches(Recorded(True))
 
 
 def test_matches_populated_exactly_ignores_unset_fields() -> None:

@@ -167,7 +167,7 @@ class Not[T](_NegatableMatchers[T]):
     @override
     def matches(self, expected: T) -> None:
         if self._actual == expected:
-            raise AssertionError(f"Expected values to differ, but both were {self._actual}")
+            raise AssertionError(f"Expected values to differ, but both were {self._actual!r}")
 
     @override
     def contains(self: _HoldsActual[str], substring: str) -> None:
