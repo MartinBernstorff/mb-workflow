@@ -5,6 +5,7 @@ from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, Protocol, override
 
 import pytest
+from assertions import Assert
 from safe_result import Err, Ok
 
 from mb_workflow.b_core.c_secondary_ports.code_review import (
@@ -549,7 +550,7 @@ def remark() -> ReviewRequest:
 
 def test_lists_the_pull_requests_awaiting_review(review: CodeForge, kind: ReviewKind) -> None:
     skip_on_own_pull_requests(kind)
-    assert review.review_requested() == Ok(requested())
+    Assert.that(review.review_requested()).matches(Ok(requested()))
 
 
 def test_a_branch_merged_on_the_day_counts_as_merged_since_then(
@@ -557,7 +558,7 @@ def test_a_branch_merged_on_the_day_counts_as_merged_since_then(
 ) -> None:
     match review.merged_branches(MergedSince(stage.merged_on.root)):
         case Ok(branches):
-            assert stage.merged in branches.root
+            Assert.that(stage.merged).in_container(branches.root)
         case Err(error):
             pytest.fail(str(error))
 
@@ -566,7 +567,7 @@ def test_a_branch_merged_the_day_before_does_not(review: CodeForge, stage: Stage
     since = MergedSince(stage.merged_on.root + timedelta(days=1))
     match review.merged_branches(since):
         case Ok(branches):
-            assert stage.merged not in branches.root
+            Assert.that(stage.merged).not_in_container(branches.root)
         case Err(error):
             pytest.fail(str(error))
 
@@ -577,44 +578,42 @@ def test_a_checkout_lands_in_the_directory_it_was_given(
     stage: Stage,
     checkout_directory: CheckoutDirectory,
 ) -> None:
-    assert review.checkout(stage.fresh, checkout_directory) == Ok(None)
-    assert ledger.checked_out(checkout_directory) == stage.fresh
+    Assert.that(review.checkout(stage.fresh, checkout_directory)).matches(Ok(None))
+    Assert.that(ledger.checked_out(checkout_directory)).matches(stage.fresh)
 
 
 def test_checking_out_into_a_missing_directory_is_refused(
     review: CodeForge, stage: Stage, tmp_path: Path
 ) -> None:
     checked_out = review.checkout(stage.fresh, CheckoutDirectory(tmp_path / "missing"))
-    assert isinstance(checked_out, Err)
-    assert isinstance(checked_out.error, CodeReviewError)
+    _ = Assert.that(checked_out.error).is_instance(CodeReviewError)
 
 
 def test_submitting_completes_my_pending_review(
     review: CodeForge, ledger: ReviewLedger, stage: Stage
 ) -> None:
-    assert review.submit(stage.pending, remark()) == Ok(None)
-    assert ledger.submitted() == (
-        SubmittedReview(pr=stage.pending, request=remark(), drafted=Drafted(True)),
+    Assert.that(review.submit(stage.pending, remark())).matches(Ok(None))
+    Assert.that(ledger.submitted()).matches(
+        (SubmittedReview(pr=stage.pending, request=remark(), drafted=Drafted(True)),)
     )
 
 
 def test_a_pending_review_is_completed_only_once(
     review: CodeForge, ledger: ReviewLedger, stage: Stage
 ) -> None:
-    assert review.submit(stage.pending, remark()) == Ok(None)
-    assert review.submit(stage.pending, remark()) == Ok(None)
-    assert [submitted.drafted for submitted in ledger.submitted()] == [
-        Drafted(True),
-        Drafted(False),
-    ]
+    Assert.that(review.submit(stage.pending, remark())).matches(Ok(None))
+    Assert.that(review.submit(stage.pending, remark())).matches(Ok(None))
+    Assert.that([submitted.drafted for submitted in ledger.submitted()]).matches(
+        [Drafted(True), Drafted(False)]
+    )
 
 
 def test_submitting_without_a_pending_review_opens_a_new_one(
     review: CodeForge, ledger: ReviewLedger, stage: Stage
 ) -> None:
-    assert review.submit(stage.fresh, remark()) == Ok(None)
-    assert ledger.submitted() == (
-        SubmittedReview(pr=stage.fresh, request=remark(), drafted=Drafted(False)),
+    Assert.that(review.submit(stage.fresh, remark())).matches(Ok(None))
+    Assert.that(ledger.submitted()).matches(
+        (SubmittedReview(pr=stage.fresh, request=remark(), drafted=Drafted(False)),)
     )
 
 
@@ -623,9 +622,9 @@ def test_an_approval_may_go_without_a_body(
 ) -> None:
     skip_on_own_pull_requests(kind)
     bare = ReviewRequest(decision=ReviewDecision.approve, body=ReviewBody(""))
-    assert review.submit(stage.fresh, bare) == Ok(None)
-    assert ledger.submitted() == (
-        SubmittedReview(pr=stage.fresh, request=bare, drafted=Drafted(False)),
+    Assert.that(review.submit(stage.fresh, bare)).matches(Ok(None))
+    Assert.that(ledger.submitted()).matches(
+        (SubmittedReview(pr=stage.fresh, request=bare, drafted=Drafted(False)),)
     )
 
 
@@ -636,9 +635,9 @@ def test_requesting_changes_carries_its_body(
     rejection = ReviewRequest(
         decision=ReviewDecision.request_changes, body=ReviewBody("Needs a test.")
     )
-    assert review.submit(stage.fresh, rejection) == Ok(None)
-    assert ledger.submitted() == (
-        SubmittedReview(pr=stage.fresh, request=rejection, drafted=Drafted(False)),
+    Assert.that(review.submit(stage.fresh, rejection)).matches(Ok(None))
+    Assert.that(ledger.submitted()).matches(
+        (SubmittedReview(pr=stage.fresh, request=rejection, drafted=Drafted(False)),)
     )
 
 
@@ -648,10 +647,9 @@ def test_a_decision_that_needs_a_body_is_refused_without_one(
 ) -> None:
     reason = "requires comment text"
     submitted = review.submit(stage.pending, ReviewRequest(decision=decision, body=ReviewBody("")))
-    assert isinstance(submitted, Err)
-    assert isinstance(submitted.error, CodeReviewError)
-    assert reason in str(submitted.error)
-    assert ledger.submitted() == ()
+    error = Assert.that(submitted.error).is_instance(CodeReviewError)
+    Assert.that(str(error)).contains(reason)
+    Assert.that(ledger.submitted()).has_length(0)
 
 
 class BrokenGh(CommandRunner):
@@ -675,8 +673,7 @@ class BrokenGh(CommandRunner):
 
 def test_connecting_to_a_failing_gh_is_refused() -> None:
     github = GitHub.connected(BrokenGh(None))
-    assert isinstance(github, Err)
-    assert isinstance(github.error, CodeReviewError)
+    _ = Assert.that(github.error).is_instance(CodeReviewError)
 
 
 def test_a_failing_gh_is_returned_as_a_code_review_error(tmp_path: Path) -> None:
@@ -688,8 +685,7 @@ def test_a_failing_gh_is_returned_as_a_code_review_error(tmp_path: Path) -> None
         github.submit(PrNumber.fake(), remark()),
     )
     for result in results:
-        assert isinstance(result, Err)
-        assert isinstance(result.error, CodeReviewError)
+        _ = Assert.that(result.error).is_instance(CodeReviewError)
 
 
 def test_unreadable_gh_output_is_returned_as_a_code_review_error() -> None:
@@ -700,5 +696,4 @@ def test_unreadable_gh_output_is_returned_as_a_code_review_error() -> None:
         github.submit(PrNumber.fake(), remark()),
     )
     for result in results:
-        assert isinstance(result, Err)
-        assert isinstance(result.error, CodeReviewError)
+        _ = Assert.that(result.error).is_instance(CodeReviewError)

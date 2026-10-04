@@ -1,3 +1,4 @@
+from assertions import Assert
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
@@ -39,59 +40,70 @@ def state_of(status: WorkspaceStatus | None) -> StateName:
 
 
 def test_reads_the_id_to_label_table_from_the_columns_orca_names() -> None:
-    assert board().label_of(WorkspaceStatus("status-5-2")) == ColumnLabel("Implementing")
-    assert board().id_of(ColumnLabel("Me reviewing others")) == WorkspaceStatus("status-8")
+    implementing = ColumnLabel("Implementing")
+    reviewing_others = WorkspaceStatus("status-8")
+    Assert.that(board().label_of(WorkspaceStatus("status-5-2"))).matches(implementing)
+    Assert.that(board().id_of(ColumnLabel("Me reviewing others"))).matches(reviewing_others)
 
 
 def test_reads_every_column_orca_names() -> None:
-    assert len(board().root) == 9
+    column_count = 9
+    Assert.that(board().root).has_length(column_count)
 
 
 def test_a_refusal_naming_no_columns_is_a_clear_error() -> None:
     refusal = ErrorMessage("Unknown workspace status. Available: .")
-    assert Columns.parse(refusal) == Err(BoardError(f"Orca named no board columns: {refusal.root}"))
+    Assert.that(Columns.parse(refusal)).matches(
+        Err(BoardError(f"Orca named no board columns: {refusal.root}"))
+    )
 
 
 def test_an_id_the_board_does_not_define_has_no_label() -> None:
-    assert board().label_of(WorkspaceStatus("status-404")) is None
+    Assert.that(board().label_of(WorkspaceStatus("status-404"))).matches(None)
 
 
 def test_every_state_the_chart_holds_has_a_board_column() -> None:
-    assert StateNames(
-        frozenset(pairing.state for pairing in StateColumns.of_chart().root)
-    ) == StateNames.of_chart(WorkflowChart)
+    Assert.that(
+        StateNames(frozenset(pairing.state for pairing in StateColumns.of_chart().root))
+    ).matches(StateNames.of_chart(WorkflowChart))
 
 
 def test_a_column_id_resolves_to_the_state_its_label_stands_for() -> None:
-    assert state_of(WorkspaceStatus("in-review")) == StateName("qa")
+    qa = StateName("qa")
+    Assert.that(state_of(WorkspaceStatus("in-review"))).matches(qa)
 
 
 def test_a_column_outside_the_chart_reads_as_the_start_state() -> None:
-    assert state_of(WorkspaceStatus("status-8")) == StateNames.initial_state(WorkflowChart)
+    Assert.that(state_of(WorkspaceStatus("status-8"))).matches(
+        StateNames.initial_state(WorkflowChart)
+    )
 
 
 def test_a_workspace_with_no_column_reads_as_the_start_state() -> None:
-    assert state_of(None) == StateNames.initial_state(WorkflowChart)
+    Assert.that(state_of(None)).matches(StateNames.initial_state(WorkflowChart))
 
 
 def test_a_column_the_board_no_longer_defines_reads_as_the_start_state() -> None:
-    assert state_of(WorkspaceStatus("status-404")) == StateNames.initial_state(WorkflowChart)
+    Assert.that(state_of(WorkspaceStatus("status-404"))).matches(
+        StateNames.initial_state(WorkflowChart)
+    )
 
 
 def test_a_state_maps_to_the_id_of_the_board_column_its_label_names() -> None:
-    assert board().status_for(StateName("review")).unwrap() == WorkspaceStatus("status-5")
+    review_column = WorkspaceStatus("status-5")
+    Assert.that(board().status_for(StateName("review")).unwrap()).matches(review_column)
 
 
 def test_a_state_the_board_has_no_column_for_is_a_clear_error() -> None:
     columns = Columns((Column(id=WorkspaceStatus("in-progress"), label=ColumnLabel("Grilling")),))
     unrecorded = columns.status_for(StateName("merged"))
-    assert isinstance(unrecorded, Err)
-    assert "defines no Merged column" in str(unrecorded.error)
+    error = Assert.that(unrecorded.error).is_instance(BoardError)
+    Assert.that(str(error)).contains("defines no Merged column")
 
 
 def test_a_state_outside_the_chart_has_no_board_column() -> None:
-    assert StateColumns.of_chart().label_of(StateName("Abandoned")) == Err(
-        BoardError("Abandoned has no board column.")
+    Assert.that(StateColumns.of_chart().label_of(StateName("Abandoned"))).matches(
+        Err(BoardError("Abandoned has no board column."))
     )
 
 
@@ -113,14 +125,14 @@ def board_over(
 def test_the_board_reads_the_state_of_the_column_you_stand_in() -> None:
     qa = StateName("qa")
     manager = standing_in(WorkspaceStatus("in-review"))
-    assert board_over(manager, Ok(board())).read() == Ok(qa)
+    Assert.that(board_over(manager, Ok(board())).read()).matches(Ok(qa))
 
 
 def test_the_board_moves_the_worktree_you_stand_in_to_the_state_column() -> None:
     review_column = WorkspaceStatus("status-5")
     manager = standing_in(None)
-    assert board_over(manager, Ok(board())).write(StateName("review")) == Ok(None)
-    assert manager.current().unwrap().status == review_column
+    Assert.that(board_over(manager, Ok(board())).write(StateName("review"))).matches(Ok(None))
+    Assert.that(manager.current().unwrap().status).matches(review_column)
 
 
 def test_unreadable_columns_leave_the_worktree_where_it_was() -> None:
@@ -128,16 +140,16 @@ def test_unreadable_columns_leave_the_worktree_where_it_was() -> None:
     manager = standing_in(standing)
     unread = Err(WorkspaceManagerError("Orca printed no columns."))
     store = board_over(manager, unread)
-    assert store.read() == unread
-    assert store.write(StateName("review")) == unread
-    assert manager.current().unwrap().status == standing
+    Assert.that(store.read()).matches(unread)
+    Assert.that(store.write(StateName("review"))).matches(unread)
+    Assert.that(manager.current().unwrap().status).matches(standing)
 
 
 def test_the_board_at_a_worktree_reads_that_worktree_s_column() -> None:
     qa = StateName("qa")
     there = Worktree.fake().model_copy(update={"status": WorkspaceStatus("in-review")})
     manager = standing_in(WorkspaceStatus("status-5-2"))
-    assert board_over(manager, Ok(board())).at(there).read() == Ok(qa)
+    Assert.that(board_over(manager, Ok(board())).at(there).read()).matches(Ok(qa))
 
 
 def test_the_board_at_a_worktree_moves_that_worktree_and_not_the_one_you_stand_in() -> None:
@@ -148,8 +160,9 @@ def test_the_board_at_a_worktree_moves_that_worktree_and_not_the_one_you_stand_i
     manager = FakeWorkspaceManager(
         Worktrees((here, there)), here.path, WorkspaceStatuses(tuple(c.id for c in board().root))
     )
-    assert board_over(manager, Ok(board())).at(there).write(StateName("review")) == Ok(None)
-    moved = manager.worktrees().unwrap().at(there.path)
-    assert moved is not None
-    assert moved.status == review_column
-    assert manager.current().unwrap().status == standing
+    Assert.that(board_over(manager, Ok(board())).at(there).write(StateName("review"))).matches(
+        Ok(None)
+    )
+    moved = Assert.that(manager.worktrees().unwrap().at(there.path)).exists()
+    Assert.that(moved.status).matches(review_column)
+    Assert.that(manager.current().unwrap().status).matches(standing)

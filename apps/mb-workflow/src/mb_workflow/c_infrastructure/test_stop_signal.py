@@ -4,6 +4,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 import pytest
+from assertions import Assert
 
 from mb_workflow.b_core.c_secondary_ports.stop_signal import FakeStopSignal, Stopped
 from mb_workflow.b_core.d_domain_model.clock import IntervalSeconds
@@ -40,7 +41,7 @@ def test_no_stop_is_requested_before_a_signal(
     stop_and_sender: tuple[StopSignal, Callable[[], None]],
 ) -> None:
     stop, _ = stop_and_sender
-    assert stop.requested() == Stopped(False)
+    Assert.that(stop.requested()).matches(Stopped(False))
 
 
 def test_a_stop_is_requested_after_a_signal(
@@ -48,7 +49,7 @@ def test_a_stop_is_requested_after_a_signal(
 ) -> None:
     stop, send = stop_and_sender
     send()
-    assert stop.requested() == Stopped(True)
+    Assert.that(stop.requested()).matches(Stopped(True))
 
 
 def test_a_wait_after_a_signal_returns_at_once(
@@ -57,7 +58,7 @@ def test_a_wait_after_a_signal_returns_at_once(
     stop, send = stop_and_sender
     send()
     stop.wait(IntervalSeconds(3600))
-    assert stop.requested() == Stopped(True)
+    Assert.that(stop.requested()).matches(Stopped(True))
 
 
 def test_a_second_signal_exits_at_once() -> None:
@@ -71,4 +72,4 @@ def test_the_previous_handlers_return_once_the_block_ends() -> None:
     before = signal.getsignal(signal.SIGTERM)
     with SignalStop.installed(PollSeconds.fake()):
         pass
-    assert signal.getsignal(signal.SIGTERM) == before
+    Assert.that(signal.getsignal(signal.SIGTERM)).matches(before)

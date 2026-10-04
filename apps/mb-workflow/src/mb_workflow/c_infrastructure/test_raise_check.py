@@ -2,6 +2,8 @@ import ast
 from pathlib import Path
 from textwrap import dedent
 
+from assertions import Assert
+
 from mb_workflow.c_infrastructure.raise_check import (
     BaselineDirectory,
     ModuleName,
@@ -26,7 +28,7 @@ def test_flags_a_raised_error() -> None:
         )
     )
     expected = RaiseCount(1)
-    assert RaiseCheck.count(source, TyperBoundary(False)) == expected
+    Assert.that(RaiseCheck.count(source, TyperBoundary(False))).matches(expected)
 
 
 def test_flags_every_raise_in_a_module() -> None:
@@ -43,7 +45,7 @@ def test_flags_every_raise_in_a_module() -> None:
         )
     )
     expected = RaiseCount(2)
-    assert RaiseCheck.count(source, TyperBoundary(False)) == expected
+    Assert.that(RaiseCheck.count(source, TyperBoundary(False))).matches(expected)
 
 
 def test_flags_a_reraise_of_a_named_error() -> None:
@@ -58,7 +60,7 @@ def test_flags_a_reraise_of_a_named_error() -> None:
         )
     )
     expected = RaiseCount(1)
-    assert RaiseCheck.count(source, TyperBoundary(False)) == expected
+    Assert.that(RaiseCheck.count(source, TyperBoundary(False))).matches(expected)
 
 
 def test_allows_a_bare_reraise() -> None:
@@ -74,7 +76,7 @@ def test_allows_a_bare_reraise() -> None:
         )
     )
     expected = RaiseCount(0)
-    assert RaiseCheck.count(source, TyperBoundary(False)) == expected
+    Assert.that(RaiseCheck.count(source, TyperBoundary(False))).matches(expected)
 
 
 def test_allows_a_raise_in_a_field_validator() -> None:
@@ -92,7 +94,7 @@ def test_allows_a_raise_in_a_field_validator() -> None:
         )
     )
     expected = RaiseCount(0)
-    assert RaiseCheck.count(source, TyperBoundary(False)) == expected
+    Assert.that(RaiseCheck.count(source, TyperBoundary(False))).matches(expected)
 
 
 def test_allows_a_raise_in_a_model_validator_named_through_its_module() -> None:
@@ -109,7 +111,7 @@ def test_allows_a_raise_in_a_model_validator_named_through_its_module() -> None:
         )
     )
     expected = RaiseCount(0)
-    assert RaiseCheck.count(source, TyperBoundary(False)) == expected
+    Assert.that(RaiseCheck.count(source, TyperBoundary(False))).matches(expected)
 
 
 def test_flags_a_raise_in_a_function_with_another_decorator() -> None:
@@ -124,7 +126,7 @@ def test_flags_a_raise_in_a_function_with_another_decorator() -> None:
         )
     )
     expected = RaiseCount(1)
-    assert RaiseCheck.count(source, TyperBoundary(False)) == expected
+    Assert.that(RaiseCheck.count(source, TyperBoundary(False))).matches(expected)
 
 
 def test_allows_typer_exceptions_at_the_typer_boundary() -> None:
@@ -138,7 +140,7 @@ def test_allows_typer_exceptions_at_the_typer_boundary() -> None:
         )
     )
     expected = RaiseCount(0)
-    assert RaiseCheck.count(source, TyperBoundary(True)) == expected
+    Assert.that(RaiseCheck.count(source, TyperBoundary(True))).matches(expected)
 
 
 def test_flags_typer_exceptions_outside_the_typer_boundary() -> None:
@@ -151,7 +153,7 @@ def test_flags_typer_exceptions_outside_the_typer_boundary() -> None:
         )
     )
     expected = RaiseCount(1)
-    assert RaiseCheck.count(source, TyperBoundary(False)) == expected
+    Assert.that(RaiseCheck.count(source, TyperBoundary(False))).matches(expected)
 
 
 def test_allows_system_exit() -> None:
@@ -164,7 +166,7 @@ def test_allows_system_exit() -> None:
         )
     )
     expected = RaiseCount(0)
-    assert RaiseCheck.count(source, TyperBoundary(False)) == expected
+    Assert.that(RaiseCheck.count(source, TyperBoundary(False))).matches(expected)
 
 
 def test_a_scan_counts_raises_per_dotted_module(tmp_path: Path) -> None:
@@ -175,7 +177,9 @@ def test_a_scan_counts_raises_per_dotted_module(tmp_path: Path) -> None:
     expected = RaiseCounts(
         {ModuleName("app.core.parse"): RaiseCount(1), ModuleName("app"): RaiseCount(1)}
     )
-    assert RaiseCheck.scan(ExistingDirectory(tmp_path), ModuleName("app.cli")) == expected
+    Assert.that(RaiseCheck.scan(ExistingDirectory(tmp_path), ModuleName("app.cli"))).matches(
+        expected
+    )
 
 
 def test_a_scan_treats_the_typer_package_and_its_modules_as_the_boundary(tmp_path: Path) -> None:
@@ -183,7 +187,9 @@ def test_a_scan_treats_the_typer_package_and_its_modules_as_the_boundary(tmp_pat
     for module in ("app/cli/__init__.py", "app/cli/ticket.py", "app/client.py"):
         _ = (tmp_path / module).write_text("raise typer.Exit(code=0)\n")
     expected = RaiseCounts({ModuleName("app.client"): RaiseCount(1)})
-    assert RaiseCheck.scan(ExistingDirectory(tmp_path), ModuleName("app.cli")) == expected
+    Assert.that(RaiseCheck.scan(ExistingDirectory(tmp_path), ModuleName("app.cli"))).matches(
+        expected
+    )
 
 
 def baseline_of(directory: BaselineDirectory, counts: RaiseCounts) -> RaiseBaseline:
@@ -199,8 +205,8 @@ def test_a_count_above_the_baseline_is_an_overrun(tmp_path: Path) -> None:
         BaselineDirectory(tmp_path), RaiseCounts({ModuleName.fake(): baseline_count})
     )
     overruns = baseline.burn_down(RaiseCounts({ModuleName.fake(): found_count}))
-    assert overruns == (
-        Overrun(module=ModuleName.fake(), baseline=baseline_count, found=found_count),
+    Assert.that(overruns).matches(
+        (Overrun(module=ModuleName.fake(), baseline=baseline_count, found=found_count),)
     )
 
 
@@ -208,23 +214,23 @@ def test_an_overrun_leaves_the_baseline_as_it_was(tmp_path: Path) -> None:
     before = RaiseCounts({ModuleName.fake(): RaiseCount(1)})
     baseline = baseline_of(BaselineDirectory(tmp_path), before)
     _ = baseline.burn_down(RaiseCounts({ModuleName.fake(): RaiseCount(2)}))
-    assert baseline.counts() == before
+    Assert.that(baseline.counts()).matches(before)
 
 
 def test_raises_in_a_module_missing_from_the_baseline_are_an_overrun(tmp_path: Path) -> None:
     found_count = RaiseCount(1)
     baseline = baseline_of(BaselineDirectory(tmp_path), RaiseCounts({}))
     overruns = baseline.burn_down(RaiseCounts({ModuleName.fake(): found_count}))
-    assert overruns == (
-        Overrun(module=ModuleName.fake(), baseline=RaiseCount(0), found=found_count),
+    Assert.that(overruns).matches(
+        (Overrun(module=ModuleName.fake(), baseline=RaiseCount(0), found=found_count),)
     )
 
 
 def test_a_count_at_the_baseline_passes_and_keeps_it(tmp_path: Path) -> None:
     counts = RaiseCounts({ModuleName.fake(): RaiseCount(2)})
     baseline = baseline_of(BaselineDirectory(tmp_path), counts)
-    assert baseline.burn_down(counts) == ()
-    assert baseline.counts() == counts
+    Assert.that(baseline.burn_down(counts)).has_length(0)
+    Assert.that(baseline.counts()).matches(counts)
 
 
 def test_a_count_below_the_baseline_lowers_it(tmp_path: Path) -> None:
@@ -232,16 +238,16 @@ def test_a_count_below_the_baseline_lowers_it(tmp_path: Path) -> None:
     baseline = baseline_of(
         BaselineDirectory(tmp_path), RaiseCounts({ModuleName.fake(): RaiseCount(3)})
     )
-    assert baseline.burn_down(lowered) == ()
-    assert baseline.counts() == lowered
+    Assert.that(baseline.burn_down(lowered)).has_length(0)
+    Assert.that(baseline.counts()).matches(lowered)
 
 
 def test_a_clean_module_loses_its_baseline_file(tmp_path: Path) -> None:
     directory = BaselineDirectory(tmp_path / "raise-baseline")
     baseline = RaiseBaseline(directory)
     baseline.record(ModuleName.fake(), RaiseCount(2))
-    assert baseline.burn_down(RaiseCounts({})) == ()
-    assert list(directory.root.iterdir()) == []
+    Assert.that(baseline.burn_down(RaiseCounts({}))).has_length(0)
+    Assert.that(list(directory.root.iterdir())).has_length(0)
 
 
 def test_each_module_keeps_its_own_baseline_file(tmp_path: Path) -> None:
@@ -249,7 +255,7 @@ def test_each_module_keeps_its_own_baseline_file(tmp_path: Path) -> None:
     counts = RaiseCounts({ModuleName.fake(): RaiseCount(1), other: RaiseCount(4)})
     directory = BaselineDirectory(tmp_path)
     _ = baseline_of(directory, counts)
-    assert len(list(directory.root.iterdir())) == len(counts.root)
+    Assert.that(list(directory.root.iterdir())).has_length(len(counts.root))
 
 
 def test_no_module_raises_more_than_its_baseline() -> None:
@@ -259,4 +265,5 @@ def test_no_module_raises_more_than_its_baseline() -> None:
         ExistingDirectory(source_root), ModuleName("mb_workflow.a_presentation.cli")
     )
     overruns = baseline.burn_down(found)
-    assert overruns == (), "\n".join(OverrunReport.of(overrun).root for overrun in overruns)
+    report = "\n".join(OverrunReport.of(overrun).root for overrun in overruns)
+    Assert.that(report).matches("")
