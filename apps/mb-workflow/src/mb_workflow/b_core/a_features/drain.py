@@ -24,7 +24,11 @@ from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
-    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry, UnknownClaimLabelError
+    from mb_workflow.b_core.c_secondary_ports.claims import (
+        ClaimRefusedError,
+        ClaimRegistry,
+        UnknownClaimLabelError,
+    )
     from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, RunLock
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
@@ -251,6 +255,7 @@ class Drain:
         | FlowError
         | TicketTrackerError
         | UnknownClaimLabelError
+        | ClaimRefusedError
         | UnknownLabelError
         | MissingFlowLabelsError
         | WorkspaceManagerError,
@@ -293,6 +298,7 @@ class Drain:
         FlowError
         | TicketTrackerError
         | UnknownClaimLabelError
+        | ClaimRefusedError
         | UnknownLabelError
         | MissingFlowLabelsError
         | WorkspaceManagerError,
@@ -406,28 +412,30 @@ class Drain:
         Started,
         TicketTrackerError
         | UnknownClaimLabelError
+        | ClaimRefusedError
         | MissingFlowLabelsError
         | WorkspaceManagerError,
     ]:
-        try:
-            started = TicketStart.start_ticket(
-                manager=manager,
-                tracker=tracker,
-                claims=claims,
-                board=board,
-                workspace=workspace,
-                claim_settings=claim_settings,
-                flow_labels=flow_labels,
-                statuses=statuses,
-                request=request,
-            )
-        except ClaimLostError:
-            logger.info("Another host holds %s; trying the next ticket.", request.ticket.root)
-            return Ok(Started(False))
+        started = TicketStart.start_ticket(
+            manager=manager,
+            tracker=tracker,
+            claims=claims,
+            board=board,
+            workspace=workspace,
+            claim_settings=claim_settings,
+            flow_labels=flow_labels,
+            statuses=statuses,
+            request=request,
+        )
         match started:
             case Ok():
                 return Ok(Started(True))
             case Err(error):
+                if isinstance(error, ClaimLostError):
+                    logger.info(
+                        "Another host holds %s; trying the next ticket.", request.ticket.root
+                    )
+                    return Ok(Started(False))
                 # The ticket was ready when listed, so a flow refusal here means its labels changed since.
                 if isinstance(error, FlowError):
                     logger.warning("Not starting %s: %s", request.ticket.root, error)

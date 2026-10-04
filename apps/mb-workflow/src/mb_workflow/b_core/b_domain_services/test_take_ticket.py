@@ -1,6 +1,5 @@
 from typing import override
 
-import pytest
 from safe_result import Err, Result
 
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
@@ -33,13 +32,13 @@ def test_a_claim_that_cannot_be_labelled_is_withdrawn() -> None:
         LabelNames((*LabelNames.fake().root, ClaimSettings.fake().label)), (TrackedIssue.fake(),)
     )
     claims = FakeClaimRegistry()
-    with pytest.raises(ClaimRefusedError):
-        TicketTaking.take_ticket(
-            claims=claims,
-            tracker=tracker,
-            workspace=WorkspaceSettings.fake(),
-            claim_settings=ClaimSettings.fake(),
-            request=ClaimRequest.fake(),
-            previous=None,
-        ).unwrap()
+    taken = TicketTaking.take_ticket(
+        claims=claims,
+        tracker=tracker,
+        workspace=WorkspaceSettings.fake(),
+        claim_settings=ClaimSettings.fake(),
+        request=ClaimRequest.fake(),
+        previous=None,
+    )
+    assert isinstance(taken.error, ClaimRefusedError)
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())

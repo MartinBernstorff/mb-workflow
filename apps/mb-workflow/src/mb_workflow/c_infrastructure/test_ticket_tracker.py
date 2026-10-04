@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
@@ -16,7 +17,7 @@ from safe_result import Err, Ok
 
 from mb_workflow.b_core.c_secondary_ports.claims import (
     Claiming,
-    ClaimRefusedError,
+    ClaimLostError,
     ClaimRegistry,
     ClaimRequest,
     FakeClaimRegistry,
@@ -1619,8 +1620,9 @@ def test_of_two_racing_claimers_exactly_one_wins(
     )
     second = first.model_copy(update={"holder": rival_of(first.holder)})
     raced = RacedRegistry(claims, lambda: Claiming.claim_ticket(claims, second))
-    with pytest.raises(ClaimRefusedError, match="bob-mbp"):
-        _ = Claiming.claim_ticket(raced, first).unwrap()
+    lost = Claiming.claim_ticket(raced, first)
+    assert isinstance(lost.error, ClaimLostError)
+    assert re.search(re.escape(second.holder.host.root), str(lost.error))
     assert holders(claims.claims(ticket).unwrap()) == (second.holder,)
 
 
