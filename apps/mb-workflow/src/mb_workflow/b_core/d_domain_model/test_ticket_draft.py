@@ -1,4 +1,6 @@
-from safe_result import Err, Result
+from typing import TYPE_CHECKING
+
+from assertions import Assert
 
 from mb_workflow.b_core.d_domain_model.flow import StateName
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabelOptionError, FlowLabels
@@ -22,6 +24,9 @@ from mb_workflow.b_core.d_domain_model.ticket_draft import (
 )
 from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
+if TYPE_CHECKING:
+    from safe_result import Result
+
 
 def viewer() -> Assignee:
     return Assignee("viewer@flowbase.io")
@@ -41,46 +46,47 @@ def drafted(
 
 def test_a_new_ticket_carries_the_flow_label_of_the_start_state() -> None:
     draft = TicketDraft.fake().model_copy(update={"labels": LabelNames((LabelName("Backend"),))})
-    assert drafted(draft).unwrap().labels == LabelNames((LabelName("Backend"), LabelName("grill")))
+    Assert.that(drafted(draft).unwrap().labels).matches(
+        LabelNames((LabelName("Backend"), LabelName("grill")))
+    )
 
 
 def test_a_new_ticket_takes_the_status_mapped_to_the_start_state() -> None:
-    assert drafted(TicketDraft.fake()).unwrap().status == IssueStatusName("Maturing")
+    Assert.that(drafted(TicketDraft.fake()).unwrap().status).matches(IssueStatusName("Maturing"))
 
 
 def test_a_new_ticket_goes_to_the_configured_team_and_project() -> None:
     defaults = TicketDefaults(team=TeamKey("MB"), project=ProjectName("mb-workflow"))
     new = drafted(TicketDraft.fake(), defaults).unwrap()
-    assert (new.team, new.project) == (TeamKey("MB"), ProjectName("mb-workflow"))
+    Assert.that((new.team, new.project)).matches((TeamKey("MB"), ProjectName("mb-workflow")))
 
 
 def test_a_named_project_overrides_the_configured_one() -> None:
     draft = TicketDraft.fake().model_copy(update={"project": ProjectName("Other")})
-    assert drafted(draft).unwrap().project == ProjectName("Other")
+    Assert.that(drafted(draft).unwrap().project).matches(ProjectName("Other"))
 
 
 def test_a_milestone_is_looked_up_in_the_ticket_project() -> None:
     draft = TicketDraft.fake().model_copy(update={"milestone": MilestoneName.fake()})
-    assert drafted(draft).unwrap().milestone == Milestone(
-        project=ProjectName.fake(), name=MilestoneName.fake()
+    Assert.that(drafted(draft).unwrap().milestone).matches(
+        Milestone(project=ProjectName.fake(), name=MilestoneName.fake())
     )
 
 
 def test_a_milestone_without_a_project_is_refused() -> None:
     draft = TicketDraft.fake().model_copy(update={"milestone": MilestoneName.fake()})
     refused = drafted(draft, TicketDefaults(team=TeamKey("MB"), project=None))
-    assert isinstance(refused, Err)
-    assert isinstance(refused.error, TicketDraftError)
+    _ = Assert.that(refused.error).is_instance(TicketDraftError)
 
 
 def test_me_assigns_the_viewer() -> None:
     draft = TicketDraft.fake().model_copy(update={"assignee": Assignee.me()})
-    assert drafted(draft).unwrap().assignee == viewer()
+    Assert.that(drafted(draft).unwrap().assignee).matches(viewer())
 
 
 def test_the_body_file_supplies_the_description() -> None:
     draft = TicketDraft.fake().model_copy(update={"body_file": IssueDescription.fake()})
-    assert drafted(draft).unwrap().description == IssueDescription.fake()
+    Assert.that(drafted(draft).unwrap().description).matches(IssueDescription.fake())
 
 
 def test_a_body_and_a_body_file_together_are_refused() -> None:
@@ -88,8 +94,7 @@ def test_a_body_and_a_body_file_together_are_refused() -> None:
         update={"body": IssueDescription.fake(), "body_file": IssueDescription.fake()}
     )
     refused = drafted(draft)
-    assert isinstance(refused, Err)
-    assert isinstance(refused.error, TicketDraftError)
+    _ = Assert.that(refused.error).is_instance(TicketDraftError)
 
 
 def test_the_blocking_relations_carry_over() -> None:
@@ -97,12 +102,14 @@ def test_the_blocking_relations_carry_over() -> None:
         update={"blocks": (IssueIdentifier("E-1"),), "blocked_by": (IssueIdentifier("E-2"),)}
     )
     new = drafted(draft).unwrap()
-    assert (new.blocks, new.blocked_by) == ((IssueIdentifier("E-1"),), (IssueIdentifier("E-2"),))
+    Assert.that((new.blocks, new.blocked_by)).matches(
+        ((IssueIdentifier("E-1"),), (IssueIdentifier("E-2"),))
+    )
 
 
 def test_a_flow_label_among_the_labels_is_refused() -> None:
     draft = TicketDraft.fake().model_copy(update={"labels": LabelNames((LabelName("TODO"),))})
     state_option = "--state"
     refused = drafted(draft)
-    assert isinstance(refused, Err)
-    assert state_option in str(refused.error)
+    error = Assert.that(refused.error).is_instance(FlowLabelOptionError)
+    assert state_option in str(error)

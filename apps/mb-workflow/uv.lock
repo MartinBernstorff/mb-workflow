@@ -193,6 +193,27 @@ wheels = [
 ]
 
 [[package]]
+name = "mb-assertions"
+version = "0.1.0"
+source = { editable = "../mb-assertions" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.13.5" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pyrefly", specifier = ">=1.2.0" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest-randomly", specifier = ">=5.0.0" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "ruff", specifier = ">=0.16.6" },
+    { name = "tach", specifier = ">=0.35.0" },
+]
+
+[[package]]
 name = "mb-workflow"
 version = "0.1.0"
 source = { editable = "." }
@@ -209,6 +230,7 @@ dependencies = [
 dev = [
     { name = "actionlint-py" },
     { name = "lefthook" },
+    { name = "mb-assertions" },
     { name = "noprim" },
     { name = "pyrefly" },
     { name = "pytest" },
@@ -232,6 +254,7 @@ requires-dist = [
 dev = [
     { name = "actionlint-py", specifier = ">=1.7.12.24" },
     { name = "lefthook", specifier = ">=2.1.12" },
+    { name = "mb-assertions", editable = "../mb-assertions" },
     { name = "noprim", specifier = ">=0.3.0" },
     { name = "pyrefly", specifier = ">=1.2.0" },
     { name = "pytest", specifier = ">=9.1.1" },
