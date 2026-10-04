@@ -1,7 +1,7 @@
+import re
 from datetime import timedelta
 from typing import override
 
-import pytest
 from safe_result import Err, Result
 
 from mb_workflow.b_core.a_features.autolabel import (
@@ -164,7 +164,8 @@ def test_a_sweep_skips_an_issue_carrying_another_label_of_the_group() -> None:
 
 def test_sweeping_for_a_label_the_tracker_lacks_is_refused() -> None:
     unknown = AutolabelRequest.fake().model_copy(update={"label": LabelName("Frontend")})
-    with pytest.raises(UnknownLabelError, match="Frontend"):
-        _ = AutoLabelling.label_eligible_issues(
-            seeded_tracker(), seeded_ledger_store(), unknown, CreatedAfter.fake()
-        ).unwrap()
+    refused = AutoLabelling.label_eligible_issues(
+        seeded_tracker(), seeded_ledger_store(), unknown, CreatedAfter.fake()
+    )
+    assert isinstance(refused.error, UnknownLabelError)
+    assert re.search(unknown.label.root, str(refused.error))

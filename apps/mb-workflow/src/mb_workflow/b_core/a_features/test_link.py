@@ -1,6 +1,5 @@
 import re
 
-import pytest
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.a_features.link import AlreadyLinkedError, LinkRequest, TicketLinking
@@ -103,7 +102,8 @@ def linking(
     | TicketTrackerError
     | UnknownClaimLabelError
     | ClaimRefusedError
-    | WorkspaceManagerError,
+    | WorkspaceManagerError
+    | AlreadyLinkedError,
 ]:
     return TicketLinking.link_ticket(
         manager=manager,
@@ -247,8 +247,9 @@ def test_a_worktree_linked_to_another_ticket_is_neither_relinked_nor_claimed() -
     previous = IssueIdentifier("E-1")
     manager = managing(here_linked_to(previous))
     claims = FakeClaimRegistry()
-    with pytest.raises(AlreadyLinkedError, match=previous.root):
-        _ = linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake())
+    refused = linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake())
+    assert isinstance(refused.error, AlreadyLinkedError)
+    assert re.search(previous.root, str(refused.error))
     assert manager.current().unwrap().issue == previous
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
 

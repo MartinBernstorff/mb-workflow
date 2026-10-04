@@ -26,6 +26,7 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracke
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     DisplayNameRefusingWorkspaceManager,
     FakeWorkspaceManager,
+    TerminalWithholdingWorkspaceManager,
     WorkspaceManagerError,
 )
 from mb_workflow.b_core.d_domain_model.claim import Claim, ClaimHolder, Claims, HostName
@@ -263,6 +264,22 @@ def test_a_checkout_that_is_refused_is_reported_as_failed(here: WorktreePath) ->
         FailureSubject.of_pr(PrNumber.fake())
     ]
     assert outcome.created == ()
+
+
+def test_a_prompt_with_no_agent_terminal_to_type_into_is_reported_as_failed(
+    here: WorktreePath,
+) -> None:
+    _ = create_review_directory(here)
+    manager = TerminalWithholdingWorkspaceManager(
+        Worktrees((Worktree.bare(RepoId.fake(), here),)), here
+    )
+    outcome = run_review_workspaces(
+        FakeCodeReview(PullRequests.fake()), manager, prompt=ReviewPrompt.fake()
+    )
+    assert [failure.subject for failure in outcome.failed] == [
+        FailureSubject.of_pr(PrNumber.fake())
+    ]
+    assert manager.typed_texts() == ()
 
 
 def test_an_unreachable_code_review_fails_the_run_and_leaves_workspaces_alone(

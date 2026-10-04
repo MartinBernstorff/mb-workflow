@@ -54,19 +54,22 @@ class LinkRequest(Model):
         )
 
     # The previous ticket's claim is left alone, as this worktree may not be the one holding it.
-    def require_unlinked_or_forced(self, here: Worktree) -> None:
+    def require_unlinked_or_forced(self, here: Worktree) -> Result[None, AlreadyLinkedError]:
         if here.issue is None or here.issue == self.ticket:
-            return
+            return Ok(None)
         if not self.take_over.root:
-            raise AlreadyLinkedError(
-                f"{here.path.root} is linked to {here.issue.root}. Pass --force to link it to"
-                f" {self.ticket.root} instead."
+            return Err(
+                AlreadyLinkedError(
+                    f"{here.path.root} is linked to {here.issue.root}. Pass --force to link it to"
+                    f" {self.ticket.root} instead."
+                )
             )
         logger.warning(
             "Replacing the link from %s to %s; its claim is left in place.",
             here.issue.root,
             self.ticket.root,
         )
+        return Ok(None)
 
 
 @dataclass(frozen=True)
@@ -125,7 +128,8 @@ class TicketLinking:
         | TicketTrackerError
         | UnknownClaimLabelError
         | ClaimRefusedError
-        | WorkspaceManagerError,
+        | WorkspaceManagerError
+        | AlreadyLinkedError,
     ]:
         # Refuse before touching anything, so a refused link leaves no claim behind.
         read = tracker.read_issue_detail(request.ticket)
@@ -136,11 +140,10 @@ class TicketLinking:
         if isinstance(with_work_left, Err):
             return with_work_left
         state = with_work_left.value
-        current = manager.current()
-        if isinstance(current, Err):
-            return current
-        here = current.value
-        request.require_unlinked_or_forced(here)
+        linkable = TicketLinking.linkable_worktree(manager, request)
+        if isinstance(linkable, Err):
+            return linkable
+        here = linkable.value
         status = board.status_for(state)
         if isinstance(status, Err):
             return status
@@ -171,6 +174,19 @@ class TicketLinking:
             LinkStep(manager, here, request.ticket),
         )
         return TicketLinking.link_and_name(manager, steps, here, DisplayName.of_issue(detail.title))
+
+    # The worktree this link runs in, unless it is already linked to another ticket.
+    @staticmethod
+    def linkable_worktree(
+        manager: WorkspaceManager, request: LinkRequest
+    ) -> Result[Worktree, WorkspaceManagerError | AlreadyLinkedError]:
+        current = manager.current()
+        if isinstance(current, Err):
+            return current
+        unlinked = request.require_unlinked_or_forced(current.value)
+        if isinstance(unlinked, Err):
+            return unlinked
+        return current
 
     @staticmethod
     def link_and_name(
