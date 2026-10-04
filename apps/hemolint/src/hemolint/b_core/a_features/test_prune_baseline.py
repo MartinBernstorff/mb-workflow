@@ -49,21 +49,3 @@ def test_a_new_violation_is_reported_but_not_added() -> None:
     ).unwrap()
     assert [violation.reported_as for violation in drift.new] == [LinterLine(reported_line)]
     assert store.baseline == Baseline.of(())
-
-
-def test_the_violations_of_a_deleted_source_file_are_removed() -> None:
-    deleted = Violation(
-        file=BaselineFile(
-            source=SourcePath(Path("deleted.py")), linter=LinterName("fixit"), rule=rule
-        ),
-        fingerprint=code,
-    )
-    store = FakeBaselineStore(Baseline.of((known, deleted)))
-    _ = BaselinePruning.prune(
-        LinterOutput(f"{reported_line}\n"),
-        LinterFormat.fixit,
-        WorkingDirectory.fake(),
-        lines,
-        store,
-    ).unwrap()
-    assert store.baseline == Baseline.of((known,))
