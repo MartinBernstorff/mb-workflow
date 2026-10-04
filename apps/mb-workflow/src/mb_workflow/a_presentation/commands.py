@@ -28,7 +28,7 @@ from mb_workflow.b_core.a_features.drain_watch import (
 )
 from mb_workflow.b_core.a_features.edit_ticket import TicketEditor
 from mb_workflow.b_core.a_features.finalize_review import FinalizeReview
-from mb_workflow.b_core.a_features.init_config import Overwrite, init_config
+from mb_workflow.b_core.a_features.init_config import ConfigInitialisation, Overwrite
 from mb_workflow.b_core.a_features.link import LinkRequest, TicketLinking
 from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt, ReviewWorkspaces
 from mb_workflow.b_core.a_features.seed_labels import CoveredByWorkspace, FlowLabelSeeding
@@ -435,7 +435,9 @@ def ticket_create(
 
 @guarded
 def init(directory: WorkingDirectory, name: ConfigFileName, overwrite: Overwrite) -> ExitCode:
-    outcome = init_config(directory, name, ConfigTemplate.default(), overwrite).unwrap()
+    outcome = ConfigInitialisation.init_config(
+        directory, name, ConfigTemplate.default(), overwrite
+    ).unwrap()
     if outcome.shadowed is not None:
         logger.warning(
             "%s now takes precedence over %s in this directory.",

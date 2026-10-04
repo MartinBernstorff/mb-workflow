@@ -249,7 +249,7 @@ def test_a_worktree_linked_to_another_ticket_is_neither_relinked_nor_claimed() -
     claims = FakeClaimRegistry()
     refused = linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake())
     assert isinstance(refused.error, AlreadyLinkedError)
-    assert re.search(previous.root, str(refused.error))
+    assert previous.root in str(refused.error)
     assert manager.current().unwrap().issue == previous
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
 

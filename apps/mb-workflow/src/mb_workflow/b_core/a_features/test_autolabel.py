@@ -1,4 +1,3 @@
-import re
 from datetime import timedelta
 from typing import override
 
@@ -168,4 +167,4 @@ def test_sweeping_for_a_label_the_tracker_lacks_is_refused() -> None:
         seeded_tracker(), seeded_ledger_store(), unknown, CreatedAfter.fake()
     )
     assert isinstance(refused.error, UnknownLabelError)
-    assert re.search(unknown.label.root, str(refused.error))
+    assert unknown.label.root in str(refused.error)

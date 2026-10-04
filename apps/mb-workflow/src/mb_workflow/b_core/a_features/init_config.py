@@ -30,18 +30,20 @@ class InitOutcome(Model):
         return InitOutcome(written=ConfigPath.fake(), shadowed=None)
 
 
-def init_config(
-    directory: WorkingDirectory,
-    name: ConfigFileName,
-    template: ConfigTemplate,
-    overwrite: Overwrite,
-) -> Result[InitOutcome, ConfigExistsError]:
-    target = directory.root.resolve() / name.root
-    if target.exists() and not overwrite.root:
-        return Err(ConfigExistsError(f"{target} already exists. Pass --force to overwrite it."))
-    _ = target.write_text(template.root)
-    return Ok(
-        InitOutcome(
-            written=ConfigPath(target), shadowed=SearchedDirectories.above(directory).find(name)
+class ConfigInitialisation:
+    @staticmethod
+    def init_config(
+        directory: WorkingDirectory,
+        name: ConfigFileName,
+        template: ConfigTemplate,
+        overwrite: Overwrite,
+    ) -> Result[InitOutcome, ConfigExistsError]:
+        target = directory.root.resolve() / name.root
+        if target.exists() and not overwrite.root:
+            return Err(ConfigExistsError(f"{target} already exists. Pass --force to overwrite it."))
+        _ = target.write_text(template.root)
+        return Ok(
+            InitOutcome(
+                written=ConfigPath(target), shadowed=SearchedDirectories.above(directory).find(name)
+            )
         )
-    )
