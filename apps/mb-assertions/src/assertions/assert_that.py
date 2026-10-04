@@ -16,6 +16,23 @@ class _HoldsActual[T](Protocol):
     def actual(self) -> T: ...
 
 
+class _NegatableMatchers[T](Protocol):
+    """The matchers both That and Not implement, so negation stays in sync."""
+
+    @property
+    def actual(self) -> T: ...
+
+    def matches(self, expected: T) -> None: ...
+
+    def contains(self: _HoldsActual[str], substring: str) -> None: ...
+
+    def matches_pattern(self: _HoldsActual[str], pattern: str) -> None: ...
+
+    def starts_with(self: _HoldsActual[str], prefix: str) -> None: ...
+
+    def ends_with(self: _HoldsActual[str], suffix: str) -> None: ...
+
+
 class _Values:
     @staticmethod
     def equal[T](actual: T, expected: T) -> bool:
@@ -24,14 +41,16 @@ class _Values:
         return actual == expected
 
 
-class That[T]:
+class That[T](_NegatableMatchers[T]):
     def __init__(self, actual: T) -> None:
         self._actual = actual
 
     @property
+    @override
     def actual(self) -> T:
         return self._actual
 
+    @override
     def matches(self, expected: T) -> None:
         if not _Values.equal(self._actual, expected):
             raise AssertionError(self._mismatch(self._actual, expected))
@@ -62,18 +81,22 @@ class That[T]:
                 f"Expected length {length}, but it had length {len(self.actual)}: {self.actual}",
             )
 
+    @override
     def contains(self: _HoldsActual[str], substring: str) -> None:
         if substring not in self.actual:
             raise AssertionError(f"Expected {self.actual!r} to contain {substring!r}")
 
+    @override
     def matches_pattern(self: _HoldsActual[str], pattern: str) -> None:
         if re.search(pattern, self.actual) is None:
             raise AssertionError(f"Expected {self.actual!r} to match pattern {pattern!r}")
 
+    @override
     def starts_with(self: _HoldsActual[str], prefix: str) -> None:
         if not self.actual.startswith(prefix):
             raise AssertionError(f"Expected {self.actual!r} to start with {prefix!r}")
 
+    @override
     def ends_with(self: _HoldsActual[str], suffix: str) -> None:
         if not self.actual.endswith(suffix):
             raise AssertionError(f"Expected {self.actual!r} to end with {suffix!r}")
@@ -121,30 +144,36 @@ class That[T]:
         )
 
 
-class Not[T]:
+class Not[T](_NegatableMatchers[T]):
     def __init__(self, actual: T) -> None:
         self._actual = actual
 
     @property
+    @override
     def actual(self) -> T:
         return self._actual
 
+    @override
     def matches(self, expected: T) -> None:
         if _Values.equal(self._actual, expected):
             raise AssertionError(f"Expected values to differ, but both were {self._actual}")
 
+    @override
     def contains(self: _HoldsActual[str], substring: str) -> None:
         if substring in self.actual:
             raise AssertionError(f"Expected {self.actual!r} not to contain {substring!r}")
 
+    @override
     def matches_pattern(self: _HoldsActual[str], pattern: str) -> None:
         if re.search(pattern, self.actual) is not None:
             raise AssertionError(f"Expected {self.actual!r} not to match pattern {pattern!r}")
 
+    @override
     def starts_with(self: _HoldsActual[str], prefix: str) -> None:
         if self.actual.startswith(prefix):
             raise AssertionError(f"Expected {self.actual!r} not to start with {prefix!r}")
 
+    @override
     def ends_with(self: _HoldsActual[str], suffix: str) -> None:
         if self.actual.endswith(suffix):
             raise AssertionError(f"Expected {self.actual!r} not to end with {suffix!r}")
