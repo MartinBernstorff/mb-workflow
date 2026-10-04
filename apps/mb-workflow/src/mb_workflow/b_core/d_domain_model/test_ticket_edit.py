@@ -3,7 +3,7 @@ from assertions import Assert
 from safe_result import Ok
 
 from mb_workflow.b_core.d_domain_model.flow import StateName, UnknownStateError
-from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabelOptionError, FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     Cleared,
@@ -253,7 +253,8 @@ def test_a_flow_label_in_a_label_option_is_refused(option: str) -> None:
     edit = TicketEdit.nothing().model_copy(update={option: LabelNames((LabelName("TODO"),))})
     state_option = "--state"
     refused = edit.checked(FlowLabels.fake(), IssueIdentifier.fake())
-    Assert.that(str(refused.error)).contains(state_option)
+    error = Assert.that(refused.error).is_instance(FlowLabelOptionError)
+    Assert.that(str(error)).contains(state_option)
 
 
 def test_an_edit_with_only_relations_is_accepted() -> None:
