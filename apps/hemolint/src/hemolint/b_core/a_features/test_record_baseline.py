@@ -13,7 +13,7 @@ from hemolint.b_core.d_domain_model.baseline import (
     Violation,
 )
 from hemolint.b_core.d_domain_model.linter_format import LinterFormat
-from hemolint.b_core.d_domain_model.linter_output import LinterOutput, UnparsableLineError
+from hemolint.b_core.d_domain_model.linter_output import LinterOutput, UnparsableOutputError
 from hemolint.b_core.d_domain_model.violation import (
     Fingerprint,
     LinterName,
@@ -110,5 +110,5 @@ def test_unparsable_output_writes_nothing() -> None:
         store,
     )
     assert isinstance(result, Err)
-    assert isinstance(result.error, UnparsableLineError)
+    assert isinstance(result.error, UnparsableOutputError)
     assert store.baseline == previous

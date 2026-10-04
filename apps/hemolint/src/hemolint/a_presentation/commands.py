@@ -6,7 +6,7 @@ from safe_result import Err, Ok
 from hemolint.b_core.a_features.check_baseline import BaselineCheck
 from hemolint.b_core.a_features.prune_baseline import BaselinePruning
 from hemolint.b_core.a_features.record_baseline import BaselineRecording
-from hemolint.b_core.d_domain_model.linter_output import UnparsableLineError
+from hemolint.b_core.d_domain_model.linter_output import UnparsableOutputError
 from hemolint.c_infrastructure.disk_baseline_store import DiskBaselineStore
 from hemolint.c_infrastructure.disk_source_lines import DiskSourceLines
 from hemolint.d_lib.models import Value
@@ -130,4 +130,4 @@ class Commands:
     @staticmethod
     def _report_error(error: Exception) -> ExitCode:
         _ = sys.stderr.write(f"{error}\n")
-        return ExitCode(2) if isinstance(error, UnparsableLineError) else ExitCode(1)
+        return ExitCode(2) if isinstance(error, UnparsableOutputError) else ExitCode(1)

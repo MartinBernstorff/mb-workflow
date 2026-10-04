@@ -6,7 +6,7 @@ from safe_result import Err, Ok, Result
 from hemolint.b_core.d_domain_model.linter_output import (
     LinterOutput,
     ReportedViolations,
-    UnparsableLineError,
+    UnparsableOutputError,
 )
 from hemolint.b_core.d_domain_model.violation import (
     LineNumber,
@@ -23,14 +23,14 @@ class FixitParser:
     _VIOLATION = re.compile(r"(?P<path>(?:(?!: ).)+)@(?P<line>\d+):\d+ (?P<rule>\w+): .*")
 
     @staticmethod
-    def parse(output: LinterOutput) -> Result[ReportedViolations, UnparsableLineError]:
+    def parse(output: LinterOutput) -> Result[ReportedViolations, UnparsableOutputError]:
         violations: list[ReportedViolation] = []
         for line in output.root.splitlines():
             if not line.strip():
                 continue
             match = FixitParser._VIOLATION.fullmatch(line)
             if match is None:
-                return Err(UnparsableLineError(f"Not a Fixit violation: {line}"))
+                return Err(UnparsableOutputError(f"Not a Fixit violation: {line}"))
             violations.append(
                 ReportedViolation(
                     source=SourcePath(Path(match["path"])),

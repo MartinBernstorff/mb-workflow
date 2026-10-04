@@ -6,7 +6,7 @@ from hemolint.b_core.d_domain_model.fixit import FixitParser
 from hemolint.b_core.d_domain_model.linter_output import (
     LinterOutput,
     ReportedViolations,
-    UnparsableLineError,
+    UnparsableOutputError,
 )
 from hemolint.b_core.d_domain_model.violation import (
     LineNumber,
@@ -63,7 +63,7 @@ def test_an_exception_line_is_a_parse_error() -> None:
     output = LinterOutput(f"a.py@1:0 UseFstring: Use an f-string.\n{exception}\n")
     result = FixitParser.parse(output)
     assert isinstance(result, Err)
-    assert isinstance(result.error, UnparsableLineError)
+    assert isinstance(result.error, UnparsableOutputError)
     assert exception in str(result.error)
 
 

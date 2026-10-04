@@ -8,7 +8,7 @@ from hemolint.b_core.d_domain_model.violation import Fingerprint
 if TYPE_CHECKING:
     from hemolint.b_core.c_secondary_ports.source_lines import SourceLines
     from hemolint.b_core.d_domain_model.linter_format import LinterFormat
-    from hemolint.b_core.d_domain_model.linter_output import LinterOutput, UnparsableLineError
+    from hemolint.b_core.d_domain_model.linter_output import LinterOutput, UnparsableOutputError
     from hemolint.b_core.d_domain_model.violation import (
         MissingSourceLineError,
         OutsideWorkingDirectoryError,
@@ -26,7 +26,7 @@ class ViolationFinder:
         lines: SourceLines,
     ) -> Result[
         tuple[FoundViolation, ...],
-        UnparsableLineError | OutsideWorkingDirectoryError | MissingSourceLineError,
+        UnparsableOutputError | OutsideWorkingDirectoryError | MissingSourceLineError,
     ]:
         reported = linter_format.parse(output)
         if isinstance(reported, Err):

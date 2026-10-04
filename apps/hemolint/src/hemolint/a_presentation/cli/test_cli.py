@@ -48,6 +48,23 @@ def test_recording_a_baseline_exits_zero_and_says_what_it_added(workdir: Path) -
     assert json.loads(written.read_text()) == {code: 1}
 
 
+def test_ruff_json_with_absolute_paths_records_them_relative_to_the_working_directory(
+    workdir: Path,
+) -> None:
+    ruff_rule = "E711"
+    entry = {
+        "code": ruff_rule,
+        "filename": str(workdir / source),
+        "location": {"column": 6, "row": 2},
+        "message": "Comparison to `None` should be `cond is None`",
+    }
+    _ = HemolintProcess.run_in(
+        workdir, ["check", "--format", "ruff-json", "--baseline"], json.dumps([entry])
+    )
+    written = workdir / ".hemolint" / source / f"ruff-{ruff_rule}.json"
+    assert json.loads(written.read_text()) == {code: 1}
+
+
 def test_another_directory_holds_the_baseline_when_given(workdir: Path) -> None:
     directory = "lint-baseline"
     _ = HemolintProcess.run_in(
