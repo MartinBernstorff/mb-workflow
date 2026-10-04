@@ -28,16 +28,23 @@ def check(
     baseline: bool = typer.Option(
         False, "--baseline", help="Record every current violation in the baseline."
     ),
+    prune: bool = typer.Option(
+        False, "--prune", help="Remove fixed violations from the baseline instead of failing."
+    ),
     directory: Path = typer.Option(
         Path(".hemolint"), "--dir", help="Directory that holds the baseline."
     ),
 ) -> None:
     """Read linter output from stdin and compare it to the baseline."""
-    if not baseline:
-        _ = sys.stderr.write("hemolint check needs --baseline for now.\n")
+    if prune and baseline:
+        _ = sys.stderr.write("--prune and --baseline cannot be used together.\n")
+        raise typer.Exit(code=2)
+    if prune:
+        _ = sys.stderr.write("hemolint check --prune is not implemented yet.\n")
         raise typer.Exit(code=2)
     working = WorkingDirectory.current()
-    code = Commands.record_baseline(
+    command = Commands.record_baseline if baseline else Commands.check_baseline
+    code = command(
         LinterOutput(sys.stdin.read()),
         linter_format,
         working,

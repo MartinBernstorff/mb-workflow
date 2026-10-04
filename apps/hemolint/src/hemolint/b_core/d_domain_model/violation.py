@@ -62,15 +62,26 @@ class LinterName(Value[str]):
         return LinterName("fixit")
 
 
+# One line of linter output, as the linter wrote it.
+class LinterLine(Value[str]):
+    @staticmethod
+    def fake() -> LinterLine:
+        return LinterLine("src/app.py@1:3 CompareSingletonPrimitivesByIs: Use `is`.")
+
+
 class ReportedViolation(Model):
     source: SourcePath
     line: LineNumber
     rule: RuleName
+    reported_as: LinterLine
 
     @staticmethod
     def fake() -> ReportedViolation:
         return ReportedViolation(
-            source=SourcePath.fake(), line=LineNumber.fake(), rule=RuleName.fake()
+            source=SourcePath.fake(),
+            line=LineNumber.fake(),
+            rule=RuleName.fake(),
+            reported_as=LinterLine.fake(),
         )
 
 

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from hemolint.b_core.d_domain_model.violation import (
     Fingerprint,
+    LinterLine,
     LinterName,
     RuleName,
     SourcePath,
@@ -40,6 +41,16 @@ class Violation(Model):
     @staticmethod
     def fake() -> Violation:
         return Violation(file=BaselineFile.fake(), fingerprint=Fingerprint.fake())
+
+
+# A violation in the current linter output, with the line the linter reported it on.
+class FoundViolation(Model):
+    violation: Violation
+    reported_as: LinterLine
+
+    @staticmethod
+    def fake() -> FoundViolation:
+        return FoundViolation(violation=Violation.fake(), reported_as=LinterLine.fake())
 
 
 class Count(Value[int]):
