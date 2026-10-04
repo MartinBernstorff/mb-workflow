@@ -162,7 +162,7 @@ def linear() -> Linear:
 
 
 def flow_labels_of_chart() -> FlowLabels:
-    return FlowLabels.of_chart(WorkflowChart, LabelGroupName("flow"))
+    return FlowLabels.of_chart(WorkflowChart, LabelGroupName("flowy"))
 
 
 def workspace_board(orca: Orca) -> WorkspaceBoard:
