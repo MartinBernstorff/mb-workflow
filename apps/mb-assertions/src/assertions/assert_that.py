@@ -1,3 +1,4 @@
+import re
 from collections.abc import Callable, Iterable, Sequence, Sized
 from typing import Protocol, overload, override
 
@@ -51,6 +52,17 @@ class That[T]:
         if len(self.actual) != length:
             raise AssertionError(
                 f"Expected length {length}, but it had length {len(self.actual)}: {self.actual}",
+            )
+
+    def contains(self: _HoldsActual[str], substring: str) -> None:
+        if substring not in self.actual:
+            raise AssertionError(f"Expected {self.actual!r} to contain {substring!r}")
+
+    def matches_pattern(self: _HoldsActual[str], pattern: str | re.Pattern[str]) -> None:
+        compiled = re.compile(pattern)
+        if compiled.search(self.actual) is None:
+            raise AssertionError(
+                f"Expected {self.actual!r} to match pattern {compiled.pattern!r}",
             )
 
     def is_true(self: _HoldsActual[bool]) -> None:

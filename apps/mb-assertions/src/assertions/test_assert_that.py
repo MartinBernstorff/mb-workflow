@@ -288,6 +288,38 @@ def test_exists_rejects_none() -> None:
         _ = Assert.that(value).exists()
 
 
+def test_contains_passes_on_a_substring() -> None:
+    substring = "b"
+
+    Assert.that(f"a{substring}c").contains(substring)
+
+
+def test_contains_reports_the_string_and_the_substring() -> None:
+    value = "abc"
+    substring = "d"
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected {value!r} to contain {substring!r}"),
+    ):
+        Assert.that(value).contains(substring)
+
+
+def test_matches_pattern_passes_on_a_partial_match() -> None:
+    Assert.that("order 42 shipped").matches_pattern(r"\d+")
+
+
+def test_matches_pattern_reports_the_string_and_the_pattern() -> None:
+    value = "abc"
+    pattern = r"\d+"
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected {value!r} to match pattern {pattern!r}"),
+    ):
+        Assert.that(value).matches_pattern(pattern)
+
+
 class TestTypeChecks:
     @staticmethod
     def _pyrefly_error_kinds(source: str) -> list[str]:
@@ -331,6 +363,8 @@ class TestTypeChecks:
             ('Assert.that("abc").all_in(["a"])', "[missing-attribute]"),
             ("Assert.that(1).has_length(1)", "[bad-argument-type]"),
             ("Assert.that(1).is_true()", "[bad-argument-type]"),
+            ('Assert.that(1).contains("a")', "[bad-argument-type]"),
+            ('Assert.that(1).matches_pattern("a")', "[bad-argument-type]"),
             (
                 "narrowed: str = Assert.that(1 if 1 > 0 else None).exists()",
                 "[bad-assignment]",
