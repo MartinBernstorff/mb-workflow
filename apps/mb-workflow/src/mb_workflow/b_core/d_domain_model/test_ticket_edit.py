@@ -1,8 +1,9 @@
 import pytest
-from safe_result import Err, Ok
+from assertions import Assert
+from safe_result import Ok
 
 from mb_workflow.b_core.d_domain_model.flow import StateName, UnknownStateError
-from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabelOptionError, FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     Cleared,
@@ -16,6 +17,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelNames,
     Milestone,
     MilestoneName,
+    Priority,
     ProjectName,
 )
 from mb_workflow.b_core.d_domain_model.ticket_edit import (
@@ -36,36 +38,35 @@ def viewer() -> Assignee:
 
 def test_an_empty_edit_is_refused() -> None:
     refused = TicketEdit.nothing().checked(FlowLabels.fake(), IssueIdentifier.fake())
-    assert isinstance(refused, Err)
-    assert isinstance(refused.error, TicketEditError)
+    _ = Assert.that(refused.error).is_instance(TicketEditError)
 
 
 def test_a_title_edit_changes_only_the_title() -> None:
-    assert TicketEdit.fake().update(
-        IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
-    ) == IssueUpdate.nothing().model_copy(update={"title": TicketEdit.fake().title})
+    Assert.that(
+        TicketEdit.fake().update(
+            IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
+        )
+    ).matches(IssueUpdate.nothing().model_copy(update={"title": TicketEdit.fake().title}))
 
 
 def test_the_body_becomes_the_description() -> None:
     body = IssueDescription("New body.")
     edit = TicketEdit.nothing().model_copy(update={"body": body})
-    assert (
+    Assert.that(
         edit.update(
             IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
         ).description
-        == body
-    )
+    ).matches(body)
 
 
 def test_the_body_file_becomes_the_description() -> None:
     body_file = IssueDescription("From file.")
     edit = TicketEdit.nothing().model_copy(update={"body_file": body_file})
-    assert (
+    Assert.that(
         edit.update(
             IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
         ).description
-        == body_file
-    )
+    ).matches(body_file)
 
 
 def test_a_body_and_a_body_file_together_are_refused() -> None:
@@ -73,70 +74,64 @@ def test_a_body_and_a_body_file_together_are_refused() -> None:
         update={"body": IssueDescription("a"), "body_file": IssueDescription("b")}
     )
     refused = edit.checked(FlowLabels.fake(), IssueIdentifier.fake())
-    assert isinstance(refused, Err)
-    assert isinstance(refused.error, TicketEditError)
+    _ = Assert.that(refused.error).is_instance(TicketEditError)
 
 
 def test_added_labels_join_the_held_ones() -> None:
     backend = LabelName("Backend")
     edit = TicketEdit.nothing().model_copy(update={"add_labels": LabelNames((backend,))})
-    assert edit.update(
-        IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
-    ).labels == LabelNames((LabelName.fake(), backend))
+    Assert.that(
+        edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()).labels
+    ).matches(LabelNames((LabelName.fake(), backend)))
 
 
 def test_adding_a_held_label_in_another_case_carries_it_once() -> None:
     edit = TicketEdit.nothing().model_copy(
         update={"add_labels": LabelNames((LabelName("D-IMPLEMENT"),))}
     )
-    assert (
+    Assert.that(
         edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()).labels
-        == LabelNames.fake()
-    )
+    ).matches(LabelNames.fake())
 
 
 def test_a_removed_label_is_dropped_whatever_its_case() -> None:
     edit = TicketEdit.nothing().model_copy(
         update={"remove_labels": LabelNames((LabelName("D-IMPLEMENT"),))}
     )
-    assert edit.update(
-        IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
-    ).labels == LabelNames(())
+    Assert.that(
+        edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()).labels
+    ).matches(LabelNames(()))
 
 
 def test_labels_are_left_alone_unless_named() -> None:
-    assert (
+    Assert.that(
         TicketEdit.fake()
         .update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake())
         .labels
-        is None
-    )
+    ).matches(None)
 
 
 def test_adding_an_assignee_replaces_the_held_one() -> None:
     other = Assignee("other@flowbase.io")
     edit = TicketEdit.nothing().model_copy(update={"add_assignee": other})
-    assert (
+    Assert.that(
         edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()).assignee
-        == other
-    )
+    ).matches(other)
 
 
 def test_me_resolves_to_the_viewer() -> None:
     edit = TicketEdit.nothing().model_copy(update={"add_assignee": Assignee.me()})
-    assert (
+    Assert.that(
         edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()).assignee
-        == viewer()
-    )
+    ).matches(viewer())
 
 
 def test_removing_the_held_assignee_clears_it() -> None:
     current = IssueDetail.fake().model_copy(update={"assignee": viewer()})
     edit = TicketEdit.nothing().model_copy(update={"remove_assignee": Assignee.me()})
-    assert (
+    Assert.that(
         edit.update(current, viewer(), FlowLabels.fake(), TicketStatuses.fake()).assignee
-        == Cleared()
-    )
+    ).matches(Cleared())
 
 
 def test_removing_someone_not_assigned_leaves_the_assignee() -> None:
@@ -144,44 +139,42 @@ def test_removing_someone_not_assigned_leaves_the_assignee() -> None:
     edit = TicketEdit.nothing().model_copy(
         update={"remove_assignee": Assignee("other@flowbase.io")}
     )
-    assert edit.update(current, viewer(), FlowLabels.fake(), TicketStatuses.fake()).assignee is None
+    Assert.that(
+        edit.update(current, viewer(), FlowLabels.fake(), TicketStatuses.fake()).assignee
+    ).matches(None)
 
 
 def test_adding_a_project_moves_the_issue() -> None:
     other = ProjectName("Other")
     edit = TicketEdit.nothing().model_copy(update={"add_project": other})
-    assert (
+    Assert.that(
         edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()).project
-        == other
-    )
+    ).matches(other)
 
 
 def test_removing_the_held_project_clears_it_whatever_its_case() -> None:
     edit = TicketEdit.nothing().model_copy(
         update={"remove_project": ProjectName(ProjectName.fake().root.upper())}
     )
-    assert (
+    Assert.that(
         edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()).project
-        == Cleared()
-    )
+    ).matches(Cleared())
 
 
 def test_removing_another_project_leaves_the_project() -> None:
     edit = TicketEdit.nothing().model_copy(update={"remove_project": ProjectName("Other")})
-    assert (
+    Assert.that(
         edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()).project
-        is None
-    )
+    ).matches(None)
 
 
 def test_a_milestone_is_looked_up_in_the_held_project() -> None:
     edit = TicketEdit.nothing().model_copy(update={"milestone": MilestoneName.fake()})
-    assert (
+    Assert.that(
         edit.update(
             IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
         ).milestone
-        == Milestone.fake()
-    )
+    ).matches(Milestone.fake())
 
 
 def test_a_milestone_is_looked_up_in_the_project_being_moved_to() -> None:
@@ -189,9 +182,11 @@ def test_a_milestone_is_looked_up_in_the_project_being_moved_to() -> None:
     edit = TicketEdit.nothing().model_copy(
         update={"add_project": other, "milestone": MilestoneName.fake()}
     )
-    assert edit.update(
-        IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
-    ).milestone == Milestone(project=other, name=MilestoneName.fake())
+    Assert.that(
+        edit.update(
+            IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
+        ).milestone
+    ).matches(Milestone(project=other, name=MilestoneName.fake()))
 
 
 def test_a_milestone_without_a_project_is_refused() -> None:
@@ -207,12 +202,11 @@ def test_a_milestone_without_a_project_is_refused() -> None:
 
 def test_removing_the_milestone_clears_it() -> None:
     edit = TicketEdit.nothing().model_copy(update={"remove_milestone": RemoveMilestone(True)})
-    assert (
+    Assert.that(
         edit.update(
             IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
         ).milestone
-        == Cleared()
-    )
+    ).matches(Cleared())
 
 
 def test_setting_and_removing_the_milestone_together_are_refused() -> None:
@@ -220,57 +214,59 @@ def test_setting_and_removing_the_milestone_together_are_refused() -> None:
         update={"milestone": MilestoneName.fake(), "remove_milestone": RemoveMilestone(True)}
     )
     refused = edit.checked(FlowLabels.fake(), IssueIdentifier.fake())
-    assert isinstance(refused, Err)
-    assert isinstance(refused.error, TicketEditError)
+    _ = Assert.that(refused.error).is_instance(TicketEditError)
 
 
 def test_label_flags_split_on_commas() -> None:
-    flags = LabelNames((LabelName("Backend, d-grill"), LabelName("d-implement")))
-    assert flags.split() == LabelNames(
-        (LabelName("Backend"), LabelName("d-grill"), LabelName("d-implement"))
-    )
+    backend = LabelName("Backend")
+    d_grill = LabelName("d-grill")
+    d_implement = LabelName("d-implement")
+    flags = LabelNames((LabelName(f"{backend.root}, {d_grill.root}"), d_implement))
+    Assert.that(flags.split()).matches(LabelNames((backend, d_grill, d_implement)))
 
 
 def test_a_state_sets_its_flow_label_and_status() -> None:
-    review = LabelName("Review")
+    review = LabelName("review")
     in_review = IssueStatusName("In Review")
     edit = TicketEdit.nothing().model_copy(update={"state": StateName(review.root)})
     update = edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake())
-    assert (update.labels, update.status) == (LabelNames((LabelName.fake(), review)), in_review)
+    Assert.that((update.labels, update.status)).matches(
+        (LabelNames((LabelName.fake(), review)), in_review)
+    )
 
 
 def test_a_state_is_spelled_as_the_chart_spells_it() -> None:
-    review = StateName("Review")
+    review = StateName("review")
     edit = TicketEdit.nothing().model_copy(update={"state": StateName("rEVIEW")})
-    assert edit.checked(FlowLabels.fake(), IssueIdentifier.fake()).unwrap().state == review
+    Assert.that(edit.checked(FlowLabels.fake(), IssueIdentifier.fake()).unwrap().state).matches(
+        review
+    )
 
 
 def test_an_unknown_state_is_refused() -> None:
     edit = TicketEdit.nothing().model_copy(update={"state": StateName("Nowhere")})
     refused = edit.checked(FlowLabels.fake(), IssueIdentifier.fake())
-    assert isinstance(refused, Err)
-    assert isinstance(refused.error, UnknownStateError)
+    _ = Assert.that(refused.error).is_instance(UnknownStateError)
 
 
 @pytest.mark.parametrize("option", ["add_labels", "remove_labels"])
 def test_a_flow_label_in_a_label_option_is_refused(option: str) -> None:
-    edit = TicketEdit.nothing().model_copy(update={option: LabelNames((LabelName("specced"),))})
+    edit = TicketEdit.nothing().model_copy(update={option: LabelNames((LabelName("TODO"),))})
     state_option = "--state"
     refused = edit.checked(FlowLabels.fake(), IssueIdentifier.fake())
-    assert isinstance(refused, Err)
-    assert state_option in str(refused.error)
+    error = Assert.that(refused.error).is_instance(FlowLabelOptionError)
+    Assert.that(str(error)).contains(state_option)
 
 
 def test_an_edit_with_only_relations_is_accepted() -> None:
     edit = TicketEdit.nothing().model_copy(update={"add_blocks": (IssueIdentifier("E-1"),)})
-    assert isinstance(edit.checked(FlowLabels.fake(), IssueIdentifier.fake()), Ok)
+    _ = Assert.that(edit.checked(FlowLabels.fake(), IssueIdentifier.fake())).is_instance(Ok)
 
 
 def test_a_ticket_relating_to_itself_is_refused() -> None:
     edit = TicketEdit.nothing().model_copy(update={"add_blocked_by": (IssueIdentifier.fake(),)})
     refused = edit.checked(FlowLabels.fake(), IssueIdentifier.fake())
-    assert isinstance(refused, Err)
-    assert isinstance(refused.error, TicketEditError)
+    _ = Assert.that(refused.error).is_instance(TicketEditError)
 
 
 def test_added_relations_carry_into_the_update() -> None:
@@ -280,7 +276,7 @@ def test_added_relations_carry_into_the_update() -> None:
         update={"add_blocks": (blocked,), "add_blocked_by": (blocker,)}
     )
     update = edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake())
-    assert (update.blocks, update.blocked_by) == ((blocked,), (blocker,))
+    Assert.that((update.blocks, update.blocked_by)).matches(((blocked,), (blocker,)))
 
 
 def test_relations_the_ticket_already_holds_are_not_added_again() -> None:
@@ -294,11 +290,19 @@ def test_relations_the_ticket_already_holds_are_not_added_again() -> None:
         update={"add_blocks": (held_blocked, new_blocked), "add_blocked_by": (held_blocker,)}
     )
     update = edit.update(current, viewer(), FlowLabels.fake(), TicketStatuses.fake())
-    assert (update.blocks, update.blocked_by) == ((new_blocked,), ())
+    Assert.that((update.blocks, update.blocked_by)).matches(((new_blocked,), ()))
 
 
 def test_a_relation_named_twice_is_added_once() -> None:
     blocked = IssueIdentifier("E-1")
     edit = TicketEdit.nothing().model_copy(update={"add_blocks": (blocked, blocked)})
     update = edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake())
-    assert update.blocks == (blocked,)
+    Assert.that(update.blocks).matches((blocked,))
+
+
+def test_a_priority_edit_changes_only_the_priority() -> None:
+    urgent = Priority.urgent
+    edit = TicketEdit.nothing().model_copy(update={"priority": urgent})
+    Assert.that(
+        edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake())
+    ).matches(IssueUpdate.nothing().model_copy(update={"priority": urgent}))

@@ -1,7 +1,9 @@
+from assertions import Assert
+
 from mb_workflow.b_core.b_domain_services.pick_order import in_pick_order
 from mb_workflow.b_core.c_secondary_ports.tie_break import ReversingTieBreak
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, LabelNames
-from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, LabelNames, Priority
+from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets
 
 
 def ticket(
@@ -24,42 +26,51 @@ def picked(*tickets: PoolTicket) -> tuple[IssueIdentifier, ...]:
 
 
 def test_a_ticket_labelled_skip_limits_comes_before_any_priority() -> None:
-    assert picked(
-        ticket(IssueIdentifier("MB-1"), Priority.urgent),
-        ticket(
-            IssueIdentifier("MB-2"), Priority.no_priority, LabelNames((LabelName("Skip-Limits"),))
-        ),
-        ticket(IssueIdentifier("MB-3"), Priority.low, LabelNames((LabelName("skip-limits"),))),
-    ) == (IssueIdentifier("MB-3"), IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
+    Assert.that(
+        picked(
+            ticket(IssueIdentifier("MB-1"), Priority.urgent),
+            ticket(
+                IssueIdentifier("MB-2"),
+                Priority.no_priority,
+                LabelNames((LabelName("Skip-Limits"),)),
+            ),
+            ticket(IssueIdentifier("MB-3"), Priority.low, LabelNames((LabelName("skip-limits"),))),
+        )
+    ).matches((IssueIdentifier("MB-3"), IssueIdentifier("MB-2"), IssueIdentifier("MB-1")))
 
 
 def test_the_highest_priority_comes_first() -> None:
-    assert picked(
-        ticket(IssueIdentifier("MB-1"), Priority.low),
-        ticket(IssueIdentifier("MB-2"), Priority.medium),
-        ticket(IssueIdentifier("MB-3"), Priority.urgent),
-        ticket(IssueIdentifier("MB-4"), Priority.high),
-    ) == (
-        IssueIdentifier("MB-3"),
-        IssueIdentifier("MB-4"),
-        IssueIdentifier("MB-2"),
-        IssueIdentifier("MB-1"),
+    Assert.that(
+        picked(
+            ticket(IssueIdentifier("MB-1"), Priority.low),
+            ticket(IssueIdentifier("MB-2"), Priority.medium),
+            ticket(IssueIdentifier("MB-3"), Priority.urgent),
+            ticket(IssueIdentifier("MB-4"), Priority.high),
+        )
+    ).matches(
+        (
+            IssueIdentifier("MB-3"),
+            IssueIdentifier("MB-4"),
+            IssueIdentifier("MB-2"),
+            IssueIdentifier("MB-1"),
+        )
     )
 
 
 def test_a_ticket_without_a_priority_comes_last() -> None:
-    assert picked(
-        ticket(IssueIdentifier("MB-1"), Priority.no_priority),
-        ticket(IssueIdentifier("MB-2"), Priority.low),
-    ) == (
-        IssueIdentifier("MB-2"),
-        IssueIdentifier("MB-1"),
-    )
+    Assert.that(
+        picked(
+            ticket(IssueIdentifier("MB-1"), Priority.no_priority),
+            ticket(IssueIdentifier("MB-2"), Priority.low),
+        )
+    ).matches((IssueIdentifier("MB-2"), IssueIdentifier("MB-1")))
 
 
 def test_the_tie_break_orders_tickets_of_equal_priority() -> None:
-    assert picked(
-        ticket(IssueIdentifier("MB-1"), Priority.high),
-        ticket(IssueIdentifier("MB-2"), Priority.urgent),
-        ticket(IssueIdentifier("MB-3"), Priority.high),
-    ) == (IssueIdentifier("MB-2"), IssueIdentifier("MB-3"), IssueIdentifier("MB-1"))
+    Assert.that(
+        picked(
+            ticket(IssueIdentifier("MB-1"), Priority.high),
+            ticket(IssueIdentifier("MB-2"), Priority.urgent),
+            ticket(IssueIdentifier("MB-3"), Priority.high),
+        )
+    ).matches((IssueIdentifier("MB-2"), IssueIdentifier("MB-3"), IssueIdentifier("MB-1")))

@@ -1,5 +1,5 @@
 from datetime import date, timedelta
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import TYPE_CHECKING
 
 from mb_workflow.d_lib.models import Model, Value
@@ -117,7 +117,7 @@ class GroupedLabel(Model):
 
     @staticmethod
     def fake() -> GroupedLabel:
-        return GroupedLabel(group=LabelGroupName.fake(), label=LabelName("Specced"))
+        return GroupedLabel(group=LabelGroupName.fake(), label=LabelName("todo"))
 
 
 class GroupedLabels(Value[tuple[GroupedLabel, ...]]):
@@ -279,12 +279,21 @@ class Projects(Value[tuple[Project, ...]]):
         return next((known for known in self.root if known.name.names(project).root), None)
 
 
+class Priority(IntEnum):
+    no_priority = 0
+    urgent = 1
+    high = 2
+    medium = 3
+    low = 4
+
+
 class IssueDetail(Model):
     issue: Issue
     title: IssueTitle
     description: IssueDescription | None
     assignee: Assignee | None
     milestone: MilestoneName | None
+    priority: Priority
     blocks: frozenset[IssueIdentifier]
     blocked_by: frozenset[IssueIdentifier]
 
@@ -296,6 +305,7 @@ class IssueDetail(Model):
             description=IssueDescription.fake(),
             assignee=None,
             milestone=MilestoneName.fake(),
+            priority=Priority.medium,
             blocks=frozenset(),
             blocked_by=frozenset(),
         )
@@ -347,6 +357,7 @@ class IssueUpdate(Model):
     project: ProjectName | Cleared | None
     status: IssueStatusName | None
     milestone: Milestone | Cleared | None
+    priority: Priority | None
     blocks: tuple[IssueIdentifier, ...]
     blocked_by: tuple[IssueIdentifier, ...]
 
@@ -360,6 +371,7 @@ class IssueUpdate(Model):
             project=ProjectName.fake(),
             status=IssueStatusName.fake(),
             milestone=Milestone.fake(),
+            priority=Priority.medium,
             blocks=(),
             blocked_by=(),
         )
@@ -374,6 +386,7 @@ class IssueUpdate(Model):
             project=None,
             status=None,
             milestone=None,
+            priority=None,
             blocks=(),
             blocked_by=(),
         )
@@ -410,6 +423,7 @@ class NewIssue(Model):
     project: ProjectName | None
     status: IssueStatusName
     milestone: Milestone | None
+    priority: Priority | None
     blocks: tuple[IssueIdentifier, ...]
     blocked_by: tuple[IssueIdentifier, ...]
 
@@ -424,6 +438,7 @@ class NewIssue(Model):
             project=ProjectName.fake(),
             status=IssueStatusName.fake(),
             milestone=Milestone.fake(),
+            priority=Priority.medium,
             blocks=(),
             blocked_by=(),
         )

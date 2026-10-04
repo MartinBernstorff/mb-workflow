@@ -20,7 +20,7 @@ class ExitCode(Value[int]):
 class Output(Value[str]):
     @staticmethod
     def fake() -> Output:
-        return Output("Grilling\n")
+        return Output("grill\n")
 
 
 def write(output: Output) -> None:

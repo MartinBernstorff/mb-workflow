@@ -1,4 +1,3 @@
-from enum import IntEnum
 from typing import TYPE_CHECKING
 
 from pydantic import Field, JsonValue, NonNegativeInt, field_validator, model_validator
@@ -20,6 +19,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issues,
     LabelName,
     LabelNames,
+    Priority,
 )
 from mb_workflow.d_lib.models import Model, Value
 
@@ -34,15 +34,6 @@ class ViewSlug(Value[str]):
     @staticmethod
     def fake() -> ViewSlug:
         return ViewSlug("4efb86b38740")
-
-
-# Numbered as Linear numbers them, so a view's tickets read their priority without translation.
-class Priority(IntEnum):
-    no_priority = 0
-    urgent = 1
-    high = 2
-    medium = 3
-    low = 4
 
 
 class Ready(Value[bool]):
@@ -145,7 +136,7 @@ class Slot(Model):
 
     @staticmethod
     def fake() -> Slot:
-        return Slot(state=StateName("Implementing"), labels=LabelNames(()))
+        return Slot(state=StateName("implementing"), labels=LabelNames(()))
 
     @staticmethod
     def of(issue: Issue, flow_labels: FlowLabels) -> Result[Slot | None, FlowError]:
@@ -187,19 +178,19 @@ class Occupancy(Value[tuple[Slot, ...]]):
 class Refusal(Value[str]):
     @staticmethod
     def fake() -> Refusal:
-        return Refusal("Grilling is at its limit of 1")
+        return Refusal("grill is at its limit of 1")
 
 
 class LimitSummary(Value[str]):
     @staticmethod
     def fake() -> LimitSummary:
-        return LimitSummary("total 4, Grilling 1")
+        return LimitSummary("total 4, grill 1")
 
 
 class DefaultLimits:
     @staticmethod
     def state_limits() -> dict[StateName, Limit]:
-        return {StateName("Grilling"): Limit(1)}
+        return {StateName("grill"): Limit(1)}
 
 
 class PoolLimits(Model):

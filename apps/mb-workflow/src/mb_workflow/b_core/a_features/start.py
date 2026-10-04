@@ -4,8 +4,7 @@ from typing import TYPE_CHECKING, override
 
 from safe_result import Err, Ok, Result
 
-from mb_workflow.b_core.b_domain_services.flow_label_check import FlowLabelCheck
-from mb_workflow.b_core.b_domain_services.flow_transition import FlowStateStep
+from mb_workflow.b_core.b_domain_services.flow_transition import OpeningEntry
 from mb_workflow.b_core.b_domain_services.next_action import TicketState
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimRequest
@@ -55,7 +54,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
-    from mb_workflow.b_core.d_domain_model.issue import Issue, IssueStatusName
+    from mb_workflow.b_core.d_domain_model.issue import Issue
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
     from mb_workflow.b_core.d_domain_model.workspace import OpenedWorktree
 
@@ -199,16 +198,13 @@ class TicketStart:
         if isinstance(read, Err):
             return read
         detail = read.value
-        planned = TicketStart.planned_start(request, flow_labels, board, detail.issue)
+        planned = TicketStart.planned_start(request, flow_labels, detail.issue)
         if isinstance(planned, Err):
             return planned
-        labelled_state, state, column, prompt = planned.value
-        checked = Claiming.require_claim_label(tracker, claim_settings.label)
-        if isinstance(checked, Err):
-            return checked
-
-        entering = TicketStart.entry_steps(
+        labelled_state, state, prompt = planned.value
+        entering = OpeningEntry.planned(
             tracker=tracker,
+            board=board,
             flow_labels=flow_labels,
             statuses=statuses,
             issue=detail.issue,
@@ -217,7 +213,10 @@ class TicketStart:
         )
         if isinstance(entering, Err):
             return entering
-        entry_steps, status = entering.value
+        entry = entering.value
+        checked = Claiming.require_claim_label(tracker, claim_settings.label)
+        if isinstance(checked, Err):
+            return checked
 
         name = WorktreeName.of_issue(request.ticket)
         worktree_step = WorktreeStep(
@@ -227,7 +226,7 @@ class TicketStart:
                 name=name,
                 ticket=request.ticket,
                 agent=None if prompt is None else AgentName.claude(),
-                status=column,
+                status=entry.column,
                 activate=request.activate,
             ),
         )
@@ -238,7 +237,7 @@ class TicketStart:
             claim_settings=claim_settings,
             request=ClaimRequest(
                 ticket=request.ticket,
-                status=status,
+                status=entry.status,
                 holder=ClaimHolder(host=request.host, worktree=name),
                 take_over=request.take_over,
             ),
@@ -248,7 +247,7 @@ class TicketStart:
             return taking_steps
         return TicketStart.take_into_worktree(
             manager=manager,
-            taking_steps=(*entry_steps, *taking_steps.value),
+            taking_steps=(*entry.steps, *taking_steps.value),
             worktree_step=worktree_step,
             display_name=DisplayName.of_issue(detail.title),
             prompt=prompt,
@@ -292,45 +291,12 @@ class TicketStart:
             manager, opened, prompt, request.idle_timeout, request.submit
         )
 
-    # A ticket outside the flow enters it first, so its claim records the status it enters with.
-    @staticmethod
-    def entry_steps(
-        *,
-        tracker: TicketTracker,
-        flow_labels: FlowLabels,
-        statuses: TicketStatuses,
-        issue: Issue,
-        labelled_state: StateName | None,
-        state: StateName,
-    ) -> Result[
-        tuple[tuple[SagaStep[TicketTrackerError], ...], IssueStatusName],
-        TicketTrackerError | MissingFlowLabelsError,
-    ]:
-        if labelled_state is not None:
-            return Ok(((), issue.status))
-        checked = FlowLabelCheck.require_for_issue(tracker, flow_labels, issue.identifier)
-        if isinstance(checked, Err):
-            return checked
-        entering = FlowStateStep(
-            tracker=tracker,
-            issue=issue.identifier,
-            wanted=flow_labels,
-            statuses=statuses,
-            state=state,
-            previous_state=labelled_state,
-            previous_status=issue.status,
-        )
-        return Ok(((entering,), statuses.of(state)))
-
-    # The flow state the ticket carries, the state it starts in, that state's board column,
-    # and the prompt that starts its work.
+    # The flow state the ticket carries, the state it starts in, and the prompt that starts its
+    # work.
     @staticmethod
     def planned_start(
-        request: StartRequest, flow_labels: FlowLabels, board: WorkspaceStatusStore, issue: Issue
-    ) -> Result[
-        tuple[StateName | None, StateName, WorkspaceStatus, TerminalText | None],
-        FlowError | WorkspaceManagerError,
-    ]:
+        request: StartRequest, flow_labels: FlowLabels, issue: Issue
+    ) -> Result[tuple[StateName | None, StateName, TerminalText | None], FlowError]:
         labelled = flow_labels.state_of(WorkflowChart, issue.grouped)
         if isinstance(labelled, Err):
             return labelled
@@ -340,10 +306,7 @@ class TicketStart:
         action = TicketStart.action_in(request.ticket, given.value)
         if isinstance(action, Err):
             return action
-        column = board.status_for(given.value)
-        if isinstance(column, Err):
-            return column
-        return Ok((labelled.value, given.value, column.value, request.prompt_for(action.value)))
+        return Ok((labelled.value, given.value, request.prompt_for(action.value)))
 
     @staticmethod
     def startable_states() -> AcceptedStates:

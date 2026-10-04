@@ -28,6 +28,7 @@ build-backend = "uv_build"
 dev = [
     "actionlint-py>=1.7.12.24",
     "lefthook>=2.1.12",
+    "mb-assertions",
     "noprim>=0.3.0",
     "pyrefly>=1.2.0",
     "pytest>=9.1.1",
@@ -36,3 +37,6 @@ dev = [
     "ruff>=0.16.6",
     "tach>=0.35.0",
 ]
+
+[tool.uv.sources]
+mb-assertions = { path = "../mb-assertions", editable = true }

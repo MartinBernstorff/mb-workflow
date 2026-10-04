@@ -34,6 +34,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Milestone,
     MilestoneName,
     NewIssue,
+    Priority,
     Project,
     ProjectName,
     Projects,
@@ -44,7 +45,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     TeamName,
     TicketCount,
 )
-from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority, ViewSlug
+from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, ViewSlug
 from mb_workflow.d_lib.logging import Activity
 from mb_workflow.d_lib.models import Model
 
@@ -423,6 +424,7 @@ class FakeTicketTracker(TicketTracker):
                         description=tracked.description,
                         assignee=tracked.assignee,
                         milestone=tracked.milestone,
+                        priority=tracked.priority,
                         blocks=frozenset(
                             identifier
                             for identifier, other in self._issues.items()
@@ -624,6 +626,7 @@ class FakeTicketTracker(TicketTracker):
                     ),
                     "assignee": held,
                     "milestone": milestone.value,
+                    "priority": tracked.priority if update.priority is None else update.priority,
                     "blocked_by": (*tracked.blocked_by, *update.blocked_by),
                 }
             )
@@ -663,7 +666,7 @@ class FakeTicketTracker(TicketTracker):
                 milestone=milestone.value,
                 creator=Creator(self._viewer.root),
                 created_on=CreatedOn.fake(),
-                priority=Priority.no_priority,
+                priority=Priority.no_priority if new.priority is None else new.priority,
                 blocked_by=new.blocked_by,
                 team=team.value.key,
             )

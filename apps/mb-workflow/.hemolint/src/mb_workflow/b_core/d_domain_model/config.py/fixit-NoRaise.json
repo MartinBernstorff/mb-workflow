@@ -1,0 +1,5 @@
+{
+  "raise InvalidConfigError(\"Creating a ticket needs the linear tracker.\")": 1,
+  "raise InvalidConfigError('Set [pool] view = \"<slug>\" to name the Linear view to drain.')": 1,
+  "raise InvalidConfigError(f\"{self.root} is not valid. {error}\") from error": 1
+}

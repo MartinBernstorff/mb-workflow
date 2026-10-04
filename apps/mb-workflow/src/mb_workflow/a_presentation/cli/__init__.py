@@ -60,6 +60,10 @@ app.add_typer(workspace_app, name="workspace")
 
 REVIEWING = "status-8"
 FORCING = "Write the target state without checking the event is legal from the current one."
+TICKET = (
+    "Ticket to move, e.g. MB-33, along with the worktree linked to it."
+    " Defaults to the ticket linked to the current worktree."
+)
 
 
 @workspace_app.command("create-reviews")
@@ -306,95 +310,110 @@ def flow_seed_labels(
     raise typer.Exit(code=commands.flow_seed_labels(TeamName(team), Force(force)).root)
 
 
-def flow_event(event: EventName, force: Force) -> ExitCode:
-    return commands.flow_event(event, force, WorkingDirectory(Path.cwd()), ConfigFileName.default())
+def flow_event(event: EventName, force: Force, ticket: str | None) -> ExitCode:
+    return commands.flow_event(
+        event,
+        force,
+        IssueIdentifier.from_nullable(ticket),
+        WorkingDirectory(Path.cwd()),
+        ConfigFileName.default(),
+    )
 
 
 @flow_app.command("grill")
 def flow_grill(
+    ticket: str | None = typer.Argument(None, help=TICKET),
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    raise typer.Exit(code=flow_event(EventName("grill"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("grill"), Force(force), ticket).root)
 
 
 @flow_app.command("to-ticket")
 def flow_to_ticket(
+    ticket: str | None = typer.Argument(None, help=TICKET),
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    raise typer.Exit(code=flow_event(EventName("to-ticket"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("to-ticket"), Force(force), ticket).root)
 
 
-@flow_app.command("specced")
-def flow_specced(
+@flow_app.command("todo")
+def flow_todo(
+    ticket: str | None = typer.Argument(None, help=TICKET),
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    raise typer.Exit(code=flow_event(EventName("specced"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("todo"), Force(force), ticket).root)
 
 
 @flow_app.command("implement")
 def flow_implement(
+    ticket: str | None = typer.Argument(None, help=TICKET),
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    raise typer.Exit(code=flow_event(EventName("implement"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("implement"), Force(force), ticket).root)
 
 
 @flow_app.command("qa")
 def flow_qa(
+    ticket: str | None = typer.Argument(None, help=TICKET),
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    raise typer.Exit(code=flow_event(EventName("qa"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("qa"), Force(force), ticket).root)
 
 
 @flow_app.command("ready")
 def flow_ready(
+    ticket: str | None = typer.Argument(None, help=TICKET),
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    raise typer.Exit(code=flow_event(EventName("ready"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("ready"), Force(force), ticket).root)
 
 
 @flow_app.command("merge")
 def flow_merge(
+    ticket: str | None = typer.Argument(None, help=TICKET),
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    raise typer.Exit(code=flow_event(EventName("merge"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("merge"), Force(force), ticket).root)
 
 
 @flow_app.command("merged")
 def flow_merged(
+    ticket: str | None = typer.Argument(None, help=TICKET),
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    raise typer.Exit(code=flow_event(EventName("merged"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("merged"), Force(force), ticket).root)
 
 
 @flow_app.command("resolve-review")
 def flow_resolve_review(
+    ticket: str | None = typer.Argument(None, help=TICKET),
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    raise typer.Exit(code=flow_event(EventName("resolve-review"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("resolve-review"), Force(force), ticket).root)

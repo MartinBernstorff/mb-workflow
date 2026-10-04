@@ -1,0 +1,9 @@
+extend = "../../ruff.toml"
+src = ["src"]
+
+[lint.isort]
+known-first-party = ["lint_rules"]
+
+# LibCST dispatches on the node class name, e.g. `visit_ClassDef`.
+[lint.pep8-naming]
+extend-ignore-names = ["visit_*", "leave_*"]

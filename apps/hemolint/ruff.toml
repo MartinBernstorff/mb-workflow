@@ -1,0 +1,13 @@
+extend = "../../ruff.toml"
+src = ["src"]
+
+[lint.isort]
+known-first-party = ["hemolint"]
+
+[lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+    "pydantic.BaseModel",
+    "pydantic.RootModel",
+    "hemolint.d_lib.models.Model",
+    "hemolint.d_lib.models.Value",
+]

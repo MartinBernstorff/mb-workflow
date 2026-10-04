@@ -1,0 +1,32 @@
+[project]
+name = "hemolint"
+version = "0.1.0"
+description = "Keeps new lint violations out while existing ones are fixed over time."
+readme = "README.md"
+authors = [
+    { name = "Martin Bernstorff", email = "martinbernstorff@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "pydantic>=2.13.5",
+    "safe-result>=4.0.3",
+    "typer>=0.27.2",
+]
+
+[project.scripts]
+hemolint = "hemolint:main"
+
+[build-system]
+requires = ["uv_build>=0.9.24,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "noprim>=0.3.0",
+    "pyrefly>=1.2.0",
+    "pytest>=9.1.1",
+    "pytest-randomly>=5.0.0",
+    "pytest-xdist>=3.8.0",
+    "ruff>=0.16.6",
+    "tach>=0.35.0",
+]

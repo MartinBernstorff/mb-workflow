@@ -1,0 +1,4 @@
+# The Typer boundary: Typer's own exceptions are how a command exits.
+[tool.fixit]
+enable = ["lint_rules:NoRaiseAtTyperBoundary"]
+disable = ["lint_rules:NoRaise"]

@@ -1,3 +1,5 @@
+from assertions import Assert
+
 from mb_workflow.b_core.b_domain_services.label_selection import Selection
 from mb_workflow.b_core.d_domain_model.autolabel import (
     AutoLabelCriteria,
@@ -58,19 +60,20 @@ def selection() -> Selection:
 
 
 def test_the_labellable_issues_are_the_ones_nothing_excludes() -> None:
-    assert selection().labellable().identifiers() == (
-        IssueIdentifier("E-4"),
-        IssueIdentifier("E-11"),
+    Assert.that(selection().labellable().identifiers()).matches(
+        (IssueIdentifier("E-4"), IssueIdentifier("E-11"))
     )
 
 
 def test_counts_the_issues_dropped_for_each_reason() -> None:
-    assert {tally.reason: tally.count.root for tally in selection().skips()} == {
-        SkipReason.excluded_status: 4,
-        SkipReason.excluded_project: 3,
-        SkipReason.already_recorded: 1,
-        SkipReason.already_labelled: 1,
-    }
+    Assert.that({tally.reason: tally.count.root for tally in selection().skips()}).matches(
+        {
+            SkipReason.excluded_status: 4,
+            SkipReason.excluded_project: 3,
+            SkipReason.already_recorded: 1,
+            SkipReason.already_labelled: 1,
+        }
+    )
 
 
 def test_a_selection_that_skipped_nothing_tallies_no_skips() -> None:
@@ -80,4 +83,4 @@ def test_a_selection_that_skipped_nothing_tallies_no_skips() -> None:
         ledger=Ledger(()),
         group=None,
     )
-    assert Selection.of(default_issues(), unexcluded).skips() == ()
+    Assert.that(Selection.of(default_issues(), unexcluded).skips()).matches(())

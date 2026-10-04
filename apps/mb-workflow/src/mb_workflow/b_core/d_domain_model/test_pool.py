@@ -1,5 +1,6 @@
 import pytest
-from safe_result import Err, Ok
+from assertions import Assert
+from safe_result import Ok
 
 from mb_workflow.b_core.d_domain_model.flow import FlowError, StateName
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
@@ -37,16 +38,18 @@ def ticket(flow: LabelName, *others: LabelName) -> PoolTicket:
     return PoolTicket.fake().model_copy(update={"issue": issue})
 
 
-@pytest.mark.parametrize(
-    "state", ["Grilling", "Speccing", "Specced", "Implementing", "Merging", "specced"]
-)
+@pytest.mark.parametrize("state", ["grill", "to-ticket", "todo", "implementing", "merging", "TODO"])
 def test_an_unclaimed_ticket_in_a_workable_state_is_ready(state: str) -> None:
-    assert ticket(LabelName(state)).ready(LabelName("claimed"), FlowLabels.fake()) == Ready(True)
+    Assert.that(ticket(LabelName(state)).ready(LabelName("claimed"), FlowLabels.fake())).matches(
+        Ready(True)
+    )
 
 
-@pytest.mark.parametrize("state", ["QA", "Review", "Merged"])
+@pytest.mark.parametrize("state", ["qa", "review", "merged"])
 def test_a_ticket_in_any_other_state_is_not_ready(state: str) -> None:
-    assert ticket(LabelName(state)).ready(LabelName("claimed"), FlowLabels.fake()) == Ready(False)
+    Assert.that(ticket(LabelName(state)).ready(LabelName("claimed"), FlowLabels.fake())).matches(
+        Ready(False)
+    )
 
 
 def test_a_ticket_without_a_flow_label_is_not_ready() -> None:
@@ -54,21 +57,22 @@ def test_a_ticket_without_a_flow_label_is_not_ready() -> None:
         update={"labels": LabelNames(()), "grouped": GroupedLabels(())}
     )
     ticket = PoolTicket.fake().model_copy(update={"issue": unlabelled})
-    assert ticket.ready(LabelName("claimed"), FlowLabels.fake()) == Ready(False)
+    Assert.that(ticket.ready(LabelName("claimed"), FlowLabels.fake())).matches(Ready(False))
 
 
 def test_a_ticket_carrying_the_claim_label_is_not_ready() -> None:
-    claimed = ticket(LabelName("Specced"), LabelName("Claimed"))
-    assert claimed.ready(LabelName("claimed"), FlowLabels.fake()) == Ready(False)
+    claimed = ticket(LabelName("todo"), LabelName("Claimed"))
+    Assert.that(claimed.ready(LabelName("claimed"), FlowLabels.fake())).matches(Ready(False))
 
 
 def test_other_labels_leave_a_ticket_ready() -> None:
-    labelled = ticket(LabelName("Specced"), LabelName("Backend"))
-    assert labelled.ready(LabelName("claimed"), FlowLabels.fake()) == Ready(True)
+    labelled = ticket(LabelName("todo"), LabelName("Backend"))
+    Assert.that(labelled.ready(LabelName("claimed"), FlowLabels.fake())).matches(Ready(True))
 
 
-def test_the_defaults_cap_the_total_at_four_and_grilling_at_one() -> None:
-    assert PoolLimits() == PoolLimits(total=Limit(4), states={StateName("Grilling"): Limit(1)})
+def test_the_defaults_cap_the_total_at_four_and_grill_at_one() -> None:
+    default_limits = PoolLimits(total=Limit(4), states={StateName("grill"): Limit(1)})
+    Assert.that(PoolLimits()).matches(default_limits)
 
 
 def in_state(state: StateName, *labels: LabelName) -> Slot:
@@ -79,172 +83,179 @@ def occupied(*slots: Slot) -> Occupancy:
     return Occupancy(slots)
 
 
-def test_a_state_limit_joins_the_default_grilling_limit() -> None:
-    assert PoolLimits.model_validate({"total": 6, "states": {"QA": 2}}).states == {
-        StateName("Grilling"): Limit(1),
-        StateName("QA"): Limit(2),
-    }
+def test_a_state_limit_joins_the_default_grill_limit() -> None:
+    qa_limit = 2
+    grill_and_qa_limits = {StateName("grill"): Limit(1), StateName("qa"): Limit(qa_limit)}
+    Assert.that(PoolLimits.model_validate({"total": 6, "states": {"QA": qa_limit}}).states).matches(
+        grill_and_qa_limits
+    )
 
 
 def test_a_state_limit_overrides_the_default_whatever_its_case() -> None:
-    assert PoolLimits.model_validate({"states": {"grilling": 3}}).states == {
-        StateName("Grilling"): Limit(3)
-    }
+    grill_limit = 3
+    Assert.that(PoolLimits.model_validate({"states": {"GRILL": grill_limit}}).states).matches(
+        {StateName("grill"): Limit(grill_limit)}
+    )
 
 
 def test_a_state_limit_beside_the_total_points_to_the_states_table() -> None:
-    with pytest.raises(ValueError, match=r"QA is no pool limit.*\[pool\.limits\.states\]"):
+    points_to_states_table = r"QA is no pool limit.*\[pool\.limits\.states\]"
+    with pytest.raises(ValueError, match=points_to_states_table):
         _ = PoolLimits.model_validate({"total": 6, "QA": 2})
 
 
 def test_a_state_outside_the_chart_is_refused_listing_the_chart_states() -> None:
-    with pytest.raises(
-        ValueError, match=r"No flow state is named Todo\. Use one of Grilling, Speccing,"
-    ):
-        _ = PoolLimits.model_validate({"states": {"Todo": 1}})
+    lists_chart_states = r"No flow state is named Specced\. Use one of grill, to-ticket,"
+    with pytest.raises(ValueError, match=lists_chart_states):
+        _ = PoolLimits.model_validate({"states": {"Specced": 1}})
 
 
 def test_a_state_limited_twice_in_different_casings_is_refused() -> None:
-    chart, lowered = "Specced", "specced"
-    with pytest.raises(ValueError, match=f"{chart}, {lowered}"):
-        _ = PoolLimits.model_validate({"states": {chart: 1, lowered: 2}})
+    chart, capitalised = "todo", "Todo"
+    with pytest.raises(ValueError, match=f"{chart}, {capitalised}"):
+        _ = PoolLimits.model_validate({"states": {chart: 1, capitalised: 2}})
 
 
 def test_label_limits_default_to_none() -> None:
-    assert PoolLimits().labels == {}
+    Assert.that(PoolLimits().labels).matches({})
 
 
 def test_the_labels_table_sets_label_limits() -> None:
-    assert PoolLimits.model_validate({"labels": {"refactor": 1}}).labels == {
-        LabelName("refactor"): Limit(1)
-    }
+    refactor = LabelName("refactor")
+    refactor_limit = 1
+    Assert.that(
+        PoolLimits.model_validate({"labels": {refactor.root: refactor_limit}}).labels
+    ).matches({refactor: Limit(refactor_limit)})
 
 
 def test_a_negative_limit_is_refused() -> None:
-    with pytest.raises(ValueError, match="total"):
+    total_field = "total"
+    with pytest.raises(ValueError, match=total_field):
         _ = PoolLimits.model_validate({"total": -1})
 
 
 def test_the_summary_lists_state_and_label_limits() -> None:
     limits = PoolLimits(labels={LabelName("refactor"): Limit(1)})
-    assert limits.summary().root == "total 4, Grilling 1, label refactor 1"
+    summary = "total 4, grill 1, label refactor 1"
+    Assert.that(limits.summary().root).matches(summary)
 
 
 def test_a_pool_below_the_total_admits_a_state_without_its_own_limit() -> None:
     refusal = PoolLimits(total=Limit(2)).refusal(
-        occupied(in_state(StateName("Specced"))), in_state(StateName("Specced"))
+        occupied(in_state(StateName("todo"))), in_state(StateName("todo"))
     )
-    assert refusal is None
+    Assert.that(refusal).matches(None)
 
 
 def test_a_pool_at_the_total_admits_nothing() -> None:
     refusal = PoolLimits(total=Limit(2)).refusal(
-        occupied(in_state(StateName("Specced")), in_state(StateName("QA"))),
-        in_state(StateName("Specced")),
+        occupied(in_state(StateName("todo")), in_state(StateName("qa"))),
+        in_state(StateName("todo")),
     )
-    assert refusal == Refusal("the pool is at its total of 2")
+    at_total = Refusal("the pool is at its total of 2")
+    Assert.that(refusal).matches(at_total)
 
 
 def test_a_full_state_is_not_admitted() -> None:
     refusal = PoolLimits().refusal(
-        occupied(in_state(StateName("Grilling"))), in_state(StateName("Grilling"))
+        occupied(in_state(StateName("grill"))), in_state(StateName("grill"))
     )
-    assert refusal == Refusal("Grilling is at its limit of 1")
+    grill_full = Refusal("grill is at its limit of 1")
+    Assert.that(refusal).matches(grill_full)
 
 
 def test_a_full_state_leaves_other_states_admitted() -> None:
-    assert (
-        PoolLimits().refusal(
-            occupied(in_state(StateName("Grilling"))), in_state(StateName("Specced"))
-        )
-        is None
-    )
+    Assert.that(
+        PoolLimits().refusal(occupied(in_state(StateName("grill"))), in_state(StateName("todo")))
+    ).matches(None)
 
 
 def test_a_full_label_is_not_admitted_whatever_the_state() -> None:
     limits = PoolLimits(labels={LabelName("refactor"): Limit(1)})
     refusal = limits.refusal(
-        occupied(in_state(StateName("Review"), LabelName("refactor"))),
-        in_state(StateName("Specced"), LabelName("refactor")),
+        occupied(in_state(StateName("review"), LabelName("refactor"))),
+        in_state(StateName("todo"), LabelName("refactor")),
     )
-    assert refusal == Refusal("label refactor is at its limit of 1")
+    refactor_full = Refusal("label refactor is at its limit of 1")
+    Assert.that(refusal).matches(refactor_full)
 
 
 def test_a_label_limit_matches_whatever_the_case() -> None:
     limits = PoolLimits(labels={LabelName("refactor"): Limit(1)})
     refusal = limits.refusal(
-        occupied(in_state(StateName("Review"), LabelName("Refactor"))),
-        in_state(StateName("Specced"), LabelName("REFACTOR")),
+        occupied(in_state(StateName("review"), LabelName("Refactor"))),
+        in_state(StateName("todo"), LabelName("REFACTOR")),
     )
-    assert refusal is not None
+    _ = Assert.that(refusal).exists()
 
 
 def test_a_full_label_leaves_tickets_without_it_admitted() -> None:
     limits = PoolLimits(labels={LabelName("refactor"): Limit(1)})
-    assert (
+    Assert.that(
         limits.refusal(
-            occupied(in_state(StateName("Review"), LabelName("refactor"))),
-            in_state(StateName("Specced")),
+            occupied(in_state(StateName("review"), LabelName("refactor"))),
+            in_state(StateName("todo")),
         )
-        is None
-    )
+    ).matches(None)
 
 
 def test_a_label_below_its_limit_is_admitted() -> None:
     limits = PoolLimits(labels={LabelName("refactor"): Limit(2)})
     refusal = limits.refusal(
-        occupied(in_state(StateName("Review"), LabelName("refactor"))),
-        in_state(StateName("Specced"), LabelName("refactor")),
+        occupied(in_state(StateName("review"), LabelName("refactor"))),
+        in_state(StateName("todo"), LabelName("refactor")),
     )
-    assert refusal is None
+    Assert.that(refusal).matches(None)
 
 
 def test_a_pool_is_filled_once_it_reaches_the_total() -> None:
-    occupancy = occupied(in_state(StateName("QA")), in_state(StateName("Review")))
-    assert PoolLimits(total=Limit(2)).filled(occupancy) == Filled(True)
+    occupancy = occupied(in_state(StateName("qa")), in_state(StateName("review")))
+    Assert.that(PoolLimits(total=Limit(2)).filled(occupancy)).matches(Filled(True))
 
 
 def test_a_pool_below_the_total_is_not_filled() -> None:
-    assert PoolLimits(total=Limit(2)).filled(occupied(in_state(StateName("QA")))) == Filled(False)
+    Assert.that(PoolLimits(total=Limit(2)).filled(occupied(in_state(StateName("qa"))))).matches(
+        Filled(False)
+    )
 
 
 def test_occupancy_holds_each_issue_with_its_flow_state_and_labels() -> None:
+    refactor = LabelName("refactor")
+    qa = LabelName("qa")
+    merging = LabelName("merging")
     issues = Issues(
         tuple(
-            Issue.fake().model_copy(
-                update={"grouped": grouped, "labels": LabelNames((LabelName("refactor"),))}
-            )
-            for grouped in (in_flow(LabelName("QA")), in_flow(LabelName("Merging")), in_flow())
+            Issue.fake().model_copy(update={"grouped": grouped, "labels": LabelNames((refactor,))})
+            for grouped in (in_flow(qa), in_flow(merging), in_flow())
         )
     )
-    assert Occupancy.of(issues, FlowLabels.fake()) == Ok(
-        occupied(
-            in_state(StateName("QA"), LabelName("refactor")),
-            in_state(StateName("Merging"), LabelName("refactor")),
-        )
+    expected = occupied(
+        in_state(StateName(qa.root), refactor), in_state(StateName(merging.root), refactor)
     )
+    Assert.that(Occupancy.of(issues, FlowLabels.fake())).matches(Ok(expected))
 
 
 def test_an_issue_with_two_flow_labels_leaves_the_occupancy_unknown() -> None:
     issues = Issues(
         (
             Issue.fake().model_copy(
-                update={"grouped": in_flow(LabelName("QA"), LabelName("Review"))}
+                update={"grouped": in_flow(LabelName("qa"), LabelName("review"))}
             ),
         )
     )
     counted = Occupancy.of(issues, FlowLabels.fake())
-    assert isinstance(counted, Err)
-    assert isinstance(counted.error, FlowError)
+    _ = Assert.that(counted.error).is_instance(FlowError)
 
 
-def test_an_issue_without_a_flow_label_leaves_the_grilling_limit_open() -> None:
+def test_an_issue_without_a_flow_label_leaves_the_grill_limit_open() -> None:
     occupancy = Occupancy.of(
         Issues((Issue.fake().model_copy(update={"grouped": in_flow()}),)), FlowLabels.fake()
     ).unwrap()
-    assert PoolLimits().refusal(occupancy, in_state(StateName("Grilling"))) is None
+    Assert.that(PoolLimits().refusal(occupancy, in_state(StateName("grill")))).matches(None)
 
 
 def test_a_started_ticket_joins_the_occupancy() -> None:
-    occupancy = occupied(in_state(StateName("QA"))).with_slot(in_state(StateName("Specced")))
-    assert occupancy == occupied(in_state(StateName("QA")), in_state(StateName("Specced")))
+    held = in_state(StateName("qa"))
+    started = in_state(StateName("todo"))
+    occupancy = occupied(held).with_slot(started)
+    Assert.that(occupancy).matches(occupied(held, started))

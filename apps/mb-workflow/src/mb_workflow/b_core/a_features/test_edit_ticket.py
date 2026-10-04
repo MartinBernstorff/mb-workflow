@@ -18,6 +18,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueStatusName,
     LabelName,
     LabelNames,
+    Priority,
     Projects,
     StatusType,
 )
@@ -70,6 +71,16 @@ def test_editing_a_ticket_swaps_labels() -> None:
     )
 
 
+def test_editing_a_ticket_sets_the_priority() -> None:
+    tracker = tracking()
+    urgent = Priority.urgent
+    edit = TicketEdit.nothing().model_copy(update={"priority": urgent})
+    _ = TicketEditor.apply_edit(
+        tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
+    ).unwrap()
+    assert tracker.read_issue_detail(IssueIdentifier.fake()).unwrap().priority == urgent
+
+
 def test_editing_an_unknown_ticket_fails() -> None:
     refused = TicketEditor.apply_edit(
         tracking(),
@@ -94,14 +105,14 @@ def test_an_empty_edit_is_refused_before_the_ticket_is_read() -> None:
     assert isinstance(refused.error, TicketEditError)
 
 
-def in_grilling(groups: LabelNames = FlowLabels.fake().labels) -> FakeTicketTracker:
+def in_grill(groups: LabelNames = FlowLabels.fake().labels) -> FakeTicketTracker:
     flow = FlowLabels.fake()
-    grilling = Issue.fake().model_copy(
-        update={"labels": LabelNames((LabelName.fake(), LabelName("Grilling")))}
+    issue = Issue.fake().model_copy(
+        update={"labels": LabelNames((LabelName.fake(), LabelName("grill")))}
     )
     return FakeTicketTracker(
         LabelNames((LabelName.fake(), *flow.labels.root)),
-        (TrackedIssue.fake().model_copy(update={"issue": grilling}),),
+        (TrackedIssue.fake().model_copy(update={"issue": issue}),),
         Projects.fake(),
         IssueStatuses(
             tuple(
@@ -115,8 +126,8 @@ def in_grilling(groups: LabelNames = FlowLabels.fake().labels) -> FakeTicketTrac
 
 
 def test_a_ticket_jumps_to_a_state_the_chart_does_not_lead_to() -> None:
-    tracker = in_grilling()
-    merged = LabelName("Merged")
+    tracker = in_grill()
+    merged = LabelName("merged")
     done = IssueStatusName("Done")
     edit = TicketEdit.nothing().model_copy(update={"state": StateName("merged")})
     _ = TicketEditor.apply_edit(
@@ -127,8 +138,8 @@ def test_a_ticket_jumps_to_a_state_the_chart_does_not_lead_to() -> None:
 
 
 def test_moving_a_ticket_keeps_its_labels_outside_the_flow() -> None:
-    tracker = in_grilling()
-    review = LabelName("Review")
+    tracker = in_grill()
+    review = LabelName("review")
     edit = TicketEdit.nothing().model_copy(update={"state": StateName(review.root)})
     _ = TicketEditor.apply_edit(
         tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
@@ -139,7 +150,7 @@ def test_moving_a_ticket_keeps_its_labels_outside_the_flow() -> None:
 
 
 def test_an_unknown_state_leaves_the_ticket_unchanged() -> None:
-    tracker = in_grilling()
+    tracker = in_grill()
     before = tracker.read_issue(IssueIdentifier.fake()).unwrap()
     edit = TicketEdit.nothing().model_copy(update={"state": StateName("Nowhere")})
     refused = TicketEditor.apply_edit(
@@ -151,7 +162,7 @@ def test_an_unknown_state_leaves_the_ticket_unchanged() -> None:
 
 
 def test_moving_a_ticket_without_seeded_flow_labels_leaves_it_unchanged() -> None:
-    tracker = in_grilling(groups=LabelNames(()))
+    tracker = in_grill(groups=LabelNames(()))
     before = tracker.read_issue(IssueIdentifier.fake()).unwrap()
     edit = TicketEdit.nothing().model_copy(update={"state": StateName.fake()})
     refused = TicketEditor.apply_edit(
@@ -165,9 +176,7 @@ def test_moving_a_ticket_without_seeded_flow_labels_leaves_it_unchanged() -> Non
 def test_a_flow_label_passed_as_a_label_leaves_the_ticket_unchanged() -> None:
     tracker = tracking()
     before = tracker.read_issue(IssueIdentifier.fake()).unwrap()
-    edit = TicketEdit.nothing().model_copy(
-        update={"add_labels": LabelNames((LabelName("Specced"),))}
-    )
+    edit = TicketEdit.nothing().model_copy(update={"add_labels": LabelNames((LabelName("todo"),))})
     refused = TicketEditor.apply_edit(
         tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
     )

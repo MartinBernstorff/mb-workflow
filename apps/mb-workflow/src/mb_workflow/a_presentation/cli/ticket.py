@@ -1,4 +1,5 @@
 import logging
+from enum import StrEnum
 from pathlib import Path
 
 import typer
@@ -21,6 +22,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelName,
     LabelNames,
     MilestoneName,
+    Priority,
     ProjectName,
 )
 from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDraft
@@ -28,6 +30,17 @@ from mb_workflow.b_core.d_domain_model.ticket_edit import RemoveMilestone, Ticke
 from mb_workflow.d_lib.logging import LogLevel
 
 ticket_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
+
+
+class PriorityChoice(StrEnum):
+    no_priority = "none"
+    urgent = "urgent"
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+    def to_priority(self) -> Priority:
+        return Priority[self.name]
 
 
 @ticket_app.command("view")
@@ -57,6 +70,9 @@ def ticket_create(
     project: str | None = typer.Option(
         None, "--project", "-p", help="Add the ticket to a project, overriding the config."
     ),
+    priority: PriorityChoice | None = typer.Option(
+        None, "--priority", help='Set the priority. Use "none" to clear it.', case_sensitive=False
+    ),
     blocks: list[str] = typer.Option([], "--blocks", help="Mark the ticket as blocking an issue."),
     blocked_by: list[str] = typer.Option(
         [], "--blocked-by", help="Mark the ticket as blocked by an issue."
@@ -72,6 +88,7 @@ def ticket_create(
         assignee=Assignee.from_nullable(assignee),
         project=ProjectName.from_nullable(project),
         milestone=MilestoneName.from_nullable(milestone),
+        priority=priority.to_priority() if priority is not None else None,
         blocks=tuple(map(IssueIdentifier, blocks)),
         blocked_by=tuple(map(IssueIdentifier, blocked_by)),
     )
@@ -117,6 +134,9 @@ def ticket_edit(
     remove_milestone: bool = typer.Option(
         False, "--remove-milestone", help="Remove the milestone."
     ),
+    priority: PriorityChoice | None = typer.Option(
+        None, "--priority", help='Set the priority. Use "none" to clear it.', case_sensitive=False
+    ),
     add_blocks: list[str] = typer.Option(
         [], "--add-blocks", help="Mark the ticket as blocking an issue."
     ),
@@ -139,6 +159,7 @@ def ticket_edit(
         state=StateName.from_nullable(state),
         milestone=MilestoneName.from_nullable(milestone),
         remove_milestone=RemoveMilestone(remove_milestone),
+        priority=priority.to_priority() if priority is not None else None,
         add_blocks=tuple(map(IssueIdentifier, add_blocks)),
         add_blocked_by=tuple(map(IssueIdentifier, add_blocked_by)),
     )

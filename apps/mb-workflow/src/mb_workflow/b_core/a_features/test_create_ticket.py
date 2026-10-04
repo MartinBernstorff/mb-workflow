@@ -16,6 +16,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueStatusName,
     LabelName,
     LabelNames,
+    Priority,
     Projects,
     StatusType,
     StatusTypes,
@@ -64,7 +65,7 @@ def test_a_created_ticket_starts_in_the_first_flow_state() -> None:
     tracker = tracking()
     issue = tracker.read_issue(created(tracker, TicketDraft.fake())).unwrap()
     assert (issue.labels, issue.status) == (
-        LabelNames((LabelName("Grilling"),)),
+        LabelNames((LabelName("grill"),)),
         IssueStatusName("Maturing"),
     )
 
@@ -92,7 +93,7 @@ def test_a_relation_to_an_unknown_issue_is_refused_before_the_ticket_is_created(
     )
     assert isinstance(refused, Err)
     assert unknown.root in str(refused.error)
-    assert tracker.labelled_issues(LabelName("Grilling"), StatusTypes(())).unwrap().root == ()
+    assert tracker.labelled_issues(LabelName("grill"), StatusTypes(())).unwrap().root == ()
 
 
 def test_creating_a_ticket_before_the_flow_labels_exist_is_refused() -> None:
@@ -109,7 +110,7 @@ def test_creating_a_ticket_before_the_flow_labels_exist_is_refused() -> None:
 
 def test_a_flow_label_passed_as_a_label_creates_no_ticket() -> None:
     tracker = tracking()
-    draft = TicketDraft.fake().model_copy(update={"labels": LabelNames((LabelName("Specced"),))})
+    draft = TicketDraft.fake().model_copy(update={"labels": LabelNames((LabelName("todo"),))})
     refused = TicketCreation.create_ticket(
         tracker=tracker,
         draft=draft,
@@ -118,4 +119,12 @@ def test_a_flow_label_passed_as_a_label_creates_no_ticket() -> None:
         statuses=TicketStatuses.fake(),
     )
     assert isinstance(refused, Err)
-    assert tracker.labelled_issues(LabelName("Grilling"), StatusTypes(())).unwrap().root == ()
+    assert tracker.labelled_issues(LabelName("grill"), StatusTypes(())).unwrap().root == ()
+
+
+def test_a_created_ticket_takes_the_drafted_priority() -> None:
+    tracker = tracking()
+    low = Priority.low
+    draft = TicketDraft.fake().model_copy(update={"priority": low})
+    identifier = created(tracker, draft)
+    assert tracker.read_issue_detail(identifier).unwrap().priority == low

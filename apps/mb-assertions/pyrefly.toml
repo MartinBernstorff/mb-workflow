@@ -1,0 +1,7 @@
+# Consumers may run Python 3.12, so check against it rather than the repository's 3.14.
+python-version = "3.12"
+preset = "all"
+search-path = ["src"]
+
+[errors]
+implicit-bool = false

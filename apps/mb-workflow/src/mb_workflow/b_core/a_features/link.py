@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, override
 
 from safe_result import Err, Ok, Result
 
+from mb_workflow.b_core.b_domain_services.flow_transition import OpeningEntry
 from mb_workflow.b_core.b_domain_services.next_action import TicketState
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRequest
@@ -19,6 +20,7 @@ from mb_workflow.d_lib.models import Model
 from mb_workflow.d_lib.saga import Saga, SagaStep
 
 if TYPE_CHECKING:
+    from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
     from mb_workflow.b_core.c_secondary_ports.claims import (
         ClaimRefusedError,
         ClaimRegistry,
@@ -32,6 +34,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
+    from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
     from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus, Worktree
 
 logger = logging.getLogger(__name__)
@@ -121,6 +124,7 @@ class TicketLinking:
         workspace: WorkspaceSettings,
         claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
+        statuses: TicketStatuses,
         request: LinkRequest,
     ) -> Result[
         None,
@@ -128,6 +132,7 @@ class TicketLinking:
         | TicketTrackerError
         | UnknownClaimLabelError
         | ClaimRefusedError
+        | MissingFlowLabelsError
         | WorkspaceManagerError
         | AlreadyLinkedError,
     ]:
@@ -144,9 +149,18 @@ class TicketLinking:
         if isinstance(linkable, Err):
             return linkable
         here = linkable.value
-        status = board.status_for(state)
-        if isinstance(status, Err):
-            return status
+        entering = OpeningEntry.planned(
+            tracker=tracker,
+            board=board,
+            flow_labels=flow_labels,
+            statuses=statuses,
+            issue=detail.issue,
+            labelled_state=state,
+            state=state,
+        )
+        if isinstance(entering, Err):
+            return entering
+        entry = entering.value
 
         # Named after the ticket, not the directory, as teardown and drain rebuild the holder that way.
         taking_steps = TicketTaking.saga_steps(
@@ -156,7 +170,7 @@ class TicketLinking:
             claim_settings=claim_settings,
             request=ClaimRequest(
                 ticket=request.ticket,
-                status=detail.issue.status,
+                status=entry.status,
                 holder=ClaimHolder(
                     host=request.host, worktree=WorktreeName.of_issue(request.ticket)
                 ),
@@ -169,8 +183,9 @@ class TicketLinking:
 
         # Linking comes last, as Orca cannot unlink a worktree to revert it.
         steps = (
+            *entry.steps,
             *taking_steps.value,
-            StatusStep(manager, here, status.value),
+            StatusStep(manager, here, entry.column),
             LinkStep(manager, here, request.ticket),
         )
         return TicketLinking.link_and_name(manager, steps, here, DisplayName.of_issue(detail.title))

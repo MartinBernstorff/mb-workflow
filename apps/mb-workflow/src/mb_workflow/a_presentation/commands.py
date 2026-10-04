@@ -61,7 +61,7 @@ from mb_workflow.b_core.d_domain_model.config_override import (
 )
 from mb_workflow.b_core.d_domain_model.config_template import ConfigTemplate
 from mb_workflow.b_core.d_domain_model.flow import EventName, StateNames, WorkflowChart
-from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, LabelRenames
 from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
 from mb_workflow.b_core.d_domain_model.workspace import UnlinkedWorktreeError
 from mb_workflow.c_infrastructure.credentials import (
@@ -167,7 +167,9 @@ def linear() -> Linear:
 
 
 def flow_labels_of_chart() -> FlowLabels:
-    return FlowLabels.of_chart(WorkflowChart, LabelGroupName("flowy"))
+    return FlowLabels.of_chart(
+        WorkflowChart, LabelGroupName("flowy"), LabelRenames.former_state_labels()
+    )
 
 
 def workspace_board(manager: Orca) -> WorkspaceBoard:
@@ -284,6 +286,7 @@ def ticket_link(
         workspace=settings.workspace,
         claim_settings=settings.claims,
         flow_labels=flow_labels_of_chart(),
+        statuses=settings.ticket_statuses,
         request=request,
     ):
         case Ok():
@@ -473,17 +476,22 @@ def flow_show(as_json: AsJson) -> ExitCode:
 
 @guarded
 def flow_event(
-    event: EventName, force: Force, directory: WorkingDirectory, name: ConfigFileName
+    event: EventName,
+    force: Force,
+    ticket: IssueIdentifier | None,
+    directory: WorkingDirectory,
+    name: ConfigFileName,
 ) -> ExitCode:
     manager = connected_orca()
     match LinkedTicketTransition.move_linked_ticket(
-        store=workspace_board(manager),
+        board_at=workspace_board(manager).at,
         tracker=linear(),
         manager=manager,
         wanted=flow_labels_of_chart(),
         statuses=resolved_configuration(directory, name).settings.ticket_statuses,
         event=event,
         force=force,
+        ticket=ticket,
     ):
         case Ok(moved_to):
             logger.info("Moved to %s.", moved_to.root)
