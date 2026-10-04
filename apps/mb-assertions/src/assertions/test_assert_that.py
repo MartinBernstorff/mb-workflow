@@ -20,79 +20,117 @@ class Owner(pydantic.BaseModel):
 
 
 def test_matches_passes_on_equal_values() -> None:
-    Assert.that(1).matches(1)
+    value = 1
+
+    Assert.that(value).matches(value)
 
 
 def test_matches_reports_both_values() -> None:
-    with pytest.raises(AssertionError, match="1 != 2"):
-        Assert.that(1).matches(2)
+    actual = 1
+    expected = 2
+
+    with pytest.raises(AssertionError, match=re.escape(f"{actual} != {expected}")):
+        Assert.that(actual).matches(expected)
 
 
 def test_matches_compares_sequences_by_their_elements() -> None:
-    Assert.that([1, 2]).matches((1, 2))
+    elements = [1, 2]
+
+    Assert.that(elements).matches(tuple(elements))
 
 
 def test_matches_reports_differing_sequences() -> None:
-    with pytest.raises(AssertionError, match=r"\[1, 2\] != \(2, 1\)"):
-        Assert.that([1, 2]).matches((2, 1))
+    actual = [1, 2]
+    expected = (2, 1)
+
+    with pytest.raises(AssertionError, match=re.escape(f"{actual} != {expected}")):
+        Assert.that(actual).matches(expected)
 
 
 def test_matches_compares_models_by_value() -> None:
-    Assert.that(Pet(name="a", tags=[])).matches(Pet(name="a", tags=[]))
+    name = "a"
+
+    Assert.that(Pet(name=name, tags=[])).matches(Pet(name=name, tags=[]))
 
 
 def test_matches_reports_both_model_dumps() -> None:
-    with pytest.raises(AssertionError, match=r"'name': 'a'.*'name': 'b'"):
-        Assert.that(Pet(name="a", tags=[])).matches(Pet(name="b", tags=[]))
+    actual_name = "a"
+    expected_name = "b"
+
+    with pytest.raises(
+        AssertionError,
+        match=f"'name': '{actual_name}'.*'name': '{expected_name}'",
+    ):
+        Assert.that(Pet(name=actual_name, tags=[])).matches(Pet(name=expected_name, tags=[]))
 
 
 def test_matches_populated_exactly_ignores_unset_fields() -> None:
-    Assert.that(Pet(name="a", tags=["x"])).matches_populated_exactly(
-        Pet.model_construct(name="a"),
+    name = "a"
+
+    Assert.that(Pet(name=name, tags=["x"])).matches_populated_exactly(
+        Pet.model_construct(name=name),
     )
 
 
 def test_matches_populated_exactly_reports_the_differing_path() -> None:
-    with pytest.raises(AssertionError, match=r"tags: 1 element != 2 elements"):
+    with pytest.raises(AssertionError, match=re.escape("tags: 1 element != 2 elements")):
         Assert.that(Pet(name="a", tags=["x"])).matches_populated_exactly(
             Pet.model_construct(tags=["x", "y"]),
         )
 
 
 def test_matches_populated_exactly_reports_the_nested_element_path() -> None:
-    with pytest.raises(AssertionError, match=r"pet\.tags\[0\]: x != y"):
-        Assert.that(Owner(pet=Pet(name="a", tags=["x"]))).matches_populated_exactly(
-            Owner.model_construct(pet=Pet.model_construct(tags=["y"])),
+    actual_tag = "x"
+    expected_tag = "y"
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"pet.tags[0]: {actual_tag} != {expected_tag}"),
+    ):
+        Assert.that(Owner(pet=Pet(name="a", tags=[actual_tag]))).matches_populated_exactly(
+            Owner.model_construct(pet=Pet.model_construct(tags=[expected_tag])),
         )
 
 
 def test_matches_populated_exactly_reports_differing_types_by_name() -> None:
     actual: pydantic.BaseModel = Pet(name="a", tags=[])
 
-    with pytest.raises(AssertionError, match=r"Pet != Owner"):
+    with pytest.raises(AssertionError, match=f"{Pet.__name__} != {Owner.__name__}"):
         Assert.that(actual).matches_populated_exactly(Owner.model_construct())
 
 
 def test_matches_populated_containing_allows_extra_list_elements() -> None:
-    Assert.that(Pet(name="a", tags=["x", "y"])).matches_populated_containing(
-        Pet.model_construct(tags=["y"]),
+    tag = "y"
+
+    Assert.that(Pet(name="a", tags=["x", tag])).matches_populated_containing(
+        Pet.model_construct(tags=[tag]),
     )
 
 
 def test_matches_populated_containing_reports_the_missing_element() -> None:
-    with pytest.raises(AssertionError, match=r"tags: <missing> != z"):
+    missing_tag = "z"
+
+    with pytest.raises(AssertionError, match=f"tags: <missing> != {missing_tag}"):
         Assert.that(Pet(name="a", tags=["x"])).matches_populated_containing(
-            Pet.model_construct(tags=["z"]),
+            Pet.model_construct(tags=[missing_tag]),
         )
 
 
 def test_in_container_passes_when_present() -> None:
-    Assert.that(1).in_container([1, 2])
+    item = 1
+
+    Assert.that(item).in_container([item, 2])
 
 
 def test_in_container_reports_item_and_container() -> None:
-    with pytest.raises(AssertionError, match=r"3 not found in container \[1, 2\]"):
-        Assert.that(3).in_container([1, 2])
+    item = 3
+    container = [1, 2]
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"{item} not found in container {container}"),
+    ):
+        Assert.that(item).in_container(container)
 
 
 def test_not_in_container_passes_when_absent() -> None:
@@ -100,8 +138,14 @@ def test_not_in_container_passes_when_absent() -> None:
 
 
 def test_not_in_container_reports_item_and_container() -> None:
-    with pytest.raises(AssertionError, match=r"1 unexpectedly found in container \[1, 2\]"):
-        Assert.that(1).not_in_container([1, 2])
+    item = 1
+    container = [item, 2]
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"{item} unexpectedly found in container {container}"),
+    ):
+        Assert.that(item).not_in_container(container)
 
 
 def test_container_exactly_ignores_order() -> None:
@@ -109,8 +153,15 @@ def test_container_exactly_ignores_order() -> None:
 
 
 def test_container_exactly_reports_missing_and_extra_items() -> None:
-    with pytest.raises(AssertionError, match=r"Missing: \[3\]\n\tExtra: \[1\]"):
-        Assert.that([1, 2]).container_exactly([2, 3])
+    shared = 2
+    missing = 3
+    extra = 1
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Missing: {[missing]}\n\tExtra: {[extra]}"),
+    ):
+        Assert.that([extra, shared]).container_exactly([shared, missing])
 
 
 def test_all_in_passes_on_a_subset() -> None:
@@ -122,8 +173,13 @@ def test_all_in_accepts_any_sequence() -> None:
 
 
 def test_all_in_reports_the_missing_items() -> None:
-    with pytest.raises(AssertionError, match=r"Items not found in container: \[4\]"):
-        Assert.that([1, 4]).all_in([1, 2, 3])
+    missing = 4
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Items not found in container: {[missing]}"),
+    ):
+        Assert.that([1, missing]).all_in([1, 2, 3])
 
 
 def test_none_in_passes_on_disjoint_items() -> None:
@@ -131,8 +187,13 @@ def test_none_in_passes_on_disjoint_items() -> None:
 
 
 def test_none_in_reports_the_present_items() -> None:
-    with pytest.raises(AssertionError, match=r"Unexpected items found in container: \[1\]"):
-        Assert.that([1, 4]).none_in([1, 2, 3])
+    present = 1
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Unexpected items found in container: {[present]}"),
+    ):
+        Assert.that([present, 4]).none_in([present, 2, 3])
 
 
 def test_all_passes_when_every_item_satisfies_the_predicate() -> None:
@@ -140,17 +201,34 @@ def test_all_passes_when_every_item_satisfies_the_predicate() -> None:
 
 
 def test_all_reports_each_failing_item() -> None:
-    with pytest.raises(AssertionError, match=r"\['1 is odd', '3 is odd'\]"):
-        Assert.that([1, 2, 3]).all(lambda n: n % 2 == 0, lambda n: f"{n} is odd")
+    first_odd = 1
+    second_odd = 3
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(str([f"{first_odd} is odd", f"{second_odd} is odd"])),
+    ):
+        Assert.that([first_odd, 2, second_odd]).all(
+            lambda n: n % 2 == 0,
+            lambda n: f"{n} is odd",
+        )
 
 
 def test_has_length_passes_on_the_length() -> None:
-    Assert.that("abc").has_length(3)
+    value = "abc"
+
+    Assert.that(value).has_length(len(value))
 
 
 def test_has_length_reports_the_length() -> None:
-    with pytest.raises(AssertionError, match=r"length 2, but it had length 1: \[1\]"):
-        Assert.that([1]).has_length(2)
+    value = [1]
+    expected_length = 2
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"length {expected_length}, but it had length {len(value)}: {value}"),
+    ):
+        Assert.that(value).has_length(expected_length)
 
 
 def test_is_true_passes_on_true() -> None:
@@ -158,8 +236,10 @@ def test_is_true_passes_on_true() -> None:
 
 
 def test_is_true_rejects_false() -> None:
-    with pytest.raises(AssertionError, match="Expected True, but it was False"):
-        Assert.that(False).is_true()
+    value = False
+
+    with pytest.raises(AssertionError, match=f"Expected True, but it was {value}"):
+        Assert.that(value).is_true()
 
 
 def test_is_false_passes_on_false() -> None:
@@ -167,31 +247,38 @@ def test_is_false_passes_on_false() -> None:
 
 
 def test_is_false_rejects_true() -> None:
-    with pytest.raises(AssertionError, match="Expected False, but it was True"):
-        Assert.that(True).is_false()
+    value = True
+
+    with pytest.raises(AssertionError, match=f"Expected False, but it was {value}"):
+        Assert.that(value).is_false()
 
 
 def test_is_instance_returns_the_narrowed_value() -> None:
-    value: int | str = "a"
+    text = "a"
+    value: int | str = text
 
     narrowed: str = Assert.that(value).is_instance(str)
 
-    Assert.that(narrowed).matches("a")
+    Assert.that(narrowed).matches(text)
 
 
 def test_is_instance_reports_the_expected_and_actual_types() -> None:
     value: int | str = 1
 
-    with pytest.raises(AssertionError, match="Expected an instance of str, but got int: 1"):
+    with pytest.raises(
+        AssertionError,
+        match=f"Expected an instance of {str.__name__}, but got {int.__name__}: {value}",
+    ):
         _ = Assert.that(value).is_instance(str)
 
 
 def test_exists_returns_the_narrowed_value() -> None:
-    value: int | None = 1
+    number = 1
+    value: int | None = number
 
     narrowed: int = Assert.that(value).exists()
 
-    Assert.that(narrowed).matches(1)
+    Assert.that(narrowed).matches(number)
 
 
 def test_exists_rejects_none() -> None:
