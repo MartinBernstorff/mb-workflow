@@ -156,7 +156,6 @@ def resolved_configuration(directory: WorkingDirectory, name: ConfigFileName) ->
     return Configuration.resolved(directory, name, user_override()).unwrap()
 
 
-# A failed connection is raised here, so guarded reports it like any failure.
 def connected_orca() -> Orca:
     return Orca.connected(here()).unwrap()
 
