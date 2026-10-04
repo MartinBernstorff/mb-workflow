@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING, override
 
 from safe_result import Err, Ok, Result
 
-from mb_workflow.b_core.b_domain_services.flow_transition import FlowTransition
+from mb_workflow.b_core.b_domain_services.flow_label_check import FlowLabelCheck
+from mb_workflow.b_core.b_domain_services.flow_transition import FlowStateStep
 from mb_workflow.b_core.b_domain_services.next_action import TicketState
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimRequest
@@ -195,15 +196,23 @@ class TicketStart:
         if isinstance(checked, Err):
             return checked
 
-        # Put an unlabelled ticket in the flow before claiming it, so a failed write leaves no claim behind.
+        entry_steps: tuple[SagaStep, ...] = ()
         status = detail.issue.status
         if labelled_state is None:
-            with Activity(f"Putting {request.ticket.root} in {state.root}").logged(logger):
-                put = FlowTransition.put_in_state(
-                    tracker, request.ticket, flow_labels, statuses, state
-                )
-            if isinstance(put, Err):
-                return put
+            flow_checked = FlowLabelCheck.require_for_issue(tracker, flow_labels, request.ticket)
+            if isinstance(flow_checked, Err):
+                return flow_checked
+            entry_steps = (
+                FlowStateStep(
+                    tracker=tracker,
+                    issue=request.ticket,
+                    wanted=flow_labels,
+                    statuses=statuses,
+                    state=state,
+                    previous_state=labelled_state,
+                    previous_status=detail.issue.status,
+                ),
+            )
             status = statuses.of(state)
 
         name = WorktreeName.of_issue(request.ticket)
@@ -233,7 +242,7 @@ class TicketStart:
         )
         if isinstance(taking_steps, Err):
             return taking_steps
-        Saga.run((*taking_steps.value, worktree_step)).unwrap()
+        Saga.run((*entry_steps, *taking_steps.value, worktree_step)).unwrap()
         opened = worktree_step.opened().unwrap()
 
         logger.info("Created worktree %s.", opened.worktree.path.root)
