@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from subprocess import CalledProcessError
 from typing import override
 
 from pydantic import ValidationError
@@ -9,17 +10,34 @@ from pydantic_settings import (
     SettingsConfigDict,
     TomlConfigSettingsSource,
 )
+from safe_result import Err, Ok, Result, safe_with
 
 from mb_workflow.c_infrastructure.linear import LinearApiKey
 from mb_workflow.c_infrastructure.shell import Command, CommandRunner
 from mb_workflow.d_lib.models import Model, Value
 
 
-class MissingCredentialsError(Exception):
+class CredentialsError(Exception):
     pass
 
 
-class InvalidCredentialsError(Exception):
+class MissingCredentialsError(CredentialsError):
+    pass
+
+
+class InvalidCredentialsError(CredentialsError):
+    pass
+
+
+class RepositorySlugError(Exception):
+    pass
+
+
+class NoOriginError(RepositorySlugError):
+    pass
+
+
+class UnreadableRemoteError(RepositorySlugError):
     pass
 
 
@@ -36,16 +54,23 @@ class RepositorySlug(Value[str]):
         return RepositorySlug("MartinBernstorff/mb-workflow")
 
     @staticmethod
-    def of(remote: RemoteUrl) -> RepositorySlug:
+    def of(remote: RemoteUrl) -> Result[RepositorySlug, UnreadableRemoteError]:
         found = re.search(r"[:/]([^/:]+/[^/:]+?)(?:\.git)?/?$", remote.root)
         if found is None:
-            raise ValueError(f"Cannot read owner/repo from the remote {remote.root}.")
-        return RepositorySlug(found.group(1))
+            return Err(
+                UnreadableRemoteError(f"Cannot read owner/repo from the remote {remote.root}.")
+            )
+        return Ok(RepositorySlug(found.group(1)))
 
     @staticmethod
-    def of_origin(runner: CommandRunner) -> RepositorySlug:
-        output = runner.run(Command(("git", "remote", "get-url", "origin")))
-        return RepositorySlug.of(RemoteUrl(output.root.strip()))
+    def of_origin(runner: CommandRunner) -> Result[RepositorySlug, RepositorySlugError]:
+        match safe_with(CalledProcessError)(runner.run)(
+            Command(("git", "remote", "get-url", "origin"))
+        ):
+            case Ok(output):
+                return RepositorySlug.of(RemoteUrl(output.root.strip()))
+            case Err(error):
+                return Err(NoOriginError(f"Cannot read the origin remote. {error}"))
 
 
 class LinearCredentials(Model):
@@ -96,19 +121,22 @@ class CredentialsPath(Value[Path]):
     def fake() -> CredentialsPath:
         return CredentialsDirectory.fake().path_for(RepositorySlug.fake())
 
-    def credentials(self) -> ProjectCredentials:
+    def credentials(self) -> Result[ProjectCredentials, CredentialsError]:
         if not self.root.is_file():
-            raise MissingCredentialsError(
-                f'No credentials at {self.root}. Create it with:\n[linear]\napi_key = "lin_api_…"'
+            return Err(
+                MissingCredentialsError(
+                    f'No credentials at {self.root}. Create it with:\n[linear]\napi_key = "lin_api_…"'
+                )
             )
         table = TomlConfigSettingsSource(ProjectCredentials, self.root)()
         credential_tables = CredentialTables.of_credentials().root
-        try:
-            return ProjectCredentials(
-                **{key: value for key, value in table.items() if key in credential_tables}
-            )
-        except ValidationError as error:
-            raise InvalidCredentialsError(f"{self.root} is not valid. {error}") from error
+        match safe_with(ValidationError)(ProjectCredentials)(
+            **{key: value for key, value in table.items() if key in credential_tables}
+        ):
+            case Ok(credentials):
+                return Ok(credentials)
+            case Err(error):
+                return Err(InvalidCredentialsError(f"{self.root} is not valid. {error}"))
 
 
 class HomeDirectory(Value[Path]):
@@ -136,3 +164,12 @@ class CredentialsDirectory(Value[Path]):
 
     def path_for(self, repository: RepositorySlug) -> CredentialsPath:
         return CredentialsPath(self.root / f"{repository.root}.toml")
+
+    def credentials_of_origin(
+        self, runner: CommandRunner
+    ) -> Result[ProjectCredentials, CredentialsError | RepositorySlugError]:
+        match RepositorySlug.of_origin(runner):
+            case Ok(repository):
+                return self.path_for(repository).credentials()
+            case Err() as failed:
+                return failed
