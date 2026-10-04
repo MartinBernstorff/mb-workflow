@@ -649,7 +649,7 @@ def test_a_decision_that_needs_a_body_is_refused_without_one(
     submitted = review.submit(stage.pending, ReviewRequest(decision=decision, body=ReviewBody("")))
     error = Assert.that(submitted.error).is_instance(CodeReviewError)
     Assert.that(str(error)).contains(reason)
-    Assert.that(ledger.submitted()).has_length(0)
+    Assert.that(ledger.submitted()).matches(())
 
 
 class BrokenGh(CommandRunner):

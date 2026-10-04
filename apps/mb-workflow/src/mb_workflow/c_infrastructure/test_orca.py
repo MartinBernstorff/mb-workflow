@@ -153,7 +153,7 @@ def test_moving_a_workspace_names_its_column_by_id() -> None:
             "--worktree",
             WorktreeSelector.fake().root,
             "--workspace-status",
-            WorkspaceStatus.fake().root,
+            "status-8",
             "--json",
         )
     )
@@ -166,9 +166,9 @@ def test_asks_which_columns_exist_by_naming_one_that_cannot() -> None:
             "worktree",
             "set",
             "--worktree",
-            WorktreeSelector.current().root,
+            "current",
             "--workspace-status",
-            ColumnLabel.unknown().root,
+            "mb-workflow-asks-which-columns-exist",
             "--json",
         )
     )

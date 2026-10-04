@@ -1707,8 +1707,8 @@ def test_of_two_racing_claimers_exactly_one_wins(
     second = first.model_copy(update={"holder": rival_of(first.holder)})
     raced = RacedRegistry(claims, lambda: Claiming.claim_ticket(claims, second))
     lost = Claiming.claim_ticket(raced, first)
-    _ = Assert.that(lost.error).is_instance(ClaimLostError)
-    Assert.that(str(lost.error)).contains(second.holder.host.root)
+    error = Assert.that(lost.error).is_instance(ClaimLostError)
+    Assert.that(str(error)).contains(second.holder.host.root)
     Assert.that(holders(claims.claims(ticket).unwrap())).matches((second.holder,))
 
 
