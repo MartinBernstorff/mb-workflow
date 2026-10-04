@@ -257,12 +257,12 @@ def test_reverting_the_flow_entry_keeps_labels_added_since() -> None:
 
 
 def test_reverting_the_flow_state_change_writes_back_the_replaced_flow_label() -> None:
-    grilling = StateName("grill")
-    tracker = seeded_tracker(LabelNames((LabelName.fake(), LabelName(grilling.root))))
+    grill = StateName("grill")
+    tracker = seeded_tracker(LabelNames((LabelName.fake(), LabelName(grill.root))))
     maturing = IssueStatusName("Maturing")
-    step = entering(tracker, StateName("todo"), grilling, maturing)
+    step = entering(tracker, StateName("todo"), grill, maturing)
     _ = step.apply().unwrap()
     assert step.revert() == Ok(None)
     issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
-    assert issue.labels == LabelNames((LabelName.fake(), LabelName(grilling.root)))
+    assert issue.labels == LabelNames((LabelName.fake(), LabelName(grill.root)))
     assert issue.status == maturing

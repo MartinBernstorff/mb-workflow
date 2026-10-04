@@ -1,16 +1,15 @@
 ```mermaid
 stateDiagram-v2
     direction LR
-    state "grill" as grilling
-    state "to-ticket" as speccing
-    [*] --> grilling
+    state "to-ticket" as to_ticket
+    [*] --> grill
     merged --> [*]
-    grilling --> grilling : grill
-    grilling --> speccing : to-ticket
-    speccing --> todo : todo
+    grill --> grill : grill
+    grill --> to_ticket : to-ticket
+    to_ticket --> todo : todo
     todo --> implementing : implement
-    implementing --> grilling : grill
-    implementing --> speccing : to-ticket
+    implementing --> grill : grill
+    implementing --> to_ticket : to-ticket
     implementing --> qa : qa
     qa --> implementing : implement
     qa --> review : ready

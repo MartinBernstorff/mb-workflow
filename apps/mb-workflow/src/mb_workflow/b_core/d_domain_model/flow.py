@@ -65,8 +65,8 @@ class WorkflowChart(StateChart[ChartModel]):
     allow_event_without_transition = False
     catch_errors_as_events = False
 
-    grilling = WorkState(StateName("grill"), Skill("/grill"), Phase.entry)
-    speccing = WorkState(StateName("to-ticket"), Skill("/to-ticket"), Phase.entry)
+    grill = WorkState(StateName("grill"), Skill("/grill"), Phase.entry)
+    to_ticket = WorkState(StateName("to-ticket"), Skill("/to-ticket"), Phase.entry)
     todo = WorkState(StateName("todo"), Skill("/implement"), Phase.entry)
     implementing = WorkState(StateName("implementing"), Skill("/implement"), Phase.delivery)
     qa = WorkState(StateName("qa"), AwaitingHuman(), Phase.delivery)
@@ -74,11 +74,11 @@ class WorkflowChart(StateChart[ChartModel]):
     merging = WorkState(StateName("merging"), Skill("/merge"), Phase.delivery)
     merged = WorkState(StateName("merged"), Finished(), Phase.delivery)
 
-    grill = Event(grilling.to.itself() | implementing.to(grilling), id="grill", name="grill")
-    to_ticket = Event(
-        grilling.to(speccing) | implementing.to(speccing), id="to-ticket", name="to-ticket"
+    to_grill = Event(grill.to.itself() | implementing.to(grill), id="grill", name="grill")
+    to_to_ticket = Event(
+        grill.to(to_ticket) | implementing.to(to_ticket), id="to-ticket", name="to-ticket"
     )
-    to_todo = Event(speccing.to(todo), id="todo", name="todo")
+    to_todo = Event(to_ticket.to(todo), id="todo", name="todo")
     implement = Event(todo.to(implementing) | qa.to(implementing), id="implement", name="implement")
     to_qa = Event(implementing.to(qa) | review.to(qa) | merging.to(qa), id="qa", name="qa")
     ready = Event(qa.to(review), id="ready", name="ready")
