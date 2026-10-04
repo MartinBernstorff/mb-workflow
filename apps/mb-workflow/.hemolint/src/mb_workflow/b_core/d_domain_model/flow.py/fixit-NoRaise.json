@@ -1,0 +1,4 @@
+{
+  "raise ValueError(\"The chart has no state to start in.\")": 1,
+  "raise ValueError(f\"{name.root} leads nowhere out of {transition.source.name}.\")": 1
+}

@@ -1,0 +1,3 @@
+{
+  "raise PromptUndeliveredError(\"No agent terminal handle returned; prompt not typed.\")": 1
+}

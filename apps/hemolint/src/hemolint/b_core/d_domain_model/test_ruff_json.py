@@ -8,7 +8,7 @@ from hemolint.b_core.d_domain_model.ruff_json import RuffJsonParser, RuffMessage
 from hemolint.b_core.d_domain_model.violation import (
     LineNumber,
     LinterLine,
-    ReportedViolation,
+    LocatedViolation,
     RuleName,
     SourcePath,
 )
@@ -44,7 +44,7 @@ def test_a_violation_parses_to_its_source_line_and_rule() -> None:
             ]
         )
     )
-    expected = ReportedViolation(
+    expected = LocatedViolation(
         source=SourcePath(Path(filename)),
         line=LineNumber(row),
         rule=RuleName(rule),
@@ -56,7 +56,9 @@ def test_a_violation_parses_to_its_source_line_and_rule() -> None:
 def test_a_path_outside_the_working_directory_is_kept_as_reported() -> None:
     filename = SourcePath(Path("/elsewhere/a.py"))
     output = RuffJson.output(filename, RuleName.fake())
-    assert RuffJsonParser.parse(output).unwrap().root[0].source == filename
+    violation = RuffJsonParser.parse(output).unwrap().root[0]
+    assert isinstance(violation, LocatedViolation)
+    assert violation.source == filename
 
 
 def test_an_empty_list_holds_no_violations() -> None:

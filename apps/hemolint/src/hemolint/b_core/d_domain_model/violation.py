@@ -30,6 +30,11 @@ class SourcePath(Value[Path]):
     def fake() -> SourcePath:
         return SourcePath(Path("src/app.py"))
 
+    # Holds the violations a linter reports for the whole project. Not a file on disk.
+    @staticmethod
+    def global_diagnostics() -> SourcePath:
+        return SourcePath(Path("_global"))
+
     def relative_to_working_directory(
         self, directory: WorkingDirectory
     ) -> Result[SourcePath, OutsideWorkingDirectoryError]:
@@ -69,15 +74,15 @@ class LinterLine(Value[str]):
         return LinterLine("src/app.py@1:3 CompareSingletonPrimitivesByIs: Use `is`.")
 
 
-class ReportedViolation(Model):
+class LocatedViolation(Model):
     source: SourcePath
     line: LineNumber
     rule: RuleName
     reported_as: LinterLine
 
     @staticmethod
-    def fake() -> ReportedViolation:
-        return ReportedViolation(
+    def fake() -> LocatedViolation:
+        return LocatedViolation(
             source=SourcePath.fake(),
             line=LineNumber.fake(),
             rule=RuleName.fake(),
@@ -115,3 +120,16 @@ class Fingerprint(Value[str]):
     @staticmethod
     def of(line: SourceLine) -> Fingerprint:
         return Fingerprint(line.root.strip())
+
+
+# A violation reported for the whole project, so its fingerprint comes from the linter, not a line.
+class GlobalViolation(Model):
+    rule: RuleName
+    fingerprint: Fingerprint
+    reported_as: LinterLine
+
+    @staticmethod
+    def fake() -> GlobalViolation:
+        return GlobalViolation(
+            rule=RuleName.fake(), fingerprint=Fingerprint.fake(), reported_as=LinterLine.fake()
+        )

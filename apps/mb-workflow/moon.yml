@@ -10,7 +10,6 @@ fileGroups:
 tasks:
   test:
     inputs:
-      - "raise-baseline/*.txt"
       - "@group(assertions)"
 
   types:

@@ -1,4 +1,4 @@
-from hemolint.b_core.d_domain_model.violation import ReportedViolation
+from hemolint.b_core.d_domain_model.violation import GlobalViolation, LocatedViolation
 from hemolint.d_lib.models import Value
 
 
@@ -12,7 +12,7 @@ class LinterOutput(Value[str]):
         return LinterOutput("src/app.py@1:3 CompareSingletonPrimitivesByIs: Use `is`.\n")
 
 
-class ReportedViolations(Value[tuple[ReportedViolation, ...]]):
+class ReportedViolations(Value[tuple[LocatedViolation | GlobalViolation, ...]]):
     @staticmethod
     def fake() -> ReportedViolations:
-        return ReportedViolations((ReportedViolation.fake(),))
+        return ReportedViolations((LocatedViolation.fake(),))
