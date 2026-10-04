@@ -1,0 +1,3 @@
+{
+  "raise ConfigExistsError(f\"{target} already exists. Pass --force to overwrite it.\")": 1
+}

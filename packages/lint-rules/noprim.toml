@@ -1,0 +1,2 @@
+# Fixit dictates the type of these test-case lists on every rule.
+ignore-attribute-names = ["VALID", "INVALID"]
