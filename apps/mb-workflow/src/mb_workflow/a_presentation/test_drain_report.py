@@ -54,7 +54,7 @@ def test_the_listing_marks_a_ticket_without_a_flow_label_as_stateless() -> None:
     )
     Assert.that(
         DrainReport.pick_listing(PoolTickets((unlabelled,)), FlowLabels.fake()).root
-    ).matches_pattern(r"\t-\n\Z")
+    ).ends_with("\t-\n")
 
 
 def test_each_skipped_ticket_is_logged_with_its_reason(caplog: pytest.LogCaptureFixture) -> None:

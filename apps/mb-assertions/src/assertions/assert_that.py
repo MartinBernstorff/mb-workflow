@@ -16,6 +16,14 @@ class _HoldsActual[T](Protocol):
     def actual(self) -> T: ...
 
 
+class _Values:
+    @staticmethod
+    def equal[T](actual: T, expected: T) -> bool:
+        if isinstance(actual, pydantic.BaseModel) and isinstance(expected, pydantic.BaseModel):
+            return actual.model_dump() == expected.model_dump()
+        return actual == expected
+
+
 class That[T]:
     def __init__(self, actual: T) -> None:
         self._actual = actual
@@ -25,7 +33,7 @@ class That[T]:
         return self._actual
 
     def matches(self, expected: T) -> None:
-        if not That._equal(self._actual, expected):
+        if not _Values.equal(self._actual, expected):
             raise AssertionError(self._mismatch(self._actual, expected))
 
     def matches_populated_exactly(self, expected: T) -> None:
@@ -62,6 +70,14 @@ class That[T]:
         if re.search(pattern, self.actual) is None:
             raise AssertionError(f"Expected {self.actual!r} to match pattern {pattern!r}")
 
+    def starts_with(self: _HoldsActual[str], prefix: str) -> None:
+        if not self.actual.startswith(prefix):
+            raise AssertionError(f"Expected {self.actual!r} to start with {prefix!r}")
+
+    def ends_with(self: _HoldsActual[str], suffix: str) -> None:
+        if not self.actual.endswith(suffix):
+            raise AssertionError(f"Expected {self.actual!r} to end with {suffix!r}")
+
     def is_true(self: _HoldsActual[bool]) -> None:
         if self.actual is not True:
             raise AssertionError(f"Expected True, but it was {self.actual}")
@@ -83,11 +99,8 @@ class That[T]:
             raise AssertionError("Expected value to exist, but it was None")
         return self.actual
 
-    @staticmethod
-    def _equal(actual: T, expected: T) -> bool:
-        if isinstance(actual, pydantic.BaseModel) and isinstance(expected, pydantic.BaseModel):
-            return actual.model_dump() == expected.model_dump()
-        return actual == expected
+    def not_(self) -> "Not[T]":
+        return Not(self._actual)
 
     @staticmethod
     def _mismatch(actual: T, expected: T) -> str:
@@ -106,6 +119,35 @@ class That[T]:
             "Expected the populated fields to match, but they did not:\n"
             + "\n".join(f"\t{difference.rendered()}" for difference in differences),
         )
+
+
+class Not[T]:
+    def __init__(self, actual: T) -> None:
+        self._actual = actual
+
+    @property
+    def actual(self) -> T:
+        return self._actual
+
+    def matches(self, expected: T) -> None:
+        if _Values.equal(self._actual, expected):
+            raise AssertionError(f"Expected values to differ, but both were {self._actual}")
+
+    def contains(self: _HoldsActual[str], substring: str) -> None:
+        if substring in self.actual:
+            raise AssertionError(f"Expected {self.actual!r} not to contain {substring!r}")
+
+    def matches_pattern(self: _HoldsActual[str], pattern: str) -> None:
+        if re.search(pattern, self.actual) is not None:
+            raise AssertionError(f"Expected {self.actual!r} not to match pattern {pattern!r}")
+
+    def starts_with(self: _HoldsActual[str], prefix: str) -> None:
+        if self.actual.startswith(prefix):
+            raise AssertionError(f"Expected {self.actual!r} not to start with {prefix!r}")
+
+    def ends_with(self: _HoldsActual[str], suffix: str) -> None:
+        if self.actual.endswith(suffix):
+            raise AssertionError(f"Expected {self.actual!r} not to end with {suffix!r}")
 
 
 class ThatElements[T, E](That[T]):

@@ -54,7 +54,7 @@ def test_a_linear_configuration_reports_no_project_tag() -> None:
     )
     report = ConfigReport.of(config)
     Assert.that(report.root).contains("tracker: linear")
-    Assert.that("project tag" in report.root).is_false()
+    Assert.that(report.root).not_().contains("project tag")
 
 
 def test_a_linear_configuration_reports_the_team_and_project_it_creates_tickets_in() -> None:

@@ -17,7 +17,7 @@ from mb_workflow.a_presentation.diagram import (
 
 
 def test_renders_a_mermaid_state_diagram() -> None:
-    Assert.that(render_mermaid().root).matches_pattern(r"^stateDiagram-v2\n    direction LR\n")
+    Assert.that(render_mermaid().root).starts_with("stateDiagram-v2\n    direction LR\n")
 
 
 def test_the_diagram_shows_where_work_enters_and_ends() -> None:

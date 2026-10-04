@@ -54,14 +54,14 @@ def test_summarises_what_it_labelled_and_what_it_skipped() -> None:
 
 
 def test_a_dry_run_summarises_what_it_would_have_labelled() -> None:
-    Assert.that(outcome_summary(dry_outcome()).root).matches_pattern(r"^Would label 2 of 7 issues;")
+    Assert.that(outcome_summary(dry_outcome()).root).starts_with("Would label 2 of 7 issues;")
 
 
 def test_the_summary_names_the_updates_that_failed() -> None:
     failed = outcome().model_copy(
         update={"labelled": (IssueIdentifier("E-11"),), "failed": (IssueIdentifier("E-4"),)}
     )
-    Assert.that(outcome_summary(failed).root).matches_pattern(r"; 1 failed\Z")
+    Assert.that(outcome_summary(failed).root).ends_with("; 1 failed")
 
 
 def test_a_sweep_that_skipped_nothing_summarises_only_the_labelling() -> None:
@@ -112,4 +112,4 @@ def test_an_applied_run_prints_a_line_per_labelled_issue(
     with caplog.at_level(logging.INFO):
         log_outcome(outcome())
     Assert.that(caplog.text).contains("labelled E-4")
-    Assert.that("--apply" in caplog.text).is_false()
+    Assert.that(caplog.text).not_().contains("--apply")

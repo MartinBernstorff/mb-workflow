@@ -45,7 +45,7 @@ def test_labels_are_joined_by_commas() -> None:
 
 def test_an_empty_description_reports_no_body() -> None:
     blank = IssueDetail.fake().model_copy(update={"description": IssueDescription("")})
-    Assert.that(TicketReport.of(blank).root).matches_pattern(r"labels: d-implement\n\Z")
+    Assert.that(TicketReport.of(blank).root).ends_with("labels: d-implement\n")
 
 
 def test_relations_are_reported_after_the_labels_in_identifier_order() -> None:

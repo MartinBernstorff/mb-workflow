@@ -23,4 +23,4 @@ def test_a_command_run_without_its_required_arguments_shows_its_help() -> None:
     error = "Missing argument"
     result = CliRunner().invoke(app, command_with_required_argument)
     Assert.that(result.output).contains(usage)
-    Assert.that(error in result.output).is_false()
+    Assert.that(result.output).not_().contains(error)

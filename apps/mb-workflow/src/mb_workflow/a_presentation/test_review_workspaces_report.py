@@ -46,8 +46,8 @@ def test_counts_several_workspaces_in_the_plural(caplog: pytest.LogCaptureFixtur
 def test_says_so_when_nothing_changed(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.INFO):
         log_review_workspaces_outcome(Outcome(created=(), removed=(), failed=()))
-    Assert.that(caplog.text.strip()).matches_pattern(
-        r"Review workspaces already match the PRs awaiting review\Z"
+    Assert.that(caplog.text.strip()).ends_with(
+        "Review workspaces already match the PRs awaiting review"
     )
 
 
