@@ -1,0 +1,6 @@
+# Apps extend this with their own fixit.toml; Fixit merges configs from the linted file up to this root.
+[tool.fixit]
+root = true
+enable = ["lint_rules"]
+# Fixit's built-in rules overlap with ruff.
+disable = ["fixit.rules"]
