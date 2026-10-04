@@ -361,23 +361,3 @@ def test_forced_seeding_reports_its_renames_and_deletions() -> None:
         (LabelRename(held=held, renamed=wanted.labels.root[0]),)
     )
     assert covered.workspace.deleted == LabelNames((obsolete,))
-
-
-def test_forced_seeding_moves_a_ticket_from_a_former_flow_label_to_its_current_name() -> None:
-    former, current = LabelName("Grilling"), LabelName("grill")
-    tracker = SeedingTrackers.with_team_ticket_carrying(former)
-    _ = FlowLabelSeeding.seed_flow_labels(
-        tracker, FlowLabels.fake(), TeamName.fake(), Force(True)
-    ).unwrap()
-    issue = tracker.read_issue(TrackedIssue.fake().issue.identifier).unwrap()
-    assert issue.labels == LabelNames((current,))
-
-
-def test_forced_seeding_creates_no_label_beside_a_renamed_former_flow_label() -> None:
-    wanted = FlowLabels.fake()
-    tracker = SeedingTrackers.with_team_ticket_carrying(LabelName("Grilling"))
-    _ = FlowLabelSeeding.seed_flow_labels(tracker, wanted, TeamName.fake(), Force(True)).unwrap()
-    group = tracker.group_labels(wanted.group, TeamKey.fake()).unwrap()
-    assert sorted(label.root for label in group.label_names().root) == sorted(
-        label.root for label in wanted.labels.root
-    )

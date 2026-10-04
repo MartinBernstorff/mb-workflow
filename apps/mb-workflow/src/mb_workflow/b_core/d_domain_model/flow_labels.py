@@ -37,27 +37,6 @@ class LabelRenames(Value[tuple[LabelRename, ...]]):
     def fake() -> LabelRenames:
         return LabelRenames((LabelRename.fake(),))
 
-    # The entry states were renamed, so tickets labelled before the rename keep their state.
-    @staticmethod
-    def former_state_labels() -> LabelRenames:
-        return LabelRenames(
-            tuple(
-                LabelRename(held=LabelName(held), renamed=LabelName(renamed))
-                for held, renamed in (
-                    ("Grilling", "grill"),
-                    ("Speccing", "to-ticket"),
-                    ("Specced", "todo"),
-                )
-            )
-        )
-
-    def renamed_from(self, label: LabelName) -> LabelName | None:
-        wanted = label.root.casefold()
-        return next(
-            (rename.renamed for rename in self.root if rename.held.root.casefold() == wanted),
-            None,
-        )
-
 
 # The changes that bring one label group in line with the flow labels.
 class GroupSync(Model):
@@ -76,23 +55,17 @@ class GroupSync(Model):
         return GroupSync(renamed=LabelRenames(()), deleted=LabelNames(()), recolored=LabelNames(()))
 
 
-# Former names a held label still carries are renamed to the flow label they became.
 class FlowLabels(Model):
     group: LabelGroupName
     labels: LabelNames
     entry: LabelNames
-    former: LabelRenames
 
     @staticmethod
     def fake() -> FlowLabels:
-        return FlowLabels.of_chart(
-            WorkflowChart, LabelGroupName.fake(), LabelRenames.former_state_labels()
-        )
+        return FlowLabels.of_chart(WorkflowChart, LabelGroupName.fake())
 
     @staticmethod
-    def of_chart(
-        chart: type[WorkflowChart], group: LabelGroupName, former: LabelRenames
-    ) -> FlowLabels:
+    def of_chart(chart: type[WorkflowChart], group: LabelGroupName) -> FlowLabels:
         entry = LabelNames(
             tuple(
                 LabelName(state.name)
@@ -100,9 +73,7 @@ class FlowLabels(Model):
                 if isinstance(state, WorkState) and state.phase == Phase.entry
             )
         )
-        return FlowLabels(
-            group=group, labels=FlowLabels.chart_labels(chart), entry=entry, former=former
-        )
+        return FlowLabels(group=group, labels=FlowLabels.chart_labels(chart), entry=entry)
 
     def colored(self, labels: LabelNames) -> ColoredLabels:
         return ColoredLabels(
@@ -124,9 +95,7 @@ class FlowLabels(Model):
         return LabelColor.yellow() if self.entry.matching(label) is not None else LabelColor.grey()
 
     def missing(self, held: LabelNames) -> LabelNames:
-        return LabelNames(
-            (*held.root, *(rename.renamed for rename in self._renames(held).root))
-        ).unmatched(self.labels)
+        return held.unmatched(self.labels)
 
     def sync_plan(self, held: ColoredLabels) -> GroupSync:
         names = held.label_names()
@@ -144,19 +113,13 @@ class FlowLabels(Model):
             recolored=self.labels.spelled(self.miscolored(held)),
         )
 
-    # A label is renamed to its spelling in the spec, or from a former name to the label it became.
-    # A former name whose label is already held has nothing to become, so it is deleted instead.
+    # A label is renamed to its spelling in the spec.
     def _renames(self, held: LabelNames) -> LabelRenames:
         renames: list[LabelRename] = []
         for label in held.root:
             spelled = self.labels.matching(label)
-            if spelled is not None:
-                if spelled != label:
-                    renames.append(LabelRename(held=label, renamed=spelled))
-                continue
-            current = self.former.renamed_from(label)
-            if current is not None and held.matching(current) is None:
-                renames.append(LabelRename(held=label, renamed=current))
+            if spelled is not None and spelled != label:
+                renames.append(LabelRename(held=label, renamed=spelled))
         return LabelRenames(tuple(renames))
 
     # A flow label set by hand would disagree with the status, so the state is moved with --state instead.

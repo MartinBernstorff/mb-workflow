@@ -31,14 +31,11 @@ def flow_labels_of(*labels: LabelName) -> FlowLabels:
         group=LabelGroupName.fake(),
         labels=LabelNames(labels),
         entry=LabelNames(()),
-        former=LabelRenames(()),
     )
 
 
 def test_every_state_of_the_chart_gets_a_label_in_chart_order() -> None:
-    assert FlowLabels.of_chart(
-        WorkflowChart, LabelGroupName.fake(), LabelRenames(())
-    ).labels == LabelNames(
+    assert FlowLabels.of_chart(WorkflowChart, LabelGroupName.fake()).labels == LabelNames(
         tuple(
             LabelName(state)
             for state in (
@@ -145,50 +142,6 @@ def test_a_label_outside_the_spec_is_deleted() -> None:
 
 def test_a_renamed_label_is_not_deleted() -> None:
     assert flow_labels_of(QA).sync_plan(grey(LabelName("QA"))).deleted == LabelNames(())
-
-
-def renaming(former: LabelName, current: LabelName) -> FlowLabels:
-    return flow_labels_of(current).model_copy(
-        update={"former": LabelRenames((LabelRename(held=former, renamed=current),))}
-    )
-
-
-def test_a_former_flow_label_is_renamed_to_its_current_name() -> None:
-    former = LabelName("Grilling")
-    synced = renaming(former, GRILL).sync_plan(grey(former))
-    assert synced.renamed == LabelRenames((LabelRename(held=former, renamed=GRILL),))
-    assert synced.deleted == LabelNames(())
-
-
-def test_a_former_flow_label_in_another_case_is_renamed_to_its_current_name() -> None:
-    former, held = LabelName("Grilling"), LabelName("grilling")
-    synced = renaming(former, GRILL).sync_plan(grey(held))
-    assert synced.renamed == LabelRenames((LabelRename(held=held, renamed=GRILL),))
-
-
-def test_a_former_flow_label_is_deleted_when_its_current_name_is_held() -> None:
-    former = LabelName("Grilling")
-    synced = renaming(former, GRILL).sync_plan(grey(former, GRILL))
-    assert synced.renamed == LabelRenames(())
-    assert synced.deleted == LabelNames((former,))
-
-
-def test_a_former_flow_label_counts_as_its_current_name() -> None:
-    former = LabelName("Grilling")
-    assert renaming(former, GRILL).missing(LabelNames((former,))) == LabelNames(())
-
-
-def test_the_chart_renames_the_former_entry_labels() -> None:
-    assert FlowLabels.fake().former == LabelRenames(
-        tuple(
-            LabelRename(held=LabelName(held), renamed=LabelName(renamed))
-            for held, renamed in (
-                ("Grilling", "grill"),
-                ("Speccing", "to-ticket"),
-                ("Specced", "todo"),
-            )
-        )
-    )
 
 
 def test_a_label_in_the_wrong_color_is_recolored_under_its_spec_name() -> None:
