@@ -175,7 +175,10 @@ class Edges(Value[frozenset[Edge]]):
                 return Ok(edge.target)
         legal = ", ".join(name.root for name in self.events_from(state).root)
         return Err(
-            FlowError(f"{event.root} is not legal from {state.root}. Legal: {legal or 'none'}.")
+            FlowError(
+                f"{event.root} is not legal from {state.root}. Legal: {legal or 'none'}. "
+                "Use --force to do it anyway."
+            )
         )
 
     def target_of(self, event: EventName) -> Result[StateName, FlowError]:
