@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, override
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.b_domain_services.flow_label_check import FlowLabelCheck
-from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.d_domain_model.flow import (
     Edges,
     EventName,
@@ -21,7 +20,11 @@ from mb_workflow.d_lib.saga import SagaStep
 if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
-    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+        TicketTracker,
+        TicketTrackerError,
+    )
+    from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
@@ -47,15 +50,26 @@ class FlowTransition:
         statuses: TicketStatuses,
         event: EventName,
         force: Force,
-    ) -> Result[StateName, FlowError | TicketTrackerError | MissingFlowLabelsError]:
+    ) -> Result[
+        StateName,
+        FlowError | TicketTrackerError | MissingFlowLabelsError | WorkspaceManagerError,
+    ]:
         edges = Edges.of_chart(chart)
-        target = edges.target_of(event) if force.root else edges.target_from(store.read(), event)
+        if force.root:
+            target = edges.target_of(event)
+        else:
+            current = store.read()
+            if isinstance(current, Err):
+                return current
+            target = edges.target_from(current.value, event)
         if isinstance(target, Err):
             return target
         put = FlowTransition.put_in_state(tracker, issue, wanted, statuses, target.value)
         if isinstance(put, Err):
             return put
-        store.write(target.value)
+        written = store.write(target.value)
+        if isinstance(written, Err):
+            return written
         return Ok(target.value)
 
     @staticmethod
@@ -83,13 +97,12 @@ class FlowTransition:
         if isinstance(held, Err):
             return held
         labels = wanted.relabelled(held.value.labels, state)
-        tracker.update_issue(
+        return tracker.update_issue(
             issue,
             IssueUpdate.nothing().model_copy(
                 update={"labels": labels, "status": statuses.of(state)}
             ),
         )
-        return Ok(None)
 
 
 @dataclass(frozen=True)
@@ -104,13 +117,10 @@ class FlowStateStep(SagaStep):
 
     @override
     def apply(self) -> Result[None, Exception]:
-        try:
-            with Activity(f"Putting {self.issue.root} in {self.state.root}").logged(logger):
-                return FlowTransition.put_in_state_unchecked(
-                    self.tracker, self.issue, self.wanted, self.statuses, self.state
-                )
-        except TicketTrackerError as error:
-            return Err(error)
+        with Activity(f"Putting {self.issue.root} in {self.state.root}").logged(logger):
+            return FlowTransition.put_in_state_unchecked(
+                self.tracker, self.issue, self.wanted, self.statuses, self.state
+            )
 
     @override
     def revert(self) -> Result[None, Exception]:
@@ -122,18 +132,14 @@ class FlowStateStep(SagaStep):
             if self.previous_state is None
             else self.wanted.relabelled(held.value.labels, self.previous_state)
         )
-        try:
-            with Activity(
-                f"Moving {self.issue.root} back to"
-                f" {'no flow state' if self.previous_state is None else self.previous_state.root}"
-                f" and {self.previous_status.root}"
-            ).logged(logger):
-                self.tracker.update_issue(
-                    self.issue,
-                    IssueUpdate.nothing().model_copy(
-                        update={"labels": labels, "status": self.previous_status}
-                    ),
-                )
-        except TicketTrackerError as error:
-            return Err(error)
-        return Ok(None)
+        with Activity(
+            f"Moving {self.issue.root} back to"
+            f" {'no flow state' if self.previous_state is None else self.previous_state.root}"
+            f" and {self.previous_status.root}"
+        ).logged(logger):
+            return self.tracker.update_issue(
+                self.issue,
+                IssueUpdate.nothing().model_copy(
+                    update={"labels": labels, "status": self.previous_status}
+                ),
+            )

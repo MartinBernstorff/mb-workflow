@@ -89,16 +89,12 @@ class FlowLabelSeeding:
             key = tracker.team_named(team)
         if isinstance(key, Err):
             return key
-        with Activity(f"Reading {GroupPlace.of(wanted.group, None).root}").logged(logger):
-            workspace = tracker.group_labels(wanted.group, None)
-        if isinstance(workspace, Err):
-            return workspace
-        with Activity(f"Reading {GroupPlace.of(wanted.group, key.value).root}").logged(logger):
-            held = tracker.group_labels(wanted.group, key.value)
-        if isinstance(held, Err):
-            return held
-        workspace_sync = wanted.sync_plan(workspace.value)
-        team_sync = wanted.sync_plan(held.value)
+        groups = FlowLabelSeeding.read_groups(tracker, wanted.group, key.value)
+        if isinstance(groups, Err):
+            return groups
+        workspace, held = groups.value
+        workspace_sync = wanted.sync_plan(workspace)
+        team_sync = wanted.sync_plan(held)
         synced = FlowLabelSeeding.sync_groups(
             tracker,
             wanted,
@@ -110,22 +106,41 @@ class FlowLabelSeeding:
         )
         if isinstance(synced, Err):
             return synced
-        if not force.root and not wanted.missing(workspace.value.label_names()).root:
+        if not force.root and not wanted.missing(workspace.label_names()).root:
             return Ok(
                 CoveredByWorkspace(group=wanted.group, workspace=workspace_sync, team=team_sync)
             )
         missing = (
-            wanted.missing(held.value.label_names())
+            wanted.missing(held.label_names())
             if force.root
-            else FlowLabelSeeding.missing_labels(wanted, workspace.value, held.value)
+            else FlowLabelSeeding.missing_labels(wanted, workspace, held)
         )
         if missing.root:
             with Activity(
                 f"Creating {', '.join(label.root for label in missing.root)}"
                 f" in {GroupPlace.of(wanted.group, key.value).root}"
             ).logged(logger):
-                tracker.create_group_labels(wanted.group, wanted.colored(missing), key.value)
+                created = tracker.create_group_labels(
+                    wanted.group, wanted.colored(missing), key.value
+                )
+            if isinstance(created, Err):
+                return created
         return Ok(SeededTeam(created=missing, workspace=workspace_sync, team=team_sync))
+
+    # The group at workspace level, then the team's own.
+    @staticmethod
+    def read_groups(
+        tracker: TicketTracker, group: LabelGroupName, team: TeamKey
+    ) -> Result[tuple[ColoredLabels, ColoredLabels], TicketTrackerError]:
+        with Activity(f"Reading {GroupPlace.of(group, None).root}").logged(logger):
+            workspace = tracker.group_labels(group, None)
+        if isinstance(workspace, Err):
+            return workspace
+        with Activity(f"Reading {GroupPlace.of(group, team).root}").logged(logger):
+            held = tracker.group_labels(group, team)
+        if isinstance(held, Err):
+            return held
+        return Ok((workspace.value, held.value))
 
     @staticmethod
     def missing_labels(
@@ -203,7 +218,7 @@ class FlowLabelSeeding:
                 f"Recoloring {', '.join(label.root for label in plan.sync.recolored.root)}"
                 f" in {place}"
             ).logged(logger):
-                tracker.recolor_group_labels(
+                return tracker.recolor_group_labels(
                     wanted.group, wanted.colored(plan.sync.recolored), plan.team
                 )
         return Ok(None)

@@ -10,7 +10,7 @@ from mb_workflow.b_core.c_secondary_ports.claims import (
     FakeClaimRegistry,
     UnknownClaimLabelError,
 )
-from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
+from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore, UnreachableStatusStore
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
     TicketTrackerError,
@@ -67,6 +67,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
+    from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
 
 
 def labelled(state: StateName | None) -> LabelNames:
@@ -107,7 +108,10 @@ def fake_board() -> FakeStatusStore:
 # The fake board names a status for every state, so the manager must hold them all.
 def fake_board_statuses() -> WorkspaceStatuses:
     return WorkspaceStatuses(
-        tuple(fake_board().status_for(state) for state in StateNames.of_chart(WorkflowChart).root)
+        tuple(
+            fake_board().status_for(state).unwrap()
+            for state in StateNames.of_chart(WorkflowChart).root
+        )
     )
 
 
@@ -116,7 +120,7 @@ def fake_manager() -> FakeWorkspaceManager:
 
 
 def opened_in(manager: FakeWorkspaceManager) -> Worktree:
-    (opened,) = manager.worktrees().without(WorktreePath.fake()).root
+    (opened,) = manager.worktrees().unwrap().without(WorktreePath.fake()).root
     return opened
 
 
@@ -128,12 +132,20 @@ def starting(
     *,
     workspace: WorkspaceSettings | None = None,
     claim_settings: ClaimSettings | None = None,
-) -> Result[None, FlowError | TicketTrackerError | UnknownClaimLabelError | MissingFlowLabelsError]:
+    board: WorkspaceStatusStore | None = None,
+) -> Result[
+    None,
+    FlowError
+    | TicketTrackerError
+    | UnknownClaimLabelError
+    | MissingFlowLabelsError
+    | WorkspaceManagerError,
+]:
     return TicketStart.start_ticket(
         manager=manager,
         tracker=tracker,
         claims=claims or FakeClaimRegistry(),
-        board=fake_board(),
+        board=board or fake_board(),
         workspace=workspace or WorkspaceSettings.fake(),
         claim_settings=claim_settings or ClaimSettings.fake(),
         flow_labels=FlowLabels.fake(),
@@ -219,7 +231,7 @@ def test_a_ticket_waiting_for_a_human_is_opened_without_a_prompt() -> None:
 
 def test_seeds_the_board_column_from_the_flow_label() -> None:
     opened = opened_in(started(StateName("to-ticket"), StartRequest.fake()))
-    assert opened.status == fake_board().status_for(StateName("to-ticket"))
+    assert opened.status == fake_board().status_for(StateName("to-ticket")).unwrap()
 
 
 def test_a_ticket_without_a_flow_label_is_neither_claimed_assigned_nor_opened() -> None:
@@ -231,7 +243,20 @@ def test_a_ticket_without_a_flow_label_is_neither_claimed_assigned_nor_opened() 
     assert isinstance(refused, Err)
     assert isinstance(refused.error, FlowError)
     assert re.search(startable, str(refused.error))
-    assert manager.worktrees() == Worktrees.fake()
+    assert manager.worktrees().unwrap() == Worktrees.fake()
+    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().assigned == Assigned(False)
+    assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
+
+
+def test_a_board_that_cannot_place_the_ticket_refuses_before_claiming() -> None:
+    manager = fake_manager()
+    tracker = tracking(StateName("todo"))
+    claims = FakeClaimRegistry()
+    refused = starting(
+        manager, tracker, StartRequest.fake(), claims, board=UnreachableStatusStore()
+    )
+    assert refused == Err(WorkspaceManagerError("The workspace board is unreachable."))
+    assert manager.worktrees().unwrap() == Worktrees.fake()
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().assigned == Assigned(False)
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
 
@@ -272,7 +297,7 @@ def test_a_ticket_with_a_flow_label_started_in_a_state_is_not_claimed() -> None:
         StateName("grill")
     )
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
-    assert manager.worktrees() == Worktrees.fake()
+    assert manager.worktrees().unwrap() == Worktrees.fake()
 
 
 def test_a_ticket_started_in_a_state_with_no_work_is_not_claimed() -> None:
@@ -293,7 +318,7 @@ def test_a_ticket_the_tracker_cannot_read_is_not_opened() -> None:
     refused = starting(manager, tracking(StateName.fake()), unreadable)
     assert isinstance(refused, Err)
     assert isinstance(refused.error, TicketTrackerError)
-    assert manager.worktrees() == Worktrees.fake()
+    assert manager.worktrees().unwrap() == Worktrees.fake()
 
 
 def test_opens_the_worktree_in_the_configured_project() -> None:
@@ -324,7 +349,7 @@ def test_a_merged_ticket_is_neither_opened_nor_assigned() -> None:
     assert isinstance(refused, Err)
     assert isinstance(refused.error, FlowError)
     assert re.search("no work left", str(refused.error))
-    assert manager.worktrees() == Worktrees.fake()
+    assert manager.worktrees().unwrap() == Worktrees.fake()
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().assigned == Assigned(False)
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
 
@@ -361,7 +386,7 @@ def test_a_ticket_claimed_by_another_holder_is_neither_opened_nor_assigned() -> 
     tracker = tracking(StateName("todo"))
     with pytest.raises(ClaimRefusedError, match=r"bob-mbp\.local"):
         _ = starting(manager, tracker, StartRequest.fake(), claimed_by_a_rival())
-    assert manager.worktrees() == Worktrees.fake()
+    assert manager.worktrees().unwrap() == Worktrees.fake()
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().assigned == Assigned(False)
 
 
@@ -425,7 +450,7 @@ def test_a_claim_label_the_tracker_lacks_fails_the_start_without_leaving_a_claim
     assert isinstance(refused, Err)
     assert missing.label.root in str(refused.error)
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
-    assert manager.worktrees() == Worktrees.fake()
+    assert manager.worktrees().unwrap() == Worktrees.fake()
 
 
 def test_a_forced_start_with_a_missing_claim_label_keeps_the_rivals_claim() -> None:
@@ -499,7 +524,7 @@ def test_a_failed_forced_start_does_not_restore_the_rivals_claim() -> None:
 
 def test_a_failed_start_keeps_the_claim_and_label_this_worktree_already_held() -> None:
     tracker = tracking(StateName("todo"))
-    tracker.add_label(IssueIdentifier.fake(), ClaimSettings.fake().label)
+    tracker.add_label(IssueIdentifier.fake(), ClaimSettings.fake().label).unwrap()
     claims = FakeClaimRegistry(
         {IssueIdentifier.fake(): Claims((Claim(id=ClaimId("ours"), holder=ours()),))}
     )

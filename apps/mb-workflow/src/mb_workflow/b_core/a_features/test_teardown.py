@@ -1,4 +1,4 @@
-import pytest
+from safe_result import Err
 
 from mb_workflow.b_core.a_features.teardown import Teardown, TeardownRequest
 from mb_workflow.b_core.c_secondary_ports.claims import FakeClaimRegistry
@@ -77,7 +77,7 @@ def test_releases_the_claim_and_removes_the_worktree() -> None:
         request=TeardownRequest.fake(),
     ).unwrap()
     assert holder_of_ticket(claims) is None
-    assert manager.worktrees().at(WorktreePath.fake()) is None
+    assert manager.worktrees().unwrap().at(WorktreePath.fake()) is None
 
 
 def test_removes_the_claimed_label() -> None:
@@ -124,7 +124,7 @@ def test_tears_down_the_current_worktree_when_none_is_named() -> None:
         request=TeardownRequest(worktree=None),
     ).unwrap()
     assert holder_of_ticket(claims) is None
-    assert manager.worktrees().at(current.path) is None
+    assert manager.worktrees().unwrap().at(current.path) is None
 
 
 def test_removes_a_worktree_linked_to_no_ticket() -> None:
@@ -137,7 +137,7 @@ def test_removes_a_worktree_linked_to_no_ticket() -> None:
         claims=FakeClaimRegistry(),
         request=TeardownRequest.fake(),
     ).unwrap()
-    assert manager.worktrees().at(WorktreePath.fake()) is None
+    assert manager.worktrees().unwrap().at(WorktreePath.fake()) is None
 
 
 def test_releases_the_claim_of_a_worktree_orca_suffixed() -> None:
@@ -161,11 +161,12 @@ def test_releases_the_claim_of_a_worktree_orca_suffixed() -> None:
 def test_refuses_a_worktree_that_does_not_exist() -> None:
     manager = managing()
     request = TeardownRequest.fake().model_copy(update={"worktree": WorktreeName("MB-999")})
-    with pytest.raises(WorkspaceManagerError):
-        Teardown.teardown_worktree(
-            tracker=tracker_with_the_claimed_label(),
-            claim_settings=ClaimSettings.fake(),
-            manager=manager,
-            claims=FakeClaimRegistry(),
-            request=request,
-        ).unwrap()
+    refused = Teardown.teardown_worktree(
+        tracker=tracker_with_the_claimed_label(),
+        claim_settings=ClaimSettings.fake(),
+        manager=manager,
+        claims=FakeClaimRegistry(),
+        request=request,
+    )
+    assert refused == Err(WorkspaceManagerError("No worktree is named MB-999."))
+    assert manager.worktrees().unwrap() == managing().worktrees().unwrap()

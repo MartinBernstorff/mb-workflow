@@ -2,7 +2,10 @@ import re
 from functools import cached_property
 from typing import TYPE_CHECKING, override
 
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.flow import StateName
 from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus
 from mb_workflow.c_infrastructure.orca import ColumnLabel, ErrorMessage, Orca
@@ -14,7 +17,8 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
 
 
-class BoardError(Exception):
+# A workspace manager error, so the board's refusals travel the status store's error channel.
+class BoardError(WorkspaceManagerError):
     pass
 
 
@@ -60,11 +64,11 @@ class StateColumns(Value[tuple[WorkspaceStateColumn, ...]]):
             )
         )
 
-    def label_of(self, state: StateName) -> ColumnLabel:
+    def label_of(self, state: StateName) -> Result[ColumnLabel, BoardError]:
         for pairing in self.root:
             if pairing.state == state:
-                return pairing.label
-        raise BoardError(f"{state.root} has no board column.")
+                return Ok(pairing.label)
+        return Err(BoardError(f"{state.root} has no board column."))
 
     def state_of(self, label: ColumnLabel) -> StateName | None:
         for pairing in self.root:
@@ -79,14 +83,16 @@ class Columns(Value[tuple[Column, ...]]):
         return Columns((Column.fake(),))
 
     @staticmethod
-    def parse(refusal: ErrorMessage) -> Columns:
+    def parse(refusal: ErrorMessage) -> Result[Columns, BoardError]:
         listed = re.findall(r"([\w-]+) \(([^)]+)\)", refusal.root.partition("Available:")[2])
         if not listed:
-            raise BoardError(f"Orca named no board columns: {refusal.root}")
-        return Columns(
-            tuple(
-                Column(id=WorkspaceStatus(status), label=ColumnLabel(label))
-                for status, label in listed
+            return Err(BoardError(f"Orca named no board columns: {refusal.root}"))
+        return Ok(
+            Columns(
+                tuple(
+                    Column(id=WorkspaceStatus(status), label=ColumnLabel(label))
+                    for status, label in listed
+                )
             )
         )
 
@@ -102,14 +108,20 @@ class Columns(Value[tuple[Column, ...]]):
                 return column.id
         return None
 
-    def status_for(self, state: StateName) -> WorkspaceStatus:
-        label = StateColumns.of_chart().label_of(state)
+    def status_for(self, state: StateName) -> Result[WorkspaceStatus, BoardError]:
+        match StateColumns.of_chart().label_of(state):
+            case Ok(label):
+                pass
+            case Err() as unmapped:
+                return unmapped
         status = self.id_of(label)
         if status is None:
-            raise BoardError(
-                f"The board defines no {label.root} column, so {state.root} cannot be recorded."
+            return Err(
+                BoardError(
+                    f"The board defines no {label.root} column, so {state.root} cannot be recorded."
+                )
             )
-        return status
+        return Ok(status)
 
     def state_of(self, status: WorkspaceStatus | None, start: StateName) -> StateName:
         if status is None:
@@ -123,7 +135,10 @@ class Columns(Value[tuple[Column, ...]]):
 
 class WorkspaceBoard(WorkspaceStatusStore):
     def __init__(
-        self, manager: WorkspaceManager, columns: Callable[[], Columns], start: StateName
+        self,
+        manager: WorkspaceManager,
+        columns: Callable[[], Result[Columns, WorkspaceManagerError]],
+        start: StateName,
     ) -> None:
         self._manager = manager
         self._read_columns = columns
@@ -131,23 +146,51 @@ class WorkspaceBoard(WorkspaceStatusStore):
 
     @staticmethod
     def of_orca(orca: Orca, start: StateName) -> WorkspaceBoard:
-        return WorkspaceBoard(
-            orca, lambda: Columns.parse(orca.columns(ColumnLabel.unknown())), start
-        )
+        return WorkspaceBoard(orca, lambda: WorkspaceBoard.columns_of(orca), start)
+
+    @staticmethod
+    def columns_of(orca: Orca) -> Result[Columns, WorkspaceManagerError]:
+        match orca.columns(ColumnLabel.unknown()):
+            case Ok(refusal):
+                return Columns.parse(refusal)
+            case Err() as failed:
+                return failed
 
     # Read on first use, so a command that never touches the board never asks Orca for its columns.
     @cached_property
-    def _columns(self) -> Columns:
+    def _columns(self) -> Result[Columns, WorkspaceManagerError]:
         return self._read_columns()
 
     @override
-    def read(self) -> StateName:
-        return self._columns.state_of(self._manager.current().status, self._start)
+    def read(self) -> Result[StateName, WorkspaceManagerError]:
+        match self._columns:
+            case Ok(columns):
+                pass
+            case Err() as unread:
+                return unread
+        match self._manager.current():
+            case Ok(here):
+                return Ok(columns.state_of(here.status, self._start))
+            case Err() as failed:
+                return failed
 
     @override
-    def write(self, state: StateName) -> None:
-        self._manager.set_status(self._manager.current().path, self.status_for(state))
+    def write(self, state: StateName) -> Result[None, WorkspaceManagerError]:
+        match self._manager.current():
+            case Ok(here):
+                pass
+            case Err() as failed:
+                return failed
+        match self.status_for(state):
+            case Ok(status):
+                return self._manager.set_status(here.path, status)
+            case Err() as unmapped:
+                return unmapped
 
     @override
-    def status_for(self, state: StateName) -> WorkspaceStatus:
-        return self._columns.status_for(state)
+    def status_for(self, state: StateName) -> Result[WorkspaceStatus, WorkspaceManagerError]:
+        match self._columns:
+            case Ok(columns):
+                return columns.status_for(state)
+            case Err() as unread:
+                return unread

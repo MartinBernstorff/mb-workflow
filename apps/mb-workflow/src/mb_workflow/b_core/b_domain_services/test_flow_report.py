@@ -1,5 +1,8 @@
+from safe_result import Err, Ok
+
 from mb_workflow.b_core.b_domain_services.flow_report import AsJson, StatusReport, status_report
-from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
+from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore, UnreachableStatusStore
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.flow import FlowStatus, StateName, WorkflowChart
 
 
@@ -22,6 +25,11 @@ def test_json_emits_the_same_state_and_events_for_scripting() -> None:
 
 def test_reads_the_state_from_the_status_store() -> None:
     store = FakeStatusStore(StateName("merging"))
-    assert status_report(WorkflowChart, store, AsJson(False)) == StatusReport(
-        "merging\n  merged\n  qa\n"
+    assert status_report(WorkflowChart, store, AsJson(False)) == Ok(
+        StatusReport("merging\n  merged\n  qa\n")
     )
+
+
+def test_an_unreachable_store_reports_no_state() -> None:
+    reported = status_report(WorkflowChart, UnreachableStatusStore(), AsJson(False))
+    assert reported == Err(WorkspaceManagerError("The workspace board is unreachable."))

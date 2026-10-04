@@ -2,6 +2,7 @@ from datetime import timedelta
 from typing import override
 
 import pytest
+from safe_result import Err, Result
 
 from mb_workflow.b_core.a_features.autolabel import (
     AutoLabelling,
@@ -63,10 +64,12 @@ class RefusingTracker(FakeTicketTracker):
         self._refused = refused
 
     @override
-    def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
+    def add_label(
+        self, issue: IssueIdentifier, label: LabelName
+    ) -> Result[None, TicketTrackerError]:
         if issue == self._refused:
-            raise TicketTrackerError(f"{issue.root} refused the label.")
-        super().add_label(issue, label)
+            return Err(TicketTrackerError(f"{issue.root} refused the label."))
+        return super().add_label(issue, label)
 
 
 def seeded_ledger_store() -> FakeLedgerStore:

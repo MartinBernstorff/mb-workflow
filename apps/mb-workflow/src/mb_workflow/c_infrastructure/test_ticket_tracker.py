@@ -12,7 +12,7 @@ from linear_python_client import (
     LinearClient,
 )
 from pydantic import AliasPath, Field
-from safe_result import Err
+from safe_result import Err, Ok
 
 from mb_workflow.b_core.c_secondary_ports.claims import (
     Claiming,
@@ -86,6 +86,8 @@ if TYPE_CHECKING:
     from safe_result import Result
 
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
+
+    type Creating = Callable[[NewIssue], Result[CreatedIssue, TicketTrackerError]]
 
 
 class Seed(StrEnum):
@@ -533,11 +535,11 @@ def reset(client: LinearClient, backlog: Backlog) -> None:
     for planted in seeds():
         identifier = backlog.identifier(planted.seed)
         for stale in claims.claims(identifier).unwrap().root:
-            claims.withdraw(identifier, stale.id)
-        tracker.set_labels(identifier, planted.labels)
+            claims.withdraw(identifier, stale.id).unwrap()
+        tracker.set_labels(identifier, planted.labels).unwrap()
         tracker.update_issue(
             identifier, IssueUpdate.nothing().model_copy(update={"status": planted.status})
-        )
+        ).unwrap()
         project = find_project(client, planted.project) if planted.project else None
         _ = client.execute(
             "mutation($id: String!, $input: IssueUpdateInput!) {"
@@ -656,7 +658,7 @@ QA = LabelName("qa")
 def test_a_created_group_lists_its_labels_back(groupless: TicketTracker) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILL, QA))), None
-    )
+    ).unwrap()
     assert set(
         groupless.group_labels(LabelGroupName.fake(), None).unwrap().label_names().root
     ) == set(LabelNames((GRILL, QA)).root)
@@ -665,10 +667,10 @@ def test_a_created_group_lists_its_labels_back(groupless: TicketTracker) -> None
 def test_labels_added_to_a_group_join_the_ones_there(groupless: TicketTracker) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILL,))), None
-    )
+    ).unwrap()
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), None
-    )
+    ).unwrap()
     assert set(
         groupless.group_labels(LabelGroupName.fake(), None).unwrap().label_names().root
     ) == set(LabelNames((GRILL, QA)).root)
@@ -678,7 +680,7 @@ def test_a_created_group_reads_back_the_colors_of_its_labels(
     groupless: TicketTracker, backlog: Backlog
 ) -> None:
     created = FlowLabels.fake().colored(LabelNames((GRILL, QA)))
-    groupless.create_group_labels(LabelGroupName.fake(), created, backlog.team)
+    groupless.create_group_labels(LabelGroupName.fake(), created, backlog.team).unwrap()
     assert set(groupless.group_labels(LabelGroupName.fake(), backlog.team).unwrap().root) == set(
         created.root
     )
@@ -689,9 +691,9 @@ def test_a_recolored_label_reads_back_its_new_color(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
-    )
+    ).unwrap()
     yellow = ColoredLabels((ColoredLabel(name=QA, color=LabelColor.yellow()),))
-    groupless.recolor_group_labels(LabelGroupName.fake(), yellow, backlog.team)
+    groupless.recolor_group_labels(LabelGroupName.fake(), yellow, backlog.team).unwrap()
     assert groupless.group_labels(LabelGroupName.fake(), backlog.team).unwrap() == yellow
 
 
@@ -700,10 +702,11 @@ def test_recoloring_a_label_the_group_lacks_is_refused(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
-    )
+    ).unwrap()
     yellow = ColoredLabels((ColoredLabel(name=GRILL, color=LabelColor.yellow()),))
-    with pytest.raises(TicketTrackerError, match=GRILL.root):
-        groupless.recolor_group_labels(LabelGroupName.fake(), yellow, backlog.team)
+    refused = groupless.recolor_group_labels(LabelGroupName.fake(), yellow, backlog.team)
+    assert isinstance(refused, Err)
+    assert GRILL.root in str(refused.error)
 
 
 def test_a_renamed_label_reads_back_its_new_name(
@@ -711,7 +714,7 @@ def test_a_renamed_label_reads_back_its_new_name(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
-    )
+    ).unwrap()
     renamed = LabelName("qa")
     groupless.rename_group_label(LabelGroupName.fake(), QA, renamed, backlog.team).unwrap()
     assert groupless.group_labels(
@@ -722,8 +725,8 @@ def test_a_renamed_label_reads_back_its_new_name(
 def test_a_renamed_label_stays_on_its_tickets(groupless: TicketTracker, backlog: Backlog) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), None
-    )
-    groupless.add_label(backlog.identifier(Seed.done), QA)
+    ).unwrap()
+    groupless.add_label(backlog.identifier(Seed.done), QA).unwrap()
     renamed = LabelName("qa")
     groupless.rename_group_label(LabelGroupName.fake(), QA, renamed, None).unwrap()
     assert renamed in groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels.root
@@ -734,8 +737,8 @@ def test_a_renamed_team_label_stays_on_the_teams_tickets(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
-    )
-    groupless.add_label(backlog.identifier(Seed.done), QA)
+    ).unwrap()
+    groupless.add_label(backlog.identifier(Seed.done), QA).unwrap()
     renamed = LabelName("qa")
     groupless.rename_group_label(LabelGroupName.fake(), QA, renamed, backlog.team).unwrap()
     assert renamed in groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels.root
@@ -746,8 +749,8 @@ def test_a_deleted_team_label_leaves_the_teams_tickets(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
-    )
-    groupless.add_label(backlog.identifier(Seed.done), QA)
+    ).unwrap()
+    groupless.add_label(backlog.identifier(Seed.done), QA).unwrap()
     groupless.delete_group_label(LabelGroupName.fake(), QA, backlog.team).unwrap()
     held = groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels
     assert held.matching(QA) is None
@@ -758,7 +761,7 @@ def test_renaming_a_label_the_group_lacks_is_refused(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
-    )
+    ).unwrap()
     refused = groupless.rename_group_label(
         LabelGroupName.fake(), GRILL, LabelName("grilling"), backlog.team
     )
@@ -769,7 +772,7 @@ def test_renaming_a_label_the_group_lacks_is_refused(
 def test_a_deleted_label_leaves_its_group(groupless: TicketTracker, backlog: Backlog) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILL, QA))), backlog.team
-    )
+    ).unwrap()
     groupless.delete_group_label(LabelGroupName.fake(), QA, backlog.team).unwrap()
     assert groupless.group_labels(
         LabelGroupName.fake(), backlog.team
@@ -779,8 +782,8 @@ def test_a_deleted_label_leaves_its_group(groupless: TicketTracker, backlog: Bac
 def test_a_deleted_label_leaves_its_tickets(groupless: TicketTracker, backlog: Backlog) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), None
-    )
-    groupless.add_label(backlog.identifier(Seed.done), QA)
+    ).unwrap()
+    groupless.add_label(backlog.identifier(Seed.done), QA).unwrap()
     groupless.delete_group_label(LabelGroupName.fake(), QA, None).unwrap()
     held = groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels
     assert held.matching(QA) is None
@@ -791,7 +794,7 @@ def test_deleting_a_label_the_group_lacks_is_refused(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
-    )
+    ).unwrap()
     refused = groupless.delete_group_label(LabelGroupName.fake(), GRILL, backlog.team)
     assert isinstance(refused, Err)
     assert GRILL.root in str(refused.error)
@@ -802,10 +805,10 @@ def test_a_group_label_counts_the_tickets_carrying_it(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILL, QA))), None
-    )
+    ).unwrap()
     carrying = (Seed.done, Seed.recent)
     for seed in carrying:
-        groupless.add_label(backlog.identifier(seed), QA)
+        groupless.add_label(backlog.identifier(seed), QA).unwrap()
     assert groupless.labelled_ticket_count(LabelGroupName.fake(), QA, None).unwrap() == (
         TicketCount(len(carrying))
     )
@@ -816,7 +819,7 @@ def test_a_group_label_no_ticket_carries_counts_none(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
-    )
+    ).unwrap()
     assert groupless.labelled_ticket_count(
         LabelGroupName.fake(), QA, backlog.team
     ).unwrap() == TicketCount(0)
@@ -831,7 +834,7 @@ def test_a_group_created_in_a_team_lists_its_labels_under_the_team(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILL, QA))), backlog.team
-    )
+    ).unwrap()
     assert set(
         groupless.group_labels(LabelGroupName.fake(), backlog.team).unwrap().label_names().root
     ) == set(LabelNames((GRILL, QA)).root)
@@ -842,7 +845,7 @@ def test_a_group_created_in_a_team_is_not_a_workspace_group(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILL, QA))), backlog.team
-    )
+    ).unwrap()
     assert groupless.group_labels(LabelGroupName.fake(), None).unwrap() == ColoredLabels(())
 
 
@@ -851,7 +854,7 @@ def test_a_group_created_in_a_team_is_not_listed_under_another_team(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILL, QA))), backlog.team
-    )
+    ).unwrap()
     assert groupless.group_labels(
         LabelGroupName.fake(), backlog.other_team
     ).unwrap() == ColoredLabels(())
@@ -862,7 +865,7 @@ def test_a_workspace_group_is_not_listed_under_a_team(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILL, QA))), None
-    )
+    ).unwrap()
     assert groupless.group_labels(LabelGroupName.fake(), backlog.team).unwrap() == ColoredLabels(())
 
 
@@ -896,14 +899,14 @@ def test_an_issue_takes_its_own_teams_label_over_a_namesake_in_another_team(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.other_team
-    )
+    ).unwrap()
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
-    )
+    ).unwrap()
     groupless.update_issue(
         backlog.identifier(Seed.done),
         IssueUpdate.nothing().model_copy(update={"labels": LabelNames((QA,))}),
-    )
+    ).unwrap()
     assert groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels == LabelNames((QA,))
 
 
@@ -912,11 +915,11 @@ def test_setting_labels_takes_the_issues_own_teams_label_over_a_namesake(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.other_team
-    )
+    ).unwrap()
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
-    )
-    groupless.set_labels(backlog.identifier(Seed.done), LabelNames((QA,)))
+    ).unwrap()
+    groupless.set_labels(backlog.identifier(Seed.done), LabelNames((QA,))).unwrap()
     assert groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels == LabelNames((QA,))
 
 
@@ -925,9 +928,10 @@ def test_adding_a_label_cannot_take_another_teams_label(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.other_team
-    )
-    with pytest.raises(TicketTrackerError, match=QA.root):
-        groupless.add_label(backlog.identifier(Seed.done), QA)
+    ).unwrap()
+    refused = groupless.add_label(backlog.identifier(Seed.done), QA)
+    assert isinstance(refused, Err)
+    assert QA.root in str(refused.error)
 
 
 def test_an_issue_takes_a_workspace_label_its_team_lacks(
@@ -935,11 +939,11 @@ def test_an_issue_takes_a_workspace_label_its_team_lacks(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), None
-    )
+    ).unwrap()
     groupless.update_issue(
         backlog.identifier(Seed.done),
         IssueUpdate.nothing().model_copy(update={"labels": LabelNames((QA,))}),
-    )
+    ).unwrap()
     assert groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels == LabelNames((QA,))
 
 
@@ -948,18 +952,19 @@ def test_an_issue_cannot_take_another_teams_label(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.other_team
+    ).unwrap()
+    refused = groupless.update_issue(
+        backlog.identifier(Seed.done),
+        IssueUpdate.nothing().model_copy(update={"labels": LabelNames((QA,))}),
     )
-    with pytest.raises(TicketTrackerError, match=QA.root):
-        groupless.update_issue(
-            backlog.identifier(Seed.done),
-            IssueUpdate.nothing().model_copy(update={"labels": LabelNames((QA,))}),
-        )
+    assert isinstance(refused, Err)
+    assert QA.root in str(refused.error)
 
 
 def test_a_grouped_label_names_its_group(groupless: TicketTracker) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILL, QA))), None
-    )
+    ).unwrap()
     assert groupless.label_group(QA).unwrap() == LabelGroupName.fake()
 
 
@@ -970,8 +975,10 @@ def test_an_ungrouped_label_names_no_group(tracker: TicketTracker) -> None:
 def test_an_issue_carries_a_label_of_a_group(groupless: TicketTracker, backlog: Backlog) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILL, QA))), None
-    )
-    groupless.set_labels(backlog.identifier(Seed.done), LabelNames((LabelName("d-grill"), QA)))
+    ).unwrap()
+    groupless.set_labels(
+        backlog.identifier(Seed.done), LabelNames((LabelName("d-grill"), QA))
+    ).unwrap()
     assert set(groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels.root) == set(
         LabelNames((LabelName("d-grill"), QA)).root
     )
@@ -982,8 +989,10 @@ def test_an_issue_reads_back_the_group_of_its_labels(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILL, QA))), None
-    )
-    groupless.set_labels(backlog.identifier(Seed.done), LabelNames((LabelName("d-grill"), QA)))
+    ).unwrap()
+    groupless.set_labels(
+        backlog.identifier(Seed.done), LabelNames((LabelName("d-grill"), QA))
+    ).unwrap()
     assert groupless.read_issue(backlog.identifier(Seed.done)).unwrap().grouped.in_group(
         LabelGroupName.fake()
     ) == LabelNames((QA,))
@@ -994,9 +1003,9 @@ def test_an_issue_carrying_two_labels_of_one_group_is_refused(
 ) -> None:
     groupless.create_group_labels(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILL, QA))), None
-    )
-    with pytest.raises(TicketTrackerError):
-        groupless.set_labels(backlog.identifier(Seed.done), LabelNames((GRILL, QA)))
+    ).unwrap()
+    refused = groupless.set_labels(backlog.identifier(Seed.done), LabelNames((GRILL, QA)))
+    assert isinstance(refused, Err)
 
 
 def test_the_filter_picks_the_issues_one_creator_made_since_a_date(
@@ -1046,7 +1055,7 @@ def test_a_ticket_whose_blockers_are_all_closed_is_listed(
     tracker.update_issue(
         backlog.identifier(Seed.old),
         IssueUpdate.nothing().model_copy(update={"status": IssueStatusName(status)}),
-    )
+    ).unwrap()
     assert Seed.recent in listed(tracker, backlog)
 
 
@@ -1062,7 +1071,7 @@ def labelled_seeds(
 
 
 def test_the_issues_carrying_a_label_are_listed(tracker: TicketTracker, backlog: Backlog) -> None:
-    tracker.add_label(backlog.identifier(Seed.recent), LabelName("d-grill"))
+    tracker.add_label(backlog.identifier(Seed.recent), LabelName("d-grill")).unwrap()
     assert labelled_seeds(tracker, backlog, LabelName("d-grill"), StatusTypes(())) == {
         Seed.recent,
         Seed.done,
@@ -1073,11 +1082,11 @@ def test_labelled_issues_of_an_excluded_status_type_are_left_out(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
     for seed in (Seed.recent, Seed.old):
-        tracker.add_label(backlog.identifier(seed), LabelName("d-grill"))
+        tracker.add_label(backlog.identifier(seed), LabelName("d-grill")).unwrap()
     tracker.update_issue(
         backlog.identifier(Seed.old),
         IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("Canceled")}),
-    )
+    ).unwrap()
     excluding = StatusTypes((StatusType.completed, StatusType.canceled))
     assert labelled_seeds(tracker, backlog, LabelName("d-grill"), excluding) == {Seed.recent}
 
@@ -1146,7 +1155,7 @@ def test_the_blockers_of_an_unknown_issue_are_refused(tracker: TicketTracker) ->
 def test_an_added_label_joins_the_ones_already_there(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    tracker.add_label(backlog.identifier(Seed.done), LabelName.fake())
+    tracker.add_label(backlog.identifier(Seed.done), LabelName.fake()).unwrap()
     assert set(tracker.read_issue(backlog.identifier(Seed.done)).unwrap().labels.root) == {
         LabelName("d-grill"),
         LabelName.fake(),
@@ -1154,19 +1163,19 @@ def test_an_added_label_joins_the_ones_already_there(
 
 
 def test_adding_a_label_twice_carries_it_once(tracker: TicketTracker, backlog: Backlog) -> None:
-    tracker.add_label(backlog.identifier(Seed.recent), LabelName.fake())
-    tracker.add_label(backlog.identifier(Seed.recent), LabelName.fake())
+    tracker.add_label(backlog.identifier(Seed.recent), LabelName.fake()).unwrap()
+    tracker.add_label(backlog.identifier(Seed.recent), LabelName.fake()).unwrap()
     assert tracker.read_issue(backlog.identifier(Seed.recent)).unwrap().labels == LabelNames.fake()
 
 
 def test_adding_an_unknown_label_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
-    with pytest.raises(TicketTrackerError):
-        tracker.add_label(backlog.identifier(Seed.recent), LabelName("Frontend"))
+    refused = tracker.add_label(backlog.identifier(Seed.recent), LabelName("Frontend"))
+    assert isinstance(refused, Err)
 
 
 def test_a_removed_label_leaves_the_others(tracker: TicketTracker, backlog: Backlog) -> None:
-    tracker.add_label(backlog.identifier(Seed.done), LabelName.fake())
-    tracker.remove_label(backlog.identifier(Seed.done), LabelName("d-grill"))
+    tracker.add_label(backlog.identifier(Seed.done), LabelName.fake()).unwrap()
+    tracker.remove_label(backlog.identifier(Seed.done), LabelName("d-grill")).unwrap()
     assert tracker.read_issue(backlog.identifier(Seed.done)).unwrap().labels == LabelNames(
         (LabelName.fake(),)
     )
@@ -1175,27 +1184,29 @@ def test_a_removed_label_leaves_the_others(tracker: TicketTracker, backlog: Back
 def test_removing_a_label_the_issue_lacks_leaves_it_unchanged(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    tracker.remove_label(backlog.identifier(Seed.done), LabelName.fake())
+    tracker.remove_label(backlog.identifier(Seed.done), LabelName.fake()).unwrap()
     assert tracker.read_issue(backlog.identifier(Seed.done)).unwrap().labels == LabelNames(
         (LabelName("d-grill"),)
     )
 
 
 def test_setting_labels_replaces_the_ones_there(tracker: TicketTracker, backlog: Backlog) -> None:
-    tracker.set_labels(backlog.identifier(Seed.done), LabelNames((LabelName("Backend"),)))
+    tracker.set_labels(backlog.identifier(Seed.done), LabelNames((LabelName("Backend"),))).unwrap()
     assert tracker.read_issue(backlog.identifier(Seed.done)).unwrap().labels == LabelNames(
         (LabelName("Backend"),)
     )
 
 
 def test_setting_no_labels_clears_them(tracker: TicketTracker, backlog: Backlog) -> None:
-    tracker.set_labels(backlog.identifier(Seed.done), LabelNames(()))
+    tracker.set_labels(backlog.identifier(Seed.done), LabelNames(())).unwrap()
     assert tracker.read_issue(backlog.identifier(Seed.done)).unwrap().labels == LabelNames(())
 
 
 def test_setting_an_unknown_label_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
-    with pytest.raises(TicketTrackerError):
-        tracker.set_labels(backlog.identifier(Seed.done), LabelNames((LabelName("Frontend"),)))
+    refused = tracker.set_labels(
+        backlog.identifier(Seed.done), LabelNames((LabelName("Frontend"),))
+    )
+    assert isinstance(refused, Err)
 
 
 def test_an_issue_starts_unassigned(tracker: TicketTracker, backlog: Backlog) -> None:
@@ -1203,24 +1214,26 @@ def test_an_issue_starts_unassigned(tracker: TicketTracker, backlog: Backlog) ->
 
 
 def test_assigning_an_issue_leaves_it_assigned(tracker: TicketTracker, backlog: Backlog) -> None:
-    tracker.assign(backlog.identifier(Seed.recent), backlog.assignee)
+    tracker.assign(backlog.identifier(Seed.recent), backlog.assignee).unwrap()
     assert tracker.read_issue(backlog.identifier(Seed.recent)).unwrap().assigned == Assigned(True)
 
 
 def test_assigning_an_unknown_issue_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
-    with pytest.raises(TicketTrackerError):
-        tracker.assign(IssueIdentifier("E-404"), backlog.assignee)
+    refused = tracker.assign(IssueIdentifier("E-404"), backlog.assignee)
+    assert isinstance(refused, Err)
 
 
 def test_a_label_is_found_whatever_its_case(tracker: TicketTracker, backlog: Backlog) -> None:
-    tracker.add_label(backlog.identifier(Seed.recent), LabelName("D-IMPLEMENT"))
+    tracker.add_label(backlog.identifier(Seed.recent), LabelName("D-IMPLEMENT")).unwrap()
     assert tracker.read_issue(backlog.identifier(Seed.recent)).unwrap().labels == LabelNames.fake()
 
 
 def test_setting_labels_takes_the_workspace_spelling(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    tracker.set_labels(backlog.identifier(Seed.recent), LabelNames((LabelName("backend"),)))
+    tracker.set_labels(
+        backlog.identifier(Seed.recent), LabelNames((LabelName("backend"),))
+    ).unwrap()
     assert tracker.read_issue(backlog.identifier(Seed.recent)).unwrap().labels == LabelNames(
         (LabelName("Backend"),)
     )
@@ -1229,8 +1242,8 @@ def test_setting_labels_takes_the_workspace_spelling(
 def test_adding_a_label_in_another_case_carries_it_once(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    tracker.add_label(backlog.identifier(Seed.recent), LabelName.fake())
-    tracker.add_label(backlog.identifier(Seed.recent), LabelName("D-Implement"))
+    tracker.add_label(backlog.identifier(Seed.recent), LabelName.fake()).unwrap()
+    tracker.add_label(backlog.identifier(Seed.recent), LabelName("D-Implement")).unwrap()
     assert tracker.read_issue(backlog.identifier(Seed.recent)).unwrap().labels == LabelNames.fake()
 
 
@@ -1247,7 +1260,7 @@ def test_an_update_sets_the_title_and_description(tracker: TicketTracker, backlo
                 "description": IssueDescription("Rewritten."),
             }
         ),
-    )
+    ).unwrap()
     detail = tracker.read_issue_detail(backlog.identifier(Seed.done)).unwrap()
     assert (detail.title, detail.description) == (
         IssueTitle("contract: renamed"),
@@ -1261,7 +1274,7 @@ def test_an_update_leaves_the_fields_it_does_not_name(
     tracker.update_issue(
         backlog.identifier(Seed.done),
         IssueUpdate.nothing().model_copy(update={"title": IssueTitle("contract: x")}),
-    )
+    ).unwrap()
     assert tracker.read_issue(backlog.identifier(Seed.done)).unwrap() == backlog.issue(Seed.done)
 
 
@@ -1269,7 +1282,7 @@ def test_an_update_replaces_the_labels(tracker: TicketTracker, backlog: Backlog)
     tracker.update_issue(
         backlog.identifier(Seed.done),
         IssueUpdate.nothing().model_copy(update={"labels": LabelNames((LabelName("backend"),))}),
-    )
+    ).unwrap()
     assert tracker.read_issue(backlog.identifier(Seed.done)).unwrap().labels == LabelNames(
         (LabelName("Backend"),)
     )
@@ -1278,20 +1291,18 @@ def test_an_update_replaces_the_labels(tracker: TicketTracker, backlog: Backlog)
 def test_an_update_with_an_unknown_label_is_refused(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    with pytest.raises(TicketTrackerError):
-        tracker.update_issue(
-            backlog.identifier(Seed.done),
-            IssueUpdate.nothing().model_copy(
-                update={"labels": LabelNames((LabelName("Frontend"),))}
-            ),
-        )
+    refused = tracker.update_issue(
+        backlog.identifier(Seed.done),
+        IssueUpdate.nothing().model_copy(update={"labels": LabelNames((LabelName("Frontend"),))}),
+    )
+    assert isinstance(refused, Err)
 
 
 def test_an_update_names_the_assignee(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"assignee": backlog.assignee}),
-    )
+    ).unwrap()
     detail = tracker.read_issue_detail(backlog.identifier(Seed.recent)).unwrap()
     assert (detail.assignee, detail.issue.assigned) == (backlog.assignee, Assigned(True))
 
@@ -1300,11 +1311,11 @@ def test_an_update_can_unassign(tracker: TicketTracker, backlog: Backlog) -> Non
     tracker.update_issue(
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"assignee": backlog.assignee}),
-    )
+    ).unwrap()
     tracker.update_issue(
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"assignee": Cleared()}),
-    )
+    ).unwrap()
     detail = tracker.read_issue_detail(backlog.identifier(Seed.recent)).unwrap()
     assert (detail.assignee, detail.issue.assigned) == (None, Assigned(False))
 
@@ -1313,7 +1324,7 @@ def test_an_update_moves_an_issue_into_a_project(tracker: TicketTracker, backlog
     tracker.update_issue(
         backlog.identifier(Seed.done),
         IssueUpdate.nothing().model_copy(update={"project": ProjectName.fake()}),
-    )
+    ).unwrap()
     assert tracker.read_issue(backlog.identifier(Seed.done)).unwrap().project == ProjectName.fake()
 
 
@@ -1323,23 +1334,23 @@ def test_an_update_can_take_an_issue_out_of_its_project(
     tracker.update_issue(
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"project": Cleared()}),
-    )
+    ).unwrap()
     assert tracker.read_issue(backlog.identifier(Seed.recent)).unwrap().project is None
 
 
 def test_moving_to_an_unknown_project_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
-    with pytest.raises(TicketTrackerError):
-        tracker.update_issue(
-            backlog.identifier(Seed.recent),
-            IssueUpdate.nothing().model_copy(update={"project": ProjectName("No such project")}),
-        )
+    refused = tracker.update_issue(
+        backlog.identifier(Seed.recent),
+        IssueUpdate.nothing().model_copy(update={"project": ProjectName("No such project")}),
+    )
+    assert isinstance(refused, Err)
 
 
 def test_an_update_sets_a_milestone(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"milestone": Milestone.fake()}),
-    )
+    ).unwrap()
     assert tracker.read_issue_detail(backlog.identifier(Seed.recent)).unwrap().milestone == (
         MilestoneName.fake()
     )
@@ -1349,51 +1360,52 @@ def test_an_update_can_clear_the_milestone(tracker: TicketTracker, backlog: Back
     tracker.update_issue(
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"milestone": Milestone.fake()}),
-    )
+    ).unwrap()
     tracker.update_issue(
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"milestone": Cleared()}),
-    )
+    ).unwrap()
     assert tracker.read_issue_detail(backlog.identifier(Seed.recent)).unwrap().milestone is None
 
 
 def test_an_unknown_milestone_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
     unknown = Milestone(project=ProjectName.fake(), name=MilestoneName("No such milestone"))
-    with pytest.raises(TicketTrackerError):
-        tracker.update_issue(
-            backlog.identifier(Seed.recent),
-            IssueUpdate.nothing().model_copy(update={"milestone": unknown}),
-        )
+    refused = tracker.update_issue(
+        backlog.identifier(Seed.recent),
+        IssueUpdate.nothing().model_copy(update={"milestone": unknown}),
+    )
+    assert isinstance(refused, Err)
 
 
 def test_an_update_moves_an_issue_to_a_status(tracker: TicketTracker, backlog: Backlog) -> None:
     tracker.update_issue(
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("in progress")}),
-    )
+    ).unwrap()
     assert tracker.read_issue(backlog.identifier(Seed.recent)).unwrap().status == IssueStatusName(
         "In Progress"
     )
 
 
 def test_moving_to_an_unknown_status_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
-    with pytest.raises(TicketTrackerError):
-        tracker.update_issue(
-            backlog.identifier(Seed.recent),
-            IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("No such status")}),
-        )
+    refused = tracker.update_issue(
+        backlog.identifier(Seed.recent),
+        IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("No such status")}),
+    )
+    assert isinstance(refused, Err)
 
 
 # Created issues go to the trash afterwards, so they never join the seeds' labels or view.
 @pytest.fixture
 def creating(
     kind: TrackerKind, tracker: TicketTracker, request: pytest.FixtureRequest
-) -> Generator[Callable[[NewIssue], CreatedIssue]]:
+) -> Generator[Creating]:
     made: list[IssueIdentifier] = []
 
-    def create(new: NewIssue) -> CreatedIssue:
+    def create(new: NewIssue) -> Result[CreatedIssue, TicketTrackerError]:
         created = tracker.create_issue(new)
-        made.append(created.identifier)
+        if isinstance(created, Ok):
+            made.append(created.value.identifier)
         return created
 
     yield create
@@ -1424,7 +1436,7 @@ def new_issue(title: IssueTitle) -> NewIssue:
 def test_a_created_issue_reads_back_as_it_was_given(
     tracker: TicketTracker,
     backlog: Backlog,
-    creating: Callable[[NewIssue], CreatedIssue],
+    creating: Creating,
 ) -> None:
     new = new_issue(IssueTitle("created: full")).model_copy(
         update={
@@ -1435,7 +1447,7 @@ def test_a_created_issue_reads_back_as_it_was_given(
             "milestone": Milestone.fake(),
         }
     )
-    identifier = creating(new).identifier
+    identifier = creating(new).unwrap().identifier
     assert tracker.read_issue_detail(identifier).unwrap() == IssueDetail(
         issue=Issue(
             identifier=identifier,
@@ -1454,67 +1466,74 @@ def test_a_created_issue_reads_back_as_it_was_given(
     )
 
 
-def test_a_created_issue_links_to_itself(creating: Callable[[NewIssue], CreatedIssue]) -> None:
-    created = creating(new_issue(IssueTitle("created: link")))
+def test_a_created_issue_links_to_itself(creating: Creating) -> None:
+    created = creating(new_issue(IssueTitle("created: link"))).unwrap()
     assert created.identifier.root in created.url.root
 
 
 def test_an_issue_created_in_a_named_team_needs_no_project(
-    tracker: TicketTracker, backlog: Backlog, creating: Callable[[NewIssue], CreatedIssue]
+    tracker: TicketTracker, backlog: Backlog, creating: Creating
 ) -> None:
     new = new_issue(IssueTitle("created: team")).model_copy(
         update={"team": backlog.team, "project": None}
     )
-    assert tracker.read_issue(creating(new).identifier).unwrap().project is None
+    assert tracker.read_issue(creating(new).unwrap().identifier).unwrap().project is None
 
 
 def test_creating_an_issue_without_a_team_or_project_is_refused(
-    creating: Callable[[NewIssue], CreatedIssue],
+    creating: Creating,
 ) -> None:
-    with pytest.raises(TicketTrackerError, match="team or a project"):
-        _ = creating(new_issue(IssueTitle("created: nowhere")).model_copy(update={"project": None}))
+    refused = creating(
+        new_issue(IssueTitle("created: nowhere")).model_copy(update={"project": None})
+    )
+    assert isinstance(refused, Err)
+    assert "team or a project" in str(refused.error)
 
 
 def test_creating_an_issue_in_an_unknown_team_is_refused(
-    creating: Callable[[NewIssue], CreatedIssue],
+    creating: Creating,
 ) -> None:
-    new = new_issue(IssueTitle("created: unknown team")).model_copy(
-        update={"team": TeamKey("NOSUCHTEAM")}
-    )
-    with pytest.raises(TicketTrackerError, match="NOSUCHTEAM"):
-        _ = creating(new)
+    unknown = TeamKey("NOSUCHTEAM")
+    new = new_issue(IssueTitle("created: unknown team")).model_copy(update={"team": unknown})
+    refused = creating(new)
+    assert isinstance(refused, Err)
+    assert unknown.root in str(refused.error)
 
 
 def test_creating_an_issue_in_an_unknown_project_is_refused(
-    creating: Callable[[NewIssue], CreatedIssue],
+    creating: Creating,
 ) -> None:
-    new = new_issue(IssueTitle("created: unknown project")).model_copy(
-        update={"project": ProjectName("No such project")}
-    )
-    with pytest.raises(TicketTrackerError, match="No such project"):
-        _ = creating(new)
+    unknown = ProjectName("No such project")
+    new = new_issue(IssueTitle("created: unknown project")).model_copy(update={"project": unknown})
+    refused = creating(new)
+    assert isinstance(refused, Err)
+    assert unknown.root in str(refused.error)
 
 
 def test_creating_an_issue_with_an_unknown_status_is_refused(
-    creating: Callable[[NewIssue], CreatedIssue],
+    creating: Creating,
 ) -> None:
-    new = new_issue(IssueTitle("created: unknown status")).model_copy(
-        update={"status": IssueStatusName("No such status")}
-    )
-    with pytest.raises(TicketTrackerError, match="No such status"):
-        _ = creating(new)
+    unknown = IssueStatusName("No such status")
+    new = new_issue(IssueTitle("created: unknown status")).model_copy(update={"status": unknown})
+    refused = creating(new)
+    assert isinstance(refused, Err)
+    assert unknown.root in str(refused.error)
 
 
 def test_a_created_issue_blocks_and_is_blocked_by_the_issues_it_names(
-    tracker: TicketTracker, creating: Callable[[NewIssue], CreatedIssue]
+    tracker: TicketTracker, creating: Creating
 ) -> None:
-    blocked = creating(new_issue(IssueTitle("created: blocked"))).identifier
-    blocker = creating(new_issue(IssueTitle("created: blocker"))).identifier
-    middle = creating(
-        new_issue(IssueTitle("created: middle")).model_copy(
-            update={"blocks": (blocked,), "blocked_by": (blocker,)}
+    blocked = creating(new_issue(IssueTitle("created: blocked"))).unwrap().identifier
+    blocker = creating(new_issue(IssueTitle("created: blocker"))).unwrap().identifier
+    middle = (
+        creating(
+            new_issue(IssueTitle("created: middle")).model_copy(
+                update={"blocks": (blocked,), "blocked_by": (blocker,)}
+            )
         )
-    ).identifier
+        .unwrap()
+        .identifier
+    )
     assert (tracker.blockers(middle).unwrap(), tracker.blockers(blocked).unwrap()) == (
         (blocker,),
         (middle,),
@@ -1522,15 +1541,15 @@ def test_a_created_issue_blocks_and_is_blocked_by_the_issues_it_names(
 
 
 def test_an_update_adds_the_issues_it_blocks_and_is_blocked_by(
-    tracker: TicketTracker, creating: Callable[[NewIssue], CreatedIssue]
+    tracker: TicketTracker, creating: Creating
 ) -> None:
-    blocked = creating(new_issue(IssueTitle("updated: blocked"))).identifier
-    blocker = creating(new_issue(IssueTitle("updated: blocker"))).identifier
-    middle = creating(new_issue(IssueTitle("updated: middle"))).identifier
+    blocked = creating(new_issue(IssueTitle("updated: blocked"))).unwrap().identifier
+    blocker = creating(new_issue(IssueTitle("updated: blocker"))).unwrap().identifier
+    middle = creating(new_issue(IssueTitle("updated: middle"))).unwrap().identifier
     tracker.update_issue(
         middle,
         IssueUpdate.nothing().model_copy(update={"blocks": (blocked,), "blocked_by": (blocker,)}),
-    )
+    ).unwrap()
     assert (tracker.blockers(middle).unwrap(), tracker.blockers(blocked).unwrap()) == (
         (blocker,),
         (middle,),
@@ -1557,9 +1576,9 @@ def test_claims_read_back_earliest_first(claims: ClaimRegistry, backlog: Backlog
 
 def test_a_withdrawn_claim_is_gone(claims: ClaimRegistry, backlog: Backlog) -> None:
     ticket = backlog.identifier(Seed.recent)
-    posted = claims.post(ticket, ClaimHolder.fake())
-    kept = claims.post(ticket, rival_of(ClaimHolder.fake()))
-    claims.withdraw(ticket, posted)
+    posted = claims.post(ticket, ClaimHolder.fake()).unwrap()
+    kept = claims.post(ticket, rival_of(ClaimHolder.fake())).unwrap()
+    claims.withdraw(ticket, posted).unwrap()
     assert claims.claims(ticket).unwrap().ids() == (kept,)
 
 
@@ -1578,15 +1597,17 @@ class RacedRegistry(ClaimRegistry):
         return self._inner.claims(ticket)
 
     @override
-    def post(self, ticket: IssueIdentifier, holder: ClaimHolder) -> ClaimId:
+    def post(
+        self, ticket: IssueIdentifier, holder: ClaimHolder
+    ) -> Result[ClaimId, TicketTrackerError]:
         rival, self._rival = self._rival, None
         if rival is not None:
             _ = rival()
         return self._inner.post(ticket, holder)
 
     @override
-    def withdraw(self, ticket: IssueIdentifier, claim: ClaimId) -> None:
-        self._inner.withdraw(ticket, claim)
+    def withdraw(self, ticket: IssueIdentifier, claim: ClaimId) -> Result[None, TicketTrackerError]:
+        return self._inner.withdraw(ticket, claim)
 
 
 def test_of_two_racing_claimers_exactly_one_wins(
@@ -1610,7 +1631,7 @@ def test_a_claim_on_a_finished_ticket_reads_as_released(
     _ = claims.post(ticket, ClaimHolder.fake())
     tracker.update_issue(
         ticket, IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("Canceled")})
-    )
+    ).unwrap()
     assert (
         claims.claims(ticket).unwrap().holding(tracker.read_issue(ticket).unwrap().status) is None
     )

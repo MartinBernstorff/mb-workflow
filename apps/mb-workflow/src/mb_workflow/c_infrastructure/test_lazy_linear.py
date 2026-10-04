@@ -1,9 +1,7 @@
 from typing import TYPE_CHECKING
 
-import pytest
 from safe_result import Err, Result
 
-from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName
 from mb_workflow.c_infrastructure.credentials import CredentialsError, MissingCredentialsError
 from mb_workflow.c_infrastructure.lazy_linear import LazyLinear, LazyLinearClaims
@@ -32,6 +30,6 @@ def test_a_lazy_tracker_returns_the_missing_key_from_a_lookup() -> None:
 
 
 def test_a_lazy_tracker_reads_no_key_until_it_is_used() -> None:
-    tracker = LazyLinear(missing_key)
-    with pytest.raises(TicketTrackerError, match="No Linear credentials"):
-        tracker.remove_label(IssueIdentifier.fake(), LabelName("claimed"))
+    removed = LazyLinear(missing_key).remove_label(IssueIdentifier.fake(), LabelName("claimed"))
+    assert isinstance(removed, Err)
+    assert MISSING in str(removed.error)

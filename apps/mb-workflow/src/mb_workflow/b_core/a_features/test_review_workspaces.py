@@ -26,6 +26,7 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracke
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     DisplayNameRefusingWorkspaceManager,
     FakeWorkspaceManager,
+    WorkspaceManagerError,
 )
 from mb_workflow.b_core.d_domain_model.claim import Claim, ClaimHolder, Claims, HostName
 from mb_workflow.b_core.d_domain_model.config import ClaimSettings
@@ -124,7 +125,7 @@ class ReviewWorkspacesRuns:
         status: WorkspaceStatus = WorkspaceStatus.fake(),
         claims: FakeClaimRegistry | None = None,
         prompt: ReviewPrompt | None = None,
-    ) -> Result[Outcome, AlreadyRunningError | CodeReviewError]:
+    ) -> Result[Outcome, AlreadyRunningError | CodeReviewError | WorkspaceManagerError]:
         return ReviewWorkspaces.create_workspaces(
             review=review,
             manager=manager,
@@ -157,7 +158,7 @@ def test_the_new_workspace_sits_in_the_review_status(here: WorktreePath) -> None
     path = create_review_directory(here)
     manager = standing_in(here)
     _ = run_review_workspaces(FakeCodeReview(PullRequests.fake()), manager)
-    created = manager.worktrees().at(path)
+    created = manager.worktrees().unwrap().at(path)
     assert created is not None
     assert created.status == WorkspaceStatus.fake()
 
@@ -166,7 +167,7 @@ def test_the_new_workspace_is_named_after_the_pr_title(here: WorktreePath) -> No
     path = create_review_directory(here)
     manager = standing_in(here)
     _ = run_review_workspaces(FakeCodeReview(PullRequests.fake()), manager)
-    created = manager.worktrees().at(path)
+    created = manager.worktrees().unwrap().at(path)
     assert created is not None
     assert created.display_name == DisplayName.of_pr(PrTitle.fake())
 
@@ -202,7 +203,7 @@ def test_removes_a_review_workspace_whose_pr_no_longer_awaits_review(here: Workt
     manager = standing_in(here, stale)
     outcome = run_review_workspaces(FakeCodeReview(PullRequests(())), manager)
     assert outcome.removed == (stale.path,)
-    assert manager.worktrees().at(stale.path) is None
+    assert manager.worktrees().unwrap().at(stale.path) is None
 
 
 def test_releases_the_claim_of_a_workspace_it_removes(here: WorktreePath) -> None:
@@ -269,11 +270,22 @@ def test_an_unreachable_code_review_fails_the_run_and_leaves_workspaces_alone(
 ) -> None:
     stale = Worktree.fake().model_copy(update={"path": here.sibling(WorktreeName("stale"))})
     manager = standing_in(here, stale)
-    before = manager.worktrees()
+    before = manager.worktrees().unwrap()
     reconciled = ReviewWorkspacesRuns.attempted(UnreachableCodeReview(), manager)
     assert isinstance(reconciled, Err)
     assert isinstance(reconciled.error, CodeReviewError)
-    assert manager.worktrees() == before
+    assert manager.worktrees().unwrap() == before
+
+
+def test_an_unlisted_current_worktree_fails_the_run_and_creates_nothing(
+    here: WorktreePath,
+) -> None:
+    _ = create_review_directory(here)
+    review = FakeCodeReview(PullRequests.fake())
+    manager = FakeWorkspaceManager(Worktrees(()), here)
+    reconciled = ReviewWorkspacesRuns.attempted(review, manager)
+    assert reconciled == Err(WorkspaceManagerError(f"No worktree is at {here.root}."))
+    assert manager.worktrees().unwrap() == Worktrees(())
 
 
 def test_a_run_is_refused_while_another_holds_the_lock(here: WorktreePath) -> None:
@@ -282,7 +294,7 @@ def test_a_run_is_refused_while_another_holds_the_lock(here: WorktreePath) -> No
     with lock.acquire().unwrap():
         refused = ReviewWorkspacesRuns.attempted(FakeCodeReview(PullRequests.fake()), manager, lock)
     assert isinstance(refused.error, AlreadyRunningError)
-    assert len(manager.worktrees().root) == 1
+    assert len(manager.worktrees().unwrap().root) == 1
 
 
 def test_a_run_that_touched_nothing_is_unchanged() -> None:

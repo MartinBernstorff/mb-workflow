@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from safe_result import Err, Ok, Result
+from safe_result import Err, Result
 
 from mb_workflow.b_core.b_domain_services.flow_label_check import FlowLabelCheck
 from mb_workflow.b_core.d_domain_model.flow import StateNames, WorkflowChart
@@ -56,4 +56,4 @@ class TicketCreation:
             found = tracker.read_issue(related)
             if isinstance(found, Err):
                 return found
-        return Ok(tracker.create_issue(new))
+        return tracker.create_issue(new)

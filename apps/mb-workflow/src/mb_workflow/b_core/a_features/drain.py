@@ -32,7 +32,10 @@ if TYPE_CHECKING:
         TicketTrackerError,
     )
     from mb_workflow.b_core.c_secondary_ports.tie_break import TieBreak
-    from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
+    from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
+        WorkspaceManager,
+        WorkspaceManagerError,
+    )
     from mb_workflow.b_core.d_domain_model.config import (
         ClaimSettings,
         PoolSettings,
@@ -249,7 +252,8 @@ class Drain:
         | TicketTrackerError
         | UnknownClaimLabelError
         | UnknownLabelError
-        | MissingFlowLabelsError,
+        | MissingFlowLabelsError
+        | WorkspaceManagerError,
     ]:
         match lock.acquire():
             case Ok(held):
@@ -290,7 +294,8 @@ class Drain:
         | TicketTrackerError
         | UnknownClaimLabelError
         | UnknownLabelError
-        | MissingFlowLabelsError,
+        | MissingFlowLabelsError
+        | WorkspaceManagerError,
     ]:
         with Activity("Draining the pool").logged(logger):
             read = Drain.read_pool(tracker, claim_settings, flow_labels, pool)
@@ -357,14 +362,11 @@ class Drain:
                         return started
                     if started.value.root:
                         picked.append(ticket)
-                        if skips_limits:
-                            with Activity(
-                                f"Removing label {pool.skip_limits_label.root}"
-                                f" from {ticket.issue.identifier.root}"
-                            ).logged(logger):
-                                tracker.remove_label(
-                                    ticket.issue.identifier, pool.skip_limits_label
-                                )
+                        removed = Drain.remove_skip_limits_label(
+                            tracker, ticket, pool.skip_limits_label
+                        )
+                        if isinstance(removed, Err):
+                            return removed
                 # A ticket lost to another host is now in progress there, so it fills a slot too.
                 occupancy = occupancy.with_slot(slot)
             return Ok(
@@ -378,6 +380,17 @@ class Drain:
             )
 
     @staticmethod
+    def remove_skip_limits_label(
+        tracker: TicketTracker, ticket: PoolTicket, label: LabelName
+    ) -> Result[None, TicketTrackerError]:
+        if not ticket.skips_limits(label).root:
+            return Ok(None)
+        with Activity(f"Removing label {label.root} from {ticket.issue.identifier.root}").logged(
+            logger
+        ):
+            return tracker.remove_label(ticket.issue.identifier, label)
+
+    @staticmethod
     def try_start_ticket(
         *,
         tracker: TicketTracker,
@@ -389,7 +402,13 @@ class Drain:
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
         request: StartRequest,
-    ) -> Result[Started, TicketTrackerError | UnknownClaimLabelError | MissingFlowLabelsError]:
+    ) -> Result[
+        Started,
+        TicketTrackerError
+        | UnknownClaimLabelError
+        | MissingFlowLabelsError
+        | WorkspaceManagerError,
+    ]:
         try:
             started = TicketStart.start_ticket(
                 manager=manager,
