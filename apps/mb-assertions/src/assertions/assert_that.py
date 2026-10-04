@@ -58,12 +58,9 @@ class That[T]:
         if substring not in self.actual:
             raise AssertionError(f"Expected {self.actual!r} to contain {substring!r}")
 
-    def matches_pattern(self: _HoldsActual[str], pattern: str | re.Pattern[str]) -> None:
-        compiled = re.compile(pattern)
-        if compiled.search(self.actual) is None:
-            raise AssertionError(
-                f"Expected {self.actual!r} to match pattern {compiled.pattern!r}",
-            )
+    def matches_pattern(self: _HoldsActual[str], pattern: str) -> None:
+        if re.search(pattern, self.actual) is None:
+            raise AssertionError(f"Expected {self.actual!r} to match pattern {pattern!r}")
 
     def is_true(self: _HoldsActual[bool]) -> None:
         if self.actual is not True:
