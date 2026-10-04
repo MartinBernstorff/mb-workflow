@@ -15,6 +15,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
     StateNames,
     UnknownStateError,
     WorkflowChart,
+    WorkspaceOpening,
     WorkState,
 )
 
@@ -54,6 +55,7 @@ def test_the_chart_holds_every_transition_the_work_can_take() -> None:
             edge(GRILL, EventName("to-ticket"), TO_TICKET),
             edge(TO_TICKET, EventName("todo"), TODO),
             edge(TODO, EventName("implement"), IMPLEMENTING),
+            edge(IMPLEMENTING, EventName("implement"), IMPLEMENTING),
             edge(IMPLEMENTING, EventName("qa"), QA),
             edge(IMPLEMENTING, EventName("grill"), GRILL),
             edge(IMPLEMENTING, EventName("to-ticket"), TO_TICKET),
@@ -137,6 +139,21 @@ def test_a_legal_event_leads_to_the_state_the_chart_names() -> None:
     Assert.that(Edges.of_chart(WorkflowChart).target_from(QA, EventName("ready"))).matches(
         Ok(REVIEW)
     )
+
+
+def test_implementing_again_keeps_the_work_in_implementing() -> None:
+    Assert.that(
+        Edges.of_chart(WorkflowChart).target_from(IMPLEMENTING, EventName("implement"))
+    ).matches(Ok(IMPLEMENTING))
+
+
+def test_only_todo_opens_in_the_delivery_state_running_the_same_skill() -> None:
+    opened = {
+        state: WorkspaceOpening.state_opened_in(WorkflowChart, state)
+        for state in StateNames.of_chart(WorkflowChart).root
+    }
+    moved = {state: target for state, target in opened.items() if target != state}
+    Assert.that(moved).matches({TODO: IMPLEMENTING})
 
 
 def test_resolving_a_review_from_qa_returns_the_work_to_implementing() -> None:
