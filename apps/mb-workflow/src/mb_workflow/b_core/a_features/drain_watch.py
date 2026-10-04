@@ -49,7 +49,6 @@ class DrainSettings(Model):
         )
 
 
-# Read once per pass, so a config edit applies from the next pass.
 class DrainSettingsSource(Protocol):
     def current(self) -> DrainSettings: ...
 
@@ -68,7 +67,6 @@ class WatchRequest(Model):
 
 
 class DrainWatch:
-    # Retrying cannot fix these; only an edit to the config can.
     @staticmethod
     def config_errors() -> tuple[type[Exception], ...]:
         return (InvalidConfigError, InvalidOverrideError, MissingConfigError)
@@ -117,7 +115,6 @@ class DrainWatch:
                         previous = outcome
                     case Err(AlreadyRunningError() as refusal):
                         logger.info("Skipped this pass: %s.", refusal)
-                    # Retrying cannot fix a missing label either; only an edit to the tracker's labels can.
                     case Err(UnknownClaimLabelError() | UnknownLabelError() as unfixable):
                         return Err(unfixable)
                     case Err(error):

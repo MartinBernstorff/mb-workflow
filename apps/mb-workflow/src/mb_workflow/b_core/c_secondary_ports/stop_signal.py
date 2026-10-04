@@ -17,7 +17,6 @@ class Stopped(Value[bool]):
 class StopSignal(Protocol):
     def requested(self) -> Stopped: ...
 
-    # Returns early once a stop is requested, so a stop never waits out the interval.
     def wait(self, interval: IntervalSeconds) -> None: ...
 
 
@@ -27,7 +26,6 @@ class WaitCount(Value[NonNegativeInt]):
         return WaitCount(1)
 
 
-# Never sleeps. Stops itself on its nth wait, as if a signal arrived after that many passes.
 class FakeStopSignal(StopSignal):
     def __init__(self, stop_on_wait: WaitCount | None = None) -> None:
         self._stop_on_wait = stop_on_wait

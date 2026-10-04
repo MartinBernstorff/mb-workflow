@@ -12,7 +12,6 @@ class AlreadyRunningError(Exception):
     pass
 
 
-# Acquiring returns the held lock to enter, so a run cannot reach its body without the lock.
 class RunLock(Protocol):
     def acquire(self) -> Result[AbstractContextManager[None], AlreadyRunningError]: ...
 

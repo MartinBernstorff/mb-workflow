@@ -23,9 +23,6 @@ class PollSeconds(Value[PositiveFloat]):
         return PollSeconds(0.2)
 
 
-# The first SIGINT or SIGTERM asks the caller to stop; a second exits at once.
-# Waiting polls a flag rather than an Event: setting an Event from a handler can deadlock
-# when the signal lands while the main thread holds the Event's lock.
 class SignalStop(StopSignal):
     def __init__(self, poll: PollSeconds) -> None:
         self._poll = poll

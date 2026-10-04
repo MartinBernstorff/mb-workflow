@@ -28,12 +28,10 @@ class ClaimRefusedError(Exception):
     pass
 
 
-# Split out so a drain can move on when another host wins, yet stop on any other refusal.
 class ClaimLostError(ClaimRefusedError):
     pass
 
 
-# The configured claim label does not exist, so no claim can succeed until the config changes.
 class UnknownClaimLabelError(ClaimRefusedError):
     pass
 
@@ -89,7 +87,6 @@ class Claiming:
     def post_claim(
         registry: ClaimRegistry, request: ClaimRequest
     ) -> Result[Posted, TicketTrackerError | ClaimLostError]:
-        # Every claimer posts before reading, so each reads back the same earliest claim, provided Linear serves a just-posted comment at once.
         with Activity(f"Posting a claim on {request.ticket.root}").logged(logger):
             posted = registry.post(request.ticket, request.holder)
         if isinstance(posted, Err):
@@ -133,7 +130,6 @@ class Claiming:
             f" on {holder.holder.host.root}. Pass --force to take the claim over."
         )
 
-    # Checked before claiming, so a doomed claim never withdraws another holder's claim.
     @staticmethod
     def require_claim_label(
         tracker: TicketTracker, label: LabelName

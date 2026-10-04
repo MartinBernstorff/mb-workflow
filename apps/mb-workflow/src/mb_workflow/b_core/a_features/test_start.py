@@ -105,7 +105,6 @@ def fake_board() -> FakeStatusStore:
     return FakeStatusStore(StateName.fake())
 
 
-# The fake board names a status for every state, so the manager must hold them all.
 def fake_board_statuses() -> WorkspaceStatuses:
     return WorkspaceStatuses(
         tuple(
@@ -469,7 +468,6 @@ def test_a_forced_start_with_a_missing_claim_label_keeps_the_rivals_claim() -> N
     assert holders(claims) == holders(claimed_by_a_rival())
 
 
-# Selects no project the workspace settings name, so creating the worktree fails.
 def refusing_manager() -> FakeWorkspaceManager:
     return FakeWorkspaceManager(
         Worktrees.fake(),

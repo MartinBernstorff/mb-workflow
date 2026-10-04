@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 
 
 class TicketTaking:
-    # Shared by every command that puts a ticket in a worktree: claim it, label the claim, assign it.
     @staticmethod
     def take_ticket(
         *,
@@ -54,7 +53,6 @@ class TicketTaking:
             return steps
         return Saga.run(steps.value)
 
-    # `previous` is the assignee before taking, restored when a later step fails.
     @staticmethod
     def saga_steps(
         *,
@@ -83,8 +81,6 @@ class TicketTaking:
         )
 
 
-# Reverting withdraws only this holder's claims; rival claims withdrawn by a takeover stay withdrawn.
-# Mutable, as it holds whether it posted a claim, so revert withdraws only a claim it made.
 @dataclass
 class ClaimStep(SagaStep[TicketTrackerError | ClaimLostError]):
     registry: ClaimRegistry
@@ -105,7 +101,6 @@ class ClaimStep(SagaStep[TicketTrackerError | ClaimLostError]):
             case Err() as failed:
                 return failed
 
-    # A claim this holder held before taking is left in place.
     @override
     def revert(self) -> Result[None, Exception]:
         if not self._posted.root:
@@ -116,14 +111,12 @@ class ClaimStep(SagaStep[TicketTrackerError | ClaimLostError]):
             )
 
 
-# Whether the step put the label on, rather than finding it there already.
 class Added(Value[bool]):
     @staticmethod
     def fake() -> Added:
         return Added(True)
 
 
-# Mutable, as it holds whether it added the label, so revert removes only a label it put on.
 @dataclass
 class ClaimLabelStep(SagaStep[TicketTrackerError | ClaimRefusedError]):
     registry: ClaimRegistry
@@ -142,7 +135,6 @@ class ClaimLabelStep(SagaStep[TicketTrackerError | ClaimRefusedError]):
         self._added = Added(labelled.is_ok())
         return labelled
 
-    # The label marks every claim on the ticket, so it stays while another holder claims it.
     @override
     def revert(self) -> Result[None, Exception]:
         if not self._added.root:
@@ -165,7 +157,6 @@ class AssignmentStep(SagaStep[Never]):
     assignee: Assignee
     previous: Assignee | None
 
-    # Assignment is a convenience, not the point of taking a ticket, so never fail the run over it.
     @override
     def apply(self) -> Result[None, Never]:
         with Activity(f"Assigning {self.ticket.root} to {self.assignee.root}").logged(logger):

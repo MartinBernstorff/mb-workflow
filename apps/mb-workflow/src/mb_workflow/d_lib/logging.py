@@ -22,13 +22,11 @@ class LogLevel(RootModel[int]):
             logging.getLogger(name).setLevel(logging.WARNING)
 
 
-# A step that may be slow, named as a capitalised gerund phrase, e.g. "Claiming MB-57".
 class Activity(Value[str]):
     @staticmethod
     def fake() -> Activity:
         return Activity("Claiming MB-57")
 
-    # Logs the start and the finish with the time taken, so a slow run shows which step stalled.
     @contextmanager
     def logged(self, logger: logging.Logger) -> Generator[None]:
         logger.info("%s…", self.root)

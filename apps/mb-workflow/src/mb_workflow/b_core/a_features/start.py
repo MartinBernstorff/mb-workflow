@@ -86,7 +86,6 @@ class WorktreeCreation(Model):
         )
 
 
-# Mutable, as it holds the opened worktree for start to read once the saga succeeds.
 @dataclass
 class WorktreeStep(SagaStep[WorkspaceManagerError]):
     manager: WorkspaceManager
@@ -109,7 +108,6 @@ class WorktreeStep(SagaStep[WorkspaceManagerError]):
         self._opened = created.value
         return Ok(None)
 
-    # The last step of start, so no later failure ever reverts it.
     @override
     def revert(self) -> Result[None, Exception]:
         return Ok(None)
@@ -129,7 +127,6 @@ class StartRequest(Model):
     host: HostName
     take_over: TakeOver
     activate: Activate
-    # The state to put a ticket without a flow label in; None leaves the flow label to decide.
     state: StateName | None
 
     @staticmethod
@@ -254,7 +251,6 @@ class TicketStart:
             request=request,
         )
 
-    # Takes the ticket, opens its worktree, and types the prompt, if any, into it.
     @staticmethod
     def take_into_worktree(
         *,
@@ -288,7 +284,6 @@ class TicketStart:
             manager, opened, prompt, request.idle_timeout, request.submit
         )
 
-    # A ticket outside the flow enters it first, so its claim records the status it enters with.
     @staticmethod
     def entry_steps(
         *,
@@ -318,8 +313,6 @@ class TicketStart:
         )
         return Ok(((entering,), statuses.of(state)))
 
-    # The flow state the ticket carries, the state it starts in, that state's board column,
-    # and the prompt that starts its work.
     @staticmethod
     def planned_start(
         request: StartRequest, flow_labels: FlowLabels, board: WorkspaceStatusStore, issue: Issue

@@ -73,7 +73,6 @@ class Claim(Model):
         return Claim(id=ClaimId.fake(), holder=ClaimHolder.fake())
 
 
-# Earliest first, so every claimer reading the ticket agrees on who holds it.
 class Claims(Value[tuple[Claim, ...]]):
     @staticmethod
     def fake() -> Claims:

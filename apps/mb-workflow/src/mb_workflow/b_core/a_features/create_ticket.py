@@ -47,11 +47,9 @@ class TicketCreation:
         if isinstance(drafted, Err):
             return drafted
         new = drafted.value
-        # A team taken from the project is unknown until Linear creates the issue, so only the workspace counts then.
         checked = FlowLabelCheck.require(tracker, flow_labels, new.team)
         if isinstance(checked, Err):
             return checked
-        # Linear relates the issues only once it exists, so an unknown one must be caught beforehand.
         for related in draft.related():
             found = tracker.read_issue(related)
             if isinstance(found, Err):

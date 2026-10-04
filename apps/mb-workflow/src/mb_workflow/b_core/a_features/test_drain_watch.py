@@ -45,7 +45,6 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.pool import ViewSlug
 
 
-# Serves each settings in turn, then keeps serving the last.
 class SequencedSettings(DrainSettingsSource):
     def __init__(self, *pools: PoolSettings) -> None:
         self._pools = list(pools)
@@ -71,7 +70,6 @@ class RecordingNarrator(DrainNarrator):
         self.passes.append((outcome, changed))
 
 
-# Fails the next listing of the view, as if the tracker were briefly unreachable.
 class FlakyTracker(FakeTicketTracker):
     failing = False
 
@@ -86,7 +84,6 @@ class FlakyTracker(FakeTicketTracker):
         return super().unblocked_view_tickets(view)
 
 
-# Requests a stop while listing the view, as if Ctrl-C arrived mid-pass.
 class SignallingTracker(FakeTicketTracker):
     stop: FakeStopSignal | None = None
 

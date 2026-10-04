@@ -176,6 +176,7 @@ def link(
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
+    # lint-ignore: NoComment
     """Link the current worktree to a ticket, claiming it as start would, without typing a prompt."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = LinkRequest(
@@ -208,6 +209,7 @@ def workspace_drain(
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
+    # lint-ignore: NoComment
     """Start ready tickets in pick order until a pool limit is reached. Tickets labelled skip-limits ignore the limits."""
     if dry_run and watch:
         raise typer.BadParameter("--dry-run cannot be combined with --watch.")
@@ -240,6 +242,7 @@ def workspace_teardown(
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
+    # lint-ignore: NoComment
     """Delete every claim on the worktree's ticket and its claim label, then remove the worktree."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = TeardownRequest(worktree=None if worktree is None else WorktreeName(worktree))
@@ -305,6 +308,7 @@ def flow_seed_labels(
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
+    # lint-ignore: NoComment
     """Make the flow label group match the flow, one label per state, in the workspace and a team."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=commands.flow_seed_labels(TeamName(team), Force(force)).root)
@@ -326,6 +330,7 @@ def flow_grill(
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
+    # lint-ignore: NoComment
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("grill"), Force(force), ticket).root)
@@ -337,6 +342,7 @@ def flow_to_ticket(
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
+    # lint-ignore: NoComment
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("to-ticket"), Force(force), ticket).root)
@@ -348,6 +354,7 @@ def flow_todo(
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
+    # lint-ignore: NoComment
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("todo"), Force(force), ticket).root)
@@ -359,6 +366,7 @@ def flow_implement(
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
+    # lint-ignore: NoComment
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("implement"), Force(force), ticket).root)
@@ -370,6 +378,7 @@ def flow_qa(
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
+    # lint-ignore: NoComment
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("qa"), Force(force), ticket).root)
@@ -381,6 +390,7 @@ def flow_ready(
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
+    # lint-ignore: NoComment
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("ready"), Force(force), ticket).root)
@@ -392,6 +402,7 @@ def flow_merge(
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
+    # lint-ignore: NoComment
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("merge"), Force(force), ticket).root)
@@ -403,6 +414,7 @@ def flow_merged(
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
+    # lint-ignore: NoComment
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("merged"), Force(force), ticket).root)
@@ -414,6 +426,7 @@ def flow_resolve_review(
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
+    # lint-ignore: NoComment
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=flow_event(EventName("resolve-review"), Force(force), ticket).root)

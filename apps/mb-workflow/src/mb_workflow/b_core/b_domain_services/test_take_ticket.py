@@ -19,7 +19,6 @@ from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSet
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, LabelNames
 
 
-# Knows the claim label, yet fails to put it on a ticket, as Linear may.
 class LabelRefusingTracker(FakeTicketTracker):
     @override
     def add_label(

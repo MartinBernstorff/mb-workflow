@@ -63,7 +63,6 @@ class TicketTrackerError(Exception):
 class TicketTracker(Protocol):
     def workspace_labels(self) -> Result[LabelNames, TicketTrackerError]: ...
 
-    # A team of None reads or creates the group at workspace level, outside every team.
     def group_labels(
         self, group: LabelGroupName, team: TeamKey | None
     ) -> Result[ColoredLabels, TicketTrackerError]: ...
@@ -84,7 +83,6 @@ class TicketTracker(Protocol):
         self, group: LabelGroupName, label: LabelName, renamed: LabelName, team: TeamKey | None
     ) -> Result[None, TicketTrackerError]: ...
 
-    # Deleting a label also takes it off every ticket that carries it.
     def delete_group_label(
         self, group: LabelGroupName, label: LabelName, team: TeamKey | None
     ) -> Result[None, TicketTrackerError]: ...
@@ -212,7 +210,6 @@ class FakeTicketTracker(TicketTracker):
         }
         self._teams = teams
 
-    # Linear lists every label, a team's own ones included.
     @override
     def workspace_labels(self) -> Result[LabelNames, TicketTrackerError]:
         return Ok(
@@ -572,7 +569,6 @@ class FakeTicketTracker(TicketTracker):
             )
         return Ok(known)
 
-    # A team's label is carried only by that team's tickets; a workspace label by any ticket.
     def _carrying(self, label: LabelName, team: TeamKey | None) -> tuple[TrackedIssue, ...]:
         return tuple(
             tracked
@@ -702,7 +698,6 @@ class FakeTicketTracker(TicketTracker):
             )
         return Ok(owners[0])
 
-    # An issue carries only workspace labels and those of its own team.
     def _spelled(self, labels: LabelNames, team: TeamKey) -> Result[LabelNames, TicketTrackerError]:
         groups = self._groups_of(team)
         known = LabelNames(
@@ -771,7 +766,6 @@ class FakeTicketTracker(TicketTracker):
             return Err(TicketTrackerError(f"No project is named {name.root}."))
         return Ok(project)
 
-    # Linear counts a blocker as open until it reaches a completed or canceled state.
     def _open_blockers(
         self, tracked: TrackedIssue
     ) -> Result[tuple[IssueIdentifier, ...], TicketTrackerError]:
@@ -785,7 +779,6 @@ class FakeTicketTracker(TicketTracker):
                 still_open.append(blocker)
         return Ok(tuple(still_open))
 
-    # A team's group may share its name with a workspace group, yet Linear keeps the two apart.
     def _groups_of(self, team: TeamKey) -> tuple[tuple[LabelGroupName, LabelNames], ...]:
         return (
             *((group, members.label_names()) for group, members in self._groups.items()),
@@ -796,14 +789,12 @@ class FakeTicketTracker(TicketTracker):
             ),
         )
 
-    # Groups a test hands in hold labels of no particular color.
     @staticmethod
     def _uncolored(labels: LabelNames) -> ColoredLabels:
         return ColoredLabels(
             tuple(ColoredLabel(name=label, color=LabelColor.fake()) for label in labels.root)
         )
 
-    # Linear reports each label's group on the issue, so the fake reads it from the groups it keeps.
     def _read(self, tracked: TrackedIssue) -> Issue:
         grouped = GroupedLabels(
             tuple(

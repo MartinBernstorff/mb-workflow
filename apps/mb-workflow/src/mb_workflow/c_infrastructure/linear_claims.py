@@ -59,7 +59,6 @@ class CommentThread(Payload):
     def fake() -> CommentThread:
         return CommentThread(id=IssueId.fake(), comments=(CommentPayload.fake(),))
 
-    # Linear stamps comments to the millisecond, so the id breaks ties the same way for every reader.
     def claims(self) -> Claims:
         ordered = sorted(
             (comment.created_at.root, comment.id.root, claim)

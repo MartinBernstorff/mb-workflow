@@ -18,7 +18,6 @@ class MissingFlowLabelsError(Exception):
 
 
 class FlowLabelCheck:
-    # A team's own flow labels come first, and the workspace's fill in any it lacks.
     @staticmethod
     def held_labels(
         tracker: TicketTracker, wanted: FlowLabels, team: TeamKey | None
@@ -54,7 +53,6 @@ class FlowLabelCheck:
             case Err() as failed:
                 return failed
 
-    # Checks the flow labels the issue's own team can use.
     @staticmethod
     def require_for_issue(
         tracker: TicketTracker, wanted: FlowLabels, issue: IssueIdentifier

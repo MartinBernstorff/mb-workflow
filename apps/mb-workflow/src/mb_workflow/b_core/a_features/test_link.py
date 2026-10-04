@@ -80,7 +80,6 @@ def fake_board_statuses() -> WorkspaceStatuses:
     )
 
 
-# The current worktree's directory is not named after the ticket, as when made outside mw start.
 def here_linked_to(issue: IssueIdentifier | None) -> Worktrees:
     here = Worktree.bare(RepoId.fake(), WorktreePath.fake()).model_copy(update={"issue": issue})
     return Worktrees((here,))
@@ -171,7 +170,6 @@ def test_a_refused_display_name_still_links_the_worktree() -> None:
     assert manager.current().unwrap().issue == IssueIdentifier.fake()
 
 
-# Teardown and drain rebuild the holder from the ticket, so the directory name must not leak in.
 def test_claims_the_ticket_under_the_tickets_name() -> None:
     claims = FakeClaimRegistry()
     assert linking(

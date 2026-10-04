@@ -200,6 +200,7 @@ def unclaim(
     ticket: str = typer.Argument(..., help="Ticket whose stuck claim to release, e.g. MB-36."),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
+    # lint-ignore: NoComment
     """Delete every claim on the ticket, whichever worktree or host placed it, and its claim label."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(

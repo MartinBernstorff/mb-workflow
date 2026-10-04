@@ -40,7 +40,6 @@ class SettingsTable(Value[dict[str, JsonValue]]):
     def empty() -> SettingsTable:
         return SettingsTable({})
 
-    # An override key replaces the repo key it matches ignoring case, so `qa` overrides `QA`.
     def merged(self, override: SettingsTable) -> SettingsTable:
         override_spelling = {
             repo_key: override_key
@@ -86,7 +85,6 @@ class OverrideFile(Model):
         return OverrideFile(path=OverridePath.fake(), table=SettingsTable.fake())
 
 
-# Expected is None when the repository has no origin remote to name its override file after.
 class NoOverrideFile(Model):
     expected: OverridePath | None
 

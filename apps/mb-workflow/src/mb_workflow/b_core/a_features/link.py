@@ -44,7 +44,6 @@ class AlreadyLinkedError(Exception):
 class LinkRequest(Model):
     ticket: IssueIdentifier
     host: HostName
-    # Takes the claim over from other hosts and replaces a link to another ticket.
     take_over: TakeOver
 
     @staticmethod
@@ -53,7 +52,6 @@ class LinkRequest(Model):
             ticket=IssueIdentifier.fake(), host=HostName.fake(), take_over=TakeOver.fake()
         )
 
-    # The previous ticket's claim is left alone, as this worktree may not be the one holding it.
     def require_unlinked_or_forced(self, here: Worktree) -> None:
         if here.issue is None or here.issue == self.ticket:
             return
@@ -100,14 +98,12 @@ class LinkStep(SagaStep[WorkspaceManagerError]):
         logger.info("Linked %s to %s.", self.worktree.path.root, self.ticket.root)
         return Ok(None)
 
-    # The last step of link, so no later failure ever reverts it.
     @override
     def revert(self) -> Result[None, Exception]:
         return Ok(None)
 
 
 class TicketLinking:
-    # Does what start does for a worktree that already exists, minus typing the prompt.
     @staticmethod
     def link_ticket(
         *,
@@ -127,7 +123,6 @@ class TicketLinking:
         | ClaimRefusedError
         | WorkspaceManagerError,
     ]:
-        # Refuse before touching anything, so a refused link leaves no claim behind.
         read = tracker.read_issue_detail(request.ticket)
         if isinstance(read, Err):
             return read
@@ -145,7 +140,6 @@ class TicketLinking:
         if isinstance(status, Err):
             return status
 
-        # Named after the ticket, not the directory, as teardown and drain rebuild the holder that way.
         taking_steps = TicketTaking.saga_steps(
             claims=claims,
             tracker=tracker,
@@ -164,7 +158,6 @@ class TicketLinking:
         if isinstance(taking_steps, Err):
             return taking_steps
 
-        # Linking comes last, as Orca cannot unlink a worktree to revert it.
         steps = (
             *taking_steps.value,
             StatusStep(manager, here, status.value),

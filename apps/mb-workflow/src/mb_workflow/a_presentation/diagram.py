@@ -68,7 +68,6 @@ class DotSource(Value[str]):
         return DotSource("digraph WorkflowChart {\n__initial_0 -> grill;\n}\n")
 
     def with_stable_ids(self) -> DotSource:
-        # The library names the initial node and atomic cluster after id() of their parent graph, which differs every run.
         prefix = r"(__initial_|cluster___atomic_)"
         identities = dict.fromkeys(
             match.group(2) for match in re.finditer(rf"{prefix}(\d+)", self.root)

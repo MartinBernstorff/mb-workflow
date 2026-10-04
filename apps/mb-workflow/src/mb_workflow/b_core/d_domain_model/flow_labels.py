@@ -37,7 +37,6 @@ class LabelRenames(Value[tuple[LabelRename, ...]]):
     def fake() -> LabelRenames:
         return LabelRenames((LabelRename.fake(),))
 
-    # The entry states were renamed, so tickets labelled before the rename keep their state.
     @staticmethod
     def former_state_labels() -> LabelRenames:
         return LabelRenames(
@@ -59,7 +58,6 @@ class LabelRenames(Value[tuple[LabelRename, ...]]):
         )
 
 
-# The changes that bring one label group in line with the flow labels.
 class GroupSync(Model):
     renamed: LabelRenames
     deleted: LabelNames
@@ -76,7 +74,6 @@ class GroupSync(Model):
         return GroupSync(renamed=LabelRenames(()), deleted=LabelNames(()), recolored=LabelNames(()))
 
 
-# Former names a held label still carries are renamed to the flow label they became.
 class FlowLabels(Model):
     group: LabelGroupName
     labels: LabelNames
@@ -119,7 +116,6 @@ class FlowLabels(Model):
             )
         )
 
-    # Entry labels stand out in yellow, so a ticket not yet ready for work is told apart at a glance.
     def _color_of(self, label: LabelName) -> LabelColor:
         return LabelColor.yellow() if self.entry.matching(label) is not None else LabelColor.grey()
 
@@ -144,8 +140,6 @@ class FlowLabels(Model):
             recolored=self.labels.spelled(self.miscolored(held)),
         )
 
-    # A label is renamed to its spelling in the spec, or from a former name to the label it became.
-    # A former name whose label is already held has nothing to become, so it is deleted instead.
     def _renames(self, held: LabelNames) -> LabelRenames:
         renames: list[LabelRename] = []
         for label in held.root:
@@ -159,7 +153,6 @@ class FlowLabels(Model):
                 renames.append(LabelRename(held=label, renamed=current))
         return LabelRenames(tuple(renames))
 
-    # A flow label set by hand would disagree with the status, so the state is moved with --state instead.
     def checked_label_options(
         self, requested: LabelNames
     ) -> Result[LabelNames, FlowLabelOptionError]:

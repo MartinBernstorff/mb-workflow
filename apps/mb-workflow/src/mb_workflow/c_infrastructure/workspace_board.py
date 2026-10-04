@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.workspace import Worktree
 
 
-# A workspace manager error, so the board's refusals travel the status store's error channel.
 class BoardError(WorkspaceManagerError):
     pass
 
@@ -162,7 +161,6 @@ class WorkspaceBoard(WorkspaceStatusStore):
     def at(self, worktree: Worktree) -> WorkspaceBoard:
         return WorkspaceBoard(self._manager, self._read_columns, self._start, lambda: Ok(worktree))
 
-    # Read on first use, so a command that never touches the board never asks Orca for its columns.
     @cached_property
     def _columns(self) -> Result[Columns, WorkspaceManagerError]:
         return self._read_columns()

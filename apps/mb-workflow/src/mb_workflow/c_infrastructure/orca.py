@@ -259,7 +259,6 @@ def printed_by(error: CalledProcessError) -> CommandOutput:
     return CommandOutput(printed if isinstance(printed, str) else "")
 
 
-# Orca exits non-zero on a refusal but still prints the envelope, whose message says why.
 def refusal_of(error: CalledProcessError) -> ErrorMessage:
     match orca_refusal(printed_by(error)):
         case Ok(message):
@@ -487,7 +486,6 @@ class Orca(WorkspaceManager):
     def _single(self, command: Command) -> Result[SingleWorktree, WorkspaceManagerError]:
         return self._parsed(command, SingleWorktree.parse)
 
-    # Orca replies to a change with the changed worktree, which callers do not need.
     @staticmethod
     def _discarded[T](
         result: Result[T, WorkspaceManagerError],

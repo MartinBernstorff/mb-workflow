@@ -243,7 +243,6 @@ class WorkspaceTeam(Payload):
     def fake() -> WorkspaceTeam:
         return WorkspaceTeam(id=TeamId.fake(), key=TeamKey.fake(), name=TeamName.fake())
 
-    # Team-scoped labels are only told apart with a second team, which the suite keeps for that.
     @staticmethod
     def other() -> WorkspaceTeam:
         return WorkspaceTeam(id=TeamId.fake(), key=TeamKey("CON"), name=TeamName("Contract"))
@@ -294,7 +293,6 @@ def fake_backlog() -> Backlog:
     )
 
 
-# A key for the production workspace would make this suite rewrite real issues.
 @pytest.fixture(scope="session")
 def linear_client() -> LinearClient:
     path = CredentialsDirectory.of_user().path_for(
@@ -465,7 +463,6 @@ def ensure_relation(
     )
 
 
-# The view filters on the seeds' shared title prefix, so it holds every seed and nothing else.
 def ensure_view(client: LinearClient) -> ViewSlug:
     name = "contract: pool"
     found = FoundViews.model_validate(
@@ -492,7 +489,6 @@ def ensure_view(client: LinearClient) -> ViewSlug:
     ).view.slug_id
 
 
-# Seeded once per session; reset() restores whatever a test changes.
 @pytest.fixture(scope="session")
 def linear_backlog(linear_client: LinearClient) -> Backlog:
     other = Workspace.ensure_other_team(linear_client)
@@ -522,7 +518,6 @@ def linear_backlog(linear_client: LinearClient) -> Backlog:
                 backlog.identifier(planted.seed),
                 RelationKind.blocks,
             )
-    # Only a blocking relation holds a ticket back, so the suite also seeds one that doesn't.
     ensure_relation(
         linear_client,
         backlog.identifier(Seed.newest),
@@ -633,7 +628,6 @@ def drop_group(client: LinearClient, group: LabelGroupName) -> None:
             )
 
 
-# Linear keeps a created group between runs, so each test that seeds one starts without it.
 @pytest.fixture
 def groupless(
     kind: TrackerKind, tracker: TicketTracker, request: pytest.FixtureRequest
@@ -1470,7 +1464,6 @@ def test_moving_to_an_unknown_status_is_refused(tracker: TicketTracker, backlog:
     _ = Assert.that(refused).is_err(Exception)
 
 
-# Created issues go to the trash afterwards, so they never join the seeds' labels or view.
 @pytest.fixture
 def creating(
     kind: TrackerKind, tracker: TicketTracker, request: pytest.FixtureRequest
@@ -1683,7 +1676,6 @@ def test_an_unclaimed_ticket_has_no_claims(claims: ClaimRegistry, backlog: Backl
     Assert.that(claims.claims(backlog.identifier(Seed.recent)).unwrap()).matches(Claims(()))
 
 
-# Both claimers must pass the check for a holder before either posts, or no race is run.
 class RacedRegistry(ClaimRegistry):
     def __init__(self, inner: ClaimRegistry, rival: Callable[[], object]) -> None:
         self._inner = inner

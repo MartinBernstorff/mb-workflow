@@ -47,7 +47,6 @@ class LinearKey:
                 return Err(TicketTrackerError(str(error)))
 
 
-# Reads the key on first use, so a run that releases no claim needs no Linear credentials.
 class LazyLinearClaims(ClaimRegistry):
     def __init__(self, key: KeyRead) -> None:
         self._key = key
@@ -89,7 +88,6 @@ class LazyLinearClaims(ClaimRegistry):
         return Ok(self._connected)
 
 
-# Reads the key on first use, so a run that releases no claim needs no Linear credentials.
 class LazyLinear(TicketTracker):
     def __init__(self, key: KeyRead) -> None:
         self._key = key

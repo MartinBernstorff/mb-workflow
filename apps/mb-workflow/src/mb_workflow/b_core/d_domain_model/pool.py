@@ -64,7 +64,6 @@ class PoolTicket(Model):
             priority=Priority.medium,
         )
 
-    # A ticket is ready when its state names a skill an agent can run.
     @staticmethod
     def ready_states() -> StateNames:
         return StateNames(
@@ -101,7 +100,6 @@ class PoolTickets(Value[tuple[PoolTicket, ...]]):
             tuple(ticket for ticket in self.root if ticket.ready(claim_label, flow_labels).root)
         )
 
-    # A ticket whose flow labels name no single state stops the pass, so it is never passed over unnoticed.
     def with_flow_states_resolved(self, flow_labels: FlowLabels) -> Result[PoolTickets, FlowError]:
         for ticket in self.root:
             if isinstance(unresolved := ticket.flow_state(flow_labels), Err):
@@ -152,7 +150,6 @@ class Occupancy(Value[tuple[Slot, ...]]):
     def fake() -> Occupancy:
         return Occupancy((Slot.fake(),))
 
-    # A ticket whose flow labels name no single state leaves the occupancy unknown, so no limit is trusted.
     @staticmethod
     def of(issues: Issues, flow_labels: FlowLabels) -> Result[Occupancy, FlowError]:
         slots: list[Slot] = []

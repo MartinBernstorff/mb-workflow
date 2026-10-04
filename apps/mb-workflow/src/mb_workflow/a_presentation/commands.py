@@ -98,8 +98,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# The failures a feature may raise. The console is the one place that turns them into a code,
-# so every command below shares this set rather than repeating its own.
 FAILURES = (
     AlreadyLinkedError,
     CalledProcessError,
@@ -147,12 +145,10 @@ def linear_key() -> Result[LinearApiKey, CredentialsError | RepositorySlugError]
             return failed
 
 
-# Err values from reading the key are raised here, so guarded reports them like any failure.
 def unwrapped_linear_key() -> LinearApiKey:
     return linear_key().unwrap()
 
 
-# Err values from loading the configuration are raised here, so guarded reports them like any failure.
 def user_override() -> ProjectOverride:
     return override_of_origin(CredentialsDirectory.of_user(), here()).unwrap()
 
@@ -187,7 +183,6 @@ def review_workspaces(
     host: HostName,
     prompt: ReviewPrompt | None,
 ) -> ExitCode:
-    # Review-workspaces predates the config file, so a repo without one still has its worktrees reconciled.
     try:
         claim_settings = resolved_configuration(
             WorkingDirectory(Path.cwd()), ConfigFileName.default()
@@ -353,7 +348,6 @@ class ConfiguredDrainSettings(DrainSettingsSource):
 def drain_watch(
     request: WatchRequest, lock: LockName, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
-    # The lock is taken once for the whole watch, so it uses the project configured at startup.
     project = resolved_configuration(directory, name).settings.workspace.orca_project
     manager = connected_orca()
     key = unwrapped_linear_key()

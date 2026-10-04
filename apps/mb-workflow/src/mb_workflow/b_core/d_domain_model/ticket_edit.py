@@ -108,7 +108,6 @@ class TicketEdit(Model):
             case Err() as failed:
                 return failed
 
-    # Expects an edit that passed checked.
     def update(
         self,
         current: IssueDetail,
@@ -139,7 +138,6 @@ class TicketEdit(Model):
     def related_issues(self) -> tuple[IssueIdentifier, ...]:
         return (*self.add_blocks, *self.add_blocked_by)
 
-    # The state is set without consulting the chart's moves, as the manual override of `mw flow`.
     def _labels(self, current: IssueDetail, flow_labels: FlowLabels) -> LabelNames | None:
         edited = self._edited_labels(current)
         if self.state is None:

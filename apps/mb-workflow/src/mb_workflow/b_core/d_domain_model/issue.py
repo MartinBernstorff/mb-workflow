@@ -40,7 +40,6 @@ class LabelNames(Value[tuple[LabelName, ...]]):
     def replaced(self, label: LabelName, replacement: LabelName) -> LabelNames:
         return LabelNames(tuple(replacement if name == label else name for name in self.root))
 
-    # Linear resolves a label name ignoring case, so these three take a workspace's labels as self.
     def matching(self, label: LabelName) -> LabelName | None:
         wanted = label.root.casefold()
         return next((known for known in self.root if known.root.casefold() == wanted), None)
@@ -63,7 +62,6 @@ class LabelNames(Value[tuple[LabelName, ...]]):
         )
 
 
-# Linear writes a label's color as a hex code, in whichever case it was given.
 class LabelColor(Value[str]):
     @staticmethod
     def fake() -> LabelColor:
@@ -125,7 +123,6 @@ class GroupedLabels(Value[tuple[GroupedLabel, ...]]):
     def fake() -> GroupedLabels:
         return GroupedLabels((GroupedLabel.fake(),))
 
-    # Linear resolves a group name ignoring case, as it does a label name.
     def in_group(self, group: LabelGroupName) -> LabelNames:
         wanted = group.root.casefold()
         return LabelNames(
@@ -133,7 +130,6 @@ class GroupedLabels(Value[tuple[GroupedLabel, ...]]):
         )
 
 
-# ProjectName and StatusName share a base so one exclusion pattern can match either.
 class IssueText(Value[str]):
     def names(self, other: IssueText) -> Matches:
         return Matches(self.root.casefold() == other.root.casefold())
@@ -333,7 +329,6 @@ class Assignee(Value[str]):
         return viewer if self == Assignee.me() else self
 
 
-# Stands for a field the update empties, where None means the update leaves it alone.
 class Cleared(Model):
     @staticmethod
     def fake() -> Cleared:
@@ -501,6 +496,5 @@ class IssueFilter(Model):
     def fake() -> IssueFilter:
         return IssueFilter(creator=Creator.fake(), created_after=CreatedAfter.fake())
 
-    # Linear compares the creation time against midnight of the date, so the day itself is included.
     def matches(self, creator: Creator, created: CreatedOn) -> Matches:
         return Matches(creator == self.creator and created.root >= self.created_after.root)

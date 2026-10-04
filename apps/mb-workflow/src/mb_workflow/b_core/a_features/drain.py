@@ -119,7 +119,6 @@ class Unready(Model):
                 return UnreadyReason(f"no agent works tickets in {state.root}")
 
 
-# The pass stopped at the total, leaving these ready tickets unstarted.
 class PoolFull(Model):
     total: Limit
     left: PoolTickets
@@ -148,7 +147,6 @@ class DrainOutcome(Model):
             ready=PoolTickets.fake(), picked=PoolTickets.fake(), skipped=(Skip.fake(),)
         )
 
-    # A pass that started a ticket counts as changed even when its sets match the last pass's.
     def changed_since(self, previous: DrainOutcome | None) -> Changed:
         return Changed(
             previous is None
@@ -159,7 +157,6 @@ class DrainOutcome(Model):
 
 
 class Drain:
-    # Checked before claiming, so a misspelt limit never lets a pass run uncapped.
     @staticmethod
     def require_limited_labels(
         tracker: TicketTracker, limits: PoolLimits
@@ -202,8 +199,6 @@ class Drain:
             return checked
         return Drain.require_skip_limits_label(tracker, pool.skip_limits_label)
 
-    # The view's tickets with their flow states, and the slots the tickets in progress fill.
-    # The labels are checked first, so a misspelt limit never lets a pass run uncapped.
     @staticmethod
     def read_pool(
         tracker: TicketTracker,
@@ -321,7 +316,6 @@ class Drain:
             full: PoolFull | None = None
             for position, ticket in enumerate(ready.root):
                 skips_limits = ticket.skips_limits(pool.skip_limits_label).root
-                # Tickets that skip the limits sort first, so stopping here never passes one over.
                 if not skips_limits and pool.limits.filled(occupancy).root:
                     full = PoolFull(
                         total=pool.limits.total, left=PoolTickets(ready.root[position:])
@@ -373,7 +367,6 @@ class Drain:
                         )
                         if isinstance(removed, Err):
                             return removed
-                # A ticket lost to another host is now in progress there, so it fills a slot too.
                 occupancy = occupancy.with_slot(slot)
             return Ok(
                 DrainOutcome(
@@ -436,7 +429,6 @@ class Drain:
                         "Another host holds %s; trying the next ticket.", request.ticket.root
                     )
                     return Ok(Started(False))
-                # The ticket was ready when listed, so a flow refusal here means its labels changed since.
                 if isinstance(error, FlowError):
                     logger.warning("Not starting %s: %s", request.ticket.root, error)
                     return Ok(Started(False))

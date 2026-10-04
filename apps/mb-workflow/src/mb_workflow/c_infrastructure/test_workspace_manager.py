@@ -79,7 +79,6 @@ def kind(request: pytest.FixtureRequest) -> ManagerKind:
     return ManagerKind(request.param)
 
 
-# The live board must hold the fake's columns, and the suite must run from an mb-workflow worktree.
 @pytest.fixture
 def board(kind: ManagerKind) -> Board:
     if kind == ManagerKind.fake:

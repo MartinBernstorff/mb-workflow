@@ -9,7 +9,6 @@ if TYPE_CHECKING:
 
 @pytest.fixture(autouse=True, scope="session")
 def _unset_git_repository_variables() -> Iterator[None]:
-    # Git hooks export GIT_DIR and the other repository-local variables, which would point a test's git subprocesses at the real repo.
     local = subprocess.run(
         ("git", "rev-parse", "--local-env-vars"), capture_output=True, text=True, check=True
     ).stdout.split()

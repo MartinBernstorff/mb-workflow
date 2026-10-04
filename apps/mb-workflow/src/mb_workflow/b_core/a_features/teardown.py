@@ -29,7 +29,6 @@ class TeardownRequest(Model):
 
 
 class Teardown:
-    # Unclaims before removing, so a failed unclaim leaves the claim beside the worktree that holds it.
     @staticmethod
     def teardown_worktree(
         *,
@@ -68,8 +67,6 @@ class Teardown:
             return Err(WorkspaceManagerError(f"No worktree is named {name.root}."))
         return Ok(worktree)
 
-    # Release before removing, so a failed release leaves the claim beside the worktree that holds it.
-    # The holder is named after the ticket, as start claims it before Orca may suffix the directory.
     @staticmethod
     def release_and_remove(
         *,

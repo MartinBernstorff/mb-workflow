@@ -116,7 +116,6 @@ class ProjectPayload(Payload):
         return ProjectPayload(name=ProjectName.fake())
 
 
-# The sweep only asks whether someone is assigned, so it leaves the email out.
 class AssigneePayload(Payload):
     email: Assignee | None = None
 
@@ -308,7 +307,6 @@ class ProjectRecord(Payload):
         return Ok(found.id)
 
 
-# One read resolves every name an update carries, each part included only when the update needs it.
 class UpdateLookup(Payload):
     labels: tuple[LabelRecord, ...] = Field(
         default=(), validation_alias=AliasPath("issueLabels", "nodes")
@@ -338,7 +336,6 @@ class UpdateLookup(Payload):
             issue_team=TeamKey.fake(),
         )
 
-    # Teams may each hold a label of the same name, so the issue's own team's one wins, then the workspace's.
     def label_ids(
         self, labels: LabelNames, team: TeamKey | None
     ) -> Result[tuple[LabelId, ...], TicketTrackerError]:
@@ -433,7 +430,6 @@ class TeamProjectRecord(ProjectRecord):
         )
 
 
-# Resolves every name a new issue carries in one read, the team coming from the project if unnamed.
 class CreationLookup(UpdateLookup):
     projects: tuple[TeamProjectRecord, ...] = Field(
         default=(), validation_alias=AliasPath("project", "nodes")
@@ -485,7 +481,6 @@ class CreationLookup(UpdateLookup):
             )
         )
 
-    # The project, if the new issue names one, and the team it goes in.
     def _owners(
         self, new: NewIssue
     ) -> Result[tuple[TeamProjectRecord | None, TeamRecord], TicketTrackerError]:
@@ -702,7 +697,6 @@ class IssueDetailPayload(IssuePayload):
         )
 
 
-# A field left unset stays as it is, while one set to None is emptied.
 class IssueChanges(Payload):
     title: IssueTitle | None = None
     description: IssueDescription | None = None
@@ -764,7 +758,6 @@ class ViewRead(Payload):
 
 
 class LinearCall:
-    # Converts the client's exceptions at the edge, so a failed call comes back as a value.
     @staticmethod
     def answered[T](call: Callable[[], T]) -> Result[T, TicketTrackerError]:
         match safe_with(LinearError)(call)():
@@ -773,7 +766,6 @@ class LinearCall:
             case Err(error):
                 return Err(TicketTrackerError(str(error)))
 
-    # Runs a write whose answer the caller does not need.
     @staticmethod
     def written[T](call: Callable[[], T]) -> Result[None, TicketTrackerError]:
         match LinearCall.answered(call):
@@ -783,7 +775,6 @@ class LinearCall:
                 return failed
 
 
-# The client's own issue queries leave out the project, which the sweep's exclusions read.
 class Linear(TicketTracker):
     def __init__(self, client: LinearClient) -> None:
         self._client = client
@@ -1280,7 +1271,6 @@ class Linear(TicketTracker):
                 return updated
         return self._relate_all(issue, blocks=update.blocks, blocked_by=update.blocked_by)
 
-    # Resolves every name the update carries, setting only the fields it changes.
     def _changes(
         self, issue: IssueIdentifier, update: IssueUpdate
     ) -> Result[IssueChanges, TicketTrackerError]:

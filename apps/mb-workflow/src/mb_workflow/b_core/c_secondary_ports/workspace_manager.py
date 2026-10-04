@@ -247,7 +247,6 @@ class FakeWorkspaceManager(WorkspaceManager):
         self._worktrees = Worktrees((*self._worktrees.root, worktree))
         return worktree
 
-    # Orca keeps a taken name by suffixing the directory rather than refusing it.
     def _unused_path(self, name: WorktreeName) -> WorktreePath:
         path = self._here.sibling(name)
         suffix = 2
@@ -285,7 +284,6 @@ class LinkRefusingWorkspaceManager(FakeWorkspaceManager):
 
 
 class WorkspaceNaming:
-    # The display name is cosmetic, so a refusal leaves the worktree under its directory name.
     @staticmethod
     def set_display_name_or_warn(
         manager: WorkspaceManager, path: WorktreePath, name: DisplayName

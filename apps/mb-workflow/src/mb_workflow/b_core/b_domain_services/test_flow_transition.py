@@ -137,7 +137,6 @@ def test_forcing_writes_the_target_state_without_validating() -> None:
 def test_a_refused_ticket_write_leaves_the_board_where_it_was() -> None:
     wanted = FlowLabels.fake()
     store = FakeStatusStore(StateName("implementing"))
-    # The ticket holds a label the tracker does not know, so the write refuses.
     tracker = FakeTicketTracker(
         wanted.labels,
         (TrackedIssue.fake(),),
@@ -181,7 +180,6 @@ def test_missing_flow_labels_point_to_seed_labels_and_leave_the_board_alone() ->
     Assert.that(store.read().unwrap()).matches(StateName("implementing"))
 
 
-# The ticket carries no labels, so only the flow label a transition writes is left on it.
 class TeamTrackers:
     @staticmethod
     def with_issue_in_team(

@@ -144,7 +144,6 @@ class Settings(Model):
     def parsed(table: SettingsTable) -> Settings:
         return Settings.model_validate(table.root)
 
-    # The pool is a Linear view, so no other tracker can supply its tickets.
     @model_validator(mode="after")
     def pool_is_a_linear_view(self) -> Settings:
         if self.pool is not None and not isinstance(self.issues, LinearTracker):

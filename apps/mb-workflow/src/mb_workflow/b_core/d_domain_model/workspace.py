@@ -19,7 +19,6 @@ class ProjectSelector(Value[str]):
     def fake() -> ProjectSelector:
         return ProjectSelector("github:flowbasedk/flowbase")
 
-    # Orca stores project IDs in lowercase and matches them case-sensitively.
     @model_validator(mode="before")
     @classmethod
     def lowercased(cls, data: JsonValue) -> JsonValue:
@@ -75,7 +74,6 @@ class SamePath(Value[bool]):
         return SamePath(True)
 
 
-# A board column's id, which stays put when the column is relabelled.
 class WorkspaceStatus(Value[str]):
     @staticmethod
     def fake() -> WorkspaceStatus:

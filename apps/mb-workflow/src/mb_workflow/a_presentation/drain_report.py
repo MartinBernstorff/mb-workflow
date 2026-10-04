@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class DrainReport:
-    # Only ready tickets are listed, and a ready ticket's flow labels always name its state.
     @staticmethod
     def pick_listing(ready: PoolTickets, flow_labels: FlowLabels) -> Output:
         return Output(
@@ -53,7 +52,6 @@ class DrainReport:
         )
 
 
-# A watch logs a pass in full only when it differs from the last, so a quiet pool stays quiet.
 class LoggingDrainNarrator(DrainNarrator):
     @override
     def passed(self, outcome: DrainOutcome, changed: Changed) -> None:

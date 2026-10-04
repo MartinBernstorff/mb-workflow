@@ -205,7 +205,6 @@ class ScriptedGhState:
             case _:
                 pytest.fail(f"gh has no answer for {command.root}")
 
-    # Someone else's pending review sits first, so the adapter must pick out the viewer's own.
     def reviews_on(self, pr: PrNumber) -> CommandOutput:
         others = [{"id": 1, "state": "PENDING", "user": {"login": "someone"}}]
         mine = [
@@ -447,7 +446,6 @@ def merged_pull_request(clone: Shell, branch: BranchName) -> MergedOn:
     return MergedOn(merged.merged_at.root.date())
 
 
-# Never torn down: reviews accumulate, and the ledger tells this test's apart from earlier ones by id.
 @pytest.fixture(scope="session")
 def live_repository(tmp_path_factory: pytest.TempPathFactory) -> LiveRepository:
     here = Shell(ExistingDirectory(tmp_path_factory.mktemp("github")))

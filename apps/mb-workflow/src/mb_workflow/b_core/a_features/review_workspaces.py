@@ -300,7 +300,6 @@ class ReviewWorkspaces:
                 return prompted
         return Ok(CreatedWorkspace(name=WorktreeName.of(pr.number), path=path))
 
-    # Start still raises when Orca hands back no agent terminal, so that becomes a value here.
     @staticmethod
     def prompt_agent(
         manager: WorkspaceManager, opened: OpenedWorktree, prompt: ReviewPrompt

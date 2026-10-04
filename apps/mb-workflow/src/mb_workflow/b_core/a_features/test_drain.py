@@ -209,7 +209,6 @@ def opened_issues(manager: FakeWorkspaceManager) -> tuple[IssueIdentifier | None
     )
 
 
-# Posts a rival's claim just before ours on one ticket, as if another host won the race to it.
 class RacedRegistry(FakeClaimRegistry):
     def __init__(self, contested: IssueIdentifier) -> None:
         super().__init__()
@@ -431,7 +430,6 @@ def test_a_start_that_fails_after_claiming_releases_the_claim() -> None:
     )
 
 
-# Raises as a second stop signal would, after the workspace call begins.
 class InterruptedManager(FakeWorkspaceManager):
     @override
     def create_for_issue(

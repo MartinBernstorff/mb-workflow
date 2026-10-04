@@ -25,7 +25,6 @@ class TicketStatuses(Value[dict[StateName, IssueStatusName]]):
             }
         )
 
-    # A state is named ignoring case, and kept as the chart spells it.
     @field_validator("root")
     @classmethod
     def maps_exactly_the_chart_states(

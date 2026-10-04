@@ -46,13 +46,11 @@ class Finished(Model):
 type NextAction = Skill | AwaitingHuman | Finished
 
 
-# Entry states shape the ticket before work on it starts.
 class Phase(StrEnum):
     entry = "entry"
     delivery = "delivery"
 
 
-# Each state names its next action, so no state can be added without deciding what happens in it.
 class WorkState(State):
     def __init__(self, name: StateName, action: NextAction, phase: Phase) -> None:
         super().__init__(name.root, final=isinstance(action, Finished))
@@ -60,7 +58,6 @@ class WorkState(State):
         self.phase: Phase = phase
 
 
-# The first state declared is where the work starts.
 class WorkflowChart(StateChart[ChartModel]):
     allow_event_without_transition = False
     catch_errors_as_events = False
@@ -171,7 +168,6 @@ class StateNames(Value[frozenset[StateName]]):
         return StateName(initial.name)
 
 
-# The states a caller accepts, in chart order, so a typed name is spelled as the chart spells it.
 class AcceptedStates(Value[tuple[StateName, ...]]):
     @staticmethod
     def fake() -> AcceptedStates:

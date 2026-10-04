@@ -217,7 +217,6 @@ class OrcaReason(Value[str]):
         return OrcaReason("orca is down")
 
 
-# Answers every command with one shell script, run through the real shell, as orca would.
 class ScriptedOrca(CommandRunner):
     def __init__(self, directory: ExistingDirectory, script: Command) -> None:
         self._shell = Shell(directory)

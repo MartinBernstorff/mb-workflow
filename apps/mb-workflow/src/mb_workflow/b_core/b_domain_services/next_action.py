@@ -24,7 +24,6 @@ class TicketState:
                 return Ok(candidate.action)
         return Err(FlowError(f"{state.root} is no state of the chart."))
 
-    # Checked before a ticket is taken, so one outside the flow or with no work left is never claimed.
     @staticmethod
     def state_with_work_left(
         chart: type[WorkflowChart], flow_labels: FlowLabels, issue: Issue

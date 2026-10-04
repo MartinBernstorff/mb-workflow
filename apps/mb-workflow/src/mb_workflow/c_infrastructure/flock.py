@@ -35,7 +35,6 @@ class LockPath(Value[Path]):
     def of(name: LockName) -> LockPath:
         return LockPath(CacheDirectory.of_user().root / f"{name.root}.lock")
 
-    # The selector holds characters like ":" and "/", so it is reduced to a single directory name.
     @staticmethod
     def of_project(name: LockName, project: ProjectSelector) -> LockPath:
         directory = re.sub(r"[^A-Za-z0-9]+", "-", project.root).strip("-")

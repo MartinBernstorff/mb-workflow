@@ -43,7 +43,6 @@ class SeedingTrackers:
     def with_workspace_group(labels: LabelNames) -> FakeTicketTracker:
         return FakeTicketTracker(labels, (), groups={FlowLabels.fake().group: labels})
 
-    # The one ticket carries the label, so a test can see whether renaming or deleting reached it.
     @staticmethod
     def with_team_ticket_carrying(label: LabelName) -> FakeTicketTracker:
         return FakeTicketTracker(

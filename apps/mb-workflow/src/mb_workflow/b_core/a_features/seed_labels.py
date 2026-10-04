@@ -52,7 +52,6 @@ class SeededTeam(Model):
         )
 
 
-# A team of None is the workspace-level group.
 class PlannedGroup(Model):
     team: TeamKey | None
     sync: GroupSync
@@ -65,7 +64,6 @@ class PlannedGroup(Model):
         return GroupPlace.of(group, self.team)
 
 
-# Where a label group lives, worded for a log line or an error.
 class GroupPlace(Value[str]):
     @staticmethod
     def fake() -> GroupPlace:
@@ -79,8 +77,6 @@ class GroupPlace(Value[str]):
 
 
 class FlowLabelSeeding:
-    # A complete workspace-level group already serves every team, so seeding a team beside it would only shadow it.
-    # --force seeds the team anyway, for a team that should keep its own labels.
     @staticmethod
     def seed_flow_labels(
         tracker: TicketTracker, wanted: FlowLabels, team: TeamName, force: Force
@@ -127,7 +123,6 @@ class FlowLabelSeeding:
                 return created
         return Ok(SeededTeam(created=missing, workspace=workspace_sync, team=team_sync))
 
-    # The group at workspace level, then the team's own.
     @staticmethod
     def read_groups(
         tracker: TicketTracker, group: LabelGroupName, team: TeamKey
@@ -162,7 +157,6 @@ class FlowLabelSeeding:
                 return applied
         return Ok(None)
 
-    # Renaming or deleting a label changes every ticket that carries it, so it waits for --force.
     @staticmethod
     def refuse_unforced_changes(
         tracker: TicketTracker, group: LabelGroupName, plans: tuple[PlannedGroup, ...]

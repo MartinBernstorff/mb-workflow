@@ -48,7 +48,6 @@ class RemoteUrl(Value[str]):
         return RemoteUrl("https://github.com/MartinBernstorff/mb-workflow.git")
 
 
-# Keyed on the origin rather than the directory, because every worktree has its own directory name.
 class RepositorySlug(Value[str]):
     @staticmethod
     def fake() -> RepositorySlug:
@@ -99,7 +98,6 @@ class ProjectCredentials(BaseSettings):
             **{key: value for key, value in table.root.items() if key in credential_tables}
         )
 
-    # The file is the one source, so a stray environment variable cannot shadow a project's key.
     @override
     @classmethod
     def settings_customise_sources(
@@ -113,7 +111,6 @@ class ProjectCredentials(BaseSettings):
         return (init_settings,)
 
 
-# The same file holds the developer's project setting overrides, so credentials read only these.
 class CredentialTables(Value[frozenset[str]]):
     @staticmethod
     def fake() -> CredentialTables:

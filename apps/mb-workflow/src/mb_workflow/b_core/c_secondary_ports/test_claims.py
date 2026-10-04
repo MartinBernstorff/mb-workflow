@@ -134,7 +134,6 @@ def test_taking_over_a_claim_replaces_the_other_holders_claim() -> None:
     Assert.that(claim_holders(registry)).matches((ClaimHolder.fake(),))
 
 
-# Withdraws every claim as soon as ours is posted, as if another holder took the claim over.
 class WithdrawingRegistry(FakeClaimRegistry):
     @override
     def post(
