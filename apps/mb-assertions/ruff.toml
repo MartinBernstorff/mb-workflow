@@ -1,0 +1,13 @@
+extend = "../../ruff.toml"
+src = ["src"]
+target-version = "py312"
+
+[lint.isort]
+known-first-party = ["assertions"]
+
+[lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic.RootModel"]
+
+[lint]
+# Assertions raise AssertionError with a message describing the mismatch, by design.
+ignore = ["TRY003"]

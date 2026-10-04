@@ -1,0 +1,6 @@
+source_roots = ["src"]
+ignore_type_checking_imports = false
+
+[[modules]]
+path = "assertions"
+depends_on = []
