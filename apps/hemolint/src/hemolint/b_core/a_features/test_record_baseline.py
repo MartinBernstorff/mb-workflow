@@ -33,8 +33,10 @@ on_line_1 = LinterOutput(f"{source.root}@1:0 {rule.root}: Use `is`.\n")
 on_line_2 = LinterOutput(f"{source.root}@2:0 {rule.root}: Use `is`.\n")
 
 
-def lines_of(text: SourceText) -> FakeSourceLines:
-    return FakeSourceLines({source: text})
+class SourceFile:
+    @staticmethod
+    def lines_holding(text: SourceText) -> FakeSourceLines:
+        return FakeSourceLines({source: text})
 
 
 def test_each_reported_violation_is_recorded_under_its_source_line() -> None:
@@ -43,7 +45,7 @@ def test_each_reported_violation_is_recorded_under_its_source_line() -> None:
         on_line_2,
         LinterFormat.fixit,
         WorkingDirectory.fake(),
-        lines_of(SourceText(f"x = 1\n    {code.root}\n")),
+        SourceFile.lines_holding(SourceText(f"x = 1\n    {code.root}\n")),
         store,
     ).unwrap()
     assert store.baseline == Baseline.of((known,))
@@ -54,7 +56,7 @@ def test_recording_reports_what_it_added() -> None:
         on_line_1,
         LinterFormat.fixit,
         WorkingDirectory.fake(),
-        lines_of(SourceText(f"{code.root}\n")),
+        SourceFile.lines_holding(SourceText(f"{code.root}\n")),
         FakeBaselineStore(),
     ).unwrap()
     one_added = BaselineChange(added=Count(1), removed=Count(0))
@@ -67,7 +69,7 @@ def test_a_violation_that_moved_to_another_line_still_matches() -> None:
         on_line_2,
         LinterFormat.fixit,
         WorkingDirectory.fake(),
-        lines_of(SourceText(f"\n{code.root}\n")),
+        SourceFile.lines_holding(SourceText(f"\n{code.root}\n")),
         store,
     ).unwrap()
     assert store.baseline == Baseline.of((known,))
@@ -79,7 +81,7 @@ def test_an_extra_copy_of_a_known_violation_is_recorded_as_new() -> None:
         LinterOutput(on_line_1.root + on_line_2.root),
         LinterFormat.fixit,
         WorkingDirectory.fake(),
-        lines_of(SourceText(f"{code.root}\n{code.root}\n")),
+        SourceFile.lines_holding(SourceText(f"{code.root}\n{code.root}\n")),
         store,
     ).unwrap()
     assert store.baseline == Baseline.of((known, known))
@@ -91,7 +93,7 @@ def test_a_fixed_violation_is_removed() -> None:
         LinterOutput(""),
         LinterFormat.fixit,
         WorkingDirectory.fake(),
-        lines_of(SourceText("")),
+        SourceFile.lines_holding(SourceText("")),
         store,
     ).unwrap()
     assert store.baseline == Baseline.of(())
@@ -104,7 +106,7 @@ def test_unparsable_output_writes_nothing() -> None:
         LinterOutput(f"{on_line_1.root}b.py: EXCEPTION: Syntax Error @ 1:1.\n"),
         LinterFormat.fixit,
         WorkingDirectory.fake(),
-        lines_of(SourceText(f"{code.root}\n")),
+        SourceFile.lines_holding(SourceText(f"{code.root}\n")),
         store,
     )
     assert isinstance(result, Err)
