@@ -669,6 +669,7 @@ class BrokenGh(CommandRunner):
     @override
     def run(self, command: Command) -> CommandOutput:
         if self._output is None:
+            # lint-fixme: NoRaise
             raise CalledProcessError(1, command.root, "", "gh: not authenticated")
         return self._output
 

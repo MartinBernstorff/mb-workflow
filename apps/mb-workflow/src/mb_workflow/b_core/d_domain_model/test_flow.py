@@ -86,6 +86,7 @@ def test_an_event_the_chart_has_never_heard_of_raises() -> None:
 def test_an_exception_raised_during_a_transition_propagates() -> None:
     class Detonator:
         def on_transition(self) -> None:
+            # lint-fixme: NoRaise
             raise RuntimeError("boom")
 
     with pytest.raises(RuntimeError, match="boom"):

@@ -181,6 +181,7 @@ class TicketEdit(Model):
             return None
         target = current.issue.project if project is None else project
         if not isinstance(target, ProjectName):
+            # lint-fixme: NoRaise
             raise TicketEditError(
                 f"{current.issue.identifier.root} has no project, so it cannot take a milestone."
             )

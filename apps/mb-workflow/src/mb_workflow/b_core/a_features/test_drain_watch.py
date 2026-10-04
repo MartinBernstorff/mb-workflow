@@ -59,6 +59,7 @@ class SequencedSettings(DrainSettingsSource):
 class MissingPoolSettings(DrainSettingsSource):
     @override
     def current(self) -> DrainSettings:
+        # lint-fixme: NoRaise
         raise InvalidConfigError("Set [pool] view")
 
 

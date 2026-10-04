@@ -22,6 +22,7 @@ from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, 
 class LabelRefusingTracker(FakeTicketTracker):
     @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
+        # lint-fixme: NoRaise
         raise TicketTrackerError(f"Linear refused the label {label.root}.")
 
 

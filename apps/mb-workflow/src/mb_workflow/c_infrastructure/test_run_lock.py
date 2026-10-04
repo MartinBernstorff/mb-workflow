@@ -57,6 +57,7 @@ def test_the_lock_is_free_again_once_the_run_ends(lock: RunLock) -> None:
 
 def test_the_lock_is_released_when_the_run_raises(lock: RunLock) -> None:
     with pytest.raises(ValueError, match="boom"), lock.acquire().unwrap():
+        # lint-fixme: NoRaise
         raise ValueError("boom")
     with lock.acquire().unwrap():
         pass

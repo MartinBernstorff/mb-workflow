@@ -44,6 +44,7 @@ class ImageFormat(Value[str]):
     def of(destination: DiagramPath) -> ImageFormat:
         suffix = destination.root.suffix.removeprefix(".")
         if not suffix:
+            # lint-fixme: NoRaise
             raise ValueError(
                 f"{destination.root} has no extension, and the extension picks the image format."
             )
@@ -90,6 +91,7 @@ def render_dot() -> DotSource:
 def write_image(destination: DiagramPath, image_format: ImageFormat) -> None:
     graphs = pydot.graph_from_dot_data(render_dot().root)
     if not graphs:
+        # lint-fixme: NoRaise
         raise ValueError("The chart's DOT source could not be parsed.")
     _ = graphs[0].write(str(destination.root), format=image_format.root)
 

@@ -303,6 +303,7 @@ class TicketStart:
         submit: Submit,
     ) -> None:
         if opened.terminal is None:
+            # lint-fixme: NoRaise
             raise PromptUndeliveredError("No agent terminal handle returned; prompt not typed.")
 
         try:

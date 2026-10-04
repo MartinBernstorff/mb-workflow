@@ -3,10 +3,6 @@ stack: "backend"
 layer: "application"
 
 tasks:
-  test:
-    inputs:
-      - "raise-baseline/*.txt"
-
   # Serial, because every test rewrites the same seeded issues in the integration-test workspace.
   test-linear-live:
     script: "uv run pytest -m linear_live --numprocesses=0 src/mb_workflow/c_infrastructure/test_ticket_tracker.py"

@@ -68,6 +68,7 @@ class InterruptedStep(RecordingStep):
     @override
     def apply(self) -> Result[None, Exception]:
         _ = super().apply()
+        # lint-fixme: NoRaise
         raise KeyboardInterrupt
 
 

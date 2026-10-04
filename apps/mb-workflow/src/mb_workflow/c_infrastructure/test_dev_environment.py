@@ -29,6 +29,7 @@ class RecordingRunner(CommandRunner):
     def run(self, command: Command) -> CommandOutput:
         self.ran.append(command)
         if command == self._failing:
+            # lint-fixme: NoRaise
             raise CalledProcessError(1, command.root)
         return CommandOutput("")
 

@@ -65,6 +65,7 @@ class RefusingTracker(FakeTicketTracker):
     @override
     def add_label(self, issue: IssueIdentifier, label: LabelName) -> None:
         if issue == self._refused:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(f"{issue.root} refused the label.")
         super().add_label(issue, label)
 

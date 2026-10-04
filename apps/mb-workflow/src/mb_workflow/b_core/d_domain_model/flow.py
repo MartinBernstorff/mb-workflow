@@ -109,6 +109,7 @@ class Edge(Model):
     @staticmethod
     def of_transition(transition: Transition, name: EventName) -> Edge:
         if transition.target is None:
+            # lint-fixme: NoRaise
             raise ValueError(f"{name.root} leads nowhere out of {transition.source.name}.")
         return Edge(
             source=StateName(transition.source.name),
@@ -169,6 +170,7 @@ class StateNames(Value[frozenset[StateName]]):
     def initial_state(chart: type[WorkflowChart]) -> StateName:
         initial = chart.initial_state
         if initial is None:
+            # lint-fixme: NoRaise
             raise ValueError("The chart has no state to start in.")
         return StateName(initial.name)
 

@@ -39,6 +39,7 @@ class RepositorySlug(Value[str]):
     def of(remote: RemoteUrl) -> RepositorySlug:
         found = re.search(r"[:/]([^/:]+/[^/:]+?)(?:\.git)?/?$", remote.root)
         if found is None:
+            # lint-fixme: NoRaise
             raise ValueError(f"Cannot read owner/repo from the remote {remote.root}.")
         return RepositorySlug(found.group(1))
 
@@ -98,6 +99,7 @@ class CredentialsPath(Value[Path]):
 
     def credentials(self) -> ProjectCredentials:
         if not self.root.is_file():
+            # lint-fixme: NoRaise
             raise MissingCredentialsError(
                 f'No credentials at {self.root}. Create it with:\n[linear]\napi_key = "lin_api_…"'
             )
@@ -108,6 +110,7 @@ class CredentialsPath(Value[Path]):
                 **{key: value for key, value in table.items() if key in credential_tables}
             )
         except ValidationError as error:
+            # lint-fixme: NoRaise
             raise InvalidCredentialsError(f"{self.root} is not valid. {error}") from error
 
 

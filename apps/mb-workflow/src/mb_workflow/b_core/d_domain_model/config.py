@@ -153,11 +153,13 @@ class Settings(Model):
 
     def ticket_defaults(self) -> TicketDefaults:
         if not isinstance(self.issues, LinearTracker):
+            # lint-fixme: NoRaise
             raise InvalidConfigError("Creating a ticket needs the linear tracker.")
         return self.issues.ticket_defaults()
 
     def required_pool(self) -> PoolSettings:
         if self.pool is None:
+            # lint-fixme: NoRaise
             raise InvalidConfigError('Set [pool] view = "<slug>" to name the Linear view to drain.')
         return self.pool
 
@@ -171,6 +173,7 @@ class ConfigPath(Value[Path]):
         try:
             return SettingsTable(tomllib.loads(self.root.read_text()))
         except ValueError as error:
+            # lint-fixme: NoRaise
             raise InvalidConfigError(f"{self.root} is not valid. {error}") from error
 
 

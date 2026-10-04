@@ -61,6 +61,7 @@ class Shell(CommandRunner):
             command.root, cwd=self._cwd.root, capture_output=True, text=True, check=False
         )
         if result.returncode != 0:
+            # lint-fixme: NoRaise
             raise subprocess.CalledProcessError(
                 result.returncode, command.root, result.stdout, result.stderr
             )

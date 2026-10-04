@@ -155,6 +155,7 @@ class Worktree(Model):
 
     def linked_issue(self) -> IssueIdentifier:
         if self.issue is None:
+            # lint-fixme: NoRaise
             raise UnlinkedWorktreeError(
                 f"{self.path.root} has no linked Linear issue. Link one with `mw link <ticket>`."
             )

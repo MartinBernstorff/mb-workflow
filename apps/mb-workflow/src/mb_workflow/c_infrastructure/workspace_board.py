@@ -64,6 +64,7 @@ class StateColumns(Value[tuple[WorkspaceStateColumn, ...]]):
         for pairing in self.root:
             if pairing.state == state:
                 return pairing.label
+        # lint-fixme: NoRaise
         raise BoardError(f"{state.root} has no board column.")
 
     def state_of(self, label: ColumnLabel) -> StateName | None:
@@ -82,6 +83,7 @@ class Columns(Value[tuple[Column, ...]]):
     def parse(refusal: ErrorMessage) -> Columns:
         listed = re.findall(r"([\w-]+) \(([^)]+)\)", refusal.root.partition("Available:")[2])
         if not listed:
+            # lint-fixme: NoRaise
             raise BoardError(f"Orca named no board columns: {refusal.root}")
         return Columns(
             tuple(
@@ -106,6 +108,7 @@ class Columns(Value[tuple[Column, ...]]):
         label = StateColumns.of_chart().label_of(state)
         status = self.id_of(label)
         if status is None:
+            # lint-fixme: NoRaise
             raise BoardError(
                 f"The board defines no {label.root} column, so {state.root} cannot be recorded."
             )

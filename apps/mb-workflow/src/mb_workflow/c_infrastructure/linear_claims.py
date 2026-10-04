@@ -130,6 +130,7 @@ class LinearClaims(ClaimRegistry):
             )
         posted = PostedComment.model_validate(data)
         if not posted.success.root or posted.id is None:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(f"Linear did not post the claim on {ticket.root}.")
         return posted.id
 
@@ -141,6 +142,7 @@ class LinearClaims(ClaimRegistry):
                 {"id": claim.root},
             )
         if not DeletedComment.model_validate(data).success.root:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(f"Linear did not delete the claim {claim.root}.")
 
     def _thread(self, ticket: IssueIdentifier) -> Result[CommentThread, TicketTrackerError]:

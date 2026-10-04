@@ -36,6 +36,7 @@ def init_config(
 ) -> InitOutcome:
     target = directory.root.resolve() / name.root
     if target.exists() and not overwrite.root:
+        # lint-fixme: NoRaise
         raise ConfigExistsError(f"{target} already exists. Pass --force to overwrite it.")
     _ = target.write_text(template.root)
     return InitOutcome(

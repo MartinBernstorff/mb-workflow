@@ -54,6 +54,7 @@ class LinkRequest(Model):
         if here.issue is None or here.issue == self.ticket:
             return
         if not self.take_over.root:
+            # lint-fixme: NoRaise
             raise AlreadyLinkedError(
                 f"{here.path.root} is linked to {here.issue.root}. Pass --force to link it to"
                 f" {self.ticket.root} instead."

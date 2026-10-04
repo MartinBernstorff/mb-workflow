@@ -2,5 +2,9 @@
 [tool.fixit]
 root = true
 enable = ["lint_rules"]
-# Fixit's built-in rules overlap with ruff.
-disable = ["fixit.rules"]
+disable = [
+    # Fixit's built-in rules overlap with ruff.
+    "fixit.rules",
+    # Only for CLI packages, which enable it in their own fixit.toml.
+    "lint_rules:NoRaiseAtTyperBoundary",
+]

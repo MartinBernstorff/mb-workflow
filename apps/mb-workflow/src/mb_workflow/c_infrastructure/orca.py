@@ -117,11 +117,13 @@ class Envelope[T](Payload):
 
     def refusal(self) -> ErrorMessage:
         if self.ok.root or self.error is None:
+            # lint-fixme: NoRaise
             raise WorkspaceManagerError("orca accepted a value it was meant to refuse")
         return self.error.message
 
     def unwrap(self) -> T:
         if self.result is None or not self.ok.root:
+            # lint-fixme: NoRaise
             raise WorkspaceManagerError(
                 self.error.message.root if self.error is not None else "orca returned no result"
             )
@@ -231,8 +233,10 @@ def translated_errors() -> Generator[None]:
     try:
         yield
     except CalledProcessError as error:
+        # lint-fixme: NoRaise
         raise WorkspaceManagerError(refusal_of(error).root) from error
     except ValidationError as error:
+        # lint-fixme: NoRaise
         raise WorkspaceManagerError(f"orca printed an unreadable reply: {error}") from error
 
 
@@ -387,6 +391,7 @@ class Orca(WorkspaceManager):
     def columns(self, unknown: ColumnLabel) -> ErrorMessage:
         listed = self.worktrees().root
         if not listed:
+            # lint-fixme: NoRaise
             raise WorkspaceManagerError(
                 "Orca manages no worktree to read the board's columns through."
             )

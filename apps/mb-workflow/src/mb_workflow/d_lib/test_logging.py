@@ -50,6 +50,7 @@ def test_an_activity_that_raises_logs_its_failure_and_reraises(
 ) -> None:
     activity = Activity.fake()
     with pytest.raises(LookupError), activity.logged(logging.getLogger(__name__)):
+        # lint-fixme: NoRaise
         raise LookupError
 
     _, failed = caplog.messages

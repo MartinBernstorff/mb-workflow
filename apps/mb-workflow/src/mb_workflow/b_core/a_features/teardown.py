@@ -58,6 +58,7 @@ class Teardown:
             return manager.current()
         worktree = manager.worktrees().named(name)
         if worktree is None:
+            # lint-fixme: NoRaise
             raise WorkspaceManagerError(f"No worktree is named {name.root}.")
         return worktree
 

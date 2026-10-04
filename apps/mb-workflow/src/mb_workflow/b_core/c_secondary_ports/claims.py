@@ -75,6 +75,7 @@ class Claiming:
         if current is not None and current.holder == request.holder:
             return Ok(Posted(False))
         if current is not None and not request.take_over.root:
+            # lint-fixme: NoRaise
             raise Claiming.claimed_error(request.ticket, current)
         Claiming.withdraw_claims(registry, request.ticket, held.value)
 
@@ -92,7 +93,9 @@ class Claiming:
             with Activity(f"Withdrawing our claim on {request.ticket.root}").logged(logger):
                 registry.withdraw(request.ticket, posted)
         if winner is None:
+            # lint-fixme: NoRaise
             raise ClaimLostError(f"Our claim on {request.ticket.root} was withdrawn by another.")
+        # lint-fixme: NoRaise
         raise Claiming.claimed_error(request.ticket, winner)
 
     @staticmethod

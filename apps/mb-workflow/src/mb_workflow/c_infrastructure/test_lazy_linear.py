@@ -16,6 +16,7 @@ MISSING = "No Linear credentials for this repository."
 
 
 def missing_key() -> LinearApiKey:
+    # lint-fixme: NoRaise
     raise MissingCredentialsError(MISSING)
 
 

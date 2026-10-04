@@ -243,6 +243,7 @@ class FakeTicketTracker(TicketTracker):
         held = self._group_members(group, team)
         unknown = held.label_names().unmatched(labels.label_names())
         if unknown.root:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(
                 f"The {group.root} group holds no label named"
                 f" {', '.join(label.root for label in unknown.root)}."
@@ -482,13 +483,16 @@ class FakeTicketTracker(TicketTracker):
         if key is not None:
             found = next((team for team in self._teams if team.key.names(key).root), None)
             if found is None:
+                # lint-fixme: NoRaise
                 raise TicketTrackerError(f"No team has the key {key.root}.")
             return found
         if project is None:
+            # lint-fixme: NoRaise
             raise TicketTrackerError("Name a team or a project to create the issue in.")
         spelled = self._project(project).name
         owners = tuple(team for team in self._teams if spelled in team.projects)
         if len(owners) != 1:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(
                 f"{spelled.root} belongs to several teams. Set [issues] team to pick one."
             )
@@ -502,6 +506,7 @@ class FakeTicketTracker(TicketTracker):
         )
         unknown = known.unmatched(labels)
         if len(unknown.root) > 0:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(
                 f"No label is named {', '.join(label.root for label in unknown.root)}."
             )
@@ -509,6 +514,7 @@ class FakeTicketTracker(TicketTracker):
         for group, members in groups:
             held = members.spelled(spelled)
             if len(held.root) > 1:
+                # lint-fixme: NoRaise
                 raise TicketTrackerError(
                     f"{', '.join(label.root for label in held.root)} are all in the"
                     f" {group.root} group, and an issue carries at most one label of a group."
@@ -533,6 +539,7 @@ class FakeTicketTracker(TicketTracker):
             return None
         found = self._project(wanted.project).milestones.matching(wanted.name)
         if found is None:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(
                 f"{wanted.project.root} has no milestone named {wanted.name.root}."
             )
@@ -541,12 +548,14 @@ class FakeTicketTracker(TicketTracker):
     def _status_named(self, name: IssueStatusName) -> IssueStatus:
         status = self._statuses.matching(name)
         if status is None:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(f"No status is named {name.root}.")
         return status
 
     def _project(self, name: ProjectName) -> Project:
         project = self._projects.matching(name)
         if project is None:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(f"No project is named {name.root}.")
         return project
 
@@ -595,6 +604,7 @@ class FakeTicketTracker(TicketTracker):
             case Ok(tracked):
                 return tracked
             case Err(error):
+                # lint-fixme: NoRaise
                 raise error
 
     def _found(self, issue: IssueIdentifier) -> Result[TrackedIssue, TicketTrackerError]:

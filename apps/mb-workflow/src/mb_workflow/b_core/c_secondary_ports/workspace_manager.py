@@ -114,6 +114,7 @@ class FakeWorkspaceManager(WorkspaceManager):
         activate: Activate,
     ) -> OpenedWorktree:
         if project != self._project:
+            # lint-fixme: NoRaise
             raise WorkspaceManagerError(f"No project is selected by {project.root}.")
         column = None if status is None else self._column(status)
         worktree = self._add(
@@ -171,6 +172,7 @@ class FakeWorkspaceManager(WorkspaceManager):
     def _typed_into(self, terminal: TerminalHandle) -> tuple[tuple[TerminalText, Submit], ...]:
         typed = self._terminals.get(terminal)
         if typed is None:
+            # lint-fixme: NoRaise
             raise WorkspaceManagerError(f"No terminal is handled as {terminal.root}.")
         return typed
 
@@ -194,12 +196,14 @@ class FakeWorkspaceManager(WorkspaceManager):
 
     def _column(self, status: WorkspaceStatus) -> WorkspaceStatus:
         if status not in self._columns.root:
+            # lint-fixme: NoRaise
             raise WorkspaceManagerError(f"The board has no column {status.root}.")
         return status
 
     def _at(self, path: WorktreePath) -> Worktree:
         worktree = self._worktrees.at(path)
         if worktree is None:
+            # lint-fixme: NoRaise
             raise WorkspaceManagerError(f"No worktree is at {path.root}.")
         return worktree
 
@@ -207,12 +211,14 @@ class FakeWorkspaceManager(WorkspaceManager):
 class DisplayNameRefusingWorkspaceManager(FakeWorkspaceManager):
     @override
     def set_display_name(self, path: WorktreePath, name: DisplayName) -> None:
+        # lint-fixme: NoRaise
         raise WorkspaceManagerError(f"Orca refused the display name {name.root}.")
 
 
 class LinkRefusingWorkspaceManager(FakeWorkspaceManager):
     @override
     def set_linked_issue(self, path: WorktreePath, issue: IssueIdentifier) -> None:
+        # lint-fixme: NoRaise
         raise WorkspaceManagerError(f"Orca refused to link {issue.root}.")
 
 

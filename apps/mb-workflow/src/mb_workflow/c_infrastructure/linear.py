@@ -278,6 +278,7 @@ class ProjectRecord(Payload):
     def milestone(self, name: MilestoneName) -> MilestoneId:
         found = next((known for known in self.milestones if known.name.names(name).root), None)
         if found is None:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(f"{self.name.root} has no milestone named {name.root}.")
         return found.id
 
@@ -323,6 +324,7 @@ class UpdateLookup(Payload):
         known = LabelNames(tuple(record.name for record in usable))
         unknown = known.unmatched(labels)
         if unknown.root:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(
                 f"No label is named {', '.join(label.root for label in unknown.root)}."
             )
@@ -335,6 +337,7 @@ class UpdateLookup(Payload):
         if isinstance(assignee, Cleared):
             return None
         if not self.users:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(f"No Linear user has the email {assignee.root}.")
         return self.users[0].id
 
@@ -342,6 +345,7 @@ class UpdateLookup(Payload):
         if isinstance(project, Cleared):
             return None
         if not self.projects:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(f"No project is named {project.root}.")
         return self.projects[0].id
 
@@ -349,12 +353,14 @@ class UpdateLookup(Payload):
         if isinstance(milestone, Cleared):
             return None
         if not self.milestone_projects:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(f"No project is named {milestone.project.root}.")
         return self.milestone_projects[0].milestone(milestone.name)
 
     def state_id(self, status: IssueStatusName) -> StateId:
         found = next((known for known in self.states if known.name.names(status).root), None)
         if found is None:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(f"No status is named {status.root}.")
         return found.id
 
@@ -379,6 +385,7 @@ class TeamRecord(Payload):
     def state_id(self, status: IssueStatusName) -> StateId:
         found = next((known for known in self.states if known.name.names(status).root), None)
         if found is None:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(f"{self.key.root} has no status named {status.root}.")
         return found.id
 
@@ -434,17 +441,21 @@ class CreationLookup(UpdateLookup):
 
     def _project(self, name: ProjectName) -> TeamProjectRecord:
         if not self.projects:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(f"No project is named {name.root}.")
         return self.projects[0]
 
     def _team(self, key: TeamKey | None, project: TeamProjectRecord | None) -> TeamRecord:
         if key is not None:
             if not self.teams:
+                # lint-fixme: NoRaise
                 raise TicketTrackerError(f"No team has the key {key.root}.")
             return self.teams[0]
         if project is None:
+            # lint-fixme: NoRaise
             raise TicketTrackerError("Name a team or a project to create the issue in.")
         if len(project.teams) != 1:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(
                 f"{project.name.root} belongs to several teams. Set [issues] team to pick one."
             )
@@ -694,6 +705,7 @@ class LinearCall:
         try:
             yield
         except LinearError as error:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(str(error)) from error
 
     # Converts the client's exceptions at the edge, so a failed call comes back as a value.
@@ -796,6 +808,7 @@ class Linear(TicketTracker):
                 None,
             )
             if child is None:
+                # lint-fixme: NoRaise
                 raise TicketTrackerError(
                     f"The {group.root} group holds no label named {label.name.root}."
                 )
@@ -831,6 +844,7 @@ class Linear(TicketTracker):
     def _team_id(self, team: TeamKey) -> TeamId:
         found = self._found_team({"key": {"eqIgnoreCase": team.root}}).unwrap()
         if found is None:
+            # lint-fixme: NoRaise
             raise TicketTrackerError(f"No team has the key {team.root}.")
         return found.id
 
@@ -1038,6 +1052,7 @@ class Linear(TicketTracker):
         with LinearCall.translated_errors():
             user = self._client.find_user(FindUserRequest(email=assignee.root)).user
             if user is None or user.id is None:
+                # lint-fixme: NoRaise
                 raise TicketTrackerError(f"No Linear user has the email {assignee.root}.")
             _ = self._client.update_issue(IssueUpdateRequest(id=issue.root, assignee_id=user.id))
 
