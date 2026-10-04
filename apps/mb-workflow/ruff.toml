@@ -15,7 +15,7 @@ runtime-evaluated-base-classes = [
 
 [lint]
 ignore = [
-    # These messages sit on raises that TY-7e replaces with error values; raise-baseline/ tracks
+    # These messages sit on raises that TY-7e replaces with error values; the NoRaise baseline in .hemolint/ tracks
     # the remaining raises. Drop this ignore once the migration ends.
     "TRY003",
     # Logged errors are user-facing messages; a traceback would be noise.

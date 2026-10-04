@@ -1,0 +1,26 @@
+[project]
+name = "lint-rules"
+version = "0.1.0"
+description = "Custom Fixit lint rules, enforced in every app."
+authors = [
+    { name = "Martin Bernstorff", email = "martinbernstorff@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "fixit>=2.2.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.24,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "noprim>=0.3.0",
+    "pyrefly>=1.2.0",
+    "pytest>=9.1.1",
+    "pytest-randomly>=5.0.0",
+    "pytest-xdist>=3.8.0",
+    "ruff>=0.16.6",
+    "tach>=0.35.0",
+]

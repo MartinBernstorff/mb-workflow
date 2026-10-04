@@ -1,0 +1,6 @@
+source_roots = ["src"]
+ignore_type_checking_imports = false
+
+[[modules]]
+path = "lint_rules"
+depends_on = []

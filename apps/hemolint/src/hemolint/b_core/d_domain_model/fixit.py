@@ -11,7 +11,7 @@ from hemolint.b_core.d_domain_model.linter_output import (
 from hemolint.b_core.d_domain_model.violation import (
     LineNumber,
     LinterLine,
-    ReportedViolation,
+    LocatedViolation,
     RuleName,
     SourcePath,
 )
@@ -24,7 +24,7 @@ class FixitParser:
 
     @staticmethod
     def parse(output: LinterOutput) -> Result[ReportedViolations, UnparsableOutputError]:
-        violations: list[ReportedViolation] = []
+        violations: list[LocatedViolation] = []
         for line in output.root.splitlines():
             if not line.strip():
                 continue
@@ -32,7 +32,7 @@ class FixitParser:
             if match is None:
                 return Err(UnparsableOutputError(f"Not a Fixit violation: {line}"))
             violations.append(
-                ReportedViolation(
+                LocatedViolation(
                     source=SourcePath(Path(match["path"])),
                     line=LineNumber(int(match["line"])),
                     rule=RuleName(match["rule"]),
