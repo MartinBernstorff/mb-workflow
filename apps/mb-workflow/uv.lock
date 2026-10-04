@@ -146,15 +146,6 @@ wheels = [
 ]
 
 [[package]]
-name = "iterpy"
-version = "1.15.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/44/a3/2d3aa307cb651ffb4cf397778989f836a792ea5a9b02550633e6dcd0b40a/iterpy-1.15.0.tar.gz", hash = "sha256:a7eb5a22f2c905f8290f43a3a356b529eb87791cfbb0bacf46e50d542a473e59", size = 89018, upload-time = "2026-08-08T10:33:35.988Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fc/22/bdefeabb9275dad279e57f513c4271f995ad4ae9c8f136cd7c856e8179f6/iterpy-1.15.0-py3-none-any.whl", hash = "sha256:e2b26d9b6d09b476d7a41ff98b4b2932c6a93322ddf1a9013420845fdbef3176", size = 12550, upload-time = "2026-08-08T10:33:34.614Z" },
-]
-
-[[package]]
 name = "lefthook"
 version = "2.1.12"
 source = { registry = "https://pypi.org/simple" }
@@ -235,7 +226,6 @@ dev = [
     { name = "actionlint-py" },
     { name = "lefthook" },
     { name = "mb-assertions" },
-    { name = "noprim" },
     { name = "pyrefly" },
     { name = "pytest" },
     { name = "pytest-randomly" },
@@ -259,7 +249,6 @@ dev = [
     { name = "actionlint-py", specifier = ">=1.7.12.24" },
     { name = "lefthook", specifier = ">=2.1.12" },
     { name = "mb-assertions", editable = "../mb-assertions" },
-    { name = "noprim", specifier = ">=0.3.0" },
     { name = "pyrefly", specifier = ">=1.2.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-randomly", specifier = ">=5.0.0" },
@@ -287,38 +276,12 @@ wheels = [
 ]
 
 [[package]]
-name = "noprim"
-version = "0.3.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "iterpy" },
-    { name = "pathspec" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "typer" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0c/9c/0df7bc27b9cdb0324a46f7d8b3c2d84faef4f30b0fe83d5049a70a1c2a2a/noprim-0.3.0.tar.gz", hash = "sha256:523d40dcda6db2a0598e4e198d04eb255149a6968091927ec7d658f6a4300efc", size = 141340, upload-time = "2026-08-21T12:21:23.01Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8a/af/56c62fd52e3d8e81500210af7a4c0fd6093499c07f2258b73970d83ba723/noprim-0.3.0-py3-none-any.whl", hash = "sha256:148fc605abdb770221168cd818a674eb83eaacc2be44cc8a9dd74e2459896a5c", size = 39038, upload-time = "2026-08-21T12:21:21.634Z" },
-]
-
-[[package]]
 name = "packaging"
 version = "26.3"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz", hash = "sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79", size = 313412, upload-time = "2026-08-04T18:15:28.737Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl", hash = "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c", size = 129956, upload-time = "2026-08-04T18:15:27.159Z" },
-]
-
-[[package]]
-name = "pathspec"
-version = "1.1.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/5a/82/42f767fc1c1143d6fd36efb827202a2d997a375e160a71eb2888a925aac1/pathspec-1.1.1.tar.gz", hash = "sha256:17db5ecd524104a120e173814c90367a96a98d07c45b2e10c2f3919fff91bf5a", size = 135180, upload-time = "2026-04-27T01:46:08.907Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f1/d9/7fb5aa316bc299258e68c73ba3bddbc499654a07f151cba08f6153988714/pathspec-1.1.1-py3-none-any.whl", hash = "sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189", size = 57328, upload-time = "2026-04-27T01:46:07.06Z" },
 ]
 
 [[package]]

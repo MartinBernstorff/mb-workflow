@@ -2,9 +2,8 @@ language: "python"
 stack: "backend"
 layer: "library"
 
-# Assertions take primitives such as `has_length(3)` by design, so noprim does not apply.
 # A library has no CLI to install.
 workspace:
   inheritedTasks:
-    exclude: ["noprim", "install"]
+    exclude: ["install"]
 
