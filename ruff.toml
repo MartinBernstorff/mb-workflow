@@ -23,6 +23,17 @@ select = [
     "PTH",
     "ERA",
     "TC",
+    "ASYNC",
+    "ISC",
+    "LOG",
+    "G",
+    "INP",
+    "T20",
+    "Q",
+    "SLF",
+    "FURB",
+    "PERF",
+    "TRY",
 ]
 ignore = [
     "E501",
