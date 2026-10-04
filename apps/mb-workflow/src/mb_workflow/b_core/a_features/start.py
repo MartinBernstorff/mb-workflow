@@ -19,6 +19,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
     AwaitingHuman,
     Finished,
     FlowError,
+    OpenedStates,
     Skill,
     StateName,
     WorkflowChart,
@@ -288,7 +289,8 @@ class TicketStart:
             manager, opened, prompt, request.idle_timeout, request.submit
         )
 
-    # A ticket outside the flow enters it first, so its claim records the status it enters with.
+    # A ticket outside the state it opens in moves there first, so its claim records the status
+    # it moves to.
     @staticmethod
     def entry_steps(
         *,
@@ -302,7 +304,7 @@ class TicketStart:
         tuple[tuple[SagaStep[TicketTrackerError], ...], IssueStatusName],
         TicketTrackerError | MissingFlowLabelsError,
     ]:
-        if labelled_state is not None:
+        if labelled_state == state:
             return Ok(((), issue.status))
         checked = FlowLabelCheck.require_for_issue(tracker, flow_labels, issue.identifier)
         if isinstance(checked, Err):
@@ -318,7 +320,7 @@ class TicketStart:
         )
         return Ok(((entering,), statuses.of(state)))
 
-    # The flow state the ticket carries, the state it starts in, that state's board column,
+    # The flow state the ticket carries, the state it opens in, that state's board column,
     # and the prompt that starts its work.
     @staticmethod
     def planned_start(
@@ -336,10 +338,11 @@ class TicketStart:
         action = TicketStart.action_in(request.ticket, given.value)
         if isinstance(action, Err):
             return action
-        column = board.status_for(given.value)
+        opened = OpenedStates.opened_in(WorkflowChart, given.value)
+        column = board.status_for(opened)
         if isinstance(column, Err):
             return column
-        return Ok((labelled.value, given.value, column.value, request.prompt_for(action.value)))
+        return Ok((labelled.value, opened, column.value, request.prompt_for(action.value)))
 
     @staticmethod
     def startable_states() -> AcceptedStates:

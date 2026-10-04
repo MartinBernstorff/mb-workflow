@@ -12,6 +12,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
     EventNames,
     FlowError,
     FlowStatus,
+    OpenedStates,
     StateName,
     StateNames,
     UnknownStateError,
@@ -55,6 +56,7 @@ def test_the_chart_holds_every_transition_the_work_can_take() -> None:
                 edge(GRILL, EventName("to-ticket"), TO_TICKET),
                 edge(TO_TICKET, EventName("todo"), TODO),
                 edge(TODO, EventName("implement"), IMPLEMENTING),
+                edge(IMPLEMENTING, EventName("implement"), IMPLEMENTING),
                 edge(IMPLEMENTING, EventName("qa"), QA),
                 edge(IMPLEMENTING, EventName("grill"), GRILL),
                 edge(IMPLEMENTING, EventName("to-ticket"), TO_TICKET),
@@ -131,6 +133,22 @@ def test_the_chart_names_every_event_it_holds() -> None:
 
 def test_a_legal_event_leads_to_the_state_the_chart_names() -> None:
     assert Edges.of_chart(WorkflowChart).target_from(QA, EventName("ready")) == Ok(REVIEW)
+
+
+def test_implementing_again_keeps_the_work_in_implementing() -> None:
+    assert Edges.of_chart(WorkflowChart).target_from(IMPLEMENTING, EventName("implement")) == Ok(
+        IMPLEMENTING
+    )
+
+
+def test_only_todo_opens_in_the_delivery_state_running_the_same_skill() -> None:
+    states = StateNames.of_chart(WorkflowChart).root
+    moved = {
+        state: OpenedStates.opened_in(WorkflowChart, state)
+        for state in states
+        if OpenedStates.opened_in(WorkflowChart, state) != state
+    }
+    assert moved == {TODO: IMPLEMENTING}
 
 
 def test_resolving_a_review_from_qa_returns_the_work_to_implementing() -> None:

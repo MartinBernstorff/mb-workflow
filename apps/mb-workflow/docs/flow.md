@@ -10,6 +10,7 @@ stateDiagram-v2
     todo --> implementing : implement
     implementing --> grill : grill
     implementing --> to_ticket : to-ticket
+    implementing --> implementing : implement
     implementing --> qa : qa
     qa --> implementing : implement
     qa --> review : ready

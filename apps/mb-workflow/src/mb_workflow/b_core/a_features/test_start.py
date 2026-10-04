@@ -235,6 +235,30 @@ def test_seeds_the_board_column_from_the_flow_label() -> None:
     assert opened.status == fake_board().status_for(StateName("to-ticket")).unwrap()
 
 
+def test_a_todo_ticket_opens_in_implementing() -> None:
+    manager = fake_manager()
+    tracker = tracking(StateName("todo"))
+    implementing = StateName("implementing")
+    assert starting(manager, tracker, StartRequest.fake()) == Ok(None)
+    issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
+    assert issue.labels.has(LabelName(implementing.root)).root
+    assert not issue.labels.has(LabelName("todo")).root
+    assert issue.status == TicketStatuses.fake().of(implementing)
+    assert opened_in(manager).status == fake_board().status_for(implementing).unwrap()
+
+
+def test_a_grill_ticket_opens_in_grill() -> None:
+    manager = fake_manager()
+    status = IssueStatusName("Backlog")
+    grill = StateName("grill")
+    tracker = tracking(grill, status=status)
+    assert starting(manager, tracker, StartRequest.fake()) == Ok(None)
+    issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
+    assert issue.labels.has(LabelName(grill.root)).root
+    assert issue.status == status
+    assert opened_in(manager).status == fake_board().status_for(grill).unwrap()
+
+
 def test_a_ticket_without_a_flow_label_is_neither_claimed_assigned_nor_opened() -> None:
     manager = fake_manager()
     tracker = tracking(None)
@@ -269,21 +293,33 @@ def starting_in(state: StateName) -> StartRequest:
 def test_a_ticket_without_a_flow_label_started_in_a_state_gets_its_label_and_status() -> None:
     manager = fake_manager()
     tracker = tracking(None)
-    todo = StateName("todo")
-    assert starting(manager, tracker, starting_in(todo)) == Ok(None)
+    to_ticket = StateName("to-ticket")
+    assert starting(manager, tracker, starting_in(to_ticket)) == Ok(None)
     issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
-    assert issue.labels.has(LabelName(todo.root)).root
-    assert issue.status == TicketStatuses.fake().of(todo)
-    assert manager.typed_texts() == (TerminalText("/implement E-4289"),)
+    assert issue.labels.has(LabelName(to_ticket.root)).root
+    assert issue.status == TicketStatuses.fake().of(to_ticket)
+    assert manager.typed_texts() == (TerminalText("/to-ticket E-4289"),)
 
 
-def test_a_state_typed_in_lowercase_puts_the_ticket_in_the_chart_state() -> None:
+def test_a_state_typed_in_uppercase_puts_the_ticket_in_the_chart_state() -> None:
     tracker = tracking(None)
-    todo = StateName("todo")
-    assert starting(fake_manager(), tracker, starting_in(StateName("TODO"))) == Ok(None)
+    to_ticket = StateName("to-ticket")
+    assert starting(fake_manager(), tracker, starting_in(StateName("TO-TICKET"))) == Ok(None)
     issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
-    assert issue.labels.has(LabelName(todo.root)).root
-    assert issue.status == TicketStatuses.fake().of(todo)
+    assert issue.labels.has(LabelName(to_ticket.root)).root
+    assert issue.status == TicketStatuses.fake().of(to_ticket)
+
+
+def test_a_ticket_without_a_flow_label_started_in_todo_opens_in_implementing() -> None:
+    tracker = tracking(None)
+    implementing = StateName("implementing")
+    assert starting(fake_manager(), tracker, starting_in(StateName("todo"))) == Ok(None)
+    assert (
+        tracker.read_issue(IssueIdentifier.fake())
+        .unwrap()
+        .labels.has(LabelName(implementing.root))
+        .root
+    )
 
 
 def test_a_ticket_with_a_flow_label_started_in_a_state_is_not_claimed() -> None:
@@ -502,6 +538,17 @@ def test_a_failed_worktree_creation_leaves_an_unassigned_ticket_unassigned() -> 
     failed = starting(refusing_manager(), tracker, StartRequest.fake())
     assert isinstance(failed.error, WorkspaceManagerError)
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().assigned == Assigned(False)
+
+
+def test_a_failed_worktree_creation_moves_a_todo_ticket_back_to_todo() -> None:
+    todo = StateName("todo")
+    before = IssueStatusName("Maturing")
+    tracker = tracking(todo, status=before)
+    failed = starting(refusing_manager(), tracker, StartRequest.fake())
+    assert isinstance(failed.error, WorkspaceManagerError)
+    issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
+    assert issue.labels == labelled(todo)
+    assert issue.status == before
 
 
 def test_a_failed_worktree_creation_takes_an_unlabelled_ticket_back_out_of_the_flow() -> None:
