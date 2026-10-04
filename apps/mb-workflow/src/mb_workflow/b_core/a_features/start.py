@@ -210,7 +210,7 @@ class TicketStart:
                     wanted=flow_labels,
                     statuses=statuses,
                     state=state,
-                    previous=detail.issue.status,
+                    previous_status=detail.issue.status,
                 ),
             )
             status = statuses.of(state)

@@ -206,41 +206,47 @@ def test_another_teams_flow_labels_leave_the_ticket_and_the_board_alone() -> Non
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(())
 
 
-def entering_specced(tracker: FakeTicketTracker) -> FlowEntryStep:
+def entering(
+    tracker: FakeTicketTracker, state: StateName, previous_status: IssueStatusName
+) -> FlowEntryStep:
     return FlowEntryStep(
         tracker=tracker,
         issue=IssueIdentifier.fake(),
         wanted=FlowLabels.fake(),
         statuses=TicketStatuses.fake(),
-        state=StateName("Specced"),
-        previous=IssueStatusName("Maturing"),
+        state=state,
+        previous_status=previous_status,
     )
 
 
 def test_entering_the_flow_labels_the_ticket_and_sets_the_states_status() -> None:
     tracker = seeded_tracker(LabelNames((LabelName.fake(),)))
-    assert entering_specced(tracker).apply() == Ok(None)
+    specced = StateName("Specced")
+    todo = IssueStatusName("Todo")
+    assert TicketStatuses.fake().of(specced) == todo
+    assert entering(tracker, specced, IssueStatusName.fake()).apply() == Ok(None)
     issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
-    assert issue.labels == LabelNames((LabelName.fake(), LabelName("Specced")))
-    assert issue.status == IssueStatusName("Todo")
+    assert issue.labels == LabelNames((LabelName.fake(), LabelName(specced.root)))
+    assert issue.status == todo
 
 
 def test_reverting_the_flow_entry_restores_the_labels_and_status() -> None:
-    tracker = seeded_tracker(LabelNames((LabelName.fake(),)))
-    step = entering_specced(tracker)
+    held = LabelNames((LabelName.fake(),))
+    tracker = seeded_tracker(held)
+    maturing = IssueStatusName("Maturing")
+    step = entering(tracker, StateName("Specced"), maturing)
     _ = step.apply().unwrap()
     assert step.revert() == Ok(None)
     issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
-    assert issue.labels == LabelNames((LabelName.fake(),))
-    assert issue.status == IssueStatusName("Maturing")
+    assert issue.labels == held
+    assert issue.status == maturing
 
 
 def test_reverting_the_flow_entry_keeps_labels_added_since() -> None:
     tracker = seeded_tracker(LabelNames(()))
-    step = entering_specced(tracker)
+    step = entering(tracker, StateName("Specced"), IssueStatusName("Maturing"))
     _ = step.apply().unwrap()
-    tracker.add_label(IssueIdentifier.fake(), LabelName.fake())
+    added = LabelName.fake()
+    tracker.add_label(IssueIdentifier.fake(), added)
     _ = step.revert().unwrap()
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(
-        (LabelName.fake(),)
-    )
+    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames((added,))

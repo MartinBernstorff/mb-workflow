@@ -80,9 +80,9 @@ class FlowLabels(Model):
         )
 
     def relabelled(self, held: LabelNames, state: StateName) -> LabelNames:
-        return LabelNames((*self.unlabelled(held).root, LabelName(state.root)))
+        return LabelNames((*self.without_flow_labels(held).root, LabelName(state.root)))
 
-    def unlabelled(self, held: LabelNames) -> LabelNames:
+    def without_flow_labels(self, held: LabelNames) -> LabelNames:
         return LabelNames(
             tuple(label for label in held.root if self.labels.matching(label) is None)
         )

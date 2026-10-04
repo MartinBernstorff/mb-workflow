@@ -69,11 +69,11 @@ class FlowTransition:
         checked = FlowLabelCheck.require_for_issue(tracker, wanted, issue)
         if isinstance(checked, Err):
             return checked
-        return FlowTransition.relabel(tracker, issue, wanted, statuses, state)
+        return FlowTransition.put_in_state_unchecked(tracker, issue, wanted, statuses, state)
 
-    # Unlike put_in_state, assumes the flow labels exist.
+    # Assumes the flow labels exist, which put_in_state checks.
     @staticmethod
-    def relabel(
+    def put_in_state_unchecked(
         tracker: TicketTracker,
         issue: IssueIdentifier,
         wanted: FlowLabels,
@@ -102,13 +102,13 @@ class FlowEntryStep(SagaStep):
     wanted: FlowLabels
     statuses: TicketStatuses
     state: StateName
-    previous: IssueStatusName
+    previous_status: IssueStatusName
 
     @override
     def apply(self) -> Result[None, Exception]:
         try:
             with Activity(f"Putting {self.issue.root} in {self.state.root}").logged(logger):
-                return FlowTransition.relabel(
+                return FlowTransition.put_in_state_unchecked(
                     self.tracker, self.issue, self.wanted, self.statuses, self.state
                 )
         except TicketTrackerError as error:
@@ -121,14 +121,14 @@ class FlowEntryStep(SagaStep):
             return held
         try:
             with Activity(
-                f"Taking {self.issue.root} out of the flow, back to {self.previous.root}"
+                f"Taking {self.issue.root} out of the flow, back to {self.previous_status.root}"
             ).logged(logger):
                 self.tracker.update_issue(
                     self.issue,
                     IssueUpdate.nothing().model_copy(
                         update={
-                            "labels": self.wanted.unlabelled(held.value.labels),
-                            "status": self.previous,
+                            "labels": self.wanted.without_flow_labels(held.value.labels),
+                            "status": self.previous_status,
                         }
                     ),
                 )
