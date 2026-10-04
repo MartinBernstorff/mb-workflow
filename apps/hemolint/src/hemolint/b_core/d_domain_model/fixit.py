@@ -10,6 +10,7 @@ from hemolint.b_core.d_domain_model.linter_output import (
 )
 from hemolint.b_core.d_domain_model.violation import (
     LineNumber,
+    LinterLine,
     ReportedViolation,
     RuleName,
     SourcePath,
@@ -35,6 +36,7 @@ class FixitParser:
                     source=SourcePath(Path(match["path"])),
                     line=LineNumber(int(match["line"])),
                     rule=RuleName(match["rule"]),
+                    reported_as=LinterLine(line),
                 )
             )
         return Ok(ReportedViolations(tuple(violations)))
