@@ -32,7 +32,6 @@ from mb_workflow.d_lib.logging import LogLevel
 ticket_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
 
 
-# Spells each priority as typed on the command line, so the choices read as words, not Linear's numbers.
 class PriorityChoice(StrEnum):
     no_priority = "none"
     urgent = "urgent"

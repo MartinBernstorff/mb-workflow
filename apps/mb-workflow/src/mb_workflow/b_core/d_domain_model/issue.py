@@ -279,7 +279,6 @@ class Projects(Value[tuple[Project, ...]]):
         return next((known for known in self.root if known.name.names(project).root), None)
 
 
-# Numbered as Linear numbers them, so tickets read their priority without translation.
 class Priority(IntEnum):
     no_priority = 0
     urgent = 1
