@@ -91,10 +91,10 @@ class NoRaise(LintRule):
     def visit_Raise(self, node: cst.Raise) -> None:
         if node.exc is None or self._inside_validator(node):
             return
-        if not self._allows(node.exc):
+        if not self._is_allowed_exception(node.exc):
             self.report(node)
 
-    def _allows(self, raised: cst.BaseExpression) -> bool:
+    def _is_allowed_exception(self, raised: cst.BaseExpression) -> bool:
         return get_full_name_for_node(raised) == "SystemExit"
 
     # Pydantic turns a raise in a validator into a ValidationError, so the raise is how a validator reports.
@@ -138,7 +138,7 @@ class NoRaiseAtTyperBoundary(NoRaise):
     ]
 
     @override
-    def _allows(self, raised: cst.BaseExpression) -> bool:
+    def _is_allowed_exception(self, raised: cst.BaseExpression) -> bool:
         # E.g. `typer.Exit` for `raise typer.Exit(code=1)`.
         dotted_name = get_full_name_for_node(raised) or ""
-        return super()._allows(raised) or dotted_name.startswith("typer.")
+        return super()._is_allowed_exception(raised) or dotted_name.startswith("typer.")

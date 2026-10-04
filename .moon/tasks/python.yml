@@ -49,15 +49,15 @@ tasks:
       outputStyle: "buffer-only-failure"
 
   # Fixit runs from the lint-rules environment, because it pins a click version the apps' Typer can't use.
-  # hemolint compares the violations to the app's baseline in .hemolint/. Fixit exits 1 on any violation,
-  # so the pipe takes hemolint's exit code.
+  # hemolint compares the violations to the app's baseline in .hemolint/.
   fixit:
-    script: "uv run --project $workspaceRoot/packages/lint-rules fixit lint src | uv run --project $workspaceRoot/apps/hemolint hemolint check --format fixit"
+    script: "$workspaceRoot/scripts/fixit-hemolint.sh"
     inputs:
       - file: "fixit.toml"
         optional: true
       - "src/**/fixit.toml"
       - "/fixit.toml"
+      - "/scripts/fixit-hemolint.sh"
       - ".hemolint/**/*"
       - "/packages/lint-rules/pyproject.toml"
       - "/packages/lint-rules/uv.lock"
@@ -71,14 +71,14 @@ tasks:
 
   # Removes fixed violations from the baseline, but still fails on new ones.
   fixit-prune:
-    script: "uv run --project $workspaceRoot/packages/lint-rules fixit lint src | uv run --project $workspaceRoot/apps/hemolint hemolint check --format fixit --prune"
+    script: "$workspaceRoot/scripts/fixit-hemolint.sh --prune"
     options:
       cache: false
       runInCI: false
 
   # Records every current violation, including new ones, in the baseline.
   fixit-baseline:
-    script: "uv run --project $workspaceRoot/packages/lint-rules fixit lint src | uv run --project $workspaceRoot/apps/hemolint hemolint check --format fixit --baseline"
+    script: "$workspaceRoot/scripts/fixit-hemolint.sh --baseline"
     options:
       cache: false
       runInCI: false
