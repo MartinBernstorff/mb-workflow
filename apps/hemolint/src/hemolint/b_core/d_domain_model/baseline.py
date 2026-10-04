@@ -21,7 +21,6 @@ class BaselineDirectory(Value[Path]):
         return BaselineDirectory(Path("/Users/me/project/.hemolint"))
 
 
-# The violations of one rule in one source file, which the disk baseline keeps in one file.
 class BaselineFile(Model):
     source: SourcePath
     linter: LinterName
@@ -43,7 +42,6 @@ class Violation(Model):
         return Violation(file=BaselineFile.fake(), fingerprint=Fingerprint.fake())
 
 
-# A violation in the current linter output, with the line the linter reported it on.
 class FoundViolation(Model):
     violation: Violation
     reported_as: LinterLine
@@ -68,7 +66,6 @@ class BaselineChange(Model):
         return BaselineChange(added=Count.fake(), removed=Count(0))
 
 
-# A sorted multiset: a violation held twice is two copies of the same violation.
 class Baseline(Value[tuple[Violation, ...]]):
     @staticmethod
     def fake() -> Baseline:
@@ -90,7 +87,6 @@ class Baseline(Value[tuple[Violation, ...]]):
             )
         )
 
-    # Removes one held copy per copy in the other baseline.
     def without(self, other: Baseline) -> Baseline:
         return Baseline.of((Counter(self.root) - Counter(other.root)).elements())
 

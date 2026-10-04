@@ -22,7 +22,6 @@ if TYPE_CHECKING:
 
 
 class BaselineRecording:
-    # Writes the exact current state: new violations are added, fixed ones removed.
     @staticmethod
     def record(
         output: LinterOutput,

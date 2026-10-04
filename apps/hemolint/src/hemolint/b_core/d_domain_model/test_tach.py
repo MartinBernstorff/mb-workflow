@@ -21,7 +21,6 @@ if TYPE_CHECKING:
 
 
 class TachJson:
-    # One diagnostic in `tach check --output json`, without the fields hemolint ignores.
     @staticmethod
     def located(
         at: LocatedViolation, severity: TachSeverity, category: TachCategory, payload: JsonValue
@@ -50,7 +49,6 @@ class TachJson:
             json.dumps([{"Global": {"severity": severity.value, "details": details}}])
         )
 
-    # Parses one global code diagnostic holding the payload.
     @staticmethod
     def global_fingerprint(payload: JsonValue) -> Fingerprint:
         output = TachJson.global_(TachSeverity.error, TachCategory.code, RuleName.fake(), payload)

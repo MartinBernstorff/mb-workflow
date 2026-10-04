@@ -8,7 +8,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
-# How the baseline differs from the current violations.
 class Drift(Model):
     new: tuple[FoundViolation, ...]
     fixed: Baseline
@@ -17,7 +16,6 @@ class Drift(Model):
     def fake() -> Drift:
         return Drift(new=(FoundViolation.fake(),), fixed=Baseline.of(()))
 
-    # Copies of a violation match baselined copies in output order, so the later ones are new.
     @staticmethod
     def between(baseline: Baseline, found: Iterable[FoundViolation]) -> Drift:
         unmatched = Counter(baseline.root)

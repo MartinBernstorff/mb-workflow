@@ -21,7 +21,6 @@ def workdir(tmp_path: Path) -> Path:
 
 
 class HemolintProcess:
-    # Runs the installed entry point in the directory, since source paths are relative to it.
     @staticmethod
     def run_in(
         directory: Path, arguments: list[str], stdin: str
@@ -101,6 +100,7 @@ def test_a_baseline_matching_the_violations_exits_zero(workdir: Path) -> None:
 
 def test_a_fixed_violation_exits_one_and_is_listed_with_a_prune_hint(workdir: Path) -> None:
     failure = 1
+    # lint-ignore: NoComment
     fixed_line = f"{source}: fixit-{rule} ×1 fixed"  # noqa: RUF001
     prune_hint = "hemolint check --prune"
     summary = "0 new and 1 fixed violations."

@@ -6,7 +6,7 @@ import typer
 from hemolint.a_presentation.commands import Commands
 from hemolint.b_core.d_domain_model.baseline import BaselineDirectory
 
-# Typer reads the annotation at runtime to build the --format choices.
+# lint-ignore: NoComment
 from hemolint.b_core.d_domain_model.linter_format import LinterFormat  # noqa: TC001
 from hemolint.b_core.d_domain_model.linter_output import LinterOutput
 from hemolint.b_core.d_domain_model.violation import WorkingDirectory
@@ -14,9 +14,9 @@ from hemolint.b_core.d_domain_model.violation import WorkingDirectory
 app = typer.Typer(no_args_is_help=True)
 
 
-# A callback keeps `check` a subcommand while it is the only one.
 @app.callback()
 def hemolint() -> None:
+    # lint-ignore: NoComment
     """Keep new lint violations out while existing ones are fixed over time."""
 
 
@@ -35,6 +35,7 @@ def check(
         Path(".hemolint"), "--dir", help="Directory that holds the baseline."
     ),
 ) -> None:
+    # lint-ignore: NoComment
     """Read linter output from stdin and compare it to the baseline."""
     if prune and baseline:
         _ = sys.stderr.write("--prune and --baseline cannot be used together.\n")

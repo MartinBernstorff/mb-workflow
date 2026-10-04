@@ -28,7 +28,6 @@ class RuffMessage(Value[str]):
         return RuffMessage("`os` imported but unused")
 
 
-# Ruff's JSON holds more fields than hemolint reads, so the rest are ignored.
 class _RuffModel(Model):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
@@ -44,7 +43,6 @@ class _RuffViolation(_RuffModel):
     location: _RuffLocation
     message: RuffMessage
 
-    # Ruff's concise output format, so a new violation prints the way ruff would print it.
     def to_linter_line(self) -> LinterLine:
         return LinterLine(
             f"{self.filename.root}:{self.location.row.root}:{self.location.column.root}: "
@@ -55,7 +53,6 @@ class _RuffViolation(_RuffModel):
 class RuffJsonParser:
     _OUTPUT = TypeAdapter(tuple[_RuffViolation, ...])
 
-    # Keeps ruff's absolute paths; ViolationFinder makes them relative to the working directory.
     @staticmethod
     def parse(output: LinterOutput) -> Result[ReportedViolations, UnparsableOutputError]:
         try:

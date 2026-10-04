@@ -16,13 +16,11 @@ if TYPE_CHECKING:
     )
 
 
-# Adding a linter means adding a member, its linter name, and its parser.
 class LinterFormat(StrEnum):
     fixit = "fixit"
     ruff_json = "ruff-json"
     tach = "tach"
 
-    # Names the baseline files, so it is the linter, not the format it was read in.
     def linter_name(self) -> LinterName:
         match self:
             case LinterFormat.fixit:

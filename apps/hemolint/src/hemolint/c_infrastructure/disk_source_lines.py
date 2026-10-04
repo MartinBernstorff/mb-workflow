@@ -16,7 +16,6 @@ from hemolint.b_core.d_domain_model.violation import (
 class DiskSourceLines(SourceLines):
     def __init__(self, directory: WorkingDirectory) -> None:
         self._directory = directory
-        # A file with many violations is read once.
         self._texts: dict[SourcePath, SourceText] = {}
 
     @override

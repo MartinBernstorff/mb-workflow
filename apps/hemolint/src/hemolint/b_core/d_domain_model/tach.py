@@ -26,7 +26,6 @@ class TachSeverity(StrEnum):
     warning = "Warning"
 
 
-# Code diagnostics are violations; configuration diagnostics mean tach could not check everything.
 class TachCategory(StrEnum):
     code = "Code"
     configuration = "Configuration"
@@ -38,12 +37,10 @@ class TachErrorMessage(Value[str]):
         return TachErrorMessage("Circular dependency")
 
 
-# Tach's JSON holds more fields than hemolint reads, so the rest are ignored.
 class _TachModel(Model):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
 
-# One kind under one category, e.g. `{"Code": {"UndeclaredDependency": {...}}}`.
 class _TachDetails(Value[dict[TachCategory, dict[RuleName, JsonValue]]]):
     def code_kind(self) -> Result[tuple[RuleName, JsonValue], UnparsableOutputError]:
         if TachCategory.configuration in self.root:
@@ -58,7 +55,6 @@ class _TachDetails(Value[dict[TachCategory, dict[RuleName, JsonValue]]]):
         [(kind, payload)] = code.items()
         return Ok((kind, payload))
 
-    # The details as tach printed them. RuleName keys dump as their repr, so they are unwrapped.
     def _as_output(self) -> LinterOutput:
         return LinterOutput(
             json.dumps(
@@ -88,7 +84,6 @@ class _TachGlobalEntry(Model):
     global_: _TachGlobal = Field(alias="Global")
 
 
-# Tach reports a failure that stops the whole check, e.g. a circular dependency, as one object.
 class _TachError(_TachModel):
     error: TachErrorMessage
 
@@ -97,7 +92,6 @@ class TachParser:
     _OUTPUT = TypeAdapter(tuple[_TachLocatedEntry | _TachGlobalEntry, ...])
     _ERROR = TypeAdapter(_TachError)
 
-    # Keeps tach's paths, which are relative to the tach project root.
     @staticmethod
     def parse(output: LinterOutput) -> Result[ReportedViolations, UnparsableOutputError]:
         try:
@@ -121,7 +115,6 @@ class TachParser:
         if isinstance(code_kind, Err):
             return code_kind
         rule, payload = code_kind.value
-        # Fingerprints a global violation; a located one is fingerprinted by its source line later.
         fingerprint = TachParser._fingerprint_of(payload)
         if isinstance(diagnostic, _TachLocated):
             return Ok(
@@ -143,7 +136,6 @@ class TachParser:
             )
         )
 
-    # Sorted keys, so tach reordering a payload does not change its fingerprint.
     @staticmethod
     def _fingerprint_of(payload: JsonValue) -> Fingerprint:
         return Fingerprint(

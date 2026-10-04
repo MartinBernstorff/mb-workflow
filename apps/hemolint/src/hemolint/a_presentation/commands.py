@@ -25,7 +25,6 @@ class ExitCode(Value[int]):
         return ExitCode(0)
 
 
-# New violations as the linter reported them, then fixed ones per baseline file, then a summary.
 class DriftReport(Value[str]):
     @staticmethod
     def fake() -> DriftReport:
@@ -36,6 +35,7 @@ class DriftReport(Value[str]):
         lines = [violation.reported_as.root for violation in drift.new]
         fixed = drift.fixed_per_file()
         lines.extend(
+            # lint-ignore: NoComment
             f"{file.source.root}: {file.linter.root}-{file.rule.root} ×{count.root} fixed"  # noqa: RUF001
             for file, count in fixed.items()
         )
@@ -47,7 +47,6 @@ class DriftReport(Value[str]):
         return DriftReport("".join(f"{line}\n" for line in lines))
 
 
-# New violations as the linter reported them, then how many fixed violations were removed.
 class PruneReport(Value[str]):
     @staticmethod
     def fake() -> PruneReport:
@@ -126,7 +125,6 @@ class Commands:
             case Err(error):
                 return Commands._report_error(error)
 
-    # Unparsable linter output is a usage error; anything else is a failure.
     @staticmethod
     def _report_error(error: Exception) -> ExitCode:
         _ = sys.stderr.write(f"{error}\n")

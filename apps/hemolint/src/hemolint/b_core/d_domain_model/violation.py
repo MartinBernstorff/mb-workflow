@@ -24,13 +24,11 @@ class WorkingDirectory(Value[Path]):
         return WorkingDirectory(Path.cwd())
 
 
-# A source file's path as the linter reported it, or, once placed, relative to the working directory.
 class SourcePath(Value[Path]):
     @staticmethod
     def fake() -> SourcePath:
         return SourcePath(Path("src/app.py"))
 
-    # Holds the violations a linter reports for the whole project. Not a file on disk.
     @staticmethod
     def global_diagnostics() -> SourcePath:
         return SourcePath(Path("_global"))
@@ -38,7 +36,6 @@ class SourcePath(Value[Path]):
     def relative_to_working_directory(
         self, directory: WorkingDirectory
     ) -> Result[SourcePath, OutsideWorkingDirectoryError]:
-        # normpath folds ".." without touching the disk, so a path cannot climb out unnoticed.
         placed = Path(os.path.normpath(directory.root / self.root))
         if not placed.is_relative_to(directory.root):
             return Err(
@@ -67,7 +64,6 @@ class LinterName(Value[str]):
         return LinterName("fixit")
 
 
-# One line of linter output, as the linter wrote it.
 class LinterLine(Value[str]):
     @staticmethod
     def fake() -> LinterLine:
@@ -101,7 +97,6 @@ class SourceText(Value[str]):
     def fake() -> SourceText:
         return SourceText("if x == None:\n    pass\n")
 
-    # Lines count from 1.
     def line_at(
         self, source: SourcePath, number: LineNumber
     ) -> Result[SourceLine, MissingSourceLineError]:
@@ -111,7 +106,6 @@ class SourceText(Value[str]):
         return Ok(SourceLine(lines[number.root - 1]))
 
 
-# Leaves out the line number, so a violation that moves to another line still matches.
 class Fingerprint(Value[str]):
     @staticmethod
     def fake() -> Fingerprint:
@@ -122,7 +116,6 @@ class Fingerprint(Value[str]):
         return Fingerprint(line.root.strip())
 
 
-# A violation reported for the whole project, so its fingerprint comes from the linter, not a line.
 class GlobalViolation(Model):
     rule: RuleName
     fingerprint: Fingerprint

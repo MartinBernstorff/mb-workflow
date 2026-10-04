@@ -12,7 +12,6 @@ class BaselineStoreError(Exception):
 class BaselineStore(Protocol):
     def read(self) -> Result[Baseline, BaselineStoreError]: ...
 
-    # Replaces the whole baseline, so violations missing from it are gone afterwards.
     def write(self, baseline: Baseline) -> Result[None, BaselineStoreError]: ...
 
 

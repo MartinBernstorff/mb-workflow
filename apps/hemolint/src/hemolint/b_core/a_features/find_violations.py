@@ -22,7 +22,6 @@ if TYPE_CHECKING:
 
 
 class ViolationFinder:
-    # Fingerprints each reported violation, in output order.
     @staticmethod
     def find(
         output: LinterOutput,
@@ -45,7 +44,6 @@ class ViolationFinder:
                         return placed
                     source, fingerprint = placed.value
                 case GlobalViolation():
-                    # Kept under the global source with its own fingerprint, so no line is read.
                     source, fingerprint = SourcePath.global_diagnostics(), violation.fingerprint
             file = BaselineFile(
                 source=source, linter=linter_format.linter_name(), rule=violation.rule
@@ -58,7 +56,6 @@ class ViolationFinder:
             )
         return Ok(tuple(found))
 
-    # Relative to the working directory, and fingerprinted by its source line.
     @staticmethod
     def _place_located(
         violation: LocatedViolation, directory: WorkingDirectory, lines: SourceLines

@@ -15,7 +15,6 @@ from hemolint.b_core.d_domain_model.violation import (
 
 
 class RuffJson:
-    # `ruff check --output-format json` with one violation, without the fields hemolint ignores.
     @staticmethod
     def output(filename: SourcePath, rule: RuleName | None) -> LinterOutput:
         entry = {

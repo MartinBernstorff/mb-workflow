@@ -24,7 +24,6 @@ from hemolint.d_lib.models import Value
 _COUNTS = TypeAdapter(dict[str, int])
 
 
-# One baseline file: each fingerprint with its count, sorted, so merges rarely conflict.
 class BaselineFileText(Value[str]):
     @staticmethod
     def fake() -> BaselineFileText:
@@ -46,7 +45,6 @@ class BaselineFileText(Value[str]):
         return Ok(Counter({Fingerprint(code): count for code, count in counts.items()}))
 
 
-# Where one baseline file lives: `<source path>/<linter>-<rule>.json` under the baseline directory.
 class BaselineFilePath(Value[Path]):
     @staticmethod
     def fake() -> BaselineFilePath:
@@ -58,7 +56,6 @@ class BaselineFilePath(Value[Path]):
             directory.root / file.source.root / f"{file.linter.root}-{file.rule.root}.json"
         )
 
-    # Linter names hold no "-", so the first one separates the linter from the rule.
     def decode(self, directory: BaselineDirectory) -> BaselineFile | None:
         linter, separator, rule = self.root.stem.partition("-")
         if not separator or self.root.suffix != ".json":
@@ -114,14 +111,12 @@ class DiskBaselineStore(BaselineStore):
             return Err(BaselineStoreError(f"Cannot write the baseline to {root}: {error}"))
         return Ok(None)
 
-    # A source file may itself end in .json, so its baseline directory does too.
     def _baseline_file_paths(self) -> list[BaselineFilePath]:
         root = self._directory.root
         if not root.exists():
             return []
         return [BaselineFilePath(path) for path in sorted(root.rglob("*.json")) if path.is_file()]
 
-    # Drops the directories of source files that no longer hold violations, deepest first.
     def _remove_empty_directories(self) -> None:
         root = self._directory.root
         if not root.exists():

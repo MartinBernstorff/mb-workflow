@@ -21,7 +21,6 @@ if TYPE_CHECKING:
 
 
 class BaselinePruning:
-    # Removes fixed violations but never adds new ones, so the baseline only shrinks.
     @staticmethod
     def prune(
         output: LinterOutput,
