@@ -11,6 +11,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Milestone,
     MilestoneName,
     NewIssue,
+    Priority,
     ProjectName,
     TeamKey,
 )
@@ -43,6 +44,7 @@ class TicketDraft(Model):
     assignee: Assignee | None
     project: ProjectName | None
     milestone: MilestoneName | None
+    priority: Priority | None
     blocks: tuple[IssueIdentifier, ...]
     blocked_by: tuple[IssueIdentifier, ...]
 
@@ -56,6 +58,7 @@ class TicketDraft(Model):
             assignee=None,
             project=None,
             milestone=None,
+            priority=None,
             blocks=(),
             blocked_by=(),
         )
@@ -89,6 +92,7 @@ class TicketDraft(Model):
                 project=project,
                 status=statuses.of(start),
                 milestone=milestone.unwrap(),
+                priority=self.priority,
                 blocks=self.blocks,
                 blocked_by=self.blocked_by,
             )

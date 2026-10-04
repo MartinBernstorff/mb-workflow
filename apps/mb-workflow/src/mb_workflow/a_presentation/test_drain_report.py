@@ -12,12 +12,11 @@ from mb_workflow.b_core.a_features.drain import (
     UnreadyReason,
 )
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
-from mb_workflow.b_core.d_domain_model.issue import GroupedLabels, IssueIdentifier
+from mb_workflow.b_core.d_domain_model.issue import GroupedLabels, IssueIdentifier, Priority
 from mb_workflow.b_core.d_domain_model.pool import (
     Limit,
     PoolTicket,
     PoolTickets,
-    Priority,
     Refusal,
 )
 

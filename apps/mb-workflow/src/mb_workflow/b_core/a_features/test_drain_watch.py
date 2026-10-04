@@ -34,8 +34,8 @@ from mb_workflow.b_core.c_secondary_ports.tie_break import ReversingTieBreak
 from mb_workflow.b_core.d_domain_model.config import InvalidConfigError, PoolSettings
 from mb_workflow.b_core.d_domain_model.flow import StateName
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, LabelNames
-from mb_workflow.b_core.d_domain_model.pool import Limit, PoolTickets, Priority
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, LabelNames, Priority
+from mb_workflow.b_core.d_domain_model.pool import Limit, PoolTickets
 
 if TYPE_CHECKING:
     from safe_result import Result

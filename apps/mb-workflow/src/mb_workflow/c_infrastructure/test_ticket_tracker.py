@@ -58,6 +58,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     MilestoneName,
     MilestoneNames,
     NewIssue,
+    Priority,
     Project,
     ProjectName,
     Projects,
@@ -68,7 +69,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     TeamName,
     TicketCount,
 )
-from mb_workflow.b_core.d_domain_model.pool import PoolTicket, Priority, ViewSlug
+from mb_workflow.b_core.d_domain_model.pool import PoolTicket, ViewSlug
 from mb_workflow.c_infrastructure.credentials import CredentialsDirectory, RepositorySlug
 from mb_workflow.c_infrastructure.linear import (
     LabelGroupRead,
@@ -133,6 +134,7 @@ class SeededIssue(Model):
             description=self.description,
             assignee=None,
             milestone=None,
+            priority=self.priority,
             blocks=blocks,
             blocked_by=blocked_by,
         )
@@ -1369,6 +1371,24 @@ def test_an_update_can_clear_the_milestone(tracker: TicketTracker, backlog: Back
     assert tracker.read_issue_detail(backlog.identifier(Seed.recent)).unwrap().milestone is None
 
 
+def test_an_update_sets_the_priority(tracker: TicketTracker, backlog: Backlog) -> None:
+    urgent = Priority.urgent
+    tracker.update_issue(
+        backlog.identifier(Seed.newest),
+        IssueUpdate.nothing().model_copy(update={"priority": urgent}),
+    ).unwrap()
+    assert tracker.read_issue_detail(backlog.identifier(Seed.newest)).unwrap().priority == urgent
+
+
+def test_an_update_can_clear_the_priority(tracker: TicketTracker, backlog: Backlog) -> None:
+    cleared = Priority.no_priority
+    tracker.update_issue(
+        backlog.identifier(Seed.old),
+        IssueUpdate.nothing().model_copy(update={"priority": cleared}),
+    ).unwrap()
+    assert tracker.read_issue_detail(backlog.identifier(Seed.old)).unwrap().priority == cleared
+
+
 def test_an_unknown_milestone_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
     unknown = Milestone(project=ProjectName.fake(), name=MilestoneName("No such milestone"))
     refused = tracker.update_issue(
@@ -1429,6 +1449,7 @@ def new_issue(title: IssueTitle) -> NewIssue:
         project=ProjectName.fake(),
         status=IssueStatusName.fake(),
         milestone=None,
+        priority=None,
         blocks=(),
         blocked_by=(),
     )
@@ -1446,6 +1467,7 @@ def test_a_created_issue_reads_back_as_it_was_given(
             "assignee": backlog.assignee,
             "status": IssueStatusName("in progress"),
             "milestone": Milestone.fake(),
+            "priority": Priority.high,
         }
     )
     identifier = creating(new).unwrap().identifier
@@ -1462,9 +1484,17 @@ def test_a_created_issue_reads_back_as_it_was_given(
         description=IssueDescription.fake(),
         assignee=backlog.assignee,
         milestone=MilestoneName.fake(),
+        priority=Priority.high,
         blocks=frozenset(),
         blocked_by=frozenset(),
     )
+
+
+def test_an_issue_created_without_a_priority_has_none(
+    creating: Creating, tracker: TicketTracker
+) -> None:
+    identifier = creating(new_issue(IssueTitle("created: no priority"))).unwrap().identifier
+    assert tracker.read_issue_detail(identifier).unwrap().priority == Priority.no_priority
 
 
 def test_a_created_issue_links_to_itself(creating: Creating) -> None:

@@ -1,7 +1,8 @@
 from operator import attrgetter
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.d_domain_model.pool import PoolTickets, Priority
+from mb_workflow.b_core.d_domain_model.issue import Priority
+from mb_workflow.b_core.d_domain_model.pool import PoolTickets
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.tie_break import TieBreak

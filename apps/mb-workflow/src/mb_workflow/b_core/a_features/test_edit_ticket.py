@@ -18,6 +18,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueStatusName,
     LabelName,
     LabelNames,
+    Priority,
     Projects,
     StatusType,
 )
@@ -68,6 +69,16 @@ def test_editing_a_ticket_swaps_labels() -> None:
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(
         (LabelName("Backend"),)
     )
+
+
+def test_editing_a_ticket_sets_the_priority() -> None:
+    tracker = tracking()
+    urgent = Priority.urgent
+    edit = TicketEdit.nothing().model_copy(update={"priority": urgent})
+    _ = TicketEditor.apply_edit(
+        tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
+    ).unwrap()
+    assert tracker.read_issue_detail(IssueIdentifier.fake()).unwrap().priority == urgent
 
 
 def test_editing_an_unknown_ticket_fails() -> None:
