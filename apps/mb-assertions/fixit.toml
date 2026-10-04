@@ -1,0 +1,3 @@
+# An assertion library reports a failed assertion by raising AssertionError, which pytest expects.
+[tool.fixit]
+disable = ["lint_rules:NoRaise"]
