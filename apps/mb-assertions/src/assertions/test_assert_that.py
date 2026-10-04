@@ -321,20 +321,6 @@ def test_matches_pattern_reports_the_string_and_the_pattern() -> None:
         Assert.that(value).matches_pattern(pattern)
 
 
-def test_does_not_match_passes_on_differing_values() -> None:
-    Assert.that(1).does_not_match(2)
-
-
-def test_does_not_match_reports_the_shared_value() -> None:
-    value = 1
-
-    with pytest.raises(
-        AssertionError,
-        match=re.escape(f"Expected values to differ, but both were {value}"),
-    ):
-        Assert.that(value).does_not_match(value)
-
-
 def test_starts_with_passes_on_a_prefix() -> None:
     prefix = "a"
 
@@ -350,6 +336,103 @@ def test_starts_with_reports_the_string_and_the_prefix() -> None:
         match=re.escape(f"Expected {value!r} to start with {prefix!r}"),
     ):
         Assert.that(value).starts_with(prefix)
+
+
+def test_starts_with_reads_the_prefix_literally() -> None:
+    with pytest.raises(AssertionError):
+        Assert.that("abc").starts_with(".")
+
+
+def test_ends_with_passes_on_a_suffix() -> None:
+    suffix = "c"
+
+    Assert.that(f"ab{suffix}").ends_with(suffix)
+
+
+def test_ends_with_reports_the_string_and_the_suffix() -> None:
+    value = "abc"
+    suffix = "b"
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected {value!r} to end with {suffix!r}"),
+    ):
+        Assert.that(value).ends_with(suffix)
+
+
+def test_not_matches_passes_on_different_values() -> None:
+    Assert.that(1).not_().matches(2)
+
+
+def test_not_matches_reports_the_shared_value() -> None:
+    value = 1
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected values to differ, but both were {value}"),
+    ):
+        Assert.that(value).not_().matches(value)
+
+
+def test_not_matches_compares_models_by_value() -> None:
+    name = "a"
+
+    with pytest.raises(AssertionError):
+        Assert.that(Pet(name=name, tags=[])).not_().matches(Pet(name=name, tags=[]))
+
+
+def test_not_contains_passes_without_the_substring() -> None:
+    Assert.that("abc").not_().contains("d")
+
+
+def test_not_contains_reports_the_string_and_the_substring() -> None:
+    value = "abc"
+    substring = "b"
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected {value!r} not to contain {substring!r}"),
+    ):
+        Assert.that(value).not_().contains(substring)
+
+
+def test_not_matches_pattern_passes_without_a_match() -> None:
+    Assert.that("abc").not_().matches_pattern(r"\d+")
+
+
+def test_not_matches_pattern_reports_the_string_and_the_pattern() -> None:
+    value = "order 42"
+    pattern = r"\d+"
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected {value!r} not to match pattern {pattern!r}"),
+    ):
+        Assert.that(value).not_().matches_pattern(pattern)
+
+
+def test_not_starts_with_reports_the_string_and_the_prefix() -> None:
+    value = "abc"
+    prefix = "a"
+
+    Assert.that(value).not_().starts_with("b")
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected {value!r} not to start with {prefix!r}"),
+    ):
+        Assert.that(value).not_().starts_with(prefix)
+
+
+def test_not_ends_with_reports_the_string_and_the_suffix() -> None:
+    value = "abc"
+    suffix = "c"
+
+    Assert.that(value).not_().ends_with("b")
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected {value!r} not to end with {suffix!r}"),
+    ):
+        Assert.that(value).not_().ends_with(suffix)
 
 
 def test_is_err_returns_the_narrowed_error() -> None:
@@ -443,8 +526,13 @@ class TestTypeChecks:
             ("Assert.that(1).is_true()", "[bad-argument-type]"),
             ('Assert.that(1).contains("a")', "[bad-argument-type]"),
             ('Assert.that(1).matches_pattern("a")', "[bad-argument-type]"),
-            ('Assert.that(1).does_not_match("a")', "[bad-argument-type]"),
             ('Assert.that(1).starts_with("a")', "[bad-argument-type]"),
+            ('Assert.that(1).ends_with("a")', "[bad-argument-type]"),
+            ('Assert.that(1).not_().matches("a")', "[bad-argument-type]"),
+            ('Assert.that(1).not_().contains("a")', "[bad-argument-type]"),
+            ('Assert.that(1).not_().matches_pattern("a")', "[bad-argument-type]"),
+            ('Assert.that(1).not_().starts_with("a")', "[bad-argument-type]"),
+            ('Assert.that(1).not_().ends_with("a")', "[bad-argument-type]"),
             ("Assert.that(1).is_err(ValueError)", "[bad-argument-type]"),
             ("Assert.that(1).is_ok()", "[bad-argument-type]"),
             (

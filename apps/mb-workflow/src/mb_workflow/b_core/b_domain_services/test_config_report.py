@@ -1,3 +1,5 @@
+from assertions import Assert
+
 from mb_workflow.b_core.b_domain_services.config_report import ConfigReport
 from mb_workflow.b_core.d_domain_model.config import (
     Configuration,
@@ -18,7 +20,7 @@ from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
 
 def test_reports_the_file_it_came_from_and_every_resolved_setting() -> None:
-    assert ConfigReport.of(Configuration.fake()).root == (
+    Assert.that(ConfigReport.of(Configuration.fake()).root).matches(
         "repo file: /Users/me/orca/workspaces/mb-workflow/mb-workflow.toml\n"
         "override file: none (no file at"
         " /Users/me/.config/mb-workflow/projects/MartinBernstorff/mb-workflow.toml)\n"
@@ -51,8 +53,8 @@ def test_a_linear_configuration_reports_no_project_tag() -> None:
         }
     )
     report = ConfigReport.of(config)
-    assert "tracker: linear" in report.root
-    assert "project tag" not in report.root
+    Assert.that(report.root).contains("tracker: linear")
+    Assert.that(report.root).not_().contains("project tag")
 
 
 def test_a_linear_configuration_reports_the_team_and_project_it_creates_tickets_in() -> None:
@@ -70,8 +72,8 @@ def test_a_linear_configuration_reports_the_team_and_project_it_creates_tickets_
         }
     )
     report = ConfigReport.of(config).root
-    assert "team: MB" in report
-    assert "project: mb-workflow" in report
+    Assert.that(report).contains("team: MB")
+    Assert.that(report).contains("project: mb-workflow")
 
 
 def test_a_configured_pool_reports_its_view() -> None:
@@ -85,7 +87,9 @@ def test_a_configured_pool_reports_its_view() -> None:
             )
         }
     )
-    assert f"pool view: {PoolSettings.fake().view.root}" in ConfigReport.of(config).root
+    Assert.that(ConfigReport.of(config).root).contains(
+        f"pool view: {PoolSettings.fake().view.root}"
+    )
 
 
 def test_a_configured_pool_reports_its_limits() -> None:
@@ -99,7 +103,7 @@ def test_a_configured_pool_reports_its_limits() -> None:
             )
         }
     )
-    assert "pool limits: total 4, grill 1 (default)" in ConfigReport.of(config).root
+    Assert.that(ConfigReport.of(config).root).contains("pool limits: total 4, grill 1 (default)")
 
 
 def test_a_configured_pool_reports_its_skip_limits_label() -> None:
@@ -113,17 +117,21 @@ def test_a_configured_pool_reports_its_skip_limits_label() -> None:
             )
         }
     )
-    assert "pool skip-limits label: skip-limits (default)" in ConfigReport.of(config).root
+    Assert.that(ConfigReport.of(config).root).contains(
+        "pool skip-limits label: skip-limits (default)"
+    )
 
 
 def test_lists_the_override_file_it_read() -> None:
     config = Configuration.fake().model_copy(update={"override": OverrideFile.fake()})
-    assert f"override file: {OverridePath.fake().root}\n" in ConfigReport.of(config).root
+    Assert.that(ConfigReport.of(config).root).contains(
+        f"override file: {OverridePath.fake().root}\n"
+    )
 
 
 def test_notes_when_no_origin_remote_names_an_override_file() -> None:
     config = Configuration.fake().model_copy(update={"override": NoOverrideFile(expected=None)})
-    assert "override file: none (no origin remote" in ConfigReport.of(config).root
+    Assert.that(ConfigReport.of(config).root).contains("override file: none (no origin remote")
 
 
 def test_attributes_an_overridden_setting_to_the_override_file() -> None:
@@ -136,8 +144,8 @@ def test_attributes_an_overridden_setting_to_the_override_file() -> None:
         }
     )
     report = ConfigReport.of(config).root
-    assert "assignee: mab@flowbase.io (override)" in report
-    assert "orca project: github:flowbasedk/flowbase (repo)" in report
+    Assert.that(report).contains("assignee: mab@flowbase.io (override)")
+    Assert.that(report).contains("orca project: github:flowbasedk/flowbase (repo)")
 
 
 def test_attributes_a_table_set_in_both_files_to_both() -> None:
@@ -157,4 +165,6 @@ def test_attributes_a_table_set_in_both_files_to_both() -> None:
             ),
         }
     )
-    assert "pool limits: total 4, grill 1 (repo+override)" in ConfigReport.of(config).root
+    Assert.that(ConfigReport.of(config).root).contains(
+        "pool limits: total 4, grill 1 (repo+override)"
+    )

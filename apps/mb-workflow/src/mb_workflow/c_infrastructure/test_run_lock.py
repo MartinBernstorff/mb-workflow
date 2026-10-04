@@ -80,7 +80,7 @@ def test_projects_get_separate_locks() -> None:
     name = LockName.fake()
     one = LockPath.of_project(name, ProjectSelector("github:owner/one"))
     two = LockPath.of_project(name, ProjectSelector("github:owner/two"))
-    Assert.that(one).does_not_match(two)
+    Assert.that(one).not_().matches(two)
 
 
 def test_a_separate_flock_on_the_same_path_is_refused(tmp_path: Path) -> None:
