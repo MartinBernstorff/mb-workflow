@@ -3,6 +3,7 @@ from collections.abc import Callable, Iterable, Sequence, Sized
 from typing import Protocol, overload, override
 
 import pydantic
+from safe_result import Err, Ok
 
 from assertions.populated_differences import (
     FieldDifference,
@@ -27,6 +28,10 @@ class That[T]:
     def matches(self, expected: T) -> None:
         if not That._equal(self._actual, expected):
             raise AssertionError(self._mismatch(self._actual, expected))
+
+    def does_not_match(self, expected: T) -> None:
+        if That._equal(self._actual, expected):
+            raise AssertionError(f"Expected values to differ, but both were {self._actual}")
 
     def matches_populated_exactly(self, expected: T) -> None:
         That._raise_on_differences(
@@ -62,6 +67,10 @@ class That[T]:
         if re.search(pattern, self.actual) is None:
             raise AssertionError(f"Expected {self.actual!r} to match pattern {pattern!r}")
 
+    def starts_with(self: _HoldsActual[str], prefix: str) -> None:
+        if not self.actual.startswith(prefix):
+            raise AssertionError(f"Expected {self.actual!r} to start with {prefix!r}")
+
     def is_true(self: _HoldsActual[bool]) -> None:
         if self.actual is not True:
             raise AssertionError(f"Expected True, but it was {self.actual}")
@@ -82,6 +91,30 @@ class That[T]:
         if self.actual is None:
             raise AssertionError("Expected value to exist, but it was None")
         return self.actual
+
+    def is_ok[V](self: _HoldsActual[Ok[V] | Err[Exception]]) -> V:
+        match self.actual:
+            case Ok():
+                return self.actual.value
+            case Err():
+                raise AssertionError(
+                    f"Expected Ok, but got Err of {type(self.actual.error).__name__}: "
+                    f"{self.actual.error}",
+                )
+
+    def is_err[S](self: _HoldsActual[Ok[object] | Err[Exception]], error_type: type[S]) -> S:
+        match self.actual:
+            case Ok():
+                raise AssertionError(
+                    f"Expected an Err of {error_type.__name__}, but got Ok: {self.actual.value}",
+                )
+            case Err() if isinstance(self.actual.error, error_type):
+                return self.actual.error
+            case Err():
+                raise AssertionError(
+                    f"Expected an Err of {error_type.__name__}, but got Err of "
+                    f"{type(self.actual.error).__name__}: {self.actual.error}",
+                )
 
     @staticmethod
     def _equal(actual: T, expected: T) -> bool:

@@ -13,7 +13,7 @@ from linear_python_client import (
     LinearClient,
 )
 from pydantic import AliasPath, Field
-from safe_result import Err, Ok
+from safe_result import Ok
 
 from mb_workflow.b_core.c_secondary_ports.claims import (
     Claiming,
@@ -712,7 +712,8 @@ def test_recoloring_a_label_the_group_lacks_is_refused(
     ).unwrap()
     yellow = ColoredLabels((ColoredLabel(name=GRILL, color=LabelColor.yellow()),))
     refused = groupless.recolor_group_labels(LabelGroupName.fake(), yellow, backlog.team)
-    Assert.that(str(refused.error)).contains(GRILL.root)
+    error = Assert.that(refused).is_err(Exception)
+    Assert.that(str(error)).contains(GRILL.root)
 
 
 def test_a_renamed_label_reads_back_its_new_name(
@@ -775,7 +776,8 @@ def test_renaming_a_label_the_group_lacks_is_refused(
     refused = groupless.rename_group_label(
         LabelGroupName.fake(), GRILL, LabelName("grilling"), backlog.team
     )
-    Assert.that(str(refused.error)).contains(GRILL.root)
+    error = Assert.that(refused).is_err(Exception)
+    Assert.that(str(error)).contains(GRILL.root)
 
 
 def test_a_deleted_label_leaves_its_group(groupless: TicketTracker, backlog: Backlog) -> None:
@@ -805,7 +807,8 @@ def test_deleting_a_label_the_group_lacks_is_refused(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
     ).unwrap()
     refused = groupless.delete_group_label(LabelGroupName.fake(), GRILL, backlog.team)
-    Assert.that(str(refused.error)).contains(GRILL.root)
+    error = Assert.that(refused).is_err(Exception)
+    Assert.that(str(error)).contains(GRILL.root)
 
 
 def test_a_group_label_counts_the_tickets_carrying_it(
@@ -898,7 +901,8 @@ def test_a_team_is_found_by_its_name_whatever_its_case(
 def test_an_unknown_team_name_is_refused(tracker: TicketTracker) -> None:
     unknown = TeamName("No such team")
     refused = tracker.team_named(unknown)
-    Assert.that(str(refused.error)).contains(unknown.root)
+    error = Assert.that(refused).is_err(Exception)
+    Assert.that(str(error)).contains(unknown.root)
 
 
 def test_an_issue_names_its_team(tracker: TicketTracker, backlog: Backlog) -> None:
@@ -906,7 +910,7 @@ def test_an_issue_names_its_team(tracker: TicketTracker, backlog: Backlog) -> No
 
 
 def test_the_team_of_an_unknown_issue_is_refused(tracker: TicketTracker) -> None:
-    _ = Assert.that(tracker.team_of(IssueIdentifier("E-404"))).is_instance(Err)
+    _ = Assert.that(tracker.team_of(IssueIdentifier("E-404"))).is_err(Exception)
 
 
 def test_an_issue_takes_its_own_teams_label_over_a_namesake_in_another_team(
@@ -949,7 +953,8 @@ def test_adding_a_label_cannot_take_another_teams_label(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.other_team
     ).unwrap()
     refused = groupless.add_label(backlog.identifier(Seed.done), QA)
-    Assert.that(str(refused.error)).contains(QA.root)
+    error = Assert.that(refused).is_err(Exception)
+    Assert.that(str(error)).contains(QA.root)
 
 
 def test_an_issue_takes_a_workspace_label_its_team_lacks(
@@ -977,7 +982,8 @@ def test_an_issue_cannot_take_another_teams_label(
         backlog.identifier(Seed.done),
         IssueUpdate.nothing().model_copy(update={"labels": LabelNames((QA,))}),
     )
-    Assert.that(str(refused.error)).contains(QA.root)
+    error = Assert.that(refused).is_err(Exception)
+    Assert.that(str(error)).contains(QA.root)
 
 
 def test_a_grouped_label_names_its_group(groupless: TicketTracker) -> None:
@@ -1025,7 +1031,7 @@ def test_an_issue_carrying_two_labels_of_one_group_is_refused(
         LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILL, QA))), None
     ).unwrap()
     refused = groupless.set_labels(backlog.identifier(Seed.done), LabelNames((GRILL, QA)))
-    _ = Assert.that(refused).is_instance(Err)
+    _ = Assert.that(refused).is_err(Exception)
 
 
 def test_the_filter_picks_the_issues_one_creator_made_since_a_date(
@@ -1080,7 +1086,7 @@ def test_a_ticket_whose_blockers_are_all_closed_is_listed(
 
 
 def test_reading_an_unknown_view_is_refused(tracker: TicketTracker) -> None:
-    _ = Assert.that(tracker.unblocked_view_tickets(ViewSlug("000000000000"))).is_instance(Err)
+    _ = Assert.that(tracker.unblocked_view_tickets(ViewSlug("000000000000"))).is_err(Exception)
 
 
 def labelled_seeds(
@@ -1140,7 +1146,7 @@ def test_a_project_survives_the_round_trip(tracker: TicketTracker, backlog: Back
 
 
 def test_reading_an_unknown_issue_is_refused(tracker: TicketTracker) -> None:
-    _ = Assert.that(tracker.read_issue(IssueIdentifier("E-404"))).is_instance(Err)
+    _ = Assert.that(tracker.read_issue(IssueIdentifier("E-404"))).is_err(Exception)
 
 
 def test_viewing_an_issue_carries_its_title_and_description(
@@ -1175,11 +1181,11 @@ def test_an_issue_without_a_description_carries_none(
 
 
 def test_viewing_an_unknown_issue_is_refused(tracker: TicketTracker) -> None:
-    _ = Assert.that(tracker.read_issue_detail(IssueIdentifier("E-404"))).is_instance(Err)
+    _ = Assert.that(tracker.read_issue_detail(IssueIdentifier("E-404"))).is_err(Exception)
 
 
 def test_the_blockers_of_an_unknown_issue_are_refused(tracker: TicketTracker) -> None:
-    _ = Assert.that(tracker.blockers(IssueIdentifier("E-404"))).is_instance(Err)
+    _ = Assert.that(tracker.blockers(IssueIdentifier("E-404"))).is_err(Exception)
 
 
 def test_an_added_label_joins_the_ones_already_there(
@@ -1206,7 +1212,7 @@ def test_adding_a_label_twice_carries_it_once(tracker: TicketTracker, backlog: B
 
 def test_adding_an_unknown_label_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
     refused = tracker.add_label(backlog.identifier(Seed.recent), LabelName("Frontend"))
-    _ = Assert.that(refused).is_instance(Err)
+    _ = Assert.that(refused).is_err(Exception)
 
 
 def test_a_removed_label_leaves_the_others(tracker: TicketTracker, backlog: Backlog) -> None:
@@ -1243,7 +1249,7 @@ def test_setting_an_unknown_label_is_refused(tracker: TicketTracker, backlog: Ba
     refused = tracker.set_labels(
         backlog.identifier(Seed.done), LabelNames((LabelName("Frontend"),))
     )
-    _ = Assert.that(refused).is_instance(Err)
+    _ = Assert.that(refused).is_err(Exception)
 
 
 def test_an_issue_starts_unassigned(tracker: TicketTracker, backlog: Backlog) -> None:
@@ -1261,7 +1267,7 @@ def test_assigning_an_issue_leaves_it_assigned(tracker: TicketTracker, backlog: 
 
 def test_assigning_an_unknown_issue_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
     refused = tracker.assign(IssueIdentifier("E-404"), backlog.assignee)
-    _ = Assert.that(refused).is_instance(Err)
+    _ = Assert.that(refused).is_err(Exception)
 
 
 def test_a_label_is_found_whatever_its_case(tracker: TicketTracker, backlog: Backlog) -> None:
@@ -1336,7 +1342,7 @@ def test_an_update_with_an_unknown_label_is_refused(
         backlog.identifier(Seed.done),
         IssueUpdate.nothing().model_copy(update={"labels": LabelNames((LabelName("Frontend"),))}),
     )
-    _ = Assert.that(refused).is_instance(Err)
+    _ = Assert.that(refused).is_err(Exception)
 
 
 def test_an_update_names_the_assignee(tracker: TicketTracker, backlog: Backlog) -> None:
@@ -1388,7 +1394,7 @@ def test_moving_to_an_unknown_project_is_refused(tracker: TicketTracker, backlog
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"project": ProjectName("No such project")}),
     )
-    _ = Assert.that(refused).is_instance(Err)
+    _ = Assert.that(refused).is_err(Exception)
 
 
 def test_an_update_sets_a_milestone(tracker: TicketTracker, backlog: Backlog) -> None:
@@ -1443,7 +1449,7 @@ def test_an_unknown_milestone_is_refused(tracker: TicketTracker, backlog: Backlo
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"milestone": unknown}),
     )
-    _ = Assert.that(refused).is_instance(Err)
+    _ = Assert.that(refused).is_err(Exception)
 
 
 def test_an_update_moves_an_issue_to_a_status(tracker: TicketTracker, backlog: Backlog) -> None:
@@ -1461,7 +1467,7 @@ def test_moving_to_an_unknown_status_is_refused(tracker: TicketTracker, backlog:
         backlog.identifier(Seed.recent),
         IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("No such status")}),
     )
-    _ = Assert.that(refused).is_instance(Err)
+    _ = Assert.that(refused).is_err(Exception)
 
 
 # Created issues go to the trash afterwards, so they never join the seeds' labels or view.
@@ -1571,7 +1577,8 @@ def test_creating_an_issue_without_a_team_or_project_is_refused(
     refused = creating(
         new_issue(IssueTitle("created: nowhere")).model_copy(update={"project": None})
     )
-    Assert.that(str(refused.error)).contains("team or a project")
+    error = Assert.that(refused).is_err(Exception)
+    Assert.that(str(error)).contains("team or a project")
 
 
 def test_creating_an_issue_in_an_unknown_team_is_refused(
@@ -1580,7 +1587,8 @@ def test_creating_an_issue_in_an_unknown_team_is_refused(
     unknown = TeamKey("NOSUCHTEAM")
     new = new_issue(IssueTitle("created: unknown team")).model_copy(update={"team": unknown})
     refused = creating(new)
-    Assert.that(str(refused.error)).contains(unknown.root)
+    error = Assert.that(refused).is_err(Exception)
+    Assert.that(str(error)).contains(unknown.root)
 
 
 def test_creating_an_issue_in_an_unknown_project_is_refused(
@@ -1589,7 +1597,8 @@ def test_creating_an_issue_in_an_unknown_project_is_refused(
     unknown = ProjectName("No such project")
     new = new_issue(IssueTitle("created: unknown project")).model_copy(update={"project": unknown})
     refused = creating(new)
-    Assert.that(str(refused.error)).contains(unknown.root)
+    error = Assert.that(refused).is_err(Exception)
+    Assert.that(str(error)).contains(unknown.root)
 
 
 def test_creating_an_issue_with_an_unknown_status_is_refused(
@@ -1598,7 +1607,8 @@ def test_creating_an_issue_with_an_unknown_status_is_refused(
     unknown = IssueStatusName("No such status")
     new = new_issue(IssueTitle("created: unknown status")).model_copy(update={"status": unknown})
     refused = creating(new)
-    Assert.that(str(refused.error)).contains(unknown.root)
+    error = Assert.that(refused).is_err(Exception)
+    Assert.that(str(error)).contains(unknown.root)
 
 
 def test_a_created_issue_blocks_and_is_blocked_by_the_issues_it_names(
@@ -1707,7 +1717,7 @@ def test_of_two_racing_claimers_exactly_one_wins(
     second = first.model_copy(update={"holder": rival_of(first.holder)})
     raced = RacedRegistry(claims, lambda: Claiming.claim_ticket(claims, second))
     lost = Claiming.claim_ticket(raced, first)
-    error = Assert.that(lost.error).is_instance(ClaimLostError)
+    error = Assert.that(lost).is_err(ClaimLostError)
     Assert.that(str(error)).contains(second.holder.host.root)
     Assert.that(holders(claims.claims(ticket).unwrap())).matches((second.holder,))
 

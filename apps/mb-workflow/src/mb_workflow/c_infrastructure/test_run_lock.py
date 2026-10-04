@@ -38,7 +38,7 @@ def test_a_second_holder_is_refused_while_the_first_holds_the_lock(lock: RunLock
     refusal = "another run holds"
     with lock.acquire().unwrap():
         second = lock.acquire()
-    error = Assert.that(second.error).is_instance(AlreadyRunningError)
+    error = Assert.that(second).is_err(AlreadyRunningError)
     Assert.that(str(error)).contains(refusal)
 
 
@@ -46,7 +46,7 @@ def test_a_refused_holder_leaves_the_lock_with_the_first(lock: RunLock) -> None:
     with lock.acquire().unwrap():
         _ = lock.acquire()
         third = lock.acquire()
-    _ = Assert.that(third.error).is_instance(AlreadyRunningError)
+    _ = Assert.that(third).is_err(AlreadyRunningError)
 
 
 def test_the_lock_is_free_again_once_the_run_ends(lock: RunLock) -> None:
@@ -80,14 +80,14 @@ def test_projects_get_separate_locks() -> None:
     name = LockName.fake()
     one = LockPath.of_project(name, ProjectSelector("github:owner/one"))
     two = LockPath.of_project(name, ProjectSelector("github:owner/two"))
-    Assert.that(one).not_in_container([two])
+    Assert.that(one).does_not_match(two)
 
 
 def test_a_separate_flock_on_the_same_path_is_refused(tmp_path: Path) -> None:
     path = LockPath(tmp_path / "review-workspaces.lock")
     with FlockRunLock(path).acquire().unwrap():
         second = FlockRunLock(path).acquire()
-    _ = Assert.that(second.error).is_instance(AlreadyRunningError)
+    _ = Assert.that(second).is_err(AlreadyRunningError)
 
 
 def test_logs_taking_and_releasing_the_flock(

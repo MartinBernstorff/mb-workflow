@@ -586,7 +586,7 @@ def test_checking_out_into_a_missing_directory_is_refused(
     review: CodeForge, stage: Stage, tmp_path: Path
 ) -> None:
     checked_out = review.checkout(stage.fresh, CheckoutDirectory(tmp_path / "missing"))
-    _ = Assert.that(checked_out.error).is_instance(CodeReviewError)
+    _ = Assert.that(checked_out).is_err(CodeReviewError)
 
 
 def test_submitting_completes_my_pending_review(
@@ -647,7 +647,7 @@ def test_a_decision_that_needs_a_body_is_refused_without_one(
 ) -> None:
     reason = "requires comment text"
     submitted = review.submit(stage.pending, ReviewRequest(decision=decision, body=ReviewBody("")))
-    error = Assert.that(submitted.error).is_instance(CodeReviewError)
+    error = Assert.that(submitted).is_err(CodeReviewError)
     Assert.that(str(error)).contains(reason)
     Assert.that(ledger.submitted()).matches(())
 
@@ -673,7 +673,7 @@ class BrokenGh(CommandRunner):
 
 def test_connecting_to_a_failing_gh_is_refused() -> None:
     github = GitHub.connected(BrokenGh(None))
-    _ = Assert.that(github.error).is_instance(CodeReviewError)
+    _ = Assert.that(github).is_err(CodeReviewError)
 
 
 def test_a_failing_gh_is_returned_as_a_code_review_error(tmp_path: Path) -> None:
@@ -685,7 +685,7 @@ def test_a_failing_gh_is_returned_as_a_code_review_error(tmp_path: Path) -> None
         github.submit(PrNumber.fake(), remark()),
     )
     for result in results:
-        _ = Assert.that(result.error).is_instance(CodeReviewError)
+        _ = Assert.that(result).is_err(CodeReviewError)
 
 
 def test_unreadable_gh_output_is_returned_as_a_code_review_error() -> None:
@@ -696,4 +696,4 @@ def test_unreadable_gh_output_is_returned_as_a_code_review_error() -> None:
         github.submit(PrNumber.fake(), remark()),
     )
     for result in results:
-        _ = Assert.that(result.error).is_instance(CodeReviewError)
+        _ = Assert.that(result).is_err(CodeReviewError)

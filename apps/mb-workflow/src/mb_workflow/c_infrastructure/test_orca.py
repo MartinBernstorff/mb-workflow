@@ -186,7 +186,8 @@ def test_a_command_orca_accepted_holds_no_refusal() -> None:
     output = CommandOutput('{"ok":true,"result":{}}')
     phrase = "meant to refuse"
     refused = orca_refusal(output)
-    Assert.that(str(refused.error)).contains(phrase)
+    error = Assert.that(refused).is_err(Exception)
+    Assert.that(str(error)).contains(phrase)
 
 
 def test_a_failed_command_carries_the_reason_orca_printed() -> None:
@@ -206,7 +207,8 @@ def test_a_failed_command_without_an_envelope_carries_the_exit() -> None:
 def test_an_unreadable_reply_is_a_workspace_manager_error() -> None:
     phrase = "unreadable reply"
     unreadable = Acknowledgement.parse(CommandOutput("not json"))
-    Assert.that(str(unreadable.error)).contains(phrase)
+    error = Assert.that(unreadable).is_err(WorkspaceManagerError)
+    Assert.that(str(error)).contains(phrase)
 
 
 class OrcaReason(Value[str]):
@@ -295,4 +297,5 @@ def test_an_unreadable_orca_reply_is_returned_as_a_workspace_manager_error(
         orca.set_linked_issue(path, IssueIdentifier.fake()),
     )
     for result in results:
-        Assert.that(str(result.error)).contains(phrase)
+        error = Assert.that(result).is_err(WorkspaceManagerError)
+        Assert.that(str(error)).contains(phrase)

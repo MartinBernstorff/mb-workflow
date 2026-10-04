@@ -2,7 +2,7 @@ import subprocess
 from typing import TYPE_CHECKING
 
 from assertions import Assert
-from safe_result import Err, Ok
+from safe_result import Ok
 
 from mb_workflow.b_core.d_domain_model.config_override import (
     InvalidOverrideError,
@@ -55,7 +55,7 @@ def test_invalid_toml_in_the_override_file_is_an_error_value(tmp_path: Path) -> 
 
     found = override_at(path)
 
-    error = Assert.that(found.error).is_instance(InvalidOverrideError)
+    error = Assert.that(found).is_err(InvalidOverrideError)
     Assert.that(str(error)).contains(str(path.root))
 
 
@@ -63,7 +63,7 @@ def test_an_unreadable_override_file_is_an_error_value(tmp_path: Path) -> None:
     path = OverridePath(tmp_path / "repo.toml")
     path.root.mkdir()
 
-    _ = Assert.that(override_at(path)).is_instance(Err)
+    _ = Assert.that(override_at(path)).is_err(Exception)
 
 
 def test_the_override_file_is_named_after_the_origin_remote(tmp_path: Path) -> None:
@@ -95,4 +95,4 @@ def test_an_origin_without_an_owner_is_an_unreadable_remote(tmp_path: Path) -> N
 
     found = override_of_origin(directory, Shell(ExistingDirectory(tmp_path)))
 
-    _ = Assert.that(found.error).is_instance(UnreadableRemoteError)
+    _ = Assert.that(found).is_err(UnreadableRemoteError)

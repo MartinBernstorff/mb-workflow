@@ -97,7 +97,7 @@ def test_a_state_maps_to_the_id_of_the_board_column_its_label_names() -> None:
 def test_a_state_the_board_has_no_column_for_is_a_clear_error() -> None:
     columns = Columns((Column(id=WorkspaceStatus("in-progress"), label=ColumnLabel("Grilling")),))
     unrecorded = columns.status_for(StateName("merged"))
-    error = Assert.that(unrecorded.error).is_instance(BoardError)
+    error = Assert.that(unrecorded).is_err(BoardError)
     Assert.that(str(error)).contains("defines no Merged column")
 
 

@@ -1,4 +1,3 @@
-import re
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -143,14 +142,14 @@ def test_a_review_worktree_is_named_after_its_pull_request(
     manager: WorkspaceManager, board: Board
 ) -> None:
     prefix = WorktreeName.of(contract_pr()).root
-    Assert.that(for_review(manager, board).path.root.name).matches_pattern(f"^{re.escape(prefix)}")
+    Assert.that(for_review(manager, board).path.root.name).starts_with(prefix)
 
 
 def test_creating_in_a_column_the_board_lacks_is_refused(
     manager: WorkspaceManager, board: Board
 ) -> None:
     refused = manager.create_for_review(board.repo, contract_pr(), board.unlisted(), None)
-    _ = Assert.that(refused.error).is_instance(WorkspaceManagerError)
+    _ = Assert.that(refused).is_err(WorkspaceManagerError)
 
 
 def test_an_issue_worktree_is_linked_to_its_issue(manager: WorkspaceManager, board: Board) -> None:
@@ -189,7 +188,7 @@ def test_creating_an_issue_worktree_in_a_column_the_board_lacks_is_refused(
     refused = manager.create_for_issue(
         board.project, contract_name(), None, None, board.unlisted(), activate=Activate(False)
     )
-    _ = Assert.that(refused.error).is_instance(WorkspaceManagerError)
+    _ = Assert.that(refused).is_err(WorkspaceManagerError)
 
 
 def test_a_worktree_opened_without_an_agent_has_no_terminal(
@@ -212,7 +211,7 @@ def test_opening_under_an_unknown_project_is_refused(
         None,
         activate=Activate(False),
     )
-    _ = Assert.that(refused.error).is_instance(WorkspaceManagerError)
+    _ = Assert.that(refused).is_err(WorkspaceManagerError)
 
 
 def test_a_taken_name_puts_the_second_worktree_elsewhere(
@@ -224,7 +223,7 @@ def test_a_taken_name_puts_the_second_worktree_elsewhere(
     second = manager.create_for_issue(
         board.project, contract_name(), None, None, None, activate=Activate(False)
     ).unwrap()
-    Assert.that(first.worktree.path).not_in_container([second.worktree.path])
+    Assert.that(first.worktree.path).does_not_match(second.worktree.path)
     _ = Assert.that(manager.worktrees().unwrap().at(first.worktree.path)).exists()
     _ = Assert.that(manager.worktrees().unwrap().at(second.worktree.path)).exists()
 
@@ -237,7 +236,7 @@ def test_a_removed_worktree_is_no_longer_listed(manager: WorkspaceManager, board
 
 def test_removing_an_unknown_worktree_is_refused(manager: WorkspaceManager, board: Board) -> None:
     refused = manager.remove(board.here.sibling(WorktreeName("mw-contract-never-created")))
-    _ = Assert.that(refused.error).is_instance(WorkspaceManagerError)
+    _ = Assert.that(refused).is_err(WorkspaceManagerError)
 
 
 def test_setting_a_status_moves_the_worktree_to_that_column(
@@ -255,7 +254,7 @@ def test_setting_a_status_the_board_has_no_column_for_is_refused(
 ) -> None:
     created = for_review(manager, board)
     refused = manager.set_status(created.path, board.unlisted())
-    _ = Assert.that(refused.error).is_instance(WorkspaceManagerError)
+    _ = Assert.that(refused).is_err(WorkspaceManagerError)
 
 
 def test_a_display_name_set_on_a_worktree_is_listed_back(
@@ -276,7 +275,7 @@ def test_setting_a_display_name_on_an_unknown_worktree_is_refused(
     refused = manager.set_display_name(
         board.here.sibling(WorktreeName("mw-contract-never-created")), DisplayName.fake()
     )
-    _ = Assert.that(refused.error).is_instance(WorkspaceManagerError)
+    _ = Assert.that(refused).is_err(WorkspaceManagerError)
 
 
 def test_a_review_worktree_is_listed_with_the_pr_title_as_its_display_name(
@@ -325,4 +324,4 @@ def test_setting_a_linked_issue_on_an_unknown_worktree_is_refused(
     refused = manager.set_linked_issue(
         board.here.sibling(WorktreeName("mw-contract-never-created")), IssueIdentifier.fake()
     )
-    _ = Assert.that(refused.error).is_instance(WorkspaceManagerError)
+    _ = Assert.that(refused).is_err(WorkspaceManagerError)

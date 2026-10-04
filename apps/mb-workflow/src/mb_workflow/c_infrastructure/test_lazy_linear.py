@@ -20,14 +20,17 @@ def missing_key() -> Result[LinearApiKey, CredentialsError]:
 
 def test_a_lazy_registry_reads_no_key_until_it_is_used() -> None:
     read = LazyLinearClaims(missing_key).claims(IssueIdentifier.fake())
-    Assert.that(str(read.error)).contains(MISSING)
+    error = Assert.that(read).is_err(Exception)
+    Assert.that(str(error)).contains(MISSING)
 
 
 def test_a_lazy_tracker_returns_the_missing_key_from_a_lookup() -> None:
     read = LazyLinear(missing_key).read_issue(IssueIdentifier.fake())
-    Assert.that(str(read.error)).contains(MISSING)
+    error = Assert.that(read).is_err(Exception)
+    Assert.that(str(error)).contains(MISSING)
 
 
 def test_a_lazy_tracker_reads_no_key_until_it_is_used() -> None:
     removed = LazyLinear(missing_key).remove_label(IssueIdentifier.fake(), LabelName("claimed"))
-    Assert.that(str(removed.error)).contains(MISSING)
+    error = Assert.that(removed).is_err(Exception)
+    Assert.that(str(error)).contains(MISSING)
