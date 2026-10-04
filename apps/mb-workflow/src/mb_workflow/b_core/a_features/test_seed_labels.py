@@ -190,6 +190,28 @@ def test_a_complete_workspace_flow_group_leaves_the_team_without_labels() -> Non
     )
 
 
+def test_forced_seeding_creates_every_flow_label_in_the_team_beside_a_complete_workspace_group() -> (
+    None
+):
+    wanted = FlowLabels.fake()
+    tracker = SeedingTrackers.with_workspace_group(wanted.labels)
+    seeded = FlowLabelSeeding.seed_flow_labels(
+        tracker, wanted, TeamName.fake(), Force(True)
+    ).unwrap()
+    assert isinstance(seeded, SeededTeam)
+    assert seeded.created == wanted.labels
+    held = tracker.group_labels(wanted.group, TeamKey.fake()).unwrap()
+    assert held.label_names() == wanted.labels
+
+
+def test_forced_seeding_creates_in_the_team_the_labels_the_workspace_group_already_has() -> None:
+    wanted = FlowLabels.fake()
+    tracker = SeedingTrackers.with_workspace_group(LabelNames(wanted.labels.root[1:]))
+    _ = FlowLabelSeeding.seed_flow_labels(tracker, wanted, TeamName.fake(), Force(True)).unwrap()
+    held = tracker.group_labels(wanted.group, TeamKey.fake()).unwrap()
+    assert held.label_names() == wanted.labels
+
+
 def test_a_covering_workspace_group_recolors_and_reports_its_labels_in_the_wrong_color() -> None:
     wanted = FlowLabels.fake()
     tracker = SeedingTrackers.empty()

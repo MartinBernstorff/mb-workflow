@@ -59,6 +59,7 @@ class PlannedGroup(Model):
 
 class FlowLabelSeeding:
     # A complete workspace-level group already serves every team, so seeding a team beside it would only shadow it.
+    # --force seeds the team anyway, for a team that should keep its own labels.
     @staticmethod
     def seed_flow_labels(
         tracker: TicketTracker, wanted: FlowLabels, team: TeamName, force: Force
@@ -85,11 +86,15 @@ class FlowLabelSeeding:
         )
         if isinstance(synced, Err):
             return synced
-        if not wanted.missing(workspace.value.label_names()).root:
+        if not force.root and not wanted.missing(workspace.value.label_names()).root:
             return Ok(
                 CoveredByWorkspace(group=wanted.group, workspace=workspace_sync, team=team_sync)
             )
-        missing = FlowLabelSeeding.missing_labels(wanted, workspace.value, held.value)
+        missing = (
+            wanted.missing(held.value.label_names())
+            if force.root
+            else FlowLabelSeeding.missing_labels(wanted, workspace.value, held.value)
+        )
         if missing.root:
             tracker.create_group_labels(wanted.group, wanted.colored(missing), key.value)
         return Ok(SeededTeam(created=missing, workspace=workspace_sync, team=team_sync))

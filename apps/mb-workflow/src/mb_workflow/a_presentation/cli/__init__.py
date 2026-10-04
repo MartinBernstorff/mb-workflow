@@ -294,7 +294,10 @@ def flow_seed_labels(
         ..., "--team", help="Name of the Linear team to create the labels in."
     ),
     force: bool = typer.Option(
-        False, "--force", help="Rename and delete labels, which changes the tickets carrying them."
+        False,
+        "--force",
+        help="Rename and delete labels, which changes the tickets carrying them, and create the"
+        " team's labels even when the workspace's flow group has them.",
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
