@@ -49,29 +49,31 @@ def test_work_enters_the_chart_at_grilling() -> None:
 
 
 def test_the_chart_holds_every_transition_the_work_can_take() -> None:
-    every_transition = frozenset(
-        {
-            edge(GRILL, EventName("grill"), GRILL),
-            edge(GRILL, EventName("to-ticket"), TO_TICKET),
-            edge(TO_TICKET, EventName("todo"), TODO),
-            edge(TODO, EventName("implement"), IMPLEMENTING),
-            edge(IMPLEMENTING, EventName("implement"), IMPLEMENTING),
-            edge(IMPLEMENTING, EventName("qa"), QA),
-            edge(IMPLEMENTING, EventName("grill"), GRILL),
-            edge(IMPLEMENTING, EventName("to-ticket"), TO_TICKET),
-            edge(QA, EventName("implement"), IMPLEMENTING),
-            edge(QA, EventName("ready"), REVIEW),
-            edge(QA, EventName("merge"), MERGING),
-            edge(QA, EventName("resolve-review"), IMPLEMENTING),
-            edge(REVIEW, EventName("resolve-review"), IMPLEMENTING),
-            edge(REVIEW, EventName("qa"), QA),
-            edge(REVIEW, EventName("merge"), MERGING),
-            edge(REVIEW, EventName("merged"), MERGED),
-            edge(MERGING, EventName("merged"), MERGED),
-            edge(MERGING, EventName("qa"), QA),
-        }
+    every_transition = Edges(
+        frozenset(
+            {
+                edge(GRILL, EventName("grill"), GRILL),
+                edge(GRILL, EventName("to-ticket"), TO_TICKET),
+                edge(TO_TICKET, EventName("todo"), TODO),
+                edge(TODO, EventName("implement"), IMPLEMENTING),
+                edge(IMPLEMENTING, EventName("implement"), IMPLEMENTING),
+                edge(IMPLEMENTING, EventName("qa"), QA),
+                edge(IMPLEMENTING, EventName("grill"), GRILL),
+                edge(IMPLEMENTING, EventName("to-ticket"), TO_TICKET),
+                edge(QA, EventName("implement"), IMPLEMENTING),
+                edge(QA, EventName("ready"), REVIEW),
+                edge(QA, EventName("merge"), MERGING),
+                edge(QA, EventName("resolve-review"), IMPLEMENTING),
+                edge(REVIEW, EventName("resolve-review"), IMPLEMENTING),
+                edge(REVIEW, EventName("qa"), QA),
+                edge(REVIEW, EventName("merge"), MERGING),
+                edge(REVIEW, EventName("merged"), MERGED),
+                edge(MERGING, EventName("merged"), MERGED),
+                edge(MERGING, EventName("qa"), QA),
+            }
+        )
     )
-    Assert.that(Edges.of_chart(WorkflowChart).root).matches(every_transition)
+    Assert.that(Edges.of_chart(WorkflowChart)).matches(every_transition)
 
 
 def test_an_event_with_no_transition_from_the_current_state_raises() -> None:

@@ -2,7 +2,6 @@ import re
 from collections.abc import Callable, Iterable, Sequence, Sized
 from typing import Protocol, overload, override
 
-import pydantic
 from safe_result import Err, Ok
 
 from assertions.populated_differences import (
@@ -34,14 +33,6 @@ class _NegatableMatchers[T](Protocol):
     def ends_with(self: _HoldsActual[str], suffix: str) -> None: ...
 
 
-class _Values:
-    @staticmethod
-    def equal[T](actual: T, expected: T) -> bool:
-        if isinstance(actual, pydantic.BaseModel) and isinstance(expected, pydantic.BaseModel):
-            return actual.model_dump() == expected.model_dump()
-        return actual == expected
-
-
 class That[T](_NegatableMatchers[T]):
     def __init__(self, actual: T) -> None:
         self._actual = actual
@@ -53,7 +44,7 @@ class That[T](_NegatableMatchers[T]):
 
     @override
     def matches(self, expected: T) -> None:
-        if not _Values.equal(self._actual, expected):
+        if self._actual != expected:
             raise AssertionError(self._mismatch(self._actual, expected))
 
     def matches_populated_exactly(self, expected: T) -> None:
@@ -152,12 +143,7 @@ class That[T](_NegatableMatchers[T]):
 
     @staticmethod
     def _mismatch(actual: T, expected: T) -> str:
-        if isinstance(actual, pydantic.BaseModel) and isinstance(expected, pydantic.BaseModel):
-            return (
-                "Expected entity model values to match, but they did not: "
-                f"{actual.model_dump()} != {expected.model_dump()}"
-            )
-        return f"Expected values to match, but they did not: {actual} != {expected}"
+        return f"Expected values to match, but they did not: {actual!r} != {expected!r}"
 
     @staticmethod
     def _raise_on_differences(differences: list[FieldDifference]) -> None:
@@ -180,7 +166,7 @@ class Not[T](_NegatableMatchers[T]):
 
     @override
     def matches(self, expected: T) -> None:
-        if _Values.equal(self._actual, expected):
+        if self._actual == expected:
             raise AssertionError(f"Expected values to differ, but both were {self._actual}")
 
     @override

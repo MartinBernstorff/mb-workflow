@@ -20,6 +20,32 @@ class Owner(pydantic.BaseModel):
     pet: Pet
 
 
+class Tag(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(frozen=True)
+
+    name: str
+
+
+class Tags(pydantic.RootModel[frozenset[Tag]]):
+    pass
+
+
+class Recorded(pydantic.RootModel[bool]):
+    pass
+
+
+class Ready(pydantic.RootModel[bool]):
+    pass
+
+
+class Cleared(pydantic.BaseModel):
+    pass
+
+
+class Pending(pydantic.BaseModel):
+    pass
+
+
 def test_matches_passes_on_equal_values() -> None:
     value = 1
 
@@ -54,15 +80,32 @@ def test_matches_compares_models_by_value() -> None:
     Assert.that(Pet(name=name, tags=[])).matches(Pet(name=name, tags=[]))
 
 
-def test_matches_reports_both_model_dumps() -> None:
-    actual_name = "a"
-    expected_name = "b"
+def test_matches_compares_models_holding_a_frozenset_of_models() -> None:
+    tags = frozenset({Tag(name="a"), Tag(name="b")})
 
-    with pytest.raises(
-        AssertionError,
-        match=f"'name': '{actual_name}'.*'name': '{expected_name}'",
-    ):
-        Assert.that(Pet(name=actual_name, tags=[])).matches(Pet(name=expected_name, tags=[]))
+    Assert.that(Tags(tags)).matches(Tags(frozenset(tags)))
+
+
+def test_matches_rejects_root_models_of_different_classes() -> None:
+    actual: pydantic.RootModel[bool] = Recorded(True)
+
+    with pytest.raises(AssertionError):
+        Assert.that(actual).matches(Ready(True))
+
+
+def test_matches_rejects_field_less_models_of_different_classes() -> None:
+    actual: pydantic.BaseModel = Cleared()
+
+    with pytest.raises(AssertionError):
+        Assert.that(actual).matches(Pending())
+
+
+def test_matches_reports_both_model_reprs() -> None:
+    actual: pydantic.RootModel[bool] = Ready(True)
+    expected = Recorded(True)
+
+    with pytest.raises(AssertionError, match=re.escape(f"{actual!r} != {expected!r}")):
+        Assert.that(actual).matches(expected)
 
 
 def test_matches_populated_exactly_ignores_unset_fields() -> None:
