@@ -1,16 +1,28 @@
+from typing import override
+
+from safe_result import Ok, Result
+
 from mb_workflow.b_core.c_secondary_ports.claims import (
     Claiming,
+    ClaimLostError,
     ClaimRefusedError,
+    ClaimRequest,
     FakeClaimRegistry,
     LabelledClaim,
 )
-from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracker, TrackedIssue
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
+    FakeTicketTracker,
+    TicketTrackerError,
+    TrackedIssue,
+)
 from mb_workflow.b_core.d_domain_model.claim import (
     Claim,
     ClaimHolder,
     ClaimId,
     Claims,
     HostName,
+    Posted,
+    TakeOver,
 )
 from mb_workflow.b_core.d_domain_model.issue import (
     Issue,
@@ -98,3 +110,35 @@ def test_a_label_the_tracker_lacks_refuses_the_claim() -> None:
         tracker.read_issue(IssueIdentifier.fake()).unwrap().labels
         == TrackedIssue.fake().issue.labels
     )
+
+
+def test_claiming_a_ticket_another_holder_holds_returns_the_lost_claim() -> None:
+    registry = registry_held_by(rival())
+    claimed = Claiming.claim_ticket(registry, ClaimRequest.fake())
+    assert isinstance(claimed.error, ClaimLostError)
+    assert claim_holders(registry) == (rival(),)
+
+
+def test_taking_over_a_claim_replaces_the_other_holders_claim() -> None:
+    registry = registry_held_by(rival())
+    taking_over = ClaimRequest.fake().model_copy(update={"take_over": TakeOver(True)})
+    assert Claiming.claim_ticket(registry, taking_over) == Ok(Posted(True))
+    assert claim_holders(registry) == (ClaimHolder.fake(),)
+
+
+# Withdraws every claim as soon as ours is posted, as if another holder took the claim over.
+class WithdrawingRegistry(FakeClaimRegistry):
+    @override
+    def post(
+        self, ticket: IssueIdentifier, holder: ClaimHolder
+    ) -> Result[ClaimId, TicketTrackerError]:
+        posted = super().post(ticket, holder)
+        _ = Claiming.withdraw_claims(self, ticket, self.claims(ticket).unwrap())
+        return posted
+
+
+def test_a_claim_withdrawn_by_another_is_returned_as_lost() -> None:
+    registry = WithdrawingRegistry()
+    claimed = Claiming.claim_ticket(registry, ClaimRequest.fake())
+    assert isinstance(claimed.error, ClaimLostError)
+    assert claim_holders(registry) == ()

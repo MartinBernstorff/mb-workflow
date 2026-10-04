@@ -14,6 +14,7 @@ from mb_workflow.b_core.a_features.drain import (
     UnreadyReason,
 )
 from mb_workflow.b_core.c_secondary_ports.claims import (
+    ClaimRefusedError,
     FakeClaimRegistry,
     UnknownClaimLabelError,
 )
@@ -248,6 +249,7 @@ def draining_or_refused(
     | FlowError
     | TicketTrackerError
     | UnknownClaimLabelError
+    | ClaimRefusedError
     | UnknownLabelError
     | MissingFlowLabelsError
     | WorkspaceManagerError,
@@ -271,6 +273,7 @@ class DrainRuns:
         | FlowError
         | TicketTrackerError
         | UnknownClaimLabelError
+        | ClaimRefusedError
         | UnknownLabelError
         | MissingFlowLabelsError
         | WorkspaceManagerError,
@@ -420,8 +423,8 @@ def test_a_start_that_fails_after_claiming_releases_the_claim() -> None:
     tracker = standard_pool()
     claims = FakeClaimRegistry()
     elsewhere = fake_manager(ProjectSelector("github:other/project"))
-    with pytest.raises(WorkspaceManagerError):
-        _ = draining(tracker, manager=elsewhere, claims=claims)
+    failed = draining_or_refused(tracker, manager=elsewhere, claims=claims)
+    assert isinstance(failed.error, WorkspaceManagerError)
     assert holders(claims, IssueIdentifier("MB-2")) == ()
     assert tracker.read_issue(IssueIdentifier("MB-2")).unwrap().labels == LabelNames(
         (LabelName("Specced"),)
@@ -456,12 +459,12 @@ def test_a_start_interrupted_by_a_second_stop_signal_releases_the_claim() -> Non
 
 def test_a_start_that_fails_tries_no_other_ticket() -> None:
     claims = FakeClaimRegistry()
-    with pytest.raises(WorkspaceManagerError):
-        _ = draining(
-            standard_pool(),
-            manager=fake_manager(ProjectSelector("github:other/project")),
-            claims=claims,
-        )
+    failed = draining_or_refused(
+        standard_pool(),
+        manager=fake_manager(ProjectSelector("github:other/project")),
+        claims=claims,
+    )
+    assert isinstance(failed.error, WorkspaceManagerError)
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 

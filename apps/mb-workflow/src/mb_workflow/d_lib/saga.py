@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 
 
 # A step returns its own failure as a value, having undone whatever part of itself it got done.
-class SagaStep(Protocol):
-    def apply(self) -> Result[None, Exception]: ...
+class SagaStep[E: Exception](Protocol):
+    def apply(self) -> Result[None, E]: ...
 
     def revert(self) -> Result[None, Exception]: ...
 
@@ -19,8 +19,8 @@ class SagaStep(Protocol):
 class Saga:
     # Applies the steps in order; when one fails, reverts the completed ones in reverse order.
     @staticmethod
-    def run(steps: Sequence[SagaStep]) -> Result[None, Exception]:
-        completed: list[SagaStep] = []
+    def run[E: Exception](steps: Sequence[SagaStep[E]]) -> Result[None, E]:
+        completed: list[SagaStep[E]] = []
         for step in steps:
             try:
                 applied = step.apply()
@@ -36,7 +36,7 @@ class Saga:
 
     # A failed revert is logged rather than returned, so the steps before it are still reverted.
     @staticmethod
-    def revert(completed: Sequence[SagaStep]) -> None:
+    def revert(completed: Sequence[SagaStep[Exception]]) -> None:
         for step in reversed(completed):
             reverted = step.revert()
             if reverted.is_err():

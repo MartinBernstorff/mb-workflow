@@ -44,7 +44,6 @@ from mb_workflow.b_core.a_features.transition import LinkedTicketTransition
 from mb_workflow.b_core.a_features.unclaim import TicketUnclaiming
 from mb_workflow.b_core.a_features.view_ticket import TicketViewing
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
-from mb_workflow.b_core.c_secondary_ports.claims import ClaimRefusedError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
@@ -104,7 +103,6 @@ logger = logging.getLogger(__name__)
 FAILURES = (
     AlreadyLinkedError,
     CalledProcessError,
-    ClaimRefusedError,
     ConfigExistsError,
     CredentialsError,
     InvalidConfigError,

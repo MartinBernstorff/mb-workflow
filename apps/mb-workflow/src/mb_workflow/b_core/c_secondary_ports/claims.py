@@ -70,7 +70,7 @@ class Claiming:
     @staticmethod
     def claim_ticket(
         registry: ClaimRegistry, request: ClaimRequest
-    ) -> Result[Posted, TicketTrackerError]:
+    ) -> Result[Posted, TicketTrackerError | ClaimLostError]:
         with Activity(f"Reading the claims on {request.ticket.root}").logged(logger):
             held = registry.claims(request.ticket)
         if isinstance(held, Err):
@@ -79,7 +79,7 @@ class Claiming:
         if current is not None and current.holder == request.holder:
             return Ok(Posted(False))
         if current is not None and not request.take_over.root:
-            raise Claiming.claimed_error(request.ticket, current)
+            return Err(Claiming.claimed_error(request.ticket, current))
         withdrawn = Claiming.withdraw_claims(registry, request.ticket, held.value)
         if isinstance(withdrawn, Err):
             return withdrawn
@@ -88,7 +88,7 @@ class Claiming:
     @staticmethod
     def post_claim(
         registry: ClaimRegistry, request: ClaimRequest
-    ) -> Result[Posted, TicketTrackerError]:
+    ) -> Result[Posted, TicketTrackerError | ClaimLostError]:
         # Every claimer posts before reading, so each reads back the same earliest claim, provided Linear serves a just-posted comment at once.
         with Activity(f"Posting a claim on {request.ticket.root}").logged(logger):
             posted = registry.post(request.ticket, request.holder)
@@ -107,8 +107,10 @@ class Claiming:
             if isinstance(ours, Err):
                 return ours
         if winner is None:
-            raise ClaimLostError(f"Our claim on {request.ticket.root} was withdrawn by another.")
-        raise Claiming.claimed_error(request.ticket, winner)
+            return Err(
+                ClaimLostError(f"Our claim on {request.ticket.root} was withdrawn by another.")
+            )
+        return Err(Claiming.claimed_error(request.ticket, winner))
 
     @staticmethod
     def withdraw_claims(

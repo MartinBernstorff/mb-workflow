@@ -42,7 +42,11 @@ from mb_workflow.d_lib.saga import Saga, SagaStep
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
-    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry, UnknownClaimLabelError
+    from mb_workflow.b_core.c_secondary_ports.claims import (
+        ClaimRefusedError,
+        ClaimRegistry,
+        UnknownClaimLabelError,
+    )
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
         TicketTracker,
@@ -84,13 +88,13 @@ class WorktreeCreation(Model):
 
 # Mutable, as it holds the opened worktree for start to read once the saga succeeds.
 @dataclass
-class WorktreeStep(SagaStep):
+class WorktreeStep(SagaStep[WorkspaceManagerError]):
     manager: WorkspaceManager
     creation: WorktreeCreation
     _opened: OpenedWorktree | None = field(default=None, init=False)
 
     @override
-    def apply(self) -> Result[None, Exception]:
+    def apply(self) -> Result[None, WorkspaceManagerError]:
         with Activity(f"Creating worktree {self.creation.name.root}").logged(logger):
             created = self.manager.create_for_issue(
                 self.creation.project,
@@ -185,6 +189,7 @@ class TicketStart:
         FlowError
         | TicketTrackerError
         | UnknownClaimLabelError
+        | ClaimRefusedError
         | MissingFlowLabelsError
         | WorkspaceManagerError,
     ]:
@@ -240,14 +245,34 @@ class TicketStart:
         )
         if isinstance(taking_steps, Err):
             return taking_steps
-        Saga.run((*entry_steps, *taking_steps.value, worktree_step)).unwrap()
+        return TicketStart.open_worktree(
+            manager=manager,
+            taking_steps=(*entry_steps, *taking_steps.value),
+            worktree_step=worktree_step,
+            display_name=DisplayName.of_issue(detail.title),
+            prompt=prompt,
+            request=request,
+        )
+
+    # Takes the ticket, opens its worktree, and types the prompt, if any, into it.
+    @staticmethod
+    def open_worktree(
+        *,
+        manager: WorkspaceManager,
+        taking_steps: tuple[SagaStep[TicketTrackerError | ClaimRefusedError], ...],
+        worktree_step: WorktreeStep,
+        display_name: DisplayName,
+        prompt: TerminalText | None,
+        request: StartRequest,
+    ) -> Result[None, TicketTrackerError | ClaimRefusedError | WorkspaceManagerError]:
+        ran = Saga.run((*taking_steps, worktree_step))
+        if isinstance(ran, Err):
+            return ran
         opened = worktree_step.opened().unwrap()
 
         logger.info("Created worktree %s.", opened.worktree.path.root)
-        with Activity(f"Naming worktree {name.root}").logged(logger):
-            WorkspaceNaming.set_display_name_or_warn(
-                manager, opened.worktree.path, DisplayName.of_issue(detail.title)
-            )
+        with Activity(f"Naming worktree {worktree_step.creation.name.root}").logged(logger):
+            WorkspaceNaming.set_display_name_or_warn(manager, opened.worktree.path, display_name)
         return TicketStart.prompt_if_any(manager, opened, prompt, request)
 
     @staticmethod
@@ -274,7 +299,8 @@ class TicketStart:
         labelled_state: StateName | None,
         state: StateName,
     ) -> Result[
-        tuple[tuple[SagaStep, ...], IssueStatusName], TicketTrackerError | MissingFlowLabelsError
+        tuple[tuple[SagaStep[TicketTrackerError], ...], IssueStatusName],
+        TicketTrackerError | MissingFlowLabelsError,
     ]:
         if labelled_state is not None:
             return Ok(((), issue.status))

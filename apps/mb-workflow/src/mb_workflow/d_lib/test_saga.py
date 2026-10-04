@@ -30,13 +30,13 @@ class StepError(Exception):
     pass
 
 
-class RecordingStep(SagaStep):
+class RecordingStep(SagaStep[StepError]):
     def __init__(self, name: StepName, journal: Journal) -> None:
         self._name = name
         self._journal = journal
 
     @override
-    def apply(self) -> Result[None, Exception]:
+    def apply(self) -> Result[None, StepError]:
         self._journal.record(Event(f"apply {self._name.root}"))
         return Ok(None)
 
@@ -52,7 +52,7 @@ class FailingStep(RecordingStep):
         self._error = error
 
     @override
-    def apply(self) -> Result[None, Exception]:
+    def apply(self) -> Result[None, StepError]:
         _ = super().apply()
         return Err(self._error)
 
@@ -66,7 +66,7 @@ class UnrevertableStep(RecordingStep):
 
 class InterruptedStep(RecordingStep):
     @override
-    def apply(self) -> Result[None, Exception]:
+    def apply(self) -> Result[None, StepError]:
         _ = super().apply()
         raise KeyboardInterrupt
 

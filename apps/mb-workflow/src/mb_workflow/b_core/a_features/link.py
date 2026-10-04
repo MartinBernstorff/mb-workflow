@@ -7,7 +7,10 @@ from safe_result import Err, Ok, Result
 from mb_workflow.b_core.b_domain_services.next_action import TicketState
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRequest
-from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceNaming
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
+    WorkspaceManagerError,
+    WorkspaceNaming,
+)
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, TakeOver
 from mb_workflow.b_core.d_domain_model.flow import FlowError, WorkflowChart
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
@@ -16,16 +19,17 @@ from mb_workflow.d_lib.models import Model
 from mb_workflow.d_lib.saga import Saga, SagaStep
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry, UnknownClaimLabelError
+    from mb_workflow.b_core.c_secondary_ports.claims import (
+        ClaimRefusedError,
+        ClaimRegistry,
+        UnknownClaimLabelError,
+    )
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
         TicketTracker,
         TicketTrackerError,
     )
-    from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
-        WorkspaceManager,
-        WorkspaceManagerError,
-    )
+    from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus, Worktree
@@ -66,13 +70,13 @@ class LinkRequest(Model):
 
 
 @dataclass(frozen=True)
-class StatusStep(SagaStep):
+class StatusStep(SagaStep[WorkspaceManagerError]):
     manager: WorkspaceManager
     worktree: Worktree
     status: WorkspaceStatus
 
     @override
-    def apply(self) -> Result[None, Exception]:
+    def apply(self) -> Result[None, WorkspaceManagerError]:
         return self.manager.set_status(self.worktree.path, self.status)
 
     @override
@@ -83,13 +87,13 @@ class StatusStep(SagaStep):
 
 
 @dataclass(frozen=True)
-class LinkStep(SagaStep):
+class LinkStep(SagaStep[WorkspaceManagerError]):
     manager: WorkspaceManager
     worktree: Worktree
     ticket: IssueIdentifier
 
     @override
-    def apply(self) -> Result[None, Exception]:
+    def apply(self) -> Result[None, WorkspaceManagerError]:
         linked = self.manager.set_linked_issue(self.worktree.path, self.ticket)
         if isinstance(linked, Err):
             return linked
@@ -116,7 +120,12 @@ class TicketLinking:
         flow_labels: FlowLabels,
         request: LinkRequest,
     ) -> Result[
-        None, FlowError | TicketTrackerError | UnknownClaimLabelError | WorkspaceManagerError
+        None,
+        FlowError
+        | TicketTrackerError
+        | UnknownClaimLabelError
+        | ClaimRefusedError
+        | WorkspaceManagerError,
     ]:
         # Refuse before touching anything, so a refused link leaves no claim behind.
         read = tracker.read_issue_detail(request.ticket)
@@ -156,11 +165,22 @@ class TicketLinking:
             return taking_steps
 
         # Linking comes last, as Orca cannot unlink a worktree to revert it.
-        status_step = StatusStep(manager, here, status.value)
-        Saga.run(
-            (*taking_steps.value, status_step, LinkStep(manager, here, request.ticket))
-        ).unwrap()
-        WorkspaceNaming.set_display_name_or_warn(
-            manager, here.path, DisplayName.of_issue(detail.title)
+        steps = (
+            *taking_steps.value,
+            StatusStep(manager, here, status.value),
+            LinkStep(manager, here, request.ticket),
         )
+        return TicketLinking.link_and_name(manager, steps, here, DisplayName.of_issue(detail.title))
+
+    @staticmethod
+    def link_and_name(
+        manager: WorkspaceManager,
+        steps: tuple[SagaStep[TicketTrackerError | ClaimRefusedError | WorkspaceManagerError], ...],
+        here: Worktree,
+        display_name: DisplayName,
+    ) -> Result[None, TicketTrackerError | ClaimRefusedError | WorkspaceManagerError]:
+        ran = Saga.run(steps)
+        if isinstance(ran, Err):
+            return ran
+        WorkspaceNaming.set_display_name_or_warn(manager, here.path, display_name)
         return Ok(None)
