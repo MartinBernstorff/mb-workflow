@@ -1,17 +1,22 @@
+from safe_result import Ok
+
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
 from mb_workflow.b_core.d_domain_model.flow import StateName
 
 
 def test_the_fake_store_reads_back_what_it_was_given() -> None:
-    assert FakeStatusStore(StateName("Merging")).read() == StateName("Merging")
+    assert FakeStatusStore(StateName("Merging")).read().unwrap() == StateName("Merging")
 
 
 def test_writing_moves_the_fake_store_to_the_new_state() -> None:
+    implementing = StateName("Implementing")
     store = FakeStatusStore(StateName("Grilling"))
-    store.write(StateName("Implementing"))
-    assert store.read() == StateName("Implementing")
+    assert store.write(implementing) == Ok(None)
+    assert store.read().unwrap() == implementing
 
 
 def test_the_fake_store_gives_each_state_its_own_status() -> None:
     store = FakeStatusStore(StateName("Grilling"))
-    assert store.status_for(StateName("QA")) != store.status_for(StateName("Review"))
+    assert (
+        store.status_for(StateName("QA")).unwrap() != store.status_for(StateName("Review")).unwrap()
+    )

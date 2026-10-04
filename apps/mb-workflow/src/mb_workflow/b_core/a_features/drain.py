@@ -32,7 +32,10 @@ if TYPE_CHECKING:
         TicketTrackerError,
     )
     from mb_workflow.b_core.c_secondary_ports.tie_break import TieBreak
-    from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
+    from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
+        WorkspaceManager,
+        WorkspaceManagerError,
+    )
     from mb_workflow.b_core.d_domain_model.config import (
         ClaimSettings,
         PoolSettings,
@@ -249,7 +252,8 @@ class Drain:
         | TicketTrackerError
         | UnknownClaimLabelError
         | UnknownLabelError
-        | MissingFlowLabelsError,
+        | MissingFlowLabelsError
+        | WorkspaceManagerError,
     ]:
         match lock.acquire():
             case Ok(held):
@@ -290,7 +294,8 @@ class Drain:
         | TicketTrackerError
         | UnknownClaimLabelError
         | UnknownLabelError
-        | MissingFlowLabelsError,
+        | MissingFlowLabelsError
+        | WorkspaceManagerError,
     ]:
         with Activity("Draining the pool").logged(logger):
             read = Drain.read_pool(tracker, claim_settings, flow_labels, pool)
@@ -389,7 +394,13 @@ class Drain:
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
         request: StartRequest,
-    ) -> Result[Started, TicketTrackerError | UnknownClaimLabelError | MissingFlowLabelsError]:
+    ) -> Result[
+        Started,
+        TicketTrackerError
+        | UnknownClaimLabelError
+        | MissingFlowLabelsError
+        | WorkspaceManagerError,
+    ]:
         try:
             started = TicketStart.start_ticket(
                 manager=manager,

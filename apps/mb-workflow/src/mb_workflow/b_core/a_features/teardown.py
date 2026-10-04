@@ -38,8 +38,11 @@ class Teardown:
         tracker: TicketTracker,
         claim_settings: ClaimSettings,
         request: TeardownRequest,
-    ) -> Result[None, TicketTrackerError]:
-        worktree = Teardown.targeted_worktree(manager, request.worktree)
+    ) -> Result[None, TicketTrackerError | WorkspaceManagerError]:
+        targeted = Teardown.targeted_worktree(manager, request.worktree)
+        if isinstance(targeted, Err):
+            return targeted
+        worktree = targeted.value
         if worktree.issue is not None:
             unclaimed = TicketUnclaiming.unclaim_ticket(
                 registry=claims,
@@ -49,17 +52,21 @@ class Teardown:
             )
             if isinstance(unclaimed, Err):
                 return unclaimed
-        manager.remove(worktree.path)
-        return Ok(None)
+        return manager.remove(worktree.path)
 
     @staticmethod
-    def targeted_worktree(manager: WorkspaceManager, name: WorktreeName | None) -> Worktree:
+    def targeted_worktree(
+        manager: WorkspaceManager, name: WorktreeName | None
+    ) -> Result[Worktree, WorkspaceManagerError]:
         if name is None:
             return manager.current()
-        worktree = manager.worktrees().named(name)
+        listed = manager.worktrees()
+        if isinstance(listed, Err):
+            return listed
+        worktree = listed.value.named(name)
         if worktree is None:
-            raise WorkspaceManagerError(f"No worktree is named {name.root}.")
-        return worktree
+            return Err(WorkspaceManagerError(f"No worktree is named {name.root}."))
+        return Ok(worktree)
 
     # Release before removing, so a failed release leaves the claim beside the worktree that holds it.
     # The holder is named after the ticket, as start claims it before Orca may suffix the directory.
@@ -72,7 +79,7 @@ class Teardown:
         claim_settings: ClaimSettings,
         worktree: Worktree,
         host: HostName,
-    ) -> Result[None, TicketTrackerError]:
+    ) -> Result[None, TicketTrackerError | WorkspaceManagerError]:
         if worktree.issue is not None:
             holder = ClaimHolder(host=host, worktree=WorktreeName.of_issue(worktree.issue))
             released = Claiming.release_claim(
@@ -82,5 +89,4 @@ class Teardown:
             )
             if isinstance(released, Err):
                 return released
-        manager.remove(worktree.path)
-        return Ok(None)
+        return manager.remove(worktree.path)

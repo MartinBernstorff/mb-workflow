@@ -51,7 +51,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
-    from mb_workflow.b_core.d_domain_model.issue import Issue
+    from mb_workflow.b_core.d_domain_model.issue import Issue, IssueStatusName
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
     from mb_workflow.b_core.d_domain_model.workspace import OpenedWorktree
 
@@ -91,18 +91,18 @@ class WorktreeStep(SagaStep):
 
     @override
     def apply(self) -> Result[None, Exception]:
-        try:
-            with Activity(f"Creating worktree {self.creation.name.root}").logged(logger):
-                self._opened = self.manager.create_for_issue(
-                    self.creation.project,
-                    self.creation.name,
-                    self.creation.ticket,
-                    self.creation.agent,
-                    self.creation.status,
-                    activate=self.creation.activate,
-                )
-        except WorkspaceManagerError as error:
-            return Err(error)
+        with Activity(f"Creating worktree {self.creation.name.root}").logged(logger):
+            created = self.manager.create_for_issue(
+                self.creation.project,
+                self.creation.name,
+                self.creation.ticket,
+                self.creation.agent,
+                self.creation.status,
+                activate=self.creation.activate,
+            )
+        if isinstance(created, Err):
+            return created
+        self._opened = created.value
         return Ok(None)
 
     # The last step of start, so no later failure ever reverts it.
@@ -181,39 +181,37 @@ class TicketStart:
         statuses: TicketStatuses,
         request: StartRequest,
     ) -> Result[
-        None, FlowError | TicketTrackerError | UnknownClaimLabelError | MissingFlowLabelsError
+        None,
+        FlowError
+        | TicketTrackerError
+        | UnknownClaimLabelError
+        | MissingFlowLabelsError
+        | WorkspaceManagerError,
     ]:
         with Activity(f"Reading {request.ticket.root}").logged(logger):
             read = tracker.read_issue_detail(request.ticket)
         if isinstance(read, Err):
             return read
         detail = read.value
-        planned = TicketStart.planned_start(request, flow_labels, detail.issue)
+        planned = TicketStart.planned_start(request, flow_labels, board, detail.issue)
         if isinstance(planned, Err):
             return planned
-        labelled_state, state, prompt = planned.value
+        labelled_state, state, column, prompt = planned.value
         checked = Claiming.require_claim_label(tracker, claim_settings.label)
         if isinstance(checked, Err):
             return checked
 
-        entry_steps: tuple[SagaStep, ...] = ()
-        status = detail.issue.status
-        if labelled_state is None:
-            flow_checked = FlowLabelCheck.require_for_issue(tracker, flow_labels, request.ticket)
-            if isinstance(flow_checked, Err):
-                return flow_checked
-            entry_steps = (
-                FlowStateStep(
-                    tracker=tracker,
-                    issue=request.ticket,
-                    wanted=flow_labels,
-                    statuses=statuses,
-                    state=state,
-                    previous_state=labelled_state,
-                    previous_status=detail.issue.status,
-                ),
-            )
-            status = statuses.of(state)
+        entering = TicketStart.entry_steps(
+            tracker=tracker,
+            flow_labels=flow_labels,
+            statuses=statuses,
+            issue=detail.issue,
+            labelled_state=labelled_state,
+            state=state,
+        )
+        if isinstance(entering, Err):
+            return entering
+        entry_steps, status = entering.value
 
         name = WorktreeName.of_issue(request.ticket)
         worktree_step = WorktreeStep(
@@ -223,7 +221,7 @@ class TicketStart:
                 name=name,
                 ticket=request.ticket,
                 agent=None if prompt is None else AgentName.claude(),
-                status=board.status_for(state),
+                status=column,
                 activate=request.activate,
             ),
         )
@@ -250,16 +248,59 @@ class TicketStart:
             WorkspaceNaming.set_display_name_or_warn(
                 manager, opened.worktree.path, DisplayName.of_issue(detail.title)
             )
+        return TicketStart.prompt_if_any(manager, opened, prompt, request)
 
-        if prompt is not None:
-            TicketStart.send_prompt(manager, opened, prompt, request.idle_timeout, request.submit)
-        return Ok(None)
+    @staticmethod
+    def prompt_if_any(
+        manager: WorkspaceManager,
+        opened: OpenedWorktree,
+        prompt: TerminalText | None,
+        request: StartRequest,
+    ) -> Result[None, WorkspaceManagerError]:
+        if prompt is None:
+            return Ok(None)
+        return TicketStart.send_prompt(
+            manager, opened, prompt, request.idle_timeout, request.submit
+        )
 
-    # The flow state the ticket carries, the state it starts in, and the prompt that starts its work.
+    # A ticket outside the flow enters it first, so its claim records the status it enters with.
+    @staticmethod
+    def entry_steps(
+        *,
+        tracker: TicketTracker,
+        flow_labels: FlowLabels,
+        statuses: TicketStatuses,
+        issue: Issue,
+        labelled_state: StateName | None,
+        state: StateName,
+    ) -> Result[
+        tuple[tuple[SagaStep, ...], IssueStatusName], TicketTrackerError | MissingFlowLabelsError
+    ]:
+        if labelled_state is not None:
+            return Ok(((), issue.status))
+        checked = FlowLabelCheck.require_for_issue(tracker, flow_labels, issue.identifier)
+        if isinstance(checked, Err):
+            return checked
+        entering = FlowStateStep(
+            tracker=tracker,
+            issue=issue.identifier,
+            wanted=flow_labels,
+            statuses=statuses,
+            state=state,
+            previous_state=labelled_state,
+            previous_status=issue.status,
+        )
+        return Ok(((entering,), statuses.of(state)))
+
+    # The flow state the ticket carries, the state it starts in, that state's board column,
+    # and the prompt that starts its work.
     @staticmethod
     def planned_start(
-        request: StartRequest, flow_labels: FlowLabels, issue: Issue
-    ) -> Result[tuple[StateName | None, StateName, TerminalText | None], FlowError]:
+        request: StartRequest, flow_labels: FlowLabels, board: WorkspaceStatusStore, issue: Issue
+    ) -> Result[
+        tuple[StateName | None, StateName, WorkspaceStatus, TerminalText | None],
+        FlowError | WorkspaceManagerError,
+    ]:
         labelled = flow_labels.state_of(WorkflowChart, issue.grouped)
         if isinstance(labelled, Err):
             return labelled
@@ -269,7 +310,10 @@ class TicketStart:
         action = TicketStart.action_in(request.ticket, given.value)
         if isinstance(action, Err):
             return action
-        return Ok((labelled.value, given.value, request.prompt_for(action.value)))
+        column = board.status_for(given.value)
+        if isinstance(column, Err):
+            return column
+        return Ok((labelled.value, given.value, column.value, request.prompt_for(action.value)))
 
     @staticmethod
     def startable_states() -> AcceptedStates:
@@ -310,15 +354,14 @@ class TicketStart:
         prompt: TerminalText,
         idle_timeout: TimeoutMs,
         submit: Submit,
-    ) -> None:
+    ) -> Result[None, WorkspaceManagerError]:
         if opened.terminal is None:
             raise PromptUndeliveredError("No agent terminal handle returned; prompt not typed.")
 
-        try:
-            with Activity("Waiting for the agent terminal to go idle").logged(logger):
-                manager.wait_for_idle(opened.terminal, idle_timeout)
-        except WorkspaceManagerError:
+        with Activity("Waiting for the agent terminal to go idle").logged(logger):
+            idle = manager.wait_for_idle(opened.terminal, idle_timeout)
+        if isinstance(idle, Err):
             logger.warning("Agent terminal never went idle; typing the prompt anyway.")
 
         with Activity(f"{'Submitting' if submit.root else 'Typing'} {prompt.root}").logged(logger):
-            manager.send_text(opened.terminal, prompt, submit)
+            return manager.send_text(opened.terminal, prompt, submit)

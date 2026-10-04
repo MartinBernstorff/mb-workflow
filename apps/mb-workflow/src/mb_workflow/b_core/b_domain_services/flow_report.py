@@ -1,10 +1,13 @@
 from typing import TYPE_CHECKING
 
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.d_domain_model.flow import FlowStatus, WorkflowChart
 from mb_workflow.d_lib.models import Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
+    from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 
 
 class AsJson(Value[bool]):
@@ -28,5 +31,9 @@ class StatusReport(Value[str]):
 
 def status_report(
     chart: type[WorkflowChart], store: WorkspaceStatusStore, as_json: AsJson
-) -> StatusReport:
-    return StatusReport.of(FlowStatus.of(chart, store.read()), as_json)
+) -> Result[StatusReport, WorkspaceManagerError]:
+    match store.read():
+        case Ok(state):
+            return Ok(StatusReport.of(FlowStatus.of(chart, state), as_json))
+        case Err() as unread:
+            return unread

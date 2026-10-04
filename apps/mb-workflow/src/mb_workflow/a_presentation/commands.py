@@ -83,7 +83,7 @@ from mb_workflow.c_infrastructure.project_override import override_of_origin
 from mb_workflow.c_infrastructure.random_tie_break import RandomTieBreak
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.c_infrastructure.signal_stop import PollSeconds, SignalStop
-from mb_workflow.c_infrastructure.workspace_board import BoardError, WorkspaceBoard
+from mb_workflow.c_infrastructure.workspace_board import WorkspaceBoard
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -103,7 +103,6 @@ logger = logging.getLogger(__name__)
 # so every command below shares this set rather than repeating its own.
 FAILURES = (
     AlreadyLinkedError,
-    BoardError,
     CalledProcessError,
     ClaimRefusedError,
     ConfigExistsError,
@@ -164,6 +163,10 @@ def resolved_configuration(directory: WorkingDirectory, name: ConfigFileName) ->
     return Configuration.resolved(directory, name, user_override()).unwrap()
 
 
+def connected_orca() -> Orca:
+    return Orca.connected(here()).unwrap()
+
+
 def linear() -> Linear:
     return Linear.connected(unwrapped_linear_key())
 
@@ -172,8 +175,8 @@ def flow_labels_of_chart() -> FlowLabels:
     return FlowLabels.of_chart(WorkflowChart, LabelGroupName("flowy"))
 
 
-def workspace_board(orca: Orca) -> WorkspaceBoard:
-    return WorkspaceBoard.of_orca(orca, StateNames.initial_state(WorkflowChart))
+def workspace_board(manager: Orca) -> WorkspaceBoard:
+    return WorkspaceBoard.of_orca(manager, StateNames.initial_state(WorkflowChart))
 
 
 @guarded
@@ -200,7 +203,7 @@ def review_workspaces(
             return ExitCode(1)
     reconciled = ReviewWorkspaces.create_workspaces(
         review=github,
-        manager=Orca(shell),
+        manager=connected_orca(),
         claims=LazyLinearClaims(linear_key),
         tracker=LazyLinear(linear_key),
         claim_settings=claim_settings,
@@ -229,7 +232,7 @@ def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode
         case Err(error):
             logger.error("%s", error)
             return ExitCode(1)
-    match FinalizeReview.finalize(github, Orca(shell), request, status):
+    match FinalizeReview.finalize(github, connected_orca(), request, status):
         case Ok():
             return ExitCode(0)
         case Err(error):
@@ -251,13 +254,13 @@ def ticket_start(
     request: StartRequest, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
     settings = resolved_configuration(directory, name).settings
-    orca = Orca(here())
+    manager = connected_orca()
     key = unwrapped_linear_key()
     match TicketStart.start_ticket(
-        manager=orca,
+        manager=manager,
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
-        board=workspace_board(orca),
+        board=workspace_board(manager),
         workspace=settings.workspace,
         claim_settings=settings.claims,
         flow_labels=flow_labels_of_chart(),
@@ -276,13 +279,13 @@ def ticket_link(
     request: LinkRequest, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
     settings = resolved_configuration(directory, name).settings
-    orca = Orca(here())
+    manager = connected_orca()
     key = unwrapped_linear_key()
     match TicketLinking.link_ticket(
-        manager=orca,
+        manager=manager,
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
-        board=workspace_board(orca),
+        board=workspace_board(manager),
         workspace=settings.workspace,
         claim_settings=settings.claims,
         flow_labels=flow_labels_of_chart(),
@@ -301,13 +304,13 @@ def drain(
 ) -> ExitCode:
     settings = resolved_configuration(directory, name).settings
     pool = settings.required_pool()
-    orca = Orca(here())
+    manager = connected_orca()
     key = unwrapped_linear_key()
     attempted = Drain.drain_pool(
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
-        manager=orca,
-        board=workspace_board(orca),
+        manager=manager,
+        board=workspace_board(manager),
         lock=FlockRunLock(LockPath.of_project(lock, settings.workspace.orca_project)),
         tie_break=RandomTieBreak(),
         workspace=settings.workspace,
@@ -352,14 +355,14 @@ def drain_watch(
 ) -> ExitCode:
     # The lock is taken once for the whole watch, so it uses the project configured at startup.
     project = resolved_configuration(directory, name).settings.workspace.orca_project
-    orca = Orca(here())
+    manager = connected_orca()
     key = unwrapped_linear_key()
     with SignalStop.installed(PollSeconds(0.2)) as stop:
         DrainWatch.watch_pool(
             tracker=Linear.connected(key),
             claims=LinearClaims.connected(key),
-            manager=orca,
-            board=workspace_board(orca),
+            manager=manager,
+            board=workspace_board(manager),
             lock=FlockRunLock(LockPath.of_project(lock, project)),
             tie_break=RandomTieBreak(),
             flow_labels=flow_labels_of_chart(),
@@ -376,7 +379,7 @@ def teardown(
     request: TeardownRequest, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
     Teardown.teardown_worktree(
-        manager=Orca(here()),
+        manager=connected_orca(),
         claims=LazyLinearClaims(linear_key),
         tracker=LazyLinear(linear_key),
         claim_settings=resolved_configuration(directory, name).settings.claims,
@@ -457,19 +460,24 @@ def dev_setup() -> ExitCode:
 
 @guarded
 def flow_show(as_json: AsJson) -> ExitCode:
-    write(Output(show_flow(workspace_board(Orca(here())), as_json).root))
-    return ExitCode(0)
+    match show_flow(workspace_board(connected_orca()), as_json):
+        case Ok(report):
+            write(Output(report.root))
+            return ExitCode(0)
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
 
 
 @guarded
 def flow_event(
     event: EventName, force: Force, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
-    orca = Orca(here())
+    manager = connected_orca()
     match LinkedTicketTransition.move_linked_ticket(
-        store=workspace_board(orca),
+        store=workspace_board(manager),
         tracker=linear(),
-        manager=orca,
+        manager=manager,
         wanted=flow_labels_of_chart(),
         statuses=resolved_configuration(directory, name).settings.ticket_statuses,
         event=event,
