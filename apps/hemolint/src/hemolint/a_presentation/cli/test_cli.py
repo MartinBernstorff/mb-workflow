@@ -70,6 +70,27 @@ def test_a_source_line_that_cannot_be_read_exits_one(workdir: Path) -> None:
     assert result.returncode == failure
 
 
+def test_check_fails_on_drift_and_prints_it(workdir: Path) -> None:
+    success, failure = 0, 1
+    check = ["check", "--format", "fixit"]
+    _ = run_hemolint(workdir, [*check, "--baseline"], violation)
+    unchanged = run_hemolint(workdir, check, violation)
+    fixed = run_hemolint(workdir, check, "")
+    new = run_hemolint(workdir, check, violation + violation)
+    assert unchanged.returncode == success
+    assert fixed.returncode == failure
+    assert f"{source}: fixit-{rule} ×1 fixed" in fixed.stdout  # noqa: RUF001
+    assert "--prune" in fixed.stdout
+    assert new.returncode == failure
+    assert violation in new.stdout
+
+
+def test_prune_and_baseline_together_is_a_usage_error(workdir: Path) -> None:
+    usage_error = 2
+    result = run_hemolint(workdir, ["check", "--format", "fixit", "--prune", "--baseline"], "")
+    assert result.returncode == usage_error
+
+
 def test_check_needs_a_format(workdir: Path) -> None:
     usage_error = 2
     result = run_hemolint(workdir, ["check", "--baseline"], "")

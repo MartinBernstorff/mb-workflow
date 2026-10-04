@@ -10,6 +10,7 @@ from hemolint.b_core.d_domain_model.linter_output import (
 )
 from hemolint.b_core.d_domain_model.violation import (
     LineNumber,
+    LinterLine,
     ReportedViolation,
     RuleName,
     SourcePath,
@@ -20,9 +21,17 @@ def test_a_violation_line_parses_to_its_source_line_and_rule() -> None:
     source = Path("src/a.py")
     line = 12
     rule = "CompareSingletonPrimitivesByIs"
-    output = LinterOutput(f"{source}@{line}:3 {rule}: Use `is` instead.\n")
+    reported_as = f"{source}@{line}:3 {rule}: Use `is` instead."
+    output = LinterOutput(f"{reported_as}\n")
     expected = ReportedViolations(
-        (ReportedViolation(source=SourcePath(source), line=LineNumber(line), rule=RuleName(rule)),)
+        (
+            ReportedViolation(
+                source=SourcePath(source),
+                line=LineNumber(line),
+                rule=RuleName(rule),
+                reported_as=LinterLine(reported_as),
+            ),
+        )
     )
     assert FixitParser.parse(output).unwrap() == expected
 

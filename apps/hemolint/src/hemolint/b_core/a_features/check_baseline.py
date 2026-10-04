@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 from safe_result import Err, Ok, Result
 
 from hemolint.b_core.a_features.find_violations import ViolationFinder
-from hemolint.b_core.d_domain_model.baseline import Baseline
+from hemolint.b_core.d_domain_model.drift import Drift
 
 if TYPE_CHECKING:
     from hemolint.b_core.c_secondary_ports.baseline_store import (
@@ -11,7 +11,6 @@ if TYPE_CHECKING:
         BaselineStoreError,
     )
     from hemolint.b_core.c_secondary_ports.source_lines import SourceLines
-    from hemolint.b_core.d_domain_model.baseline import BaselineChange
     from hemolint.b_core.d_domain_model.linter_format import LinterFormat
     from hemolint.b_core.d_domain_model.linter_output import LinterOutput, UnparsableLineError
     from hemolint.b_core.d_domain_model.violation import (
@@ -21,17 +20,17 @@ if TYPE_CHECKING:
     )
 
 
-class BaselineRecording:
-    # Writes the exact current state: new violations are added, fixed ones removed.
+class BaselineCheck:
+    # Compares the current violations with the baseline, and leaves the baseline as it is.
     @staticmethod
-    def record(
+    def check(
         output: LinterOutput,
         linter_format: LinterFormat,
         directory: WorkingDirectory,
         lines: SourceLines,
         store: BaselineStore,
     ) -> Result[
-        BaselineChange,
+        Drift,
         UnparsableLineError
         | OutsideWorkingDirectoryError
         | MissingSourceLineError
@@ -40,11 +39,7 @@ class BaselineRecording:
         found = ViolationFinder.find(output, linter_format, directory, lines)
         if isinstance(found, Err):
             return found
-        current = Baseline.of(violation.violation for violation in found.value)
-        previous = store.read()
-        if isinstance(previous, Err):
-            return previous
-        written = store.write(current)
-        if isinstance(written, Err):
-            return written
-        return Ok(current.change_from(previous.value))
+        baseline = store.read()
+        if isinstance(baseline, Err):
+            return baseline
+        return Ok(Drift.between(baseline.value, found.value))
