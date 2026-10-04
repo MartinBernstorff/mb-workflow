@@ -157,7 +157,7 @@ def resolved_configuration(directory: WorkingDirectory, name: ConfigFileName) ->
 
 
 # A failed connection is raised here, so guarded reports it like any failure.
-def orca() -> Orca:
+def connected_orca() -> Orca:
     return Orca.connected(here()).unwrap()
 
 
@@ -197,7 +197,7 @@ def review_workspaces(
             return ExitCode(1)
     reconciled = ReviewWorkspaces.create_workspaces(
         review=github,
-        manager=orca(),
+        manager=connected_orca(),
         claims=LazyLinearClaims(linear_key),
         tracker=LazyLinear(linear_key),
         claim_settings=claim_settings,
@@ -226,7 +226,7 @@ def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode
         case Err(error):
             logger.error("%s", error)
             return ExitCode(1)
-    match FinalizeReview.finalize(github, orca(), request, status):
+    match FinalizeReview.finalize(github, connected_orca(), request, status):
         case Ok():
             return ExitCode(0)
         case Err(error):
@@ -248,7 +248,7 @@ def ticket_start(
     request: StartRequest, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
     settings = resolved_configuration(directory, name).settings
-    manager = orca()
+    manager = connected_orca()
     key = linear_key()
     match TicketStart.start_ticket(
         manager=manager,
@@ -273,7 +273,7 @@ def ticket_link(
     request: LinkRequest, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
     settings = resolved_configuration(directory, name).settings
-    manager = orca()
+    manager = connected_orca()
     key = linear_key()
     match TicketLinking.link_ticket(
         manager=manager,
@@ -298,7 +298,7 @@ def drain(
 ) -> ExitCode:
     settings = resolved_configuration(directory, name).settings
     pool = settings.required_pool()
-    manager = orca()
+    manager = connected_orca()
     key = linear_key()
     attempted = Drain.drain_pool(
         tracker=Linear.connected(key),
@@ -349,7 +349,7 @@ def drain_watch(
 ) -> ExitCode:
     # The lock is taken once for the whole watch, so it uses the project configured at startup.
     project = resolved_configuration(directory, name).settings.workspace.orca_project
-    manager = orca()
+    manager = connected_orca()
     key = linear_key()
     with SignalStop.installed(PollSeconds(0.2)) as stop:
         DrainWatch.watch_pool(
@@ -373,7 +373,7 @@ def teardown(
     request: TeardownRequest, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
     Teardown.teardown_worktree(
-        manager=orca(),
+        manager=connected_orca(),
         claims=LazyLinearClaims(linear_key),
         tracker=LazyLinear(linear_key),
         claim_settings=resolved_configuration(directory, name).settings.claims,
@@ -454,7 +454,7 @@ def dev_setup() -> ExitCode:
 
 @guarded
 def flow_show(as_json: AsJson) -> ExitCode:
-    match show_flow(workspace_board(orca()), as_json):
+    match show_flow(workspace_board(connected_orca()), as_json):
         case Ok(report):
             write(Output(report.root))
             return ExitCode(0)
@@ -467,7 +467,7 @@ def flow_show(as_json: AsJson) -> ExitCode:
 def flow_event(
     event: EventName, force: Force, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
-    manager = orca()
+    manager = connected_orca()
     match LinkedTicketTransition.move_linked_ticket(
         store=workspace_board(manager),
         tracker=linear(),

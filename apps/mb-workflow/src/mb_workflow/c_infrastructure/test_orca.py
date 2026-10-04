@@ -1,6 +1,5 @@
-import os
 from subprocess import CalledProcessError
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from safe_result import Err, Ok
 
@@ -32,13 +31,17 @@ from mb_workflow.c_infrastructure.orca import (
     refusal_of,
     status_assignment,
 )
-from mb_workflow.c_infrastructure.shell import CommandOutput, ExistingDirectory, Shell
+from mb_workflow.c_infrastructure.shell import (
+    Command,
+    CommandOutput,
+    CommandRunner,
+    ExistingDirectory,
+    Shell,
+)
 from mb_workflow.d_lib.models import Value
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 
 def test_parses_worktree_list() -> None:
@@ -192,54 +195,58 @@ def test_an_unreadable_reply_is_a_workspace_manager_error() -> None:
     assert "unreadable reply" in str(unreadable.error)
 
 
-# The body of a stand-in orca executable, which answers every command the same way.
-class OrcaScript(Value[str]):
+class OrcaReason(Value[str]):
     @staticmethod
-    def fake() -> OrcaScript:
-        return OrcaScript.refusing()
+    def fake() -> OrcaReason:
+        return OrcaReason("orca is down")
+
+
+# Answers every command with one shell script, run through the real shell, as orca would.
+class ScriptedOrca(CommandRunner):
+    def __init__(self, directory: ExistingDirectory, script: Command) -> None:
+        self._shell = Shell(directory)
+        self._script = script
 
     @staticmethod
-    def refusing() -> OrcaScript:
-        reply = '{"ok":false,"error":{"code":"x","message":"orca is down"}}'
-        return OrcaScript(f"printf '%s' '{reply}'\nexit 1")
+    def refusing(directory: ExistingDirectory, reason: OrcaReason) -> ScriptedOrca:
+        reply = f'{{"ok":false,"error":{{"code":"x","message":"{reason.root}"}}}}'
+        return ScriptedOrca(directory, Command(("sh", "-c", f"printf '%s' '{reply}'; exit 1")))
 
     @staticmethod
-    def unreadable() -> OrcaScript:
-        return OrcaScript("printf 'not json'")
+    def unreadable(directory: ExistingDirectory) -> ScriptedOrca:
+        return ScriptedOrca(directory, Command(("sh", "-c", "printf 'not json'")))
+
+    @staticmethod
+    def missing(directory: ExistingDirectory) -> ScriptedOrca:
+        return ScriptedOrca(directory, Command(("mb-workflow-no-such-orca",)))
+
+    @override
+    def cwd(self) -> ExistingDirectory:
+        return self._shell.cwd()
+
+    @override
+    def at(self, directory: ExistingDirectory) -> ScriptedOrca:
+        return ScriptedOrca(directory, self._script)
+
+    @override
+    def run(self, command: Command) -> CommandOutput:
+        return self._shell.run(self._script)
 
 
-# Puts the script first on PATH as orca, so Orca runs it through the real shell.
-def scripted_orca(
-    directory: ExistingDirectory, monkeypatch: pytest.MonkeyPatch, script: OrcaScript
-) -> Orca:
-    executable = directory.root / "orca"
-    _ = executable.write_text(f"#!/bin/sh\n{script.root}\n")
-    executable.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{directory.root}{os.pathsep}{os.environ['PATH']}")
-    return Orca(Shell(directory))
+def test_connecting_to_a_failing_orca_is_refused(tmp_path: Path) -> None:
+    reason = OrcaReason.fake()
+    connected = Orca.connected(ScriptedOrca.refusing(ExistingDirectory(tmp_path), reason))
+    assert connected == Err(WorkspaceManagerError(reason.root))
 
 
-def test_connecting_to_a_failing_orca_is_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _ = scripted_orca(ExistingDirectory(tmp_path), monkeypatch, OrcaScript.refusing())
-    connected = Orca.connected(Shell(ExistingDirectory(tmp_path)))
-    assert connected == Err(WorkspaceManagerError("orca is down"))
+def test_connecting_to_a_missing_orca_is_refused(tmp_path: Path) -> None:
+    connected = Orca.connected(ScriptedOrca.missing(ExistingDirectory(tmp_path)))
+    assert connected == Err(WorkspaceManagerError("orca is not installed or not on PATH."))
 
 
-def test_connecting_to_a_missing_orca_is_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("PATH", str(tmp_path))
-    connected = Orca.connected(Shell(ExistingDirectory(tmp_path)))
-    assert isinstance(connected, Err)
-    assert "Cannot run orca" in str(connected.error)
-
-
-def test_a_refusing_orca_is_returned_as_a_workspace_manager_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    orca = scripted_orca(ExistingDirectory(tmp_path), monkeypatch, OrcaScript.refusing())
+def test_a_refusing_orca_is_returned_as_a_workspace_manager_error(tmp_path: Path) -> None:
+    reason = OrcaReason.fake()
+    orca = Orca(ScriptedOrca.refusing(ExistingDirectory(tmp_path), reason))
     path = WorktreePath.fake()
     terminal = TerminalHandle.fake()
     results = (
@@ -254,13 +261,13 @@ def test_a_refusing_orca_is_returned_as_a_workspace_manager_error(
         orca.send_text(terminal, TerminalText.fake(), Submit.fake()),
     )
     for result in results:
-        assert result == Err(WorkspaceManagerError("orca is down"))
+        assert result == Err(WorkspaceManagerError(reason.root))
 
 
 def test_an_unreadable_orca_reply_is_returned_as_a_workspace_manager_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
-    orca = scripted_orca(ExistingDirectory(tmp_path), monkeypatch, OrcaScript.unreadable())
+    orca = Orca(ScriptedOrca.unreadable(ExistingDirectory(tmp_path)))
     path = WorktreePath.fake()
     results = (
         orca.current(),

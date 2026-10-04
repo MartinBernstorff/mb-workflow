@@ -9,9 +9,10 @@ def test_the_fake_store_reads_back_what_it_was_given() -> None:
 
 
 def test_writing_moves_the_fake_store_to_the_new_state() -> None:
+    implementing = StateName("Implementing")
     store = FakeStatusStore(StateName("Grilling"))
-    assert store.write(StateName("Implementing")) == Ok(None)
-    assert store.read().unwrap() == StateName("Implementing")
+    assert store.write(implementing) == Ok(None)
+    assert store.read().unwrap() == implementing
 
 
 def test_the_fake_store_gives_each_state_its_own_status() -> None:

@@ -108,20 +108,23 @@ def board_over(
 
 
 def test_the_board_reads_the_state_of_the_column_you_stand_in() -> None:
+    qa = StateName("QA")
     manager = standing_in(WorkspaceStatus("in-review"))
-    assert board_over(manager, Ok(board())).read() == Ok(StateName("QA"))
+    assert board_over(manager, Ok(board())).read() == Ok(qa)
 
 
 def test_the_board_moves_the_worktree_you_stand_in_to_the_state_column() -> None:
+    review_column = WorkspaceStatus("status-5")
     manager = standing_in(None)
     assert board_over(manager, Ok(board())).write(StateName("Review")) == Ok(None)
-    assert manager.current().unwrap().status == WorkspaceStatus("status-5")
+    assert manager.current().unwrap().status == review_column
 
 
 def test_unreadable_columns_leave_the_worktree_where_it_was() -> None:
-    manager = standing_in(WorkspaceStatus("in-review"))
+    standing = WorkspaceStatus("in-review")
+    manager = standing_in(standing)
     unread = Err(WorkspaceManagerError("Orca printed no columns."))
     store = board_over(manager, unread)
     assert store.read() == unread
     assert store.write(StateName("Review")) == unread
-    assert manager.current().unwrap().status == WorkspaceStatus("in-review")
+    assert manager.current().unwrap().status == standing

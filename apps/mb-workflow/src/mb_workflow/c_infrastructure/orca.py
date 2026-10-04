@@ -132,17 +132,17 @@ class Envelope[T](Payload):
 
 class OrcaReply:
     @staticmethod
-    def answer[T](
+    def answer_of[T](
         envelope: type[Envelope[T]], output: CommandOutput
     ) -> Result[T, WorkspaceManagerError]:
-        match OrcaReply.read(envelope, output):
+        match OrcaReply.envelope_of(envelope, output):
             case Ok(read):
                 return read.answer()
             case Err() as unreadable:
                 return unreadable
 
     @staticmethod
-    def read[T](
+    def envelope_of[T](
         envelope: type[Envelope[T]], output: CommandOutput
     ) -> Result[Envelope[T], WorkspaceManagerError]:
         match OrcaReply._validated(envelope, output):
@@ -199,7 +199,7 @@ class WorktreeList(Payload):
 
     @staticmethod
     def parse(output: CommandOutput) -> Result[Worktrees, WorkspaceManagerError]:
-        match OrcaReply.answer(Envelope[WorktreeList], output):
+        match OrcaReply.answer_of(Envelope[WorktreeList], output):
             case Ok(listed):
                 return Ok(Worktrees(tuple(worktree.worktree() for worktree in listed.worktrees)))
             case Err() as unreadable:
@@ -213,7 +213,7 @@ class Acknowledgement(Payload):
 
     @staticmethod
     def parse(output: CommandOutput) -> Result[Acknowledgement, WorkspaceManagerError]:
-        return OrcaReply.answer(Envelope[Acknowledgement], output)
+        return OrcaReply.answer_of(Envelope[Acknowledgement], output)
 
 
 class StartupTerminal(Payload):
@@ -239,7 +239,7 @@ class SingleWorktree(Payload):
 
     @staticmethod
     def parse(output: CommandOutput) -> Result[SingleWorktree, WorkspaceManagerError]:
-        return OrcaReply.answer(Envelope[SingleWorktree], output)
+        return OrcaReply.answer_of(Envelope[SingleWorktree], output)
 
     def terminal(self) -> TerminalHandle | None:
         if self.agent_terminal_handle is not None:
@@ -250,12 +250,14 @@ class SingleWorktree(Payload):
         return OpenedWorktree(worktree=self.worktree.worktree(), terminal=self.terminal())
 
 
+def printed_by(error: CalledProcessError) -> CommandOutput:
+    printed = error.stdout
+    return CommandOutput(printed if isinstance(printed, str) else "")
+
+
 # Orca exits non-zero on a refusal but still prints the envelope, whose message says why.
 def refusal_of(error: CalledProcessError) -> ErrorMessage:
-    printed = error.stdout
-    if not isinstance(printed, str):
-        return ErrorMessage(str(error))
-    match OrcaReply.read(Envelope[Acknowledgement], CommandOutput(printed)):
+    match OrcaReply.envelope_of(Envelope[Acknowledgement], printed_by(error)):
         case Ok(read):
             match read.refusal():
                 case Ok(message):
@@ -277,6 +279,8 @@ class Orca(WorkspaceManager):
                 return Ok(orca)
             case Err(CalledProcessError() as error):
                 return Err(WorkspaceManagerError(refusal_of(error).root))
+            case Err(FileNotFoundError()):
+                return Err(WorkspaceManagerError("orca is not installed or not on PATH."))
             case Err(error):
                 return Err(WorkspaceManagerError(f"Cannot run orca: {error}"))
 
@@ -321,11 +325,7 @@ class Orca(WorkspaceManager):
         ]
         if agent is not None:
             command += ["--agent", agent.root]
-        match self._single(Command(tuple(command))):
-            case Ok(single):
-                return Ok(single.opened())
-            case Err() as failed:
-                return failed
+        return self._opened(Command(tuple(command)))
 
     @override
     def create_for_issue(
@@ -357,11 +357,7 @@ class Orca(WorkspaceManager):
             command += ["--workspace-status", status.root]
         if activate.root:
             command += ["--activate"]
-        match self._single(Command(tuple(command))):
-            case Ok(single):
-                return Ok(single.opened())
-            case Err() as failed:
-                return failed
+        return self._opened(Command(tuple(command)))
 
     @override
     def remove(self, path: WorktreePath) -> Result[None, WorkspaceManagerError]:
@@ -474,17 +470,23 @@ class Orca(WorkspaceManager):
                 )
             )
         command = status_assignment(WorktreeSelector.of(listed.root[0].path), unknown)
-        match self._ran(command):
+        match self._run_raising(command):
             case Ok(output):
                 pass
             case Err(refused):
-                printed = refused.stdout
-                output = CommandOutput(printed if isinstance(printed, str) else "")
-        match OrcaReply.read(Envelope[Acknowledgement], output):
+                output = printed_by(refused)
+        match OrcaReply.envelope_of(Envelope[Acknowledgement], output):
             case Ok(read):
                 return read.refusal()
             case Err() as unreadable:
                 return unreadable
+
+    def _opened(self, command: Command) -> Result[OpenedWorktree, WorkspaceManagerError]:
+        match self._single(command):
+            case Ok(single):
+                return Ok(single.opened())
+            case Err() as failed:
+                return failed
 
     def _single(self, command: Command) -> Result[SingleWorktree, WorkspaceManagerError]:
         return self._parsed(command, SingleWorktree.parse)
@@ -512,12 +514,12 @@ class Orca(WorkspaceManager):
                 return failed
 
     def _run(self, command: Command) -> Result[CommandOutput, WorkspaceManagerError]:
-        match self._ran(command):
+        match self._run_raising(command):
             case Ok(output):
                 return Ok(output)
             case Err(error):
                 return Err(WorkspaceManagerError(refusal_of(error).root))
 
     @safe_with(CalledProcessError)
-    def _ran(self, command: Command) -> CommandOutput:
+    def _run_raising(self, command: Command) -> CommandOutput:
         return self._shell.run(command)
