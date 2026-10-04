@@ -5,8 +5,6 @@ from fixit import Invalid, LintRule, Valid
 
 
 class NoDunderAll(LintRule):
-    """MO-t8: never maintain an `__all__` list; import names directly instead."""
-
     MESSAGE = "Don't maintain `__all__`. Import names directly instead (MO-t8)."
 
     VALID: ClassVar[list[str | Valid]] = [

@@ -6,8 +6,6 @@ from libcst.helpers import get_full_name_for_node
 
 
 class NoRaise(LintRule):
-    """TY-7e: return errors as values instead of raising them."""
-
     MESSAGE = "Return the error as a value instead of raising it (TY-7e)."
 
     VALID: ClassVar[list[str | Valid]] = [
@@ -97,7 +95,6 @@ class NoRaise(LintRule):
     def _is_allowed_exception(self, raised: cst.BaseExpression) -> bool:
         return get_full_name_for_node(raised) == "SystemExit"
 
-    # Pydantic turns a raise in a validator into a ValidationError, so the raise is how a validator reports.
     def _inside_validator(self, node: cst.CSTNode) -> bool:
         validators = {"field_validator", "model_validator", "validator", "root_validator"}
         parent = self.get_metadata(cst.metadata.ParentNodeProvider, node, None)
@@ -112,8 +109,6 @@ class NoRaise(LintRule):
 
 
 class NoRaiseAtTyperBoundary(NoRaise):
-    """NoRaise for a CLI package, where Typer's own exceptions are how a command exits."""
-
     VALID: ClassVar[list[str | Valid]] = [
         Valid(
             """
@@ -139,6 +134,5 @@ class NoRaiseAtTyperBoundary(NoRaise):
 
     @override
     def _is_allowed_exception(self, raised: cst.BaseExpression) -> bool:
-        # E.g. `typer.Exit` for `raise typer.Exit(code=1)`.
         dotted_name = get_full_name_for_node(raised) or ""
         return super()._is_allowed_exception(raised) or dotted_name.startswith("typer.")
