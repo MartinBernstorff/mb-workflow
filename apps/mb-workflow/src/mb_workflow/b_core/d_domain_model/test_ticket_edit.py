@@ -16,6 +16,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelNames,
     Milestone,
     MilestoneName,
+    Priority,
     ProjectName,
 )
 from mb_workflow.b_core.d_domain_model.ticket_edit import (
@@ -302,3 +303,10 @@ def test_a_relation_named_twice_is_added_once() -> None:
     edit = TicketEdit.nothing().model_copy(update={"add_blocks": (blocked, blocked)})
     update = edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake())
     assert update.blocks == (blocked,)
+
+
+def test_a_priority_edit_changes_only_the_priority() -> None:
+    edit = TicketEdit.nothing().model_copy(update={"priority": Priority.urgent})
+    assert edit.update(
+        IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
+    ) == IssueUpdate.nothing().model_copy(update={"priority": Priority.urgent})

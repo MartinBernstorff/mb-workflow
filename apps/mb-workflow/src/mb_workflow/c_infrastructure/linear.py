@@ -481,6 +481,7 @@ class CreationLookup(UpdateLookup):
                 project_id=project.id if project is not None else None,
                 state_id=state_id.value,
                 project_milestone_id=milestone_id.value,
+                priority=new.priority,
             )
         )
 
@@ -529,6 +530,7 @@ class IssueCreation(Payload):
     project_id: ProjectId | None
     state_id: StateId
     project_milestone_id: MilestoneId | None
+    priority: Priority | None
 
     @staticmethod
     def fake() -> IssueCreation:
@@ -541,6 +543,7 @@ class IssueCreation(Payload):
             project_id=None,
             state_id=StateId.fake(),
             project_milestone_id=None,
+            priority=None,
         )
 
 
@@ -657,6 +660,7 @@ class IssueDetailPayload(IssuePayload):
     title: IssueTitle
     description: IssueDescription | None = None
     milestone: MilestonePayload | None = Field(default=None, validation_alias="projectMilestone")
+    priority: Priority
     relations: tuple[Relation, ...] = Field(validation_alias=AliasPath("relations", "nodes"))
     inverse_relations: tuple[InverseRelation, ...] = Field(
         validation_alias=AliasPath("inverseRelations", "nodes")
@@ -672,6 +676,7 @@ class IssueDetailPayload(IssuePayload):
             labels=(LabelPayload.fake(),),
             title=IssueTitle.fake(),
             description=IssueDescription.fake(),
+            priority=Priority.medium,
             relations=(Relation.fake(),),
             inverse_relations=(InverseRelation.fake(),),
         )
@@ -683,6 +688,7 @@ class IssueDetailPayload(IssuePayload):
             description=self.description,
             assignee=self.assignee.email if self.assignee is not None else None,
             milestone=self.milestone.name if self.milestone is not None else None,
+            priority=self.priority,
             blocks=frozenset(
                 relation.identifier
                 for relation in self.relations
@@ -705,6 +711,7 @@ class IssueChanges(Payload):
     project_id: ProjectId | None = None
     state_id: StateId | None = None
     project_milestone_id: MilestoneId | None = None
+    priority: Priority | None = None
 
     @staticmethod
     def fake() -> IssueChanges:
@@ -1178,6 +1185,7 @@ class Linear(TicketTracker):
                     labels { nodes { name parent { name } } }
                     assignee { email }
                     projectMilestone { name }
+                    priority
                     relations(first: 250) { nodes { type relatedIssue { identifier } } }
                     inverseRelations(first: 250) { nodes { type issue { identifier } } }
                   }
@@ -1295,6 +1303,8 @@ class Linear(TicketTracker):
             resolving["state_id"] = found.state_id(update.status)
         if update.milestone is not None:
             resolving["project_milestone_id"] = found.milestone_id(update.milestone)
+        if update.priority is not None:
+            resolving["priority"] = Ok(update.priority)
         changes: dict[str, object] = {}
         for field_name, resolved in resolving.items():
             if isinstance(resolved, Err):

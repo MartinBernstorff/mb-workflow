@@ -12,6 +12,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Milestone,
     MilestoneName,
     NewIssue,
+    Priority,
     ProjectName,
     TeamKey,
 )
@@ -106,3 +107,12 @@ def test_a_flow_label_among_the_labels_is_refused() -> None:
     refused = drafted(draft)
     assert isinstance(refused, Err)
     assert state_option in str(refused.error)
+
+
+def test_the_priority_carries_over() -> None:
+    draft = TicketDraft.fake().model_copy(update={"priority": Priority.high})
+    assert drafted(draft).unwrap().priority == Priority.high
+
+
+def test_a_ticket_without_a_priority_leaves_it_unset() -> None:
+    assert drafted(TicketDraft.fake()).unwrap().priority is None

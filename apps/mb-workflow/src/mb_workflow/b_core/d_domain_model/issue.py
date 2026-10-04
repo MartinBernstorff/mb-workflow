@@ -294,6 +294,7 @@ class IssueDetail(Model):
     description: IssueDescription | None
     assignee: Assignee | None
     milestone: MilestoneName | None
+    priority: Priority
     blocks: frozenset[IssueIdentifier]
     blocked_by: frozenset[IssueIdentifier]
 
@@ -305,6 +306,7 @@ class IssueDetail(Model):
             description=IssueDescription.fake(),
             assignee=None,
             milestone=MilestoneName.fake(),
+            priority=Priority.medium,
             blocks=frozenset(),
             blocked_by=frozenset(),
         )
@@ -356,6 +358,7 @@ class IssueUpdate(Model):
     project: ProjectName | Cleared | None
     status: IssueStatusName | None
     milestone: Milestone | Cleared | None
+    priority: Priority | None
     blocks: tuple[IssueIdentifier, ...]
     blocked_by: tuple[IssueIdentifier, ...]
 
@@ -369,6 +372,7 @@ class IssueUpdate(Model):
             project=ProjectName.fake(),
             status=IssueStatusName.fake(),
             milestone=Milestone.fake(),
+            priority=Priority.medium,
             blocks=(),
             blocked_by=(),
         )
@@ -383,6 +387,7 @@ class IssueUpdate(Model):
             project=None,
             status=None,
             milestone=None,
+            priority=None,
             blocks=(),
             blocked_by=(),
         )
@@ -419,6 +424,7 @@ class NewIssue(Model):
     project: ProjectName | None
     status: IssueStatusName
     milestone: Milestone | None
+    priority: Priority | None
     blocks: tuple[IssueIdentifier, ...]
     blocked_by: tuple[IssueIdentifier, ...]
 
@@ -433,6 +439,7 @@ class NewIssue(Model):
             project=ProjectName.fake(),
             status=IssueStatusName.fake(),
             milestone=Milestone.fake(),
+            priority=Priority.medium,
             blocks=(),
             blocked_by=(),
         )

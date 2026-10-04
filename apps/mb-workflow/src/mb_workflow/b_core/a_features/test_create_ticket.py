@@ -16,6 +16,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueStatusName,
     LabelName,
     LabelNames,
+    Priority,
     Projects,
     StatusType,
     StatusTypes,
@@ -119,3 +120,10 @@ def test_a_flow_label_passed_as_a_label_creates_no_ticket() -> None:
     )
     assert isinstance(refused, Err)
     assert tracker.labelled_issues(LabelName("grill"), StatusTypes(())).unwrap().root == ()
+
+
+def test_a_created_ticket_takes_the_drafted_priority() -> None:
+    tracker = tracking()
+    draft = TicketDraft.fake().model_copy(update={"priority": Priority.low})
+    identifier = created(tracker, draft)
+    assert tracker.read_issue_detail(identifier).unwrap().priority == Priority.low

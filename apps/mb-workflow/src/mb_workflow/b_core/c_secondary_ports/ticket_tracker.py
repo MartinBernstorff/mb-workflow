@@ -424,6 +424,7 @@ class FakeTicketTracker(TicketTracker):
                         description=tracked.description,
                         assignee=tracked.assignee,
                         milestone=tracked.milestone,
+                        priority=tracked.priority,
                         blocks=frozenset(
                             identifier
                             for identifier, other in self._issues.items()
@@ -625,6 +626,7 @@ class FakeTicketTracker(TicketTracker):
                     ),
                     "assignee": held,
                     "milestone": milestone.value,
+                    "priority": tracked.priority if update.priority is None else update.priority,
                     "blocked_by": (*tracked.blocked_by, *update.blocked_by),
                 }
             )
@@ -664,7 +666,7 @@ class FakeTicketTracker(TicketTracker):
                 milestone=milestone.value,
                 creator=Creator(self._viewer.root),
                 created_on=CreatedOn.fake(),
-                priority=Priority.no_priority,
+                priority=Priority.no_priority if new.priority is None else new.priority,
                 blocked_by=new.blocked_by,
                 team=team.value.key,
             )
