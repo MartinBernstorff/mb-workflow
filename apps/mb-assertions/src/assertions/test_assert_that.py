@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pydantic
 import pytest
+from safe_result import Err, Ok, Result
 
 from assertions import Assert
 
@@ -320,6 +321,83 @@ def test_matches_pattern_reports_the_string_and_the_pattern() -> None:
         Assert.that(value).matches_pattern(pattern)
 
 
+def test_does_not_match_passes_on_differing_values() -> None:
+    Assert.that(1).does_not_match(2)
+
+
+def test_does_not_match_reports_the_shared_value() -> None:
+    value = 1
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected values to differ, but both were {value}"),
+    ):
+        Assert.that(value).does_not_match(value)
+
+
+def test_starts_with_passes_on_a_prefix() -> None:
+    prefix = "a"
+
+    Assert.that(f"{prefix}bc").starts_with(prefix)
+
+
+def test_starts_with_reports_the_string_and_the_prefix() -> None:
+    value = "abc"
+    prefix = "b"
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected {value!r} to start with {prefix!r}"),
+    ):
+        Assert.that(value).starts_with(prefix)
+
+
+def test_is_err_returns_the_narrowed_error() -> None:
+    error = ValueError("a")
+    result: Result[int, Exception] = Err(error)
+
+    narrowed: ValueError = Assert.that(result).is_err(ValueError)
+
+    Assert.that(narrowed).matches(error)
+
+
+def test_is_err_reports_an_ok_result() -> None:
+    value = 1
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected an Err of ValueError, but got Ok: {value}"),
+    ):
+        _ = Assert.that(Ok(value)).is_err(ValueError)
+
+
+def test_is_err_reports_the_expected_and_actual_error_types() -> None:
+    error = KeyError("a")
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected an Err of ValueError, but got Err of KeyError: {error}"),
+    ):
+        _ = Assert.that(Err(error)).is_err(ValueError)
+
+
+def test_is_ok_returns_the_value() -> None:
+    value = 1
+    result: Result[int, Exception] = Ok(value)
+
+    Assert.that(Assert.that(result).is_ok()).matches(value)
+
+
+def test_is_ok_reports_the_error() -> None:
+    error = ValueError("a")
+
+    with pytest.raises(
+        AssertionError,
+        match=re.escape(f"Expected Ok, but got Err of ValueError: {error}"),
+    ):
+        _ = Assert.that(Err(error)).is_ok()
+
+
 class TestTypeChecks:
     @staticmethod
     def _pyrefly_error_kinds(source: str) -> list[str]:
@@ -365,6 +443,10 @@ class TestTypeChecks:
             ("Assert.that(1).is_true()", "[bad-argument-type]"),
             ('Assert.that(1).contains("a")', "[bad-argument-type]"),
             ('Assert.that(1).matches_pattern("a")', "[bad-argument-type]"),
+            ('Assert.that(1).does_not_match("a")', "[bad-argument-type]"),
+            ('Assert.that(1).starts_with("a")', "[bad-argument-type]"),
+            ("Assert.that(1).is_err(ValueError)", "[bad-argument-type]"),
+            ("Assert.that(1).is_ok()", "[bad-argument-type]"),
             (
                 "narrowed: str = Assert.that(1 if 1 > 0 else None).exists()",
                 "[bad-assignment]",
