@@ -11,7 +11,7 @@ from hemolint.b_core.d_domain_model.linter_output import (
 from hemolint.b_core.d_domain_model.violation import (
     LineNumber,
     LinterLine,
-    ReportedViolation,
+    LocatedViolation,
     RuleName,
     SourcePath,
 )
@@ -25,7 +25,7 @@ def test_a_violation_line_parses_to_its_source_line_and_rule() -> None:
     output = LinterOutput(f"{reported_as}\n")
     expected = ReportedViolations(
         (
-            ReportedViolation(
+            LocatedViolation(
                 source=SourcePath(source),
                 line=LineNumber(line),
                 rule=RuleName(rule),
@@ -45,7 +45,9 @@ def test_a_message_with_an_autofix_note_still_parses() -> None:
 def test_a_path_holding_an_at_sign_parses_whole() -> None:
     source = Path("pkg/@scope/a.py")
     output = LinterOutput(f"{source}@4:0 UseFstring: Use an f-string.")
-    assert FixitParser.parse(output).unwrap().root[0].source == SourcePath(source)
+    violation = FixitParser.parse(output).unwrap().root[0]
+    assert isinstance(violation, LocatedViolation)
+    assert violation.source == SourcePath(source)
 
 
 def test_blank_lines_are_skipped() -> None:

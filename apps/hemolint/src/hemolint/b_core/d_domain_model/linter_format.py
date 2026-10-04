@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 from hemolint.b_core.d_domain_model.fixit import FixitParser
 from hemolint.b_core.d_domain_model.ruff_json import RuffJsonParser
+from hemolint.b_core.d_domain_model.tach import TachParser
 from hemolint.b_core.d_domain_model.violation import LinterName
 
 if TYPE_CHECKING:
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
 class LinterFormat(StrEnum):
     fixit = "fixit"
     ruff_json = "ruff-json"
+    tach = "tach"
 
     # Names the baseline files, so it is the linter, not the format it was read in.
     def linter_name(self) -> LinterName:
@@ -27,6 +29,8 @@ class LinterFormat(StrEnum):
                 return LinterName("fixit")
             case LinterFormat.ruff_json:
                 return LinterName("ruff")
+            case LinterFormat.tach:
+                return LinterName("tach")
 
     def parse(self, output: LinterOutput) -> Result[ReportedViolations, UnparsableOutputError]:
         match self:
@@ -34,3 +38,5 @@ class LinterFormat(StrEnum):
                 return FixitParser.parse(output)
             case LinterFormat.ruff_json:
                 return RuffJsonParser.parse(output)
+            case LinterFormat.tach:
+                return TachParser.parse(output)

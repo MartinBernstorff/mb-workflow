@@ -30,6 +30,14 @@ Ruff's JSON output works in all three modes. Its absolute paths are recorded rel
 ruff check --output-format json | uv run hemolint check --format ruff-json
 ```
 
+Tach's JSON output works too. Run it from the tach project root, since tach's paths are relative to it:
+
+```sh
+tach check --output json | uv run hemolint check --format tach
+```
+
+Each diagnostic kind, e.g. `UndeclaredDependency`, is a rule. Diagnostics for the whole project rather than a line are kept under `_global/`, fingerprinted by their details. Configuration diagnostics, skipped files and tach errors such as a circular dependency exit 2, since tach could not check everything.
+
 The baseline lives in `.hemolint/`, one JSON file per source file per rule, at `<source path>/<linter>-<rule>.json`.
 
 All checks run through moon from the repository root: `moon ci`.

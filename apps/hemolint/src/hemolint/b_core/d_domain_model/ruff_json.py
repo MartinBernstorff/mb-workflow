@@ -9,7 +9,7 @@ from hemolint.b_core.d_domain_model.linter_output import (
 from hemolint.b_core.d_domain_model.violation import (
     LineNumber,
     LinterLine,
-    ReportedViolation,
+    LocatedViolation,
     RuleName,
     SourcePath,
 )
@@ -65,7 +65,7 @@ class RuffJsonParser:
         return Ok(
             ReportedViolations(
                 tuple(
-                    ReportedViolation(
+                    LocatedViolation(
                         source=entry.filename,
                         line=entry.location.row,
                         rule=entry.code,

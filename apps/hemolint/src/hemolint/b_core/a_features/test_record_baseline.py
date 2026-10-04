@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from safe_result import Err
@@ -112,3 +113,24 @@ def test_unparsable_output_writes_nothing() -> None:
     assert isinstance(result, Err)
     assert isinstance(result.error, UnparsableOutputError)
     assert store.baseline == previous
+
+
+def test_a_global_violation_is_recorded_under_the_global_source_without_reading_lines() -> None:
+    kind = RuleName("UnusedDependencies")
+    payload = {"dependency": "b"}
+    store = FakeBaselineStore()
+    _ = BaselineRecording.record(
+        LinterOutput(
+            json.dumps(
+                [{"Global": {"severity": "Error", "details": {"Code": {kind.root: payload}}}}]
+            )
+        ),
+        LinterFormat.tach,
+        WorkingDirectory.fake(),
+        FakeSourceLines({}),
+        store,
+    ).unwrap()
+    [recorded] = store.baseline.root
+    assert recorded.file == BaselineFile(
+        source=SourcePath.global_diagnostics(), linter=LinterName("tach"), rule=kind
+    )

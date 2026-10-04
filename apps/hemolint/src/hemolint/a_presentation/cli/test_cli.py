@@ -150,3 +150,40 @@ def test_check_needs_a_format(workdir: Path) -> None:
     usage_error = 2
     result = HemolintProcess.run_in(workdir, ["check", "--baseline"], "")
     assert result.returncode == usage_error
+
+
+def test_tach_json_records_located_and_global_violations(workdir: Path) -> None:
+    located_kind, global_kind = "UndeclaredDependency", "UnusedDependencies"
+    located_details = {"Code": {located_kind: {"dependency": "b.x"}}}
+    global_details = {"Code": {global_kind: {"dependency": "b"}}}
+    output = [
+        {
+            "Located": {
+                "file_path": source,
+                "line_number": 2,
+                "original_line_number": 2,
+                "severity": "Error",
+                "details": located_details,
+            }
+        },
+        {"Global": {"severity": "Warning", "details": global_details}},
+    ]
+    result = HemolintProcess.run_in(
+        workdir, ["check", "--format", "tach", "--baseline"], json.dumps(output)
+    )
+    success = 0
+    assert result.returncode == success
+    located = workdir / ".hemolint" / source / f"tach-{located_kind}.json"
+    assert json.loads(located.read_text()) == {code: 1}
+    assert (workdir / ".hemolint" / "_global" / f"tach-{global_kind}.json").is_file()
+
+
+def test_a_tach_error_exits_two_and_writes_nothing(workdir: Path) -> None:
+    unparsable = 2
+    result = HemolintProcess.run_in(
+        workdir,
+        ["check", "--format", "tach", "--baseline"],
+        json.dumps({"error": "Circular dependency", "dependencies": ["a", "b"]}),
+    )
+    assert result.returncode == unparsable
+    assert not (workdir / ".hemolint").exists()
