@@ -28,6 +28,7 @@ if TYPE_CHECKING:
         StatusTypes,
         TeamKey,
         TeamName,
+        TicketCount,
     )
     from mb_workflow.b_core.d_domain_model.pool import PoolTickets, ViewSlug
     from mb_workflow.c_infrastructure.credentials import CredentialsError, RepositorySlugError
@@ -110,6 +111,26 @@ class LazyLinear(TicketTracker):
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None:
         self._tracker().unwrap().recolor_group_labels(group, labels, team)
+
+    @override
+    def rename_group_label(
+        self, group: LabelGroupName, label: LabelName, renamed: LabelName, team: TeamKey | None
+    ) -> Result[None, TicketTrackerError]:
+        return self._looked_up(
+            lambda tracker: tracker.rename_group_label(group, label, renamed, team)
+        )
+
+    @override
+    def delete_group_label(
+        self, group: LabelGroupName, label: LabelName, team: TeamKey | None
+    ) -> Result[None, TicketTrackerError]:
+        return self._looked_up(lambda tracker: tracker.delete_group_label(group, label, team))
+
+    @override
+    def labelled_ticket_count(
+        self, group: LabelGroupName, label: LabelName, team: TeamKey | None
+    ) -> Result[TicketCount, TicketTrackerError]:
+        return self._looked_up(lambda tracker: tracker.labelled_ticket_count(group, label, team))
 
     @override
     def team_named(self, name: TeamName) -> Result[TeamKey, TicketTrackerError]:

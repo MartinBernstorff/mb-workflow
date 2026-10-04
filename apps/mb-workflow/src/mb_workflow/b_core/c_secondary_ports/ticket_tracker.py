@@ -42,6 +42,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Team,
     TeamKey,
     TeamName,
+    TicketCount,
 )
 from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority, ViewSlug
 from mb_workflow.d_lib.logging import Activity
@@ -77,6 +78,19 @@ class TicketTracker(Protocol):
     def recolor_group_labels(
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None: ...
+
+    def rename_group_label(
+        self, group: LabelGroupName, label: LabelName, renamed: LabelName, team: TeamKey | None
+    ) -> Result[None, TicketTrackerError]: ...
+
+    # Deleting a label also takes it off every ticket that carries it.
+    def delete_group_label(
+        self, group: LabelGroupName, label: LabelName, team: TeamKey | None
+    ) -> Result[None, TicketTrackerError]: ...
+
+    def labelled_ticket_count(
+        self, group: LabelGroupName, label: LabelName, team: TeamKey | None
+    ) -> Result[TicketCount, TicketTrackerError]: ...
 
     def team_named(self, name: TeamName) -> Result[TeamKey, TicketTrackerError]: ...
 
@@ -256,10 +270,64 @@ class FakeTicketTracker(TicketTracker):
                 for label in held.root
             )
         )
-        if team is None:
-            self._groups[group] = recolored
-        else:
-            self._team_groups[(team, group)] = recolored
+        self._store_group(group, team, recolored)
+
+    @override
+    def rename_group_label(
+        self, group: LabelGroupName, label: LabelName, renamed: LabelName, team: TeamKey | None
+    ) -> Result[None, TicketTrackerError]:
+        match self._group_member(group, label, team):
+            case Ok(known):
+                held = self._group_members(group, team)
+                self._store_group(
+                    group,
+                    team,
+                    ColoredLabels(
+                        tuple(
+                            member.model_copy(update={"name": renamed})
+                            if member.name == known
+                            else member
+                            for member in held.root
+                        )
+                    ),
+                )
+                if team is None:
+                    self._labels = self._labels.replaced(known, renamed)
+                for tracked in self._carrying(known, team):
+                    self._relabel(tracked, tracked.issue.labels.replaced(known, renamed))
+                return Ok(None)
+            case Err() as failed:
+                return failed
+
+    @override
+    def delete_group_label(
+        self, group: LabelGroupName, label: LabelName, team: TeamKey | None
+    ) -> Result[None, TicketTrackerError]:
+        match self._group_member(group, label, team):
+            case Ok(known):
+                held = self._group_members(group, team)
+                self._store_group(
+                    group,
+                    team,
+                    ColoredLabels(tuple(member for member in held.root if member.name != known)),
+                )
+                if team is None:
+                    self._labels = self._labels.without(known)
+                for tracked in self._carrying(known, team):
+                    self._relabel(tracked, tracked.issue.labels.without(known))
+                return Ok(None)
+            case Err() as failed:
+                return failed
+
+    @override
+    def labelled_ticket_count(
+        self, group: LabelGroupName, label: LabelName, team: TeamKey | None
+    ) -> Result[TicketCount, TicketTrackerError]:
+        match self._group_member(group, label, team):
+            case Ok(known):
+                return Ok(TicketCount(len(self._carrying(known, team))))
+            case Err() as failed:
+                return failed
 
     @override
     def team_named(self, name: TeamName) -> Result[TeamKey, TicketTrackerError]:
@@ -477,6 +545,38 @@ class FakeTicketTracker(TicketTracker):
         if team is None:
             return self._groups.get(group, ColoredLabels(()))
         return self._team_groups.get((team, group), ColoredLabels(()))
+
+    def _store_group(
+        self, group: LabelGroupName, team: TeamKey | None, members: ColoredLabels
+    ) -> None:
+        if team is None:
+            self._groups[group] = members
+        else:
+            self._team_groups[(team, group)] = members
+
+    def _group_member(
+        self, group: LabelGroupName, label: LabelName, team: TeamKey | None
+    ) -> Result[LabelName, TicketTrackerError]:
+        known = self._group_members(group, team).label_names().matching(label)
+        if known is None:
+            return Err(
+                TicketTrackerError(f"The {group.root} group holds no label named {label.root}.")
+            )
+        return Ok(known)
+
+    # A team's label is carried only by that team's tickets; a workspace label by any ticket.
+    def _carrying(self, label: LabelName, team: TeamKey | None) -> tuple[TrackedIssue, ...]:
+        return tuple(
+            tracked
+            for tracked in self._issues.values()
+            if label in tracked.issue.labels.root
+            and (team is None or tracked.team.names(team).root)
+        )
+
+    def _relabel(self, tracked: TrackedIssue, labels: LabelNames) -> None:
+        self._issues[tracked.issue.identifier] = tracked.model_copy(
+            update={"issue": tracked.issue.model_copy(update={"labels": labels})}
+        )
 
     def _team(self, key: TeamKey | None, project: ProjectName | None) -> Team:
         if key is not None:

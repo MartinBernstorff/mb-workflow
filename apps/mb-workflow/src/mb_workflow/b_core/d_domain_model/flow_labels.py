@@ -16,11 +16,43 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelName,
     LabelNames,
 )
-from mb_workflow.d_lib.models import Model
+from mb_workflow.d_lib.models import Model, Value
 
 
 class FlowLabelOptionError(ValueError):
     pass
+
+
+class LabelRename(Model):
+    held: LabelName
+    renamed: LabelName
+
+    @staticmethod
+    def fake() -> LabelRename:
+        return LabelRename(held=LabelName("implementing"), renamed=LabelName("Implementing"))
+
+
+class LabelRenames(Value[tuple[LabelRename, ...]]):
+    @staticmethod
+    def fake() -> LabelRenames:
+        return LabelRenames((LabelRename.fake(),))
+
+
+# The changes that bring one label group in line with the flow labels.
+class GroupSync(Model):
+    renamed: LabelRenames
+    deleted: LabelNames
+    recolored: LabelNames
+
+    @staticmethod
+    def fake() -> GroupSync:
+        return GroupSync(
+            renamed=LabelRenames.fake(), deleted=LabelNames.fake(), recolored=LabelNames.fake()
+        )
+
+    @staticmethod
+    def unchanged() -> GroupSync:
+        return GroupSync(renamed=LabelRenames(()), deleted=LabelNames(()), recolored=LabelNames(()))
 
 
 class FlowLabels(Model):
@@ -64,6 +96,22 @@ class FlowLabels(Model):
 
     def missing(self, held: LabelNames) -> LabelNames:
         return held.unmatched(self.labels)
+
+    def sync_plan(self, held: ColoredLabels) -> GroupSync:
+        names = held.label_names().root
+        return GroupSync(
+            renamed=LabelRenames(
+                tuple(
+                    LabelRename(held=label, renamed=spelled)
+                    for label in names
+                    if (spelled := self.labels.matching(label)) is not None and spelled != label
+                )
+            ),
+            deleted=LabelNames(
+                tuple(label for label in names if self.labels.matching(label) is None)
+            ),
+            recolored=self.labels.spelled(self.miscolored(held)),
+        )
 
     # A flow label set by hand would disagree with the status, so the state is moved with --state instead.
     def checked_label_options(
