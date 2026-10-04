@@ -97,7 +97,7 @@ def test_an_empty_edit_is_refused_before_the_ticket_is_read() -> None:
 def in_grilling(groups: LabelNames = FlowLabels.fake().labels) -> FakeTicketTracker:
     flow = FlowLabels.fake()
     grilling = Issue.fake().model_copy(
-        update={"labels": LabelNames((LabelName.fake(), LabelName("Grilling")))}
+        update={"labels": LabelNames((LabelName.fake(), LabelName("grill")))}
     )
     return FakeTicketTracker(
         LabelNames((LabelName.fake(), *flow.labels.root)),
@@ -116,7 +116,7 @@ def in_grilling(groups: LabelNames = FlowLabels.fake().labels) -> FakeTicketTrac
 
 def test_a_ticket_jumps_to_a_state_the_chart_does_not_lead_to() -> None:
     tracker = in_grilling()
-    merged = LabelName("Merged")
+    merged = LabelName("merged")
     done = IssueStatusName("Done")
     edit = TicketEdit.nothing().model_copy(update={"state": StateName("merged")})
     _ = TicketEditor.apply_edit(
@@ -128,7 +128,7 @@ def test_a_ticket_jumps_to_a_state_the_chart_does_not_lead_to() -> None:
 
 def test_moving_a_ticket_keeps_its_labels_outside_the_flow() -> None:
     tracker = in_grilling()
-    review = LabelName("Review")
+    review = LabelName("review")
     edit = TicketEdit.nothing().model_copy(update={"state": StateName(review.root)})
     _ = TicketEditor.apply_edit(
         tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
@@ -165,9 +165,7 @@ def test_moving_a_ticket_without_seeded_flow_labels_leaves_it_unchanged() -> Non
 def test_a_flow_label_passed_as_a_label_leaves_the_ticket_unchanged() -> None:
     tracker = tracking()
     before = tracker.read_issue(IssueIdentifier.fake()).unwrap()
-    edit = TicketEdit.nothing().model_copy(
-        update={"add_labels": LabelNames((LabelName("Specced"),))}
-    )
+    edit = TicketEdit.nothing().model_copy(update={"add_labels": LabelNames((LabelName("todo"),))})
     refused = TicketEditor.apply_edit(
         tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
     )

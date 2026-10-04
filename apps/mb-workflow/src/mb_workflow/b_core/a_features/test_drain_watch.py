@@ -194,8 +194,8 @@ def test_a_pass_refused_over_conflicting_flow_labels_is_retried_on_the_next_pass
         elsewhere=(
             in_progress(
                 IssueIdentifier("MB-10"),
-                StateName("Grilling"),
-                labels=LabelNames((LabelName("QA"),)),
+                StateName("grill"),
+                labels=LabelNames((LabelName("qa"),)),
             ),
         ),
     )

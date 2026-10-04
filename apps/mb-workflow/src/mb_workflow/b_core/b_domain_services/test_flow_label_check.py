@@ -24,11 +24,11 @@ def test_a_missing_flow_label_fails_and_points_to_seed_labels() -> None:
     refused = FlowLabelCheck.require(tracker, wanted, None)
     assert isinstance(refused, Err)
     assert isinstance(refused.error, MissingFlowLabelsError)
-    assert re.search(r"Grilling.*mw flow seed-labels --team", str(refused.error))
+    assert re.search(r"grill.*mw flow seed-labels --team", str(refused.error))
 
 
 def test_flow_labels_outside_the_group_do_not_count() -> None:
-    tracker = FakeTicketTracker(LabelNames((LabelName("Grilling"),)), ())
+    tracker = FakeTicketTracker(LabelNames((LabelName("grill"),)), ())
     refused = FlowLabelCheck.require(tracker, FlowLabels.fake(), None)
     assert isinstance(refused, Err)
     assert isinstance(refused.error, MissingFlowLabelsError)

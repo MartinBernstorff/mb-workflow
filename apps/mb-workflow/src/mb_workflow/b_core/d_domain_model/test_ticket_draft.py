@@ -32,7 +32,7 @@ def drafted(
 ) -> Result[NewIssue, TicketDraftError | FlowLabelOptionError]:
     return draft.new_issue(
         defaults=defaults,
-        start=StateName("Grilling"),
+        start=StateName("grill"),
         flow_labels=FlowLabels.fake(),
         statuses=TicketStatuses.fake(),
         viewer=viewer(),
@@ -41,9 +41,7 @@ def drafted(
 
 def test_a_new_ticket_carries_the_flow_label_of_the_start_state() -> None:
     draft = TicketDraft.fake().model_copy(update={"labels": LabelNames((LabelName("Backend"),))})
-    assert drafted(draft).unwrap().labels == LabelNames(
-        (LabelName("Backend"), LabelName("Grilling"))
-    )
+    assert drafted(draft).unwrap().labels == LabelNames((LabelName("Backend"), LabelName("grill")))
 
 
 def test_a_new_ticket_takes_the_status_mapped_to_the_start_state() -> None:
@@ -103,7 +101,7 @@ def test_the_blocking_relations_carry_over() -> None:
 
 
 def test_a_flow_label_among_the_labels_is_refused() -> None:
-    draft = TicketDraft.fake().model_copy(update={"labels": LabelNames((LabelName("specced"),))})
+    draft = TicketDraft.fake().model_copy(update={"labels": LabelNames((LabelName("TODO"),))})
     state_option = "--state"
     refused = drafted(draft)
     assert isinstance(refused, Err)

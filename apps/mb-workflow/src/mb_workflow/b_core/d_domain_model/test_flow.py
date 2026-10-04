@@ -19,14 +19,14 @@ from mb_workflow.b_core.d_domain_model.flow import (
     WorkState,
 )
 
-GRILLING = StateName("Grilling")
-SPECCING = StateName("Speccing")
-SPECCED = StateName("Specced")
-IMPLEMENTING = StateName("Implementing")
-QA = StateName("QA")
-REVIEW = StateName("Review")
-MERGING = StateName("Merging")
-MERGED = StateName("Merged")
+GRILL = StateName("grill")
+TO_TICKET = StateName("to-ticket")
+TODO = StateName("todo")
+IMPLEMENTING = StateName("implementing")
+QA = StateName("qa")
+REVIEW = StateName("review")
+MERGING = StateName("merging")
+MERGED = StateName("merged")
 
 
 def edge(source: StateName, name: EventName, target: StateName) -> Edge:
@@ -35,7 +35,7 @@ def edge(source: StateName, name: EventName, target: StateName) -> Edge:
 
 def test_the_chart_holds_every_state_the_work_passes_through() -> None:
     assert StateNames.of_chart(WorkflowChart) == StateNames(
-        frozenset({GRILLING, SPECCING, SPECCED, IMPLEMENTING, QA, REVIEW, MERGING, MERGED})
+        frozenset({GRILL, TO_TICKET, TODO, IMPLEMENTING, QA, REVIEW, MERGING, MERGED})
     )
 
 
@@ -44,20 +44,20 @@ def test_every_state_names_what_happens_in_it() -> None:
 
 
 def test_work_enters_the_chart_at_grilling() -> None:
-    assert StateNames.initial_state(WorkflowChart) == GRILLING
+    assert StateNames.initial_state(WorkflowChart) == GRILL
 
 
 def test_the_chart_holds_every_transition_the_work_can_take() -> None:
     assert Edges.of_chart(WorkflowChart) == Edges(
         frozenset(
             {
-                edge(GRILLING, EventName("grill"), GRILLING),
-                edge(GRILLING, EventName("to-ticket"), SPECCING),
-                edge(SPECCING, EventName("specced"), SPECCED),
-                edge(SPECCED, EventName("implement"), IMPLEMENTING),
+                edge(GRILL, EventName("grill"), GRILL),
+                edge(GRILL, EventName("to-ticket"), TO_TICKET),
+                edge(TO_TICKET, EventName("todo"), TODO),
+                edge(TODO, EventName("implement"), IMPLEMENTING),
                 edge(IMPLEMENTING, EventName("qa"), QA),
-                edge(IMPLEMENTING, EventName("grill"), GRILLING),
-                edge(IMPLEMENTING, EventName("to-ticket"), SPECCING),
+                edge(IMPLEMENTING, EventName("grill"), GRILL),
+                edge(IMPLEMENTING, EventName("to-ticket"), TO_TICKET),
                 edge(QA, EventName("implement"), IMPLEMENTING),
                 edge(QA, EventName("ready"), REVIEW),
                 edge(QA, EventName("merge"), MERGING),
@@ -108,8 +108,8 @@ def test_no_event_is_legal_from_the_final_state() -> None:
 
 
 def test_a_status_pairs_a_state_with_the_events_legal_from_it() -> None:
-    assert FlowStatus.of(WorkflowChart, GRILLING) == FlowStatus(
-        state=GRILLING, events=EventNames((EventName("grill"), EventName("to-ticket")))
+    assert FlowStatus.of(WorkflowChart, GRILL) == FlowStatus(
+        state=GRILL, events=EventNames((EventName("grill"), EventName("to-ticket")))
     )
 
 
@@ -123,8 +123,8 @@ def test_the_chart_names_every_event_it_holds() -> None:
             EventName("qa"),
             EventName("ready"),
             EventName("resolve-review"),
-            EventName("specced"),
             EventName("to-ticket"),
+            EventName("todo"),
         )
     )
 
@@ -140,11 +140,11 @@ def test_resolving_a_review_from_qa_returns_the_work_to_implementing() -> None:
 
 
 def test_an_illegal_event_names_the_current_state_and_the_events_legal_from_it() -> None:
-    refused = Edges.of_chart(WorkflowChart).target_from(GRILLING, EventName("merge"))
+    refused = Edges.of_chart(WorkflowChart).target_from(GRILL, EventName("merge"))
     assert isinstance(refused, Err)
     assert isinstance(refused.error, FlowError)
     assert re.search(
-        r"merge is not legal from Grilling\. Legal: grill, to-ticket\.", str(refused.error)
+        r"merge is not legal from grill\. Legal: grill, to-ticket\.", str(refused.error)
     )
 
 
@@ -152,7 +152,7 @@ def test_an_event_outside_the_chart_is_illegal_from_every_state() -> None:
     refused = Edges.of_chart(WorkflowChart).target_from(QA, EventName("abandon"))
     assert isinstance(refused, Err)
     assert isinstance(refused.error, FlowError)
-    assert re.search(r"abandon is not legal from QA\.", str(refused.error))
+    assert re.search(r"abandon is not legal from qa\.", str(refused.error))
 
 
 def test_the_final_state_has_no_legal_event_to_offer() -> None:
@@ -182,24 +182,22 @@ def test_forcing_an_event_outside_the_chart_lists_the_events_it_holds() -> None:
 
 
 def test_the_events_legal_from_a_state_come_from_the_edges_at_hand() -> None:
-    edges = Edges(frozenset({edge(GRILLING, EventName("abandon"), MERGED)}))
-    refused = edges.target_from(GRILLING, EventName("to-ticket"))
+    edges = Edges(frozenset({edge(GRILL, EventName("abandon"), MERGED)}))
+    refused = edges.target_from(GRILL, EventName("to-ticket"))
     assert isinstance(refused, Err)
     assert isinstance(refused.error, FlowError)
     assert re.search(r"Legal: abandon\.", str(refused.error))
 
 
-@pytest.mark.parametrize("typed", ["specced", "SPECCED", "Specced"])
+@pytest.mark.parametrize("typed", ["todo", "TODO", "Todo"])
 def test_a_state_named_in_any_casing_is_spelled_as_the_chart(typed: str) -> None:
-    assert AcceptedStates.of_chart(WorkflowChart).named_ignoring_case(StateName(typed)) == Ok(
-        SPECCED
-    )
+    assert AcceptedStates.of_chart(WorkflowChart).named_ignoring_case(StateName(typed)) == Ok(TODO)
 
 
 def test_an_unknown_state_lists_only_the_accepted_states_in_chart_order() -> None:
     unknown = StateName("foo")
-    refusal = f"No flow state is named {unknown.root}. Use one of Speccing, Grilling."
-    looked_up = AcceptedStates((SPECCING, GRILLING)).named_ignoring_case(unknown)
+    refusal = f"No flow state is named {unknown.root}. Use one of to-ticket, grill."
+    looked_up = AcceptedStates((TO_TICKET, GRILL)).named_ignoring_case(unknown)
     assert isinstance(looked_up, Err)
     assert isinstance(looked_up.error, UnknownStateError)
     assert str(looked_up.error) == refusal

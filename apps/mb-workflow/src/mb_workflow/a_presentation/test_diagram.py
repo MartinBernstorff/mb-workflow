@@ -24,7 +24,7 @@ def test_the_diagram_shows_where_work_enters_and_ends() -> None:
 
 
 def test_the_diagram_labels_a_state_by_the_name_the_chart_gives_it() -> None:
-    assert '    state "QA" as qa\n' in render_mermaid().root
+    assert '    state "to-ticket" as speccing\n' in render_mermaid().root
 
 
 def test_the_diagram_labels_a_transition_with_the_event_that_causes_it() -> None:

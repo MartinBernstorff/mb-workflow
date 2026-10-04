@@ -45,7 +45,7 @@ def test_every_state_the_chart_holds_has_a_board_column() -> None:
 
 
 def test_a_column_id_resolves_to_the_state_its_label_stands_for() -> None:
-    assert state_of(WorkspaceStatus("in-review")) == StateName("QA")
+    assert state_of(WorkspaceStatus("in-review")) == StateName("qa")
 
 
 def test_a_column_outside_the_chart_reads_as_the_start_state() -> None:
@@ -61,13 +61,13 @@ def test_a_column_the_board_no_longer_defines_reads_as_the_start_state() -> None
 
 
 def test_a_state_maps_to_the_id_of_the_board_column_its_label_names() -> None:
-    assert board().status_for(StateName("Review")) == WorkspaceStatus("status-5")
+    assert board().status_for(StateName("review")) == WorkspaceStatus("status-5")
 
 
 def test_a_state_the_board_has_no_column_for_is_a_clear_error() -> None:
     columns = Columns((Column(id=WorkspaceStatus("in-progress"), label=ColumnLabel("Grilling")),))
     with pytest.raises(BoardError, match="defines no Merged column"):
-        _ = columns.status_for(StateName("Merged"))
+        _ = columns.status_for(StateName("merged"))
 
 
 def test_a_state_outside_the_chart_has_no_board_column() -> None:

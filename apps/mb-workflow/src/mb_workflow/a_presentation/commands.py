@@ -63,7 +63,7 @@ from mb_workflow.b_core.d_domain_model.config_override import (
 )
 from mb_workflow.b_core.d_domain_model.config_template import ConfigTemplate
 from mb_workflow.b_core.d_domain_model.flow import EventName, StateNames, WorkflowChart
-from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
+from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, LabelRenames
 from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
 from mb_workflow.b_core.d_domain_model.workspace import UnlinkedWorktreeError
 from mb_workflow.c_infrastructure.credentials import (
@@ -169,7 +169,9 @@ def linear() -> Linear:
 
 
 def flow_labels_of_chart() -> FlowLabels:
-    return FlowLabels.of_chart(WorkflowChart, LabelGroupName("flowy"))
+    return FlowLabels.of_chart(
+        WorkflowChart, LabelGroupName("flowy"), LabelRenames.former_stage_names()
+    )
 
 
 def workspace_board(orca: Orca) -> WorkspaceBoard:

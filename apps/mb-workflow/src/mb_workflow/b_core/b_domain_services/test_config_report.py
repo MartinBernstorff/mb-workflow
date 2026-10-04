@@ -29,14 +29,14 @@ def test_reports_the_file_it_came_from_and_every_resolved_setting() -> None:
         "assignee: mab@flowbase.io (repo)\n"
         "claim label: claimed (repo)\n"
         "ticket statuses:\n"
-        "  Grilling: Maturing (repo)\n"
-        "  Speccing: Maturing (repo)\n"
-        "  Specced: Todo (repo)\n"
-        "  Implementing: In Progress (repo)\n"
-        "  QA: In Progress (repo)\n"
-        "  Review: In Review (repo)\n"
-        "  Merging: Ready For Release (repo)\n"
-        "  Merged: Done (repo)"
+        "  grill: Maturing (repo)\n"
+        "  to-ticket: Maturing (repo)\n"
+        "  todo: Todo (repo)\n"
+        "  implementing: In Progress (repo)\n"
+        "  qa: In Progress (repo)\n"
+        "  review: In Review (repo)\n"
+        "  merging: Ready For Release (repo)\n"
+        "  merged: Done (repo)"
     )
 
 
@@ -99,7 +99,7 @@ def test_a_configured_pool_reports_its_limits() -> None:
             )
         }
     )
-    assert "pool limits: total 4, Grilling 1 (default)" in ConfigReport.of(config).root
+    assert "pool limits: total 4, grill 1 (default)" in ConfigReport.of(config).root
 
 
 def test_a_configured_pool_reports_its_skip_limits_label() -> None:
@@ -153,8 +153,8 @@ def test_attributes_a_table_set_in_both_files_to_both() -> None:
             "table": SettingsTable({"pool": {"view": "4efb86b38740", "limits": {"total": 4}}}),
             "override": OverrideFile(
                 path=OverridePath.fake(),
-                table=SettingsTable({"pool": {"limits": {"states": {"Grilling": 1}}}}),
+                table=SettingsTable({"pool": {"limits": {"states": {"grill": 1}}}}),
             ),
         }
     )
-    assert "pool limits: total 4, Grilling 1 (repo+override)" in ConfigReport.of(config).root
+    assert "pool limits: total 4, grill 1 (repo+override)" in ConfigReport.of(config).root

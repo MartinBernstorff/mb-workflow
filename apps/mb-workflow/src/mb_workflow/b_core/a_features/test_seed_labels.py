@@ -131,8 +131,8 @@ def test_seeding_again_creates_nothing() -> None:
 def test_seeding_adds_only_the_labels_the_team_group_lacks() -> None:
     wanted = FlowLabels.fake()
     tracker = SeedingTrackers.empty()
-    grilling = LabelNames((LabelName("Grilling"),))
-    tracker.create_group_labels(wanted.group, wanted.colored(grilling), TeamKey.fake())
+    grill = LabelNames((LabelName("grill"),))
+    tracker.create_group_labels(wanted.group, wanted.colored(grill), TeamKey.fake())
     _ = FlowLabelSeeding.seed_flow_labels(tracker, wanted, TeamName.fake(), Force(False)).unwrap()
     assert (
         tracker.group_labels(wanted.group, TeamKey.fake()).unwrap().label_names() == wanted.labels
@@ -142,7 +142,7 @@ def test_seeding_adds_only_the_labels_the_team_group_lacks() -> None:
 def test_seeding_recolors_team_labels_in_the_wrong_color() -> None:
     wanted = FlowLabels.fake()
     tracker = SeedingTrackers.empty()
-    grey = ColoredLabels((ColoredLabel(name=LabelName("Grilling"), color=LabelColor.grey()),))
+    grey = ColoredLabels((ColoredLabel(name=LabelName("grill"), color=LabelColor.grey()),))
     tracker.create_group_labels(wanted.group, grey, TeamKey.fake())
     _ = FlowLabelSeeding.seed_flow_labels(tracker, wanted, TeamName.fake(), Force(False)).unwrap()
     held = tracker.group_labels(wanted.group, TeamKey.fake()).unwrap()
@@ -152,20 +152,20 @@ def test_seeding_recolors_team_labels_in_the_wrong_color() -> None:
 def test_seeding_reports_the_labels_it_recolored() -> None:
     wanted = FlowLabels.fake()
     tracker = SeedingTrackers.empty()
-    grilling = LabelName("Grilling")
-    grey = ColoredLabels((ColoredLabel(name=grilling, color=LabelColor.grey()),))
+    grill = LabelName("grill")
+    grey = ColoredLabels((ColoredLabel(name=grill, color=LabelColor.grey()),))
     tracker.create_group_labels(wanted.group, grey, TeamKey.fake())
     seeded = FlowLabelSeeding.seed_flow_labels(
         tracker, wanted, TeamName.fake(), Force(False)
     ).unwrap()
     assert isinstance(seeded, SeededTeam)
-    assert seeded.team.recolored == LabelNames((grilling,))
+    assert seeded.team.recolored == LabelNames((grill,))
 
 
 def test_seeding_recolors_workspace_labels_a_team_relies_on() -> None:
     wanted = FlowLabels.fake()
     tracker = SeedingTrackers.empty()
-    qa = LabelName("QA")
+    qa = LabelName("qa")
     yellow = ColoredLabels((ColoredLabel(name=qa, color=LabelColor.yellow()),))
     tracker.create_group_labels(wanted.group, yellow, None)
     _ = FlowLabelSeeding.seed_flow_labels(tracker, wanted, TeamName.fake(), Force(False)).unwrap()
@@ -215,7 +215,7 @@ def test_forced_seeding_creates_in_the_team_the_labels_the_workspace_group_alrea
 def test_a_covering_workspace_group_recolors_and_reports_its_labels_in_the_wrong_color() -> None:
     wanted = FlowLabels.fake()
     tracker = SeedingTrackers.empty()
-    qa = LabelName("QA")
+    qa = LabelName("qa")
     rest = LabelNames(tuple(label for label in wanted.labels.root if label != qa))
     tracker.create_group_labels(wanted.group, wanted.colored(rest), None)
     yellow = ColoredLabels((ColoredLabel(name=qa, color=LabelColor.yellow()),))
@@ -253,7 +253,7 @@ def test_an_unknown_team_fails_and_creates_nothing() -> None:
 
 
 def test_unforced_seeding_with_a_pending_rename_changes_nothing() -> None:
-    held = LabelName(FlowLabels.fake().labels.root[0].root.casefold())
+    held = LabelName(FlowLabels.fake().labels.root[0].root.upper())
     tracker = SeedingTrackers.with_team_ticket_carrying(held)
     refused = FlowLabelSeeding.seed_flow_labels(
         tracker, FlowLabels.fake(), TeamName.fake(), Force(False)
@@ -273,7 +273,7 @@ def test_unforced_seeding_with_a_pending_deletion_changes_nothing() -> None:
 
 def test_the_refusal_lists_each_pending_rename_with_its_ticket_count() -> None:
     renamed = FlowLabels.fake().labels.root[0]
-    held = LabelName(renamed.root.casefold())
+    held = LabelName(renamed.root.upper())
     one_ticket = "on 1 ticket"
     rerun = "--force"
     refused = FlowLabelSeeding.seed_flow_labels(
@@ -304,7 +304,7 @@ def test_the_refusal_lists_each_pending_deletion_with_its_ticket_count() -> None
 
 def test_forced_seeding_renames_a_team_label_spelled_in_another_case() -> None:
     wanted = FlowLabels.fake()
-    held = LabelName(wanted.labels.root[0].root.casefold())
+    held = LabelName(wanted.labels.root[0].root.upper())
     tracker = SeedingTrackers.with_team_ticket_carrying(held)
     _ = FlowLabelSeeding.seed_flow_labels(tracker, wanted, TeamName.fake(), Force(True)).unwrap()
     group = tracker.group_labels(wanted.group, TeamKey.fake()).unwrap()
@@ -313,7 +313,7 @@ def test_forced_seeding_renames_a_team_label_spelled_in_another_case() -> None:
 
 def test_forced_seeding_keeps_a_renamed_label_on_its_tickets() -> None:
     renamed = FlowLabels.fake().labels.root[0]
-    tracker = SeedingTrackers.with_team_ticket_carrying(LabelName(renamed.root.casefold()))
+    tracker = SeedingTrackers.with_team_ticket_carrying(LabelName(renamed.root.upper()))
     _ = FlowLabelSeeding.seed_flow_labels(
         tracker, FlowLabels.fake(), TeamName.fake(), Force(True)
     ).unwrap()
@@ -337,7 +337,7 @@ def test_forced_seeding_renames_and_deletes_in_the_workspace_group() -> None:
         LabelNames(
             (
                 *wanted.labels.root[1:],
-                LabelName(wanted.labels.root[0].root.casefold()),
+                LabelName(wanted.labels.root[0].root.upper()),
                 LabelName("Obsolete"),
             )
         )
@@ -349,7 +349,7 @@ def test_forced_seeding_renames_and_deletes_in_the_workspace_group() -> None:
 
 def test_forced_seeding_reports_its_renames_and_deletions() -> None:
     wanted = FlowLabels.fake()
-    held = LabelName(wanted.labels.root[0].root.casefold())
+    held = LabelName(wanted.labels.root[0].root.upper())
     obsolete = LabelName("Obsolete")
     tracker = SeedingTrackers.with_workspace_group(
         LabelNames((*wanted.labels.root[1:], held, obsolete))
@@ -361,3 +361,21 @@ def test_forced_seeding_reports_its_renames_and_deletions() -> None:
         (LabelRename(held=held, renamed=wanted.labels.root[0]),)
     )
     assert covered.workspace.deleted == LabelNames((obsolete,))
+
+
+def test_forced_seeding_moves_a_ticket_from_a_former_flow_label_to_its_current_name() -> None:
+    wanted = FlowLabels.fake()
+    tracker = SeedingTrackers.with_team_ticket_carrying(LabelName("Grilling"))
+    _ = FlowLabelSeeding.seed_flow_labels(tracker, wanted, TeamName.fake(), Force(True)).unwrap()
+    issue = tracker.read_issue(TrackedIssue.fake().issue.identifier).unwrap()
+    assert issue.labels == LabelNames((LabelName("grill"),))
+
+
+def test_forced_seeding_creates_no_label_beside_a_renamed_former_flow_label() -> None:
+    wanted = FlowLabels.fake()
+    tracker = SeedingTrackers.with_team_ticket_carrying(LabelName("Grilling"))
+    _ = FlowLabelSeeding.seed_flow_labels(tracker, wanted, TeamName.fake(), Force(True)).unwrap()
+    group = tracker.group_labels(wanted.group, TeamKey.fake()).unwrap()
+    assert sorted(label.root for label in group.label_names().root) == sorted(
+        label.root for label in wanted.labels.root
+    )

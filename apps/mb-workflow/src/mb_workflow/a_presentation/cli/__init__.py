@@ -330,14 +330,14 @@ def flow_to_ticket(
     raise typer.Exit(code=flow_event(EventName("to-ticket"), Force(force)).root)
 
 
-@flow_app.command("specced")
-def flow_specced(
+@flow_app.command("todo")
+def flow_todo(
     force: bool = typer.Option(False, "--force", help=FORCING),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Move the workspace to the state this event leads to."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    raise typer.Exit(code=flow_event(EventName("specced"), Force(force)).root)
+    raise typer.Exit(code=flow_event(EventName("todo"), Force(force)).root)
 
 
 @flow_app.command("implement")
