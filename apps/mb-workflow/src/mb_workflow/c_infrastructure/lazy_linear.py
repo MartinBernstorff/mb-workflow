@@ -1,13 +1,9 @@
 from typing import TYPE_CHECKING, override
 
-from safe_result import Err, Ok, Result, safe_with
+from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker, TicketTrackerError
-from mb_workflow.c_infrastructure.credentials import (
-    InvalidCredentialsError,
-    MissingCredentialsError,
-)
 from mb_workflow.c_infrastructure.linear import Linear
 from mb_workflow.c_infrastructure.linear_claims import LinearClaims
 
@@ -34,13 +30,16 @@ if TYPE_CHECKING:
         TeamName,
     )
     from mb_workflow.b_core.d_domain_model.pool import PoolTickets, ViewSlug
+    from mb_workflow.c_infrastructure.credentials import CredentialsError, RepositorySlugError
     from mb_workflow.c_infrastructure.linear import LinearApiKey
+
+    type KeyRead = Callable[[], Result[LinearApiKey, CredentialsError | RepositorySlugError]]
 
 
 class LinearKey:
     @staticmethod
-    def read(key: Callable[[], LinearApiKey]) -> Result[LinearApiKey, TicketTrackerError]:
-        match safe_with(InvalidCredentialsError, MissingCredentialsError)(key)():
+    def read(key: KeyRead) -> Result[LinearApiKey, TicketTrackerError]:
+        match key():
             case Ok(read):
                 return Ok(read)
             case Err(error):
@@ -49,7 +48,7 @@ class LinearKey:
 
 # Reads the key on first use, so a run that releases no claim needs no Linear credentials.
 class LazyLinearClaims(ClaimRegistry):
-    def __init__(self, key: Callable[[], LinearApiKey]) -> None:
+    def __init__(self, key: KeyRead) -> None:
         self._key = key
         self._connected: LinearClaims | None = None
 
@@ -82,7 +81,7 @@ class LazyLinearClaims(ClaimRegistry):
 
 # Reads the key on first use, so a run that releases no claim needs no Linear credentials.
 class LazyLinear(TicketTracker):
-    def __init__(self, key: Callable[[], LinearApiKey]) -> None:
+    def __init__(self, key: KeyRead) -> None:
         self._key = key
         self._connected: Linear | None = None
 

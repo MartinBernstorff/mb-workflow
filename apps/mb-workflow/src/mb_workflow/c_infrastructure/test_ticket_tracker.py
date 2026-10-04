@@ -292,9 +292,9 @@ def fake_backlog() -> Backlog:
 @pytest.fixture(scope="session")
 def linear_client() -> LinearClient:
     path = CredentialsDirectory.of_user().path_for(
-        RepositorySlug.of_origin(Shell(ExistingDirectory(Path.cwd())))
+        RepositorySlug.of_origin(Shell(ExistingDirectory(Path.cwd()))).unwrap()
     )
-    key = path.credentials().linear.integration_test_api_key
+    key = path.credentials().unwrap().linear.integration_test_api_key
     if key is None:
         pytest.fail(f"Set [linear] integration_test_api_key in {path.root}.")
     client = LinearClient(api_key=key.root)

@@ -1,5 +1,4 @@
 import tomllib
-from subprocess import CalledProcessError
 from typing import TYPE_CHECKING
 
 from safe_result import Err, Ok, Result, safe_with
@@ -15,7 +14,9 @@ from mb_workflow.b_core.d_domain_model.config_override import (
 from mb_workflow.c_infrastructure.credentials import (
     CredentialsDirectory,
     CredentialTables,
+    NoOriginError,
     RepositorySlug,
+    RepositorySlugError,
 )
 
 if TYPE_CHECKING:
@@ -43,9 +44,11 @@ def override_at(path: OverridePath) -> Result[ProjectOverride, InvalidOverrideEr
 
 def override_of_origin(
     directory: CredentialsDirectory, runner: CommandRunner
-) -> Result[ProjectOverride, InvalidOverrideError]:
-    try:
-        repository = RepositorySlug.of_origin(runner)
-    except CalledProcessError:
-        return Ok(NoOverrideFile(expected=None))
-    return override_at(OverridePath(directory.path_for(repository).root))
+) -> Result[ProjectOverride, InvalidOverrideError | RepositorySlugError]:
+    match RepositorySlug.of_origin(runner):
+        case Ok(repository):
+            return override_at(OverridePath(directory.path_for(repository).root))
+        case Err(NoOriginError()):
+            return Ok(NoOverrideFile(expected=None))
+        case Err() as failed:
+            return failed
