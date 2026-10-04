@@ -15,7 +15,8 @@ runtime-evaluated-base-classes = [
 
 [lint]
 ignore = [
-    # Errors are moving to values (TY-7e); raise-baseline/ ratchets the remaining raises down.
+    # These messages sit on raises that TY-7e replaces with error values; raise-baseline/ tracks
+    # the remaining raises. Drop this ignore once the migration ends.
     "TRY003",
     # Logged errors are user-facing messages; a traceback would be noise.
     "TRY400",
@@ -24,7 +25,5 @@ ignore = [
 ]
 
 [lint.extend-per-file-ignores]
-# A Typer command's bool parameter is a CLI flag, not a boolean trap.
-"src/mb_workflow/a_presentation/cli/**" = ["FBT001"]
-# pytest passes parametrized values by name.
-"**/test_*.py" = ["FBT001"]
+# A Typer command's bool parameter and its typer.Option default are a CLI flag, not a boolean trap.
+"src/mb_workflow/a_presentation/cli/**" = ["FBT001", "FBT003"]

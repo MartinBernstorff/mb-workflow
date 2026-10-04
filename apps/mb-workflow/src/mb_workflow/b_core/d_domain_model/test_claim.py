@@ -47,15 +47,15 @@ def test_a_claim_on_a_finished_ticket_is_released(status: IssueStatusName) -> No
 @pytest.mark.parametrize(
     ("status_type", "released"),
     [
-        (StatusType.triage, False),
-        (StatusType.backlog, False),
-        (StatusType.unstarted, False),
-        (StatusType.started, False),
-        (StatusType.completed, True),
-        (StatusType.canceled, True),
+        (StatusType.triage, Released(False)),
+        (StatusType.backlog, Released(False)),
+        (StatusType.unstarted, Released(False)),
+        (StatusType.started, Released(False)),
+        (StatusType.completed, Released(True)),
+        (StatusType.canceled, Released(True)),
     ],
 )
 def test_a_claim_is_released_once_its_status_type_closes_the_ticket(
-    status_type: StatusType, released: bool
+    status_type: StatusType, released: Released
 ) -> None:
-    assert Released.of_type(status_type) == Released(released)
+    assert Released.of_type(status_type) == released
