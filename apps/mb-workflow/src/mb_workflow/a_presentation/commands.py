@@ -4,7 +4,7 @@ from pathlib import Path
 from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, override
 
-from safe_result import Err, Ok
+from safe_result import Err, Ok, Result
 
 from mb_workflow.a_presentation.autolabel_report import log_outcome
 from mb_workflow.a_presentation.console import ExitCode, Output, write
@@ -68,9 +68,8 @@ from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
 from mb_workflow.b_core.d_domain_model.workspace import UnlinkedWorktreeError
 from mb_workflow.c_infrastructure.credentials import (
     CredentialsDirectory,
-    InvalidCredentialsError,
-    MissingCredentialsError,
-    RepositorySlug,
+    CredentialsError,
+    RepositorySlugError,
 )
 from mb_workflow.c_infrastructure.dev_environment import DevEnvironment
 from mb_workflow.c_infrastructure.flock import FlockRunLock, LockName, LockPath
@@ -108,14 +107,14 @@ FAILURES = (
     CalledProcessError,
     ClaimRefusedError,
     ConfigExistsError,
+    CredentialsError,
     InvalidConfigError,
-    InvalidCredentialsError,
     InvalidOverrideError,
     MissingConfigError,
-    MissingCredentialsError,
     MissingFlowLabelsError,
     OSError,
     PromptUndeliveredError,
+    RepositorySlugError,
     TicketTrackerError,
     UnknownLabelError,
     UnlinkedWorktreeError,
@@ -143,9 +142,17 @@ def here() -> Shell:
     return Shell(ExistingDirectory(Path.cwd()))
 
 
-def linear_key() -> LinearApiKey:
-    path = CredentialsDirectory.of_user().path_for(RepositorySlug.of_origin(here()))
-    return path.credentials().linear.api_key
+def linear_key() -> Result[LinearApiKey, CredentialsError | RepositorySlugError]:
+    match CredentialsDirectory.of_user().credentials_of_origin(here()):
+        case Ok(credentials):
+            return Ok(credentials.linear.api_key)
+        case Err() as failed:
+            return failed
+
+
+# Err values from reading the key are raised here, so guarded reports them like any failure.
+def unwrapped_linear_key() -> LinearApiKey:
+    return linear_key().unwrap()
 
 
 # Err values from loading the configuration are raised here, so guarded reports them like any failure.
@@ -158,7 +165,7 @@ def resolved_configuration(directory: WorkingDirectory, name: ConfigFileName) ->
 
 
 def linear() -> Linear:
-    return Linear.connected(linear_key())
+    return Linear.connected(unwrapped_linear_key())
 
 
 def flow_labels_of_chart() -> FlowLabels:
@@ -245,7 +252,7 @@ def ticket_start(
 ) -> ExitCode:
     settings = resolved_configuration(directory, name).settings
     orca = Orca(here())
-    key = linear_key()
+    key = unwrapped_linear_key()
     match TicketStart.start_ticket(
         manager=orca,
         tracker=Linear.connected(key),
@@ -270,7 +277,7 @@ def ticket_link(
 ) -> ExitCode:
     settings = resolved_configuration(directory, name).settings
     orca = Orca(here())
-    key = linear_key()
+    key = unwrapped_linear_key()
     match TicketLinking.link_ticket(
         manager=orca,
         tracker=Linear.connected(key),
@@ -295,7 +302,7 @@ def drain(
     settings = resolved_configuration(directory, name).settings
     pool = settings.required_pool()
     orca = Orca(here())
-    key = linear_key()
+    key = unwrapped_linear_key()
     attempted = Drain.drain_pool(
         tracker=Linear.connected(key),
         claims=LinearClaims.connected(key),
@@ -346,7 +353,7 @@ def drain_watch(
     # The lock is taken once for the whole watch, so it uses the project configured at startup.
     project = resolved_configuration(directory, name).settings.workspace.orca_project
     orca = Orca(here())
-    key = linear_key()
+    key = unwrapped_linear_key()
     with SignalStop.installed(PollSeconds(0.2)) as stop:
         DrainWatch.watch_pool(
             tracker=Linear.connected(key),
@@ -383,7 +390,7 @@ def ticket_unclaim(
     ticket: IssueIdentifier, directory: WorkingDirectory, name: ConfigFileName
 ) -> ExitCode:
     TicketUnclaiming.unclaim_ticket(
-        registry=LinearClaims.connected(linear_key()),
+        registry=LinearClaims.connected(unwrapped_linear_key()),
         tracker=linear(),
         claim_settings=resolved_configuration(directory, name).settings.claims,
         ticket=ticket,

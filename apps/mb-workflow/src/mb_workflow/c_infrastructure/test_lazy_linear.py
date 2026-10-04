@@ -1,11 +1,11 @@
 from typing import TYPE_CHECKING
 
 import pytest
-from safe_result import Err
+from safe_result import Err, Result
 
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName
-from mb_workflow.c_infrastructure.credentials import MissingCredentialsError
+from mb_workflow.c_infrastructure.credentials import CredentialsError, MissingCredentialsError
 from mb_workflow.c_infrastructure.lazy_linear import LazyLinear, LazyLinearClaims
 
 if TYPE_CHECKING:
@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 MISSING = "No Linear credentials for this repository."
 
 
-def missing_key() -> LinearApiKey:
-    raise MissingCredentialsError(MISSING)
+def missing_key() -> Result[LinearApiKey, CredentialsError]:
+    return Err(MissingCredentialsError(MISSING))
 
 
 def test_a_lazy_registry_reads_no_key_until_it_is_used() -> None:

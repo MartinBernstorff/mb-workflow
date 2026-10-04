@@ -12,3 +12,12 @@ runtime-evaluated-base-classes = [
     "mb_workflow.d_lib.models.Payload",
     "mb_workflow.d_lib.models.Value",
 ]
+
+[lint]
+ignore = [
+    # These messages sit on raises that TY-7e replaces with error values; raise-baseline/ tracks
+    # the remaining raises. Drop this ignore once the migration ends.
+    "TRY003",
+    # Logged errors are user-facing messages; a traceback would be noise.
+    "TRY400",
+]
