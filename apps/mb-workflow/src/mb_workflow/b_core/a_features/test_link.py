@@ -1,4 +1,5 @@
 import re
+from typing import TYPE_CHECKING
 
 import pytest
 from safe_result import Err, Ok, Result
@@ -37,10 +38,15 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     Issue,
     IssueIdentifier,
+    IssueStatus,
+    IssueStatuses,
+    IssueStatusName,
     IssueTitle,
     LabelName,
     LabelNames,
+    StatusType,
 )
+from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 from mb_workflow.b_core.d_domain_model.workspace import (
     DisplayName,
     RepoId,
@@ -51,18 +57,32 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     Worktrees,
 )
 
+if TYPE_CHECKING:
+    from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
 
-def tracking(state: StateName | None, assignee: Assignee | None = None) -> FakeTicketTracker:
+
+def mapped_statuses() -> IssueStatuses:
+    names = dict.fromkeys(TicketStatuses.fake().root.values())
+    return IssueStatuses(tuple(IssueStatus(name=name, type=StatusType.started) for name in names))
+
+
+def tracking(
+    state: StateName | None,
+    assignee: Assignee | None = None,
+    status: IssueStatusName = IssueStatusName.fake(),
+) -> FakeTicketTracker:
     flow = () if state is None else (LabelName(state.root),)
     issue = Issue.fake().model_copy(
         update={
             "labels": LabelNames((*LabelNames.fake().root, *flow)),
+            "status": status,
             "assigned": Assigned(assignee is not None),
         }
     )
     return FakeTicketTracker(
         LabelNames((*LabelNames.fake().root, LabelName("claimed"), *FlowLabels.fake().labels.root)),
         (TrackedIssue.fake().model_copy(update={"issue": issue, "assignee": assignee}),),
+        statuses=mapped_statuses(),
         groups={FlowLabels.fake().group: FlowLabels.fake().labels},
     )
 
@@ -103,6 +123,7 @@ def linking(
     | TicketTrackerError
     | UnknownClaimLabelError
     | ClaimRefusedError
+    | MissingFlowLabelsError
     | WorkspaceManagerError,
 ]:
     return TicketLinking.link_ticket(
@@ -113,6 +134,7 @@ def linking(
         workspace=workspace or WorkspaceSettings.fake(),
         claim_settings=ClaimSettings.fake(),
         flow_labels=FlowLabels.fake(),
+        statuses=TicketStatuses.fake(),
         request=request,
     )
 
@@ -159,6 +181,19 @@ def test_moves_the_current_worktree_to_the_column_of_the_flow_state() -> None:
     state = StateName.fake()
     linked_here = linked(state, LinkRequest.fake())
     assert linked_here.status == fake_board().status_for(state).unwrap()
+
+
+def test_a_todo_ticket_is_linked_in_implementing() -> None:
+    manager = managing(here_linked_to(None))
+    todo = StateName("todo")
+    tracker = tracking(todo)
+    implementing = StateName("implementing")
+    assert linking(manager, tracker, FakeClaimRegistry(), LinkRequest.fake()) == Ok(None)
+    issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
+    assert issue.labels.has(LabelName(implementing.root)).root
+    assert not issue.labels.has(LabelName(todo.root)).root
+    assert issue.status == TicketStatuses.fake().of(implementing)
+    assert manager.current().unwrap().status == fake_board().status_for(implementing).unwrap()
 
 
 def test_a_refused_display_name_still_links_the_worktree() -> None:
@@ -285,6 +320,17 @@ def test_a_refused_link_leaves_neither_claim_nor_claim_label() -> None:
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
     labels = tracker.read_issue(IssueIdentifier.fake()).unwrap().labels
     assert not labels.has(ClaimSettings.fake().label).root
+
+
+def test_a_refused_link_moves_a_todo_ticket_back_to_todo() -> None:
+    todo = StateName("todo")
+    before = IssueStatusName("Maturing")
+    tracker = tracking(todo, status=before)
+    failed = linking(refusing_to_link(), tracker, FakeClaimRegistry(), LinkRequest.fake())
+    assert isinstance(failed.error, WorkspaceManagerError)
+    issue = tracker.read_issue(IssueIdentifier.fake()).unwrap()
+    assert issue.labels.has(LabelName(todo.root)).root
+    assert issue.status == before
 
 
 def test_a_refused_link_restores_the_previous_assignee() -> None:

@@ -79,7 +79,11 @@ class WorkflowChart(StateChart[ChartModel]):
         grill.to(to_ticket) | implementing.to(to_ticket), id="to-ticket", name="to-ticket"
     )
     to_todo = Event(to_ticket.to(todo), id="todo", name="todo")
-    implement = Event(todo.to(implementing) | qa.to(implementing), id="implement", name="implement")
+    implement = Event(
+        todo.to(implementing) | implementing.to.itself() | qa.to(implementing),
+        id="implement",
+        name="implement",
+    )
     to_qa = Event(implementing.to(qa) | review.to(qa) | merging.to(qa), id="qa", name="qa")
     ready = Event(qa.to(review), id="ready", name="ready")
     merge = Event(qa.to(merging) | review.to(merging), id="merge", name="merge")
@@ -87,6 +91,34 @@ class WorkflowChart(StateChart[ChartModel]):
     resolve_review = Event(
         review.to(implementing) | qa.to(implementing), id="resolve-review", name="resolve-review"
     )
+
+
+# An entry state whose skill a delivery state also runs hands its work to that delivery state
+# once a workspace opens, so the ticket shows as delivering while the skill runs.
+class WorkspaceOpening:
+    @staticmethod
+    def state_opened_in(chart: type[WorkflowChart], state: StateName) -> StateName:
+        work_states = [held for held in chart.states if isinstance(held, WorkState)]
+        entry = next(
+            (
+                held
+                for held in work_states
+                if held.name == state.root
+                and held.phase == Phase.entry
+                and isinstance(held.action, Skill)
+            ),
+            None,
+        )
+        if entry is None:
+            return state
+        return next(
+            (
+                StateName(held.name)
+                for held in work_states
+                if held.phase == Phase.delivery and held.action == entry.action
+            ),
+            state,
+        )
 
 
 class EventName(Value[str]):
