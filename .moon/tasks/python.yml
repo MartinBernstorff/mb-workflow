@@ -38,16 +38,6 @@ tasks:
     options:
       outputStyle: "buffer-only-failure"
 
-  noprim:
-    script: "uv run noprim check src"
-    inputs:
-      - "pyproject.toml"
-      - "uv.lock"
-      - "noprim.toml"
-      - "@group(sources)"
-    options:
-      outputStyle: "buffer-only-failure"
-
   # Fixit runs from the lint-rules environment, because it pins a click version the apps' Typer can't use.
   # hemolint compares the violations to the app's baseline in .hemolint/. Fixit exits 1 on any violation,
   # so the pipe takes hemolint's exit code.
@@ -130,7 +120,6 @@ tasks:
       - "format-fix"
       - "types"
       - "modularity"
-      - "noprim"
       - "fixit"
     inputs: []
     options:
@@ -143,7 +132,6 @@ tasks:
       - "format"
       - "types"
       - "modularity"
-      - "noprim"
       - "fixit"
       - "test"
     inputs: []

@@ -1,4 +1,5 @@
-# The Typer boundary: Typer's own exceptions are how a command exits.
+# The Typer boundary: Typer's own exceptions are how a command exits, and Typer can only bind primitives,
+# so every parameter is wrapped into a domain type on the first line of the body.
 [tool.fixit]
 enable = ["lint_rules:NoRaiseAtTyperBoundary"]
-disable = ["lint_rules:NoRaise"]
+disable = ["lint_rules:NoRaise", "lint_rules:NoPrimitives"]

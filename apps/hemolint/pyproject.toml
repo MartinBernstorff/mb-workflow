@@ -22,7 +22,6 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "noprim>=0.3.0",
     "pyrefly>=1.2.0",
     "pytest>=9.1.1",
     "pytest-randomly>=5.0.0",
