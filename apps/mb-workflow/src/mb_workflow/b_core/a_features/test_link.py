@@ -73,7 +73,10 @@ def fake_board() -> FakeStatusStore:
 
 def fake_board_statuses() -> WorkspaceStatuses:
     return WorkspaceStatuses(
-        tuple(fake_board().status_for(state) for state in StateNames.of_chart(WorkflowChart).root)
+        tuple(
+            fake_board().status_for(state).unwrap()
+            for state in StateNames.of_chart(WorkflowChart).root
+        )
     )
 
 
@@ -94,7 +97,7 @@ def linking(
     request: LinkRequest,
     *,
     workspace: WorkspaceSettings | None = None,
-) -> Result[None, FlowError | TicketTrackerError | UnknownClaimLabelError]:
+) -> Result[None, FlowError | TicketTrackerError | UnknownClaimLabelError | WorkspaceManagerError]:
     return TicketLinking.link_ticket(
         manager=manager,
         tracker=tracker,
@@ -110,7 +113,7 @@ def linking(
 def linked(state: StateName | None, request: LinkRequest) -> Worktree:
     manager = managing(here_linked_to(None))
     assert linking(manager, tracking(state), FakeClaimRegistry(), request) == Ok(None)
-    return manager.current()
+    return manager.current().unwrap()
 
 
 def forcing() -> LinkRequest:
@@ -148,7 +151,7 @@ def test_names_the_current_worktree_after_the_ticket_title() -> None:
 def test_moves_the_current_worktree_to_the_column_of_the_flow_state() -> None:
     state = StateName.fake()
     linked_here = linked(state, LinkRequest.fake())
-    assert linked_here.status == fake_board().status_for(state)
+    assert linked_here.status == fake_board().status_for(state).unwrap()
 
 
 def test_a_refused_display_name_still_links_the_worktree() -> None:
@@ -158,7 +161,7 @@ def test_a_refused_display_name_still_links_the_worktree() -> None:
     assert linking(
         manager, tracking(StateName.fake()), FakeClaimRegistry(), LinkRequest.fake()
     ) == Ok(None)
-    assert manager.current().issue == IssueIdentifier.fake()
+    assert manager.current().unwrap().issue == IssueIdentifier.fake()
 
 
 # Teardown and drain rebuild the holder from the ticket, so the directory name must not leak in.
@@ -198,7 +201,7 @@ def test_relinking_the_ticket_already_linked_keeps_a_single_claim() -> None:
     manager = managing(here_linked_to(IssueIdentifier.fake()))
     assert linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake()) == Ok(None)
     assert holders(claims, IssueIdentifier.fake()) == (our_holder(),)
-    assert manager.current().issue == IssueIdentifier.fake()
+    assert manager.current().unwrap().issue == IssueIdentifier.fake()
 
 
 def test_a_ticket_without_a_flow_label_is_neither_claimed_nor_linked() -> None:
@@ -209,7 +212,7 @@ def test_a_ticket_without_a_flow_label_is_neither_claimed_nor_linked() -> None:
     assert isinstance(refused, Err)
     assert isinstance(refused.error, FlowError)
     assert re.search("no flow label", str(refused.error))
-    assert manager.current().issue is None
+    assert manager.current().unwrap().issue is None
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().assigned == Assigned(False)
 
@@ -219,7 +222,7 @@ def test_a_ticket_claimed_by_another_host_is_not_linked() -> None:
     manager = managing(here_linked_to(None))
     with pytest.raises(ClaimRefusedError, match=re.escape(rival.root)):
         _ = linking(manager, tracking(StateName.fake()), claimed_by_host(rival), LinkRequest.fake())
-    assert manager.current().issue is None
+    assert manager.current().unwrap().issue is None
 
 
 def test_force_takes_the_claim_over_from_another_host() -> None:
@@ -227,7 +230,7 @@ def test_force_takes_the_claim_over_from_another_host() -> None:
     claims = claimed_by_host(HostName("bob-mbp.local"))
     assert linking(manager, tracking(StateName.fake()), claims, forcing()) == Ok(None)
     assert holders(claims, IssueIdentifier.fake()) == (our_holder(),)
-    assert manager.current().issue == IssueIdentifier.fake()
+    assert manager.current().unwrap().issue == IssueIdentifier.fake()
 
 
 def test_a_worktree_linked_to_another_ticket_is_neither_relinked_nor_claimed() -> None:
@@ -236,14 +239,14 @@ def test_a_worktree_linked_to_another_ticket_is_neither_relinked_nor_claimed() -
     claims = FakeClaimRegistry()
     with pytest.raises(AlreadyLinkedError, match=previous.root):
         _ = linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake())
-    assert manager.current().issue == previous
+    assert manager.current().unwrap().issue == previous
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
 
 
 def test_force_replaces_the_link_to_another_ticket() -> None:
     manager = managing(here_linked_to(IssueIdentifier("E-1")))
     assert linking(manager, tracking(StateName.fake()), FakeClaimRegistry(), forcing()) == Ok(None)
-    assert manager.current().issue == IssueIdentifier.fake()
+    assert manager.current().unwrap().issue == IssueIdentifier.fake()
 
 
 def test_force_leaves_the_previous_tickets_claim_alone() -> None:
@@ -283,14 +286,14 @@ def test_a_refused_link_restores_the_previous_assignee() -> None:
 
 
 def test_a_refused_link_puts_the_worktree_back_in_its_column() -> None:
-    column = fake_board().status_for(StateName("Specced"))
+    column = fake_board().status_for(StateName("Specced")).unwrap()
     here = Worktree.bare(RepoId.fake(), WorktreePath.fake()).model_copy(update={"status": column})
     manager = LinkRefusingWorkspaceManager(
         Worktrees((here,)), WorktreePath.fake(), fake_board_statuses()
     )
     with pytest.raises(WorkspaceManagerError):
         _ = linking(manager, tracking(StateName.fake()), FakeClaimRegistry(), LinkRequest.fake())
-    assert manager.current().status == column
+    assert manager.current().unwrap().status == column
 
 
 def test_a_refused_status_leaves_neither_claim_nor_link() -> None:
@@ -300,4 +303,4 @@ def test_a_refused_status_leaves_neither_claim_nor_link() -> None:
     with pytest.raises(WorkspaceManagerError):
         _ = linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake())
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
-    assert manager.current().issue is None
+    assert manager.current().unwrap().issue is None

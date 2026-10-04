@@ -1,10 +1,14 @@
 import pytest
+from safe_result import Err
 
 from mb_workflow.b_core.a_features.transition import LinkedTicketTransition
 from mb_workflow.b_core.b_domain_services.flow_transition import Force
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracker, TrackedIssue
-from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
+    FakeWorkspaceManager,
+    WorkspaceManagerError,
+)
 from mb_workflow.b_core.d_domain_model.flow import EventName, StateName
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, LabelNames
@@ -57,4 +61,20 @@ def test_a_worktree_with_no_linked_issue_leaves_the_board_where_it_was() -> None
             event=EventName("qa"),
             force=Force(False),
         ).unwrap()
-    assert store.read() == StateName("Implementing")
+    assert store.read().unwrap() == StateName("Implementing")
+
+
+def test_an_unlisted_current_worktree_leaves_the_ticket_where_it_was() -> None:
+    tracker = seeded_tracker()
+    before = tracker.read_issue(IssueIdentifier.fake()).unwrap()
+    refused = LinkedTicketTransition.move_linked_ticket(
+        store=FakeStatusStore(StateName("Implementing")),
+        tracker=tracker,
+        manager=FakeWorkspaceManager(Worktrees(()), WorktreePath.fake()),
+        wanted=FlowLabels.fake(),
+        statuses=TicketStatuses.fake(),
+        event=EventName("qa"),
+        force=Force(False),
+    )
+    assert refused == Err(WorkspaceManagerError(f"No worktree is at {WorktreePath.fake().root}."))
+    assert tracker.read_issue(IssueIdentifier.fake()).unwrap() == before

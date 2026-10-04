@@ -8,7 +8,10 @@ from mb_workflow.b_core.c_secondary_ports.code_review import (
     FakeCodeReview,
     SubmittedReview,
 )
-from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
+    FakeWorkspaceManager,
+    WorkspaceManagerError,
+)
 from mb_workflow.b_core.d_domain_model.pull_request import (
     PrNumber,
     PullRequests,
@@ -46,7 +49,7 @@ def test_an_unfinalizable_worktree_is_refused_and_left_alone(
 ) -> None:
     review = FakeCodeReview(PullRequests.fake())
     manager = standing_in(Worktree.fake().model_copy(update=update))
-    before = manager.worktrees()
+    before = manager.worktrees().unwrap()
     finalized = FinalizeReview.finalize(
         review, manager, ReviewRequest.fake(), WorkspaceStatus.fake()
     )
@@ -54,7 +57,7 @@ def test_an_unfinalizable_worktree_is_refused_and_left_alone(
     assert isinstance(finalized.error, NotFinalizableError)
     assert reason in str(finalized.error)
     assert review.submitted() == ()
-    assert manager.worktrees() == before
+    assert manager.worktrees().unwrap() == before
 
 
 def test_submits_the_decision_on_the_linked_pull_request() -> None:
@@ -74,7 +77,7 @@ def test_removes_the_worktree_once_the_review_is_in() -> None:
         FakeCodeReview(PullRequests.fake()), manager, ReviewRequest.fake(), WorkspaceStatus.fake()
     )
     assert finalized == Ok(None)
-    assert manager.worktrees() == Worktrees(())
+    assert manager.worktrees().unwrap() == Worktrees(())
 
 
 def test_a_refused_review_keeps_the_worktree() -> None:
@@ -87,4 +90,18 @@ def test_a_refused_review_keeps_the_worktree() -> None:
     assert isinstance(finalized, Err)
     assert isinstance(finalized.error, CodeReviewError)
     assert reason in str(finalized.error)
-    assert manager.worktrees() == Worktrees.fake()
+    assert manager.worktrees().unwrap() == Worktrees.fake()
+
+
+def test_an_unlisted_current_worktree_submits_no_review() -> None:
+    review = FakeCodeReview(PullRequests.fake())
+    finalized = FinalizeReview.finalize(
+        review, standing_in_nothing(), ReviewRequest.fake(), WorkspaceStatus.fake()
+    )
+    assert isinstance(finalized, Err)
+    assert isinstance(finalized.error, WorkspaceManagerError)
+    assert review.submitted() == ()
+
+
+def standing_in_nothing() -> FakeWorkspaceManager:
+    return FakeWorkspaceManager(Worktrees(()), WorktreePath.fake())

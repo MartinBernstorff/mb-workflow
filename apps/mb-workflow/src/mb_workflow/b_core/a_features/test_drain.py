@@ -177,7 +177,10 @@ def fake_board() -> FakeStatusStore:
 
 def fake_manager(project: ProjectSelector = ProjectSelector.fake()) -> FakeWorkspaceManager:
     statuses = WorkspaceStatuses(
-        tuple(fake_board().status_for(state) for state in StateNames.of_chart(WorkflowChart).root)
+        tuple(
+            fake_board().status_for(state).unwrap()
+            for state in StateNames.of_chart(WorkflowChart).root
+        )
     )
     return FakeWorkspaceManager(Worktrees.fake(), WorktreePath.fake(), statuses, project=project)
 
@@ -196,7 +199,8 @@ def holders(claims: FakeClaimRegistry, ticket: IssueIdentifier) -> tuple[ClaimHo
 
 def opened_issues(manager: FakeWorkspaceManager) -> tuple[IssueIdentifier | None, ...]:
     return tuple(
-        worktree.issue for worktree in manager.worktrees().without(WorktreePath.fake()).root
+        worktree.issue
+        for worktree in manager.worktrees().unwrap().without(WorktreePath.fake()).root
     )
 
 
@@ -239,7 +243,8 @@ def draining_or_refused(
     | TicketTrackerError
     | UnknownClaimLabelError
     | UnknownLabelError
-    | MissingFlowLabelsError,
+    | MissingFlowLabelsError
+    | WorkspaceManagerError,
 ]:
     return DrainRuns.attempted(tracker, manager=manager, claims=claims, pool=pool)
 
@@ -261,7 +266,8 @@ class DrainRuns:
         | TicketTrackerError
         | UnknownClaimLabelError
         | UnknownLabelError
-        | MissingFlowLabelsError,
+        | MissingFlowLabelsError
+        | WorkspaceManagerError,
     ]:
         return Drain.drain_pool(
             tracker=tracker,
@@ -428,7 +434,7 @@ class InterruptedManager(FakeWorkspaceManager):
         status: WorkspaceStatus | None,
         *,
         activate: Activate,
-    ) -> OpenedWorktree:
+    ) -> Result[OpenedWorktree, WorkspaceManagerError]:
         raise SystemExit(143)
 
 
@@ -480,7 +486,7 @@ def test_a_dry_run_lists_the_tickets_the_limits_allow_and_starts_nothing() -> No
     dry = DrainRequest.fake().model_copy(update={"dry_run": DryRun(True)})
     outcome = draining(tracker, manager=manager, claims=claims, request=dry)
     assert picked(outcome) == (IssueIdentifier("MB-4"), IssueIdentifier("MB-1"))
-    assert manager.worktrees() == Worktrees.fake()
+    assert manager.worktrees().unwrap() == Worktrees.fake()
     assert holders(claims, IssueIdentifier("MB-4")) == ()
 
 
@@ -494,7 +500,7 @@ def test_a_pool_with_no_ready_ticket_starts_nothing() -> None:
     assert outcome.picked == PoolTickets(())
     assert outcome.skipped == ()
     assert outcome.full is None
-    assert manager.worktrees() == Worktrees.fake()
+    assert manager.worktrees().unwrap() == Worktrees.fake()
 
 
 def test_a_pass_is_refused_while_another_holds_the_lock() -> None:

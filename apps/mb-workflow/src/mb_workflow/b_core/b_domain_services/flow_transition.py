@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
+    from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
@@ -47,15 +48,26 @@ class FlowTransition:
         statuses: TicketStatuses,
         event: EventName,
         force: Force,
-    ) -> Result[StateName, FlowError | TicketTrackerError | MissingFlowLabelsError]:
+    ) -> Result[
+        StateName,
+        FlowError | TicketTrackerError | MissingFlowLabelsError | WorkspaceManagerError,
+    ]:
         edges = Edges.of_chart(chart)
-        target = edges.target_of(event) if force.root else edges.target_from(store.read(), event)
+        if force.root:
+            target = edges.target_of(event)
+        else:
+            current = store.read()
+            if isinstance(current, Err):
+                return current
+            target = edges.target_from(current.value, event)
         if isinstance(target, Err):
             return target
         put = FlowTransition.put_in_state(tracker, issue, wanted, statuses, target.value)
         if isinstance(put, Err):
             return put
-        store.write(target.value)
+        written = store.write(target.value)
+        if isinstance(written, Err):
+            return written
         return Ok(target.value)
 
     @staticmethod

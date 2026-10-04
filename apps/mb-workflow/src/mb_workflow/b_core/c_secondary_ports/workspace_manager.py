@@ -1,6 +1,8 @@
 import logging
 from typing import TYPE_CHECKING, Protocol, override
 
+from safe_result import Err, Ok, Result
+
 from mb_workflow.b_core.d_domain_model.workspace import (
     DisplayName,
     OpenedWorktree,
@@ -15,6 +17,8 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
     from mb_workflow.b_core.d_domain_model.pull_request import PrNumber
     from mb_workflow.b_core.d_domain_model.workspace import (
@@ -34,13 +38,13 @@ class WorkspaceManagerError(Exception):
 
 
 class WorkspaceManager(Protocol):
-    def current(self) -> Worktree: ...
+    def current(self) -> Result[Worktree, WorkspaceManagerError]: ...
 
-    def worktrees(self) -> Worktrees: ...
+    def worktrees(self) -> Result[Worktrees, WorkspaceManagerError]: ...
 
     def create_for_review(
         self, repo: RepoId, pr: PrNumber, status: WorkspaceStatus, agent: AgentName | None
-    ) -> OpenedWorktree: ...
+    ) -> Result[OpenedWorktree, WorkspaceManagerError]: ...
 
     def create_for_issue(
         self,
@@ -51,19 +55,29 @@ class WorkspaceManager(Protocol):
         status: WorkspaceStatus | None,
         *,
         activate: Activate,
-    ) -> OpenedWorktree: ...
+    ) -> Result[OpenedWorktree, WorkspaceManagerError]: ...
 
-    def remove(self, path: WorktreePath) -> None: ...
+    def remove(self, path: WorktreePath) -> Result[None, WorkspaceManagerError]: ...
 
-    def set_status(self, path: WorktreePath, status: WorkspaceStatus) -> None: ...
+    def set_status(
+        self, path: WorktreePath, status: WorkspaceStatus
+    ) -> Result[None, WorkspaceManagerError]: ...
 
-    def set_display_name(self, path: WorktreePath, name: DisplayName) -> None: ...
+    def set_display_name(
+        self, path: WorktreePath, name: DisplayName
+    ) -> Result[None, WorkspaceManagerError]: ...
 
-    def set_linked_issue(self, path: WorktreePath, issue: IssueIdentifier) -> None: ...
+    def set_linked_issue(
+        self, path: WorktreePath, issue: IssueIdentifier
+    ) -> Result[None, WorkspaceManagerError]: ...
 
-    def wait_for_idle(self, terminal: TerminalHandle, timeout: TimeoutMs) -> None: ...
+    def wait_for_idle(
+        self, terminal: TerminalHandle, timeout: TimeoutMs
+    ) -> Result[None, WorkspaceManagerError]: ...
 
-    def send_text(self, terminal: TerminalHandle, text: TerminalText, submit: Submit) -> None: ...
+    def send_text(
+        self, terminal: TerminalHandle, text: TerminalText, submit: Submit
+    ) -> Result[None, WorkspaceManagerError]: ...
 
 
 class FakeWorkspaceManager(WorkspaceManager):
@@ -84,23 +98,27 @@ class FakeWorkspaceManager(WorkspaceManager):
         self._activated: tuple[WorktreePath, ...] = ()
 
     @override
-    def current(self) -> Worktree:
+    def current(self) -> Result[Worktree, WorkspaceManagerError]:
         return self._at(self._here)
 
     @override
-    def worktrees(self) -> Worktrees:
-        return self._worktrees
+    def worktrees(self) -> Result[Worktrees, WorkspaceManagerError]:
+        return Ok(self._worktrees)
 
     @override
     def create_for_review(
         self, repo: RepoId, pr: PrNumber, status: WorkspaceStatus, agent: AgentName | None
-    ) -> OpenedWorktree:
-        worktree = self._add(
-            Worktree.bare(repo, self._unused_path(WorktreeName.of(pr))).model_copy(
-                update={"pull_request": pr, "status": self._column(status)}
-            )
-        )
-        return self._opened(worktree, agent)
+    ) -> Result[OpenedWorktree, WorkspaceManagerError]:
+        match self._column(status):
+            case Ok(column):
+                worktree = self._add(
+                    Worktree.bare(repo, self._unused_path(WorktreeName.of(pr))).model_copy(
+                        update={"pull_request": pr, "status": column}
+                    )
+                )
+                return Ok(self._opened(worktree, agent))
+            case Err() as refused:
+                return refused
 
     @override
     def create_for_issue(
@@ -112,10 +130,16 @@ class FakeWorkspaceManager(WorkspaceManager):
         status: WorkspaceStatus | None,
         *,
         activate: Activate,
-    ) -> OpenedWorktree:
+    ) -> Result[OpenedWorktree, WorkspaceManagerError]:
         if project != self._project:
-            raise WorkspaceManagerError(f"No project is selected by {project.root}.")
-        column = None if status is None else self._column(status)
+            return Err(WorkspaceManagerError(f"No project is selected by {project.root}."))
+        column: WorkspaceStatus | None = None
+        if status is not None:
+            match self._column(status):
+                case Ok(listed):
+                    column = listed
+                case Err() as refused:
+                    return refused
         worktree = self._add(
             Worktree.bare(self._repo, self._unused_path(name)).model_copy(
                 update={"issue": issue, "status": column}
@@ -123,32 +147,59 @@ class FakeWorkspaceManager(WorkspaceManager):
         )
         if activate.root:
             self._activated = (*self._activated, worktree.path)
-        return self._opened(worktree, agent)
+        return Ok(self._opened(worktree, agent))
 
     @override
-    def remove(self, path: WorktreePath) -> None:
-        _ = self._at(path)
-        self._worktrees = self._worktrees.without(path)
+    def remove(self, path: WorktreePath) -> Result[None, WorkspaceManagerError]:
+        match self._at(path):
+            case Ok():
+                self._worktrees = self._worktrees.without(path)
+                return Ok(None)
+            case Err() as missing:
+                return missing
 
     @override
-    def set_status(self, path: WorktreePath, status: WorkspaceStatus) -> None:
-        self._replace(self._at(path).model_copy(update={"status": self._column(status)}))
+    def set_status(
+        self, path: WorktreePath, status: WorkspaceStatus
+    ) -> Result[None, WorkspaceManagerError]:
+        match self._column(status):
+            case Ok(column):
+                return self._update(path, lambda w: w.model_copy(update={"status": column}))
+            case Err() as refused:
+                return refused
 
     @override
-    def set_display_name(self, path: WorktreePath, name: DisplayName) -> None:
-        self._replace(self._at(path).model_copy(update={"display_name": name}))
+    def set_display_name(
+        self, path: WorktreePath, name: DisplayName
+    ) -> Result[None, WorkspaceManagerError]:
+        return self._update(path, lambda w: w.model_copy(update={"display_name": name}))
 
     @override
-    def set_linked_issue(self, path: WorktreePath, issue: IssueIdentifier) -> None:
-        self._replace(self._at(path).model_copy(update={"issue": issue}))
+    def set_linked_issue(
+        self, path: WorktreePath, issue: IssueIdentifier
+    ) -> Result[None, WorkspaceManagerError]:
+        return self._update(path, lambda w: w.model_copy(update={"issue": issue}))
 
     @override
-    def wait_for_idle(self, terminal: TerminalHandle, timeout: TimeoutMs) -> None:
-        _ = self._typed_into(terminal)
+    def wait_for_idle(
+        self, terminal: TerminalHandle, timeout: TimeoutMs
+    ) -> Result[None, WorkspaceManagerError]:
+        match self._typed_into(terminal):
+            case Ok():
+                return Ok(None)
+            case Err() as unknown:
+                return unknown
 
     @override
-    def send_text(self, terminal: TerminalHandle, text: TerminalText, submit: Submit) -> None:
-        self._terminals[terminal] = (*self._typed_into(terminal), (text, submit))
+    def send_text(
+        self, terminal: TerminalHandle, text: TerminalText, submit: Submit
+    ) -> Result[None, WorkspaceManagerError]:
+        match self._typed_into(terminal):
+            case Ok(typed):
+                self._terminals[terminal] = (*typed, (text, submit))
+                return Ok(None)
+            case Err() as unknown:
+                return unknown
 
     def activated(self) -> tuple[WorktreePath, ...]:
         return self._activated
@@ -168,16 +219,29 @@ class FakeWorkspaceManager(WorkspaceManager):
         self._terminals[terminal] = ()
         return OpenedWorktree(worktree=worktree, terminal=terminal)
 
-    def _typed_into(self, terminal: TerminalHandle) -> tuple[tuple[TerminalText, Submit], ...]:
+    def _typed_into(
+        self, terminal: TerminalHandle
+    ) -> Result[tuple[tuple[TerminalText, Submit], ...], WorkspaceManagerError]:
         typed = self._terminals.get(terminal)
         if typed is None:
-            raise WorkspaceManagerError(f"No terminal is handled as {terminal.root}.")
-        return typed
+            return Err(WorkspaceManagerError(f"No terminal is handled as {terminal.root}."))
+        return Ok(typed)
 
-    def _replace(self, changed: Worktree) -> None:
-        self._worktrees = Worktrees(
-            tuple(changed if w.path.same_as(changed.path).root else w for w in self._worktrees.root)
-        )
+    def _update(
+        self, path: WorktreePath, change: Callable[[Worktree], Worktree]
+    ) -> Result[None, WorkspaceManagerError]:
+        match self._at(path):
+            case Ok(worktree):
+                changed = change(worktree)
+                self._worktrees = Worktrees(
+                    tuple(
+                        changed if w.path.same_as(changed.path).root else w
+                        for w in self._worktrees.root
+                    )
+                )
+                return Ok(None)
+            case Err() as missing:
+                return missing
 
     def _add(self, worktree: Worktree) -> Worktree:
         self._worktrees = Worktrees((*self._worktrees.root, worktree))
@@ -192,28 +256,32 @@ class FakeWorkspaceManager(WorkspaceManager):
             suffix += 1
         return path
 
-    def _column(self, status: WorkspaceStatus) -> WorkspaceStatus:
+    def _column(self, status: WorkspaceStatus) -> Result[WorkspaceStatus, WorkspaceManagerError]:
         if status not in self._columns.root:
-            raise WorkspaceManagerError(f"The board has no column {status.root}.")
-        return status
+            return Err(WorkspaceManagerError(f"The board has no column {status.root}."))
+        return Ok(status)
 
-    def _at(self, path: WorktreePath) -> Worktree:
+    def _at(self, path: WorktreePath) -> Result[Worktree, WorkspaceManagerError]:
         worktree = self._worktrees.at(path)
         if worktree is None:
-            raise WorkspaceManagerError(f"No worktree is at {path.root}.")
-        return worktree
+            return Err(WorkspaceManagerError(f"No worktree is at {path.root}."))
+        return Ok(worktree)
 
 
 class DisplayNameRefusingWorkspaceManager(FakeWorkspaceManager):
     @override
-    def set_display_name(self, path: WorktreePath, name: DisplayName) -> None:
-        raise WorkspaceManagerError(f"Orca refused the display name {name.root}.")
+    def set_display_name(
+        self, path: WorktreePath, name: DisplayName
+    ) -> Result[None, WorkspaceManagerError]:
+        return Err(WorkspaceManagerError(f"Orca refused the display name {name.root}."))
 
 
 class LinkRefusingWorkspaceManager(FakeWorkspaceManager):
     @override
-    def set_linked_issue(self, path: WorktreePath, issue: IssueIdentifier) -> None:
-        raise WorkspaceManagerError(f"Orca refused to link {issue.root}.")
+    def set_linked_issue(
+        self, path: WorktreePath, issue: IssueIdentifier
+    ) -> Result[None, WorkspaceManagerError]:
+        return Err(WorkspaceManagerError(f"Orca refused to link {issue.root}."))
 
 
 class WorkspaceNaming:
@@ -222,7 +290,8 @@ class WorkspaceNaming:
     def set_display_name_or_warn(
         manager: WorkspaceManager, path: WorktreePath, name: DisplayName
     ) -> None:
-        try:
-            manager.set_display_name(path, name)
-        except WorkspaceManagerError as error:
-            logger.warning("Could not name %s %s: %s", path.root, name.root, error)
+        match manager.set_display_name(path, name):
+            case Ok():
+                pass
+            case Err(error):
+                logger.warning("Could not name %s %s: %s", path.root, name.root, error)

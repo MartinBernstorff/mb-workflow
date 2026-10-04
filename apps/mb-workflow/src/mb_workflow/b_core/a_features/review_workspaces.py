@@ -1,12 +1,10 @@
-from subprocess import CalledProcessError
 from typing import TYPE_CHECKING, Protocol
 
-from safe_result import Err, Ok, Result, safe_with
+from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.a_features.start import PromptUndeliveredError, TicketStart
 from mb_workflow.b_core.a_features.teardown import Teardown
 from mb_workflow.b_core.b_domain_services.worktree_reconciliation import obsolete, uncovered
-from mb_workflow.b_core.c_secondary_ports.code_review import CodeReviewError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
@@ -27,7 +25,7 @@ from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
-    from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
+    from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge, CodeReviewError
     from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, RunLock
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
@@ -38,7 +36,13 @@ if TYPE_CHECKING:
         PullRequest,
         PullRequests,
     )
-    from mb_workflow.b_core.d_domain_model.workspace import RepoId, WorkspaceStatus, Worktrees
+    from mb_workflow.b_core.d_domain_model.workspace import (
+        OpenedWorktree,
+        RepoId,
+        WorkspaceStatus,
+        Worktree,
+        Worktrees,
+    )
 
 
 class FailureReason(Value[str]):
@@ -147,7 +151,7 @@ class ReviewWorkspaces:
         status: WorkspaceStatus,
         since: MergedSince,
         prompt: ReviewPrompt | None,
-    ) -> Result[Outcome, AlreadyRunningError | CodeReviewError]:
+    ) -> Result[Outcome, AlreadyRunningError | CodeReviewError | WorkspaceManagerError]:
         match lock.acquire():
             case Ok(held):
                 with held:
@@ -179,9 +183,11 @@ class ReviewWorkspaces:
         status: WorkspaceStatus,
         since: MergedSince,
         prompt: ReviewPrompt | None,
-    ) -> Result[Outcome, CodeReviewError]:
-        worktrees = manager.worktrees()
-        current = manager.current()
+    ) -> Result[Outcome, CodeReviewError | WorkspaceManagerError]:
+        listed = ReviewWorkspaces.listed_from_here(manager)
+        if isinstance(listed, Err):
+            return listed
+        worktrees, current = listed.value
         here = current.path
         repo = current.repo
         narrator.inspecting(worktrees, here)
@@ -211,19 +217,15 @@ class ReviewWorkspaces:
         narrator.found_obsolete(to_remove)
 
         for worktree in to_remove.root:
-            try:
-                narrator.removing(worktree.path)
-                released: Result[None, Exception] = Teardown.release_and_remove(
-                    manager=manager,
-                    claims=claims,
-                    tracker=tracker,
-                    claim_settings=claim_settings,
-                    worktree=worktree,
-                    host=host,
-                )
-            except (TicketTrackerError, WorkspaceManagerError) as error:
-                released = Err(error)
-            match released:
+            narrator.removing(worktree.path)
+            match ReviewWorkspaces.release_and_remove(
+                manager=manager,
+                claims=claims,
+                tracker=tracker,
+                claim_settings=claim_settings,
+                worktree=worktree,
+                host=host,
+            ):
                 case Ok():
                     removed.append(worktree.path)
                 case Err(error):
@@ -258,15 +260,42 @@ class ReviewWorkspaces:
 
         return Ok(Outcome(created=tuple(created), removed=tuple(removed), failed=tuple(failed)))
 
-    # The other ports still raise, so their errors become values here, alongside the code review's.
     @staticmethod
-    @safe_with(
-        CodeReviewError,
-        CalledProcessError,
-        PromptUndeliveredError,
-        WorkspaceManagerError,
-        ValueError,
-    )
+    def listed_from_here(
+        manager: WorkspaceManager,
+    ) -> Result[tuple[Worktrees, Worktree], WorkspaceManagerError]:
+        listed = manager.worktrees()
+        if isinstance(listed, Err):
+            return listed
+        current = manager.current()
+        if isinstance(current, Err):
+            return current
+        return Ok((listed.value, current.value))
+
+    # The tracker's writes still raise, so their errors become values here.
+    @staticmethod
+    def release_and_remove(
+        *,
+        manager: WorkspaceManager,
+        claims: ClaimRegistry,
+        tracker: TicketTracker,
+        claim_settings: ClaimSettings,
+        worktree: Worktree,
+        host: HostName,
+    ) -> Result[None, TicketTrackerError | WorkspaceManagerError]:
+        try:
+            return Teardown.release_and_remove(
+                manager=manager,
+                claims=claims,
+                tracker=tracker,
+                claim_settings=claim_settings,
+                worktree=worktree,
+                host=host,
+            )
+        except TicketTrackerError as error:
+            return Err(error)
+
+    @staticmethod
     def create_review_workspace(
         *,
         review: CodeForge,
@@ -276,15 +305,33 @@ class ReviewWorkspaces:
         pr: PullRequest,
         status: WorkspaceStatus,
         prompt: ReviewPrompt | None,
-    ) -> CreatedWorkspace:
+    ) -> Result[CreatedWorkspace, CodeReviewError | WorkspaceManagerError | PromptUndeliveredError]:
         narrator.creating(pr.number)
         opened = manager.create_for_review(
             repo, pr.number, status, None if prompt is None else AgentName.claude()
         )
-        path = opened.worktree.path
+        if isinstance(opened, Err):
+            return opened
+        path = opened.value.worktree.path
         WorkspaceNaming.set_display_name_or_warn(manager, path, DisplayName.of_pr(pr.title))
         narrator.checking_out(path)
-        review.checkout(pr.number, CheckoutDirectory(path.root)).unwrap()
+        checked_out = review.checkout(pr.number, CheckoutDirectory(path.root))
+        if isinstance(checked_out, Err):
+            return checked_out
         if prompt is not None:
-            TicketStart.send_prompt(manager, opened, prompt.text, prompt.idle_timeout, Submit(True))
-        return CreatedWorkspace(name=WorktreeName.of(pr.number), path=path)
+            prompted = ReviewWorkspaces.prompt_agent(manager, opened.value, prompt)
+            if isinstance(prompted, Err):
+                return prompted
+        return Ok(CreatedWorkspace(name=WorktreeName.of(pr.number), path=path))
+
+    # Start still raises when Orca hands back no agent terminal, so that becomes a value here.
+    @staticmethod
+    def prompt_agent(
+        manager: WorkspaceManager, opened: OpenedWorktree, prompt: ReviewPrompt
+    ) -> Result[None, WorkspaceManagerError | PromptUndeliveredError]:
+        try:
+            return TicketStart.send_prompt(
+                manager, opened, prompt.text, prompt.idle_timeout, Submit(True)
+            )
+        except PromptUndeliveredError as error:
+            return Err(error)

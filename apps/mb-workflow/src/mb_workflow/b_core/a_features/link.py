@@ -7,10 +7,7 @@ from safe_result import Err, Ok, Result
 from mb_workflow.b_core.b_domain_services.next_action import TicketState
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRequest
-from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
-    WorkspaceManagerError,
-    WorkspaceNaming,
-)
+from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceNaming
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, TakeOver
 from mb_workflow.b_core.d_domain_model.flow import FlowError, WorkflowChart
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
@@ -25,7 +22,10 @@ if TYPE_CHECKING:
         TicketTracker,
         TicketTrackerError,
     )
-    from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
+    from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
+        WorkspaceManager,
+        WorkspaceManagerError,
+    )
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus, Worktree
@@ -73,21 +73,13 @@ class StatusStep(SagaStep):
 
     @override
     def apply(self) -> Result[None, Exception]:
-        try:
-            self.manager.set_status(self.worktree.path, self.status)
-        except WorkspaceManagerError as error:
-            return Err(error)
-        return Ok(None)
+        return self.manager.set_status(self.worktree.path, self.status)
 
     @override
     def revert(self) -> Result[None, Exception]:
         if self.worktree.status is None:
             return Ok(None)
-        try:
-            self.manager.set_status(self.worktree.path, self.worktree.status)
-        except WorkspaceManagerError as error:
-            return Err(error)
-        return Ok(None)
+        return self.manager.set_status(self.worktree.path, self.worktree.status)
 
 
 @dataclass(frozen=True)
@@ -98,10 +90,9 @@ class LinkStep(SagaStep):
 
     @override
     def apply(self) -> Result[None, Exception]:
-        try:
-            self.manager.set_linked_issue(self.worktree.path, self.ticket)
-        except WorkspaceManagerError as error:
-            return Err(error)
+        linked = self.manager.set_linked_issue(self.worktree.path, self.ticket)
+        if isinstance(linked, Err):
+            return linked
         logger.info("Linked %s to %s.", self.worktree.path.root, self.ticket.root)
         return Ok(None)
 
@@ -124,7 +115,9 @@ class TicketLinking:
         claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
         request: LinkRequest,
-    ) -> Result[None, FlowError | TicketTrackerError | UnknownClaimLabelError]:
+    ) -> Result[
+        None, FlowError | TicketTrackerError | UnknownClaimLabelError | WorkspaceManagerError
+    ]:
         # Refuse before touching anything, so a refused link leaves no claim behind.
         read = tracker.read_issue_detail(request.ticket)
         if isinstance(read, Err):
@@ -134,8 +127,14 @@ class TicketLinking:
         if isinstance(with_work_left, Err):
             return with_work_left
         state = with_work_left.value
-        here = manager.current()
+        current = manager.current()
+        if isinstance(current, Err):
+            return current
+        here = current.value
         request.require_unlinked_or_forced(here)
+        status = board.status_for(state)
+        if isinstance(status, Err):
+            return status
 
         # Named after the ticket, not the directory, as teardown and drain rebuild the holder that way.
         taking_steps = TicketTaking.saga_steps(
@@ -157,7 +156,7 @@ class TicketLinking:
             return taking_steps
 
         # Linking comes last, as Orca cannot unlink a worktree to revert it.
-        status_step = StatusStep(manager, here, board.status_for(state))
+        status_step = StatusStep(manager, here, status.value)
         Saga.run(
             (*taking_steps.value, status_step, LinkStep(manager, here, request.ticket))
         ).unwrap()
