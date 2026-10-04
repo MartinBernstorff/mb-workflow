@@ -1,5 +1,11 @@
-from hemolint.b_core.d_domain_model.baseline import Baseline, BaselineFile, Count, Violation
-from hemolint.b_core.d_domain_model.drift import Drift, FoundViolation
+from hemolint.b_core.d_domain_model.baseline import (
+    Baseline,
+    BaselineFile,
+    Count,
+    FoundViolation,
+    Violation,
+)
+from hemolint.b_core.d_domain_model.drift import Drift
 from hemolint.b_core.d_domain_model.violation import Fingerprint, LinterLine, RuleName
 
 known = Violation(file=BaselineFile.fake(), fingerprint=Fingerprint("a == None"))

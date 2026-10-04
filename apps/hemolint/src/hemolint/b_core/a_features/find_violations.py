@@ -2,8 +2,7 @@ from typing import TYPE_CHECKING
 
 from safe_result import Err, Ok, Result
 
-from hemolint.b_core.d_domain_model.baseline import BaselineFile, Violation
-from hemolint.b_core.d_domain_model.drift import FoundViolation
+from hemolint.b_core.d_domain_model.baseline import BaselineFile, FoundViolation, Violation
 from hemolint.b_core.d_domain_model.violation import Fingerprint
 
 if TYPE_CHECKING:

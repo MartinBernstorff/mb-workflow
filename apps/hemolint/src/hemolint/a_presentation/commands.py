@@ -66,12 +66,8 @@ class Commands:
                     f"Added {change.added.root} and removed {change.removed.root} violations.\n"
                 )
                 return ExitCode(0)
-            case Err(UnparsableLineError() as error):
-                _ = sys.stderr.write(f"{error}\n")
-                return ExitCode(2)
             case Err(error):
-                _ = sys.stderr.write(f"{error}\n")
-                return ExitCode(1)
+                return Commands._report_error(error)
 
     @staticmethod
     def check_baseline(
@@ -90,9 +86,11 @@ class Commands:
             case Ok(drift):
                 _ = sys.stdout.write(DriftReport.of(drift).root)
                 return ExitCode(1) if drift.exists() else ExitCode(0)
-            case Err(UnparsableLineError() as error):
-                _ = sys.stderr.write(f"{error}\n")
-                return ExitCode(2)
             case Err(error):
-                _ = sys.stderr.write(f"{error}\n")
-                return ExitCode(1)
+                return Commands._report_error(error)
+
+    # Unparsable linter output is a usage error; anything else is a failure.
+    @staticmethod
+    def _report_error(error: Exception) -> ExitCode:
+        _ = sys.stderr.write(f"{error}\n")
+        return ExitCode(2) if isinstance(error, UnparsableLineError) else ExitCode(1)

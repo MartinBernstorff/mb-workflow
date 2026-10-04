@@ -40,7 +40,7 @@ class BaselineRecording:
         found = ViolationFinder.find(output, linter_format, directory, lines)
         if isinstance(found, Err):
             return found
-        current = Baseline.of(violation.violation for violation in found.value)
+        current = Baseline.of(reported.violation for reported in found.value)
         previous = store.read()
         if isinstance(previous, Err):
             return previous

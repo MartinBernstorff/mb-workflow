@@ -1,22 +1,11 @@
 from collections import Counter
 from typing import TYPE_CHECKING
 
-from hemolint.b_core.d_domain_model.baseline import Baseline, BaselineFile, Count, Violation
-from hemolint.b_core.d_domain_model.violation import LinterLine
+from hemolint.b_core.d_domain_model.baseline import Baseline, BaselineFile, Count, FoundViolation
 from hemolint.d_lib.models import Model
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-
-
-# A violation in the current linter output, with the line the linter reported it on.
-class FoundViolation(Model):
-    violation: Violation
-    reported_as: LinterLine
-
-    @staticmethod
-    def fake() -> FoundViolation:
-        return FoundViolation(violation=Violation.fake(), reported_as=LinterLine.fake())
 
 
 # How the baseline differs from the current violations.
@@ -33,11 +22,11 @@ class Drift(Model):
     def between(baseline: Baseline, found: Iterable[FoundViolation]) -> Drift:
         unmatched = Counter(baseline.root)
         new: list[FoundViolation] = []
-        for violation in found:
-            if unmatched[violation.violation] > 0:
-                unmatched[violation.violation] -= 1
+        for reported in found:
+            if unmatched[reported.violation] > 0:
+                unmatched[reported.violation] -= 1
             else:
-                new.append(violation)
+                new.append(reported)
         return Drift(new=tuple(new), fixed=Baseline.of(unmatched.elements()))
 
     def exists(self) -> bool:

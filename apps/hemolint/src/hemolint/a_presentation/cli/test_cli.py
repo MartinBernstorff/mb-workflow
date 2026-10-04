@@ -72,6 +72,9 @@ def test_a_source_line_that_cannot_be_read_exits_one(workdir: Path) -> None:
 
 def test_check_fails_on_drift_and_prints_it(workdir: Path) -> None:
     success, failure = 0, 1
+    fixed_line = f"{source}: fixit-{rule} ×1 fixed"  # noqa: RUF001
+    prune_hint = "hemolint check --prune"
+    summary = "0 new and 1 fixed violations."
     check = ["check", "--format", "fixit"]
     _ = run_hemolint(workdir, [*check, "--baseline"], violation)
     unchanged = run_hemolint(workdir, check, violation)
@@ -79,8 +82,9 @@ def test_check_fails_on_drift_and_prints_it(workdir: Path) -> None:
     new = run_hemolint(workdir, check, violation + violation)
     assert unchanged.returncode == success
     assert fixed.returncode == failure
-    assert f"{source}: fixit-{rule} ×1 fixed" in fixed.stdout  # noqa: RUF001
-    assert "--prune" in fixed.stdout
+    assert fixed_line in fixed.stdout
+    assert prune_hint in fixed.stdout
+    assert fixed.stdout.endswith(f"{summary}\n")
     assert new.returncode == failure
     assert violation in new.stdout
 

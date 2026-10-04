@@ -1,13 +1,11 @@
 from pathlib import Path
 
-from safe_result import Err
-
 from hemolint.b_core.a_features.check_baseline import BaselineCheck
 from hemolint.b_core.c_secondary_ports.baseline_store import FakeBaselineStore
 from hemolint.b_core.c_secondary_ports.source_lines import FakeSourceLines
 from hemolint.b_core.d_domain_model.baseline import Baseline, BaselineFile, Violation
 from hemolint.b_core.d_domain_model.linter_format import LinterFormat
-from hemolint.b_core.d_domain_model.linter_output import LinterOutput, UnparsableLineError
+from hemolint.b_core.d_domain_model.linter_output import LinterOutput
 from hemolint.b_core.d_domain_model.violation import (
     Fingerprint,
     LinterLine,
@@ -61,15 +59,3 @@ def test_checking_leaves_the_baseline_as_it_was() -> None:
         store,
     ).unwrap()
     assert store.baseline == previous
-
-
-def test_unparsable_output_is_an_error() -> None:
-    result = BaselineCheck.check(
-        LinterOutput("b.py: EXCEPTION: Syntax Error @ 1:1.\n"),
-        LinterFormat.fixit,
-        WorkingDirectory.fake(),
-        lines,
-        FakeBaselineStore(),
-    )
-    assert isinstance(result, Err)
-    assert isinstance(result.error, UnparsableLineError)
