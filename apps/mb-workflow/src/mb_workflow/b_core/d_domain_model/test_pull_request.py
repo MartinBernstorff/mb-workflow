@@ -38,11 +38,10 @@ def test_a_comment_with_a_body_is_complete() -> None:
 
 
 def test_collects_the_branch_of_each_pr() -> None:
-    other = PullRequest(
-        number=PrNumber(7), title=PrTitle("Other work"), branch=BranchName("feat/other")
-    )
+    other_branch = BranchName("feat/other")
+    other = PullRequest(number=PrNumber(7), title=PrTitle("Other work"), branch=other_branch)
     prs = PullRequests((PullRequest.fake(), other))
-    Assert.that(prs.branches()).matches(BranchNames((BranchName.fake(), BranchName("feat/other"))))
+    Assert.that(prs.branches()).matches(BranchNames((BranchName.fake(), other_branch)))
 
 
 def test_the_window_starts_the_lookback_before_today() -> None:

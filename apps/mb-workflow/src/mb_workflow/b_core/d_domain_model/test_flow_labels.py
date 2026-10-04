@@ -35,25 +35,24 @@ def flow_labels_of(*labels: LabelName) -> FlowLabels:
 
 
 def test_every_state_of_the_chart_gets_a_label_in_chart_order() -> None:
-    Assert.that(
-        FlowLabels.of_chart(WorkflowChart, LabelGroupName.fake(), LabelRenames(())).labels
-    ).matches(
-        LabelNames(
-            tuple(
-                LabelName(state)
-                for state in (
-                    "grill",
-                    "to-ticket",
-                    "todo",
-                    "implementing",
-                    "qa",
-                    "review",
-                    "merging",
-                    "merged",
-                )
+    labels_in_chart_order = LabelNames(
+        tuple(
+            LabelName(state)
+            for state in (
+                "grill",
+                "to-ticket",
+                "todo",
+                "implementing",
+                "qa",
+                "review",
+                "merging",
+                "merged",
             )
         )
     )
+    Assert.that(
+        FlowLabels.of_chart(WorkflowChart, LabelGroupName.fake(), LabelRenames(())).labels
+    ).matches(labels_in_chart_order)
 
 
 def test_the_chart_marks_grill_to_ticket_and_todo_as_entry_labels() -> None:
@@ -186,18 +185,17 @@ def test_a_former_flow_label_counts_as_its_current_name() -> None:
 
 
 def test_the_chart_renames_the_former_entry_labels() -> None:
-    Assert.that(FlowLabels.fake().former).matches(
-        LabelRenames(
-            tuple(
-                LabelRename(held=LabelName(held), renamed=LabelName(renamed))
-                for held, renamed in (
-                    ("Grilling", "grill"),
-                    ("Speccing", "to-ticket"),
-                    ("Specced", "todo"),
-                )
+    former_entry_renames = LabelRenames(
+        tuple(
+            LabelRename(held=LabelName(held), renamed=LabelName(renamed))
+            for held, renamed in (
+                ("Grilling", "grill"),
+                ("Speccing", "to-ticket"),
+                ("Specced", "todo"),
             )
         )
     )
+    Assert.that(FlowLabels.fake().former).matches(former_entry_renames)
 
 
 def test_a_label_in_the_wrong_color_is_recolored_under_its_spec_name() -> None:
@@ -238,14 +236,16 @@ def test_a_flow_label_gives_the_state_of_its_name(state: str) -> None:
 
 
 def test_a_flow_label_in_another_case_gives_the_state_as_the_chart_spells_it() -> None:
+    implementing = StateName("implementing")
     Assert.that(
         FlowLabels.fake().state_of(WorkflowChart, in_flow(LabelName("Implementing")))
-    ).matches(Ok(StateName("implementing")))
+    ).matches(Ok(implementing))
 
 
 def test_the_flow_group_is_found_whatever_its_case() -> None:
+    qa = StateName("qa")
     held = GroupedLabels((GroupedLabel(group=LabelGroupName("Flow"), label=QA),))
-    Assert.that(FlowLabels.fake().state_of(WorkflowChart, held)).matches(Ok(StateName("qa")))
+    Assert.that(FlowLabels.fake().state_of(WorkflowChart, held)).matches(Ok(qa))
 
 
 def test_a_ticket_without_a_flow_label_has_no_state() -> None:
@@ -258,12 +258,15 @@ def test_a_label_named_as_a_state_outside_the_flow_group_does_not_count() -> Non
 
 
 def test_a_ticket_with_two_flow_labels_is_a_clear_error() -> None:
+    both_labels = f"{GRILL.root}, {QA.root}"
     refused = FlowLabels.fake().state_of(WorkflowChart, in_flow(GRILL, QA))
     error = Assert.that(refused.error).is_instance(FlowError)
-    Assert.that(str(error)).matches_pattern("grill, qa")
+    Assert.that(str(error)).matches_pattern(both_labels)
 
 
 def test_a_flow_label_that_names_no_state_is_a_clear_error() -> None:
-    refused = FlowLabels.fake().state_of(WorkflowChart, in_flow(LabelName("Marinating")))
+    marinating = LabelName("Marinating")
+    refusal = f"{marinating.root} is no state of the chart"
+    refused = FlowLabels.fake().state_of(WorkflowChart, in_flow(marinating))
     error = Assert.that(refused.error).is_instance(FlowError)
-    Assert.that(str(error)).matches_pattern("Marinating is no state of the chart")
+    Assert.that(str(error)).matches_pattern(refusal)

@@ -39,9 +39,8 @@ def test_the_chart_holds_every_state_the_work_passes_through() -> None:
 
 
 def test_every_state_names_what_happens_in_it() -> None:
-    Assert.that(list(WorkflowChart.states)).all(
-        lambda state: isinstance(state, WorkState), lambda state: f"{state} is no WorkState"
-    )
+    for state in WorkflowChart.states:
+        _ = Assert.that(state).is_instance(WorkState)
 
 
 def test_work_enters_the_chart_at_grilling() -> None:
@@ -49,29 +48,28 @@ def test_work_enters_the_chart_at_grilling() -> None:
 
 
 def test_the_chart_holds_every_transition_the_work_can_take() -> None:
-    Assert.that(Edges.of_chart(WorkflowChart).root).matches(
-        frozenset(
-            {
-                edge(GRILL, EventName("grill"), GRILL),
-                edge(GRILL, EventName("to-ticket"), TO_TICKET),
-                edge(TO_TICKET, EventName("todo"), TODO),
-                edge(TODO, EventName("implement"), IMPLEMENTING),
-                edge(IMPLEMENTING, EventName("qa"), QA),
-                edge(IMPLEMENTING, EventName("grill"), GRILL),
-                edge(IMPLEMENTING, EventName("to-ticket"), TO_TICKET),
-                edge(QA, EventName("implement"), IMPLEMENTING),
-                edge(QA, EventName("ready"), REVIEW),
-                edge(QA, EventName("merge"), MERGING),
-                edge(QA, EventName("resolve-review"), IMPLEMENTING),
-                edge(REVIEW, EventName("resolve-review"), IMPLEMENTING),
-                edge(REVIEW, EventName("qa"), QA),
-                edge(REVIEW, EventName("merge"), MERGING),
-                edge(REVIEW, EventName("merged"), MERGED),
-                edge(MERGING, EventName("merged"), MERGED),
-                edge(MERGING, EventName("qa"), QA),
-            }
-        )
+    every_transition = frozenset(
+        {
+            edge(GRILL, EventName("grill"), GRILL),
+            edge(GRILL, EventName("to-ticket"), TO_TICKET),
+            edge(TO_TICKET, EventName("todo"), TODO),
+            edge(TODO, EventName("implement"), IMPLEMENTING),
+            edge(IMPLEMENTING, EventName("qa"), QA),
+            edge(IMPLEMENTING, EventName("grill"), GRILL),
+            edge(IMPLEMENTING, EventName("to-ticket"), TO_TICKET),
+            edge(QA, EventName("implement"), IMPLEMENTING),
+            edge(QA, EventName("ready"), REVIEW),
+            edge(QA, EventName("merge"), MERGING),
+            edge(QA, EventName("resolve-review"), IMPLEMENTING),
+            edge(REVIEW, EventName("resolve-review"), IMPLEMENTING),
+            edge(REVIEW, EventName("qa"), QA),
+            edge(REVIEW, EventName("merge"), MERGING),
+            edge(REVIEW, EventName("merged"), MERGED),
+            edge(MERGING, EventName("merged"), MERGED),
+            edge(MERGING, EventName("qa"), QA),
+        }
     )
+    Assert.that(Edges.of_chart(WorkflowChart).root).matches(every_transition)
 
 
 def test_an_event_with_no_transition_from_the_current_state_raises() -> None:
@@ -85,25 +83,26 @@ def test_an_event_the_chart_has_never_heard_of_raises() -> None:
 
 
 def test_an_exception_raised_during_a_transition_propagates() -> None:
+    explosion = "boom"
+
     class Detonator:
         def on_transition(self) -> None:
-            raise RuntimeError("boom")
+            raise RuntimeError(explosion)
 
-    with pytest.raises(RuntimeError, match="boom"):
+    with pytest.raises(RuntimeError, match=explosion):
         WorkflowChart(listeners=[Detonator()]).send(EventName("to-ticket").root)
 
 
 def test_the_events_legal_from_a_state_come_from_the_chart() -> None:
-    Assert.that(EventNames.of_state(WorkflowChart, REVIEW)).matches(
-        EventNames(
-            (
-                EventName("merge"),
-                EventName("merged"),
-                EventName("qa"),
-                EventName("resolve-review"),
-            )
+    legal_from_review = EventNames(
+        (
+            EventName("merge"),
+            EventName("merged"),
+            EventName("qa"),
+            EventName("resolve-review"),
         )
     )
+    Assert.that(EventNames.of_state(WorkflowChart, REVIEW)).matches(legal_from_review)
 
 
 def test_no_event_is_legal_from_the_final_state() -> None:
@@ -111,27 +110,27 @@ def test_no_event_is_legal_from_the_final_state() -> None:
 
 
 def test_a_status_pairs_a_state_with_the_events_legal_from_it() -> None:
-    Assert.that(FlowStatus.of(WorkflowChart, GRILL)).matches(
-        FlowStatus(state=GRILL, events=EventNames((EventName("grill"), EventName("to-ticket"))))
+    grill_status = FlowStatus(
+        state=GRILL, events=EventNames((EventName("grill"), EventName("to-ticket")))
     )
+    Assert.that(FlowStatus.of(WorkflowChart, GRILL)).matches(grill_status)
 
 
 def test_the_chart_names_every_event_it_holds() -> None:
-    Assert.that(EventNames.of_chart(WorkflowChart)).matches(
-        EventNames(
-            (
-                EventName("grill"),
-                EventName("implement"),
-                EventName("merge"),
-                EventName("merged"),
-                EventName("qa"),
-                EventName("ready"),
-                EventName("resolve-review"),
-                EventName("to-ticket"),
-                EventName("todo"),
-            )
+    every_event = EventNames(
+        (
+            EventName("grill"),
+            EventName("implement"),
+            EventName("merge"),
+            EventName("merged"),
+            EventName("qa"),
+            EventName("ready"),
+            EventName("resolve-review"),
+            EventName("to-ticket"),
+            EventName("todo"),
         )
     )
+    Assert.that(EventNames.of_chart(WorkflowChart)).matches(every_event)
 
 
 def test_a_legal_event_leads_to_the_state_the_chart_names() -> None:
@@ -147,23 +146,26 @@ def test_resolving_a_review_from_qa_returns_the_work_to_implementing() -> None:
 
 
 def test_an_illegal_event_names_the_current_state_and_the_events_legal_from_it() -> None:
-    refused = Edges.of_chart(WorkflowChart).target_from(GRILL, EventName("merge"))
+    merge = EventName("merge")
+    refusal = rf"{merge.root} is not legal from {GRILL.root}\. Legal: grill, to-ticket\."
+    refused = Edges.of_chart(WorkflowChart).target_from(GRILL, merge)
     error = Assert.that(refused.error).is_instance(FlowError)
-    Assert.that(str(error)).matches_pattern(
-        r"merge is not legal from grill\. Legal: grill, to-ticket\."
-    )
+    Assert.that(str(error)).matches_pattern(refusal)
 
 
 def test_an_event_outside_the_chart_is_illegal_from_every_state() -> None:
-    refused = Edges.of_chart(WorkflowChart).target_from(QA, EventName("abandon"))
+    abandon = EventName("abandon")
+    refusal = rf"{abandon.root} is not legal from {QA.root}\."
+    refused = Edges.of_chart(WorkflowChart).target_from(QA, abandon)
     error = Assert.that(refused.error).is_instance(FlowError)
-    Assert.that(str(error)).matches_pattern(r"abandon is not legal from qa\.")
+    Assert.that(str(error)).matches_pattern(refusal)
 
 
 def test_the_final_state_has_no_legal_event_to_offer() -> None:
+    no_legal_event = r"Legal: none\."
     refused = Edges.of_chart(WorkflowChart).target_from(MERGED, EventName("merge"))
     error = Assert.that(refused.error).is_instance(FlowError)
-    Assert.that(str(error)).matches_pattern(r"Legal: none\.")
+    Assert.that(str(error)).matches_pattern(no_legal_event)
 
 
 def test_forcing_an_event_leads_to_its_state_from_wherever_the_work_sits() -> None:
@@ -179,18 +181,20 @@ def test_every_event_leads_to_one_state_so_any_of_them_can_be_forced() -> None:
 
 
 def test_forcing_an_event_outside_the_chart_lists_the_events_it_holds() -> None:
-    refused = Edges.of_chart(WorkflowChart).target_of(EventName("abandon"))
+    abandon = EventName("abandon")
+    refusal = rf"{abandon.root} is no event of the chart\. Its events: grill,"
+    refused = Edges.of_chart(WorkflowChart).target_of(abandon)
     error = Assert.that(refused.error).is_instance(FlowError)
-    Assert.that(str(error)).matches_pattern(
-        r"abandon is no event of the chart\. Its events: grill,"
-    )
+    Assert.that(str(error)).matches_pattern(refusal)
 
 
 def test_the_events_legal_from_a_state_come_from_the_edges_at_hand() -> None:
-    edges = Edges(frozenset({edge(GRILL, EventName("abandon"), MERGED)}))
+    abandon = EventName("abandon")
+    legal_events = rf"Legal: {abandon.root}\."
+    edges = Edges(frozenset({edge(GRILL, abandon, MERGED)}))
     refused = edges.target_from(GRILL, EventName("to-ticket"))
     error = Assert.that(refused.error).is_instance(FlowError)
-    Assert.that(str(error)).matches_pattern(r"Legal: abandon\.")
+    Assert.that(str(error)).matches_pattern(legal_events)
 
 
 @pytest.mark.parametrize("typed", ["todo", "TODO", "Todo"])

@@ -8,4 +8,5 @@ def test_ref_strips_heads_prefix() -> None:
 
 
 def test_ref_without_prefix_is_already_a_branch() -> None:
-    Assert.that(Ref("main").branch()).matches(BranchName("main"))
+    main = "main"
+    Assert.that(Ref(main).branch()).matches(BranchName(main))

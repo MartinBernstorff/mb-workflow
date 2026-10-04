@@ -58,60 +58,61 @@ def settings_with_fake_workspace(**tables: JsonValue) -> Settings:
 
 
 def test_the_search_starts_at_the_working_directory_and_walks_up() -> None:
-    searched = SearchedDirectories.of(WorkingDirectory(Path("/a/b/c")))
-    Assert.that(searched.root).matches((Path("/a/b/c"), Path("/a/b"), Path("/a"), Path("/")))
+    working_directory = Path("/a/b/c")
+    walked_up = (working_directory, Path("/a/b"), Path("/a"), Path("/"))
+    searched = SearchedDirectories.of(WorkingDirectory(working_directory))
+    Assert.that(searched.root).matches(walked_up)
 
 
 def test_a_configuration_in_the_working_directory_of_a_repository_is_found(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "repo" / ".git").mkdir(parents=True)
-    _ = (tmp_path / "repo" / "mb-workflow.toml").write_text("")
+    config_file = tmp_path / "repo" / "mb-workflow.toml"
+    _ = config_file.write_text("")
 
     located = SearchedDirectories.of(WorkingDirectory(tmp_path / "repo")).find(
         ConfigFileName.fake()
     )
 
-    Assert.that(located).matches(ConfigPath((tmp_path / "repo" / "mb-workflow.toml").resolve()))
+    Assert.that(located).matches(ConfigPath(config_file.resolve()))
 
 
 def test_a_configuration_in_a_parent_within_the_repository_is_found(tmp_path: Path) -> None:
     (tmp_path / "repo" / ".git").mkdir(parents=True)
     (tmp_path / "repo" / "src" / "pkg").mkdir(parents=True)
-    _ = (tmp_path / "repo" / "mb-workflow.toml").write_text("")
+    config_file = tmp_path / "repo" / "mb-workflow.toml"
+    _ = config_file.write_text("")
 
     located = SearchedDirectories.of(WorkingDirectory(tmp_path / "repo" / "src" / "pkg")).find(
         ConfigFileName.fake()
     )
 
-    Assert.that(located).matches(ConfigPath((tmp_path / "repo" / "mb-workflow.toml").resolve()))
+    Assert.that(located).matches(ConfigPath(config_file.resolve()))
 
 
 def test_a_configuration_above_the_repository_root_is_not_found(tmp_path: Path) -> None:
-    (tmp_path / "repo" / ".git").mkdir(parents=True)
-    (tmp_path / "repo" / "src").mkdir()
+    repo = tmp_path / "repo"
+    src = repo / "src"
+    (repo / ".git").mkdir(parents=True)
+    src.mkdir()
     _ = (tmp_path / "mb-workflow.toml").write_text("")
 
-    searched = SearchedDirectories.of(WorkingDirectory(tmp_path / "repo" / "src"))
+    searched = SearchedDirectories.of(WorkingDirectory(src))
 
     Assert.that(searched.find(ConfigFileName.fake())).matches(None)
-    Assert.that(searched.root).matches(
-        ((tmp_path / "repo" / "src").resolve(), (tmp_path / "repo").resolve())
-    )
+    Assert.that(searched.root).matches((src.resolve(), repo.resolve()))
 
 
 def test_a_worktree_git_file_marks_the_repository_root(tmp_path: Path) -> None:
-    (tmp_path / "worktree" / "src").mkdir(parents=True)
-    _ = (tmp_path / "worktree" / ".git").write_text("gitdir: /elsewhere/.git/worktrees/worktree\n")
+    worktree = tmp_path / "worktree"
+    src = worktree / "src"
+    src.mkdir(parents=True)
+    _ = (worktree / ".git").write_text("gitdir: /elsewhere/.git/worktrees/worktree\n")
 
-    searched = SearchedDirectories.of(WorkingDirectory(tmp_path / "worktree" / "src"))
+    searched = SearchedDirectories.of(WorkingDirectory(src))
 
-    Assert.that(searched.root).matches(
-        (
-            (tmp_path / "worktree" / "src").resolve(),
-            (tmp_path / "worktree").resolve(),
-        )
-    )
+    Assert.that(searched.root).matches((src.resolve(), worktree.resolve()))
 
 
 def test_the_nearest_configuration_file_wins(tmp_path: Path) -> None:
@@ -123,7 +124,8 @@ def test_the_nearest_configuration_file_wins(tmp_path: Path) -> None:
         'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
     )
-    _ = (tmp_path / "repo" / "src" / "mb-workflow.toml").write_text(
+    nearest_file = tmp_path / "repo" / "src" / "mb-workflow.toml"
+    _ = nearest_file.write_text(
         '[issues]\ntracker = "todoist"\nproject_tag = "it-mb-workflow"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
@@ -135,13 +137,14 @@ def test_the_nearest_configuration_file_wins(tmp_path: Path) -> None:
         WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.fake(), NoOverrideFile.fake()
     ).unwrap()
 
-    Assert.that(resolved.origin).matches(ConfigPath(tmp_path / "repo" / "src" / "mb-workflow.toml"))
+    Assert.that(resolved.origin).matches(ConfigPath(nearest_file))
     Assert.that(resolved.settings.issues).matches(TodoistTracker.fake())
 
 
 def test_the_search_walks_up_when_the_working_directory_holds_no_file(tmp_path: Path) -> None:
     (tmp_path / "repo" / "src").mkdir(parents=True)
-    _ = (tmp_path / "repo" / "mb-workflow.toml").write_text(
+    parent_file = tmp_path / "repo" / "mb-workflow.toml"
+    _ = parent_file.write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
@@ -153,7 +156,7 @@ def test_the_search_walks_up_when_the_working_directory_holds_no_file(tmp_path: 
         WorkingDirectory(tmp_path / "repo" / "src"), ConfigFileName.fake(), NoOverrideFile.fake()
     ).unwrap()
 
-    Assert.that(resolved.origin).matches(ConfigPath(tmp_path / "repo" / "mb-workflow.toml"))
+    Assert.that(resolved.origin).matches(ConfigPath(parent_file))
 
 
 def test_a_configuration_in_a_parent_is_not_merged_into_the_nearest_one(tmp_path: Path) -> None:
@@ -189,18 +192,20 @@ def test_a_configuration_in_a_parent_is_not_merged_into_the_nearest_one(tmp_path
 def test_without_either_file_the_error_names_the_directories_searched_and_the_override_path(
     tmp_path: Path,
 ) -> None:
-    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    absent = ConfigFileName("absent.toml")
     expected = OverridePath(tmp_path / "override.toml")
 
     resolved = Configuration.resolved(
-        WorkingDirectory(tmp_path / "repo"),
-        ConfigFileName("absent.toml"),
+        WorkingDirectory(repo),
+        absent,
         NoOverrideFile(expected=expected),
     )
 
     error = Assert.that(resolved.error).is_instance(MissingConfigError)
-    Assert.that(str(error)).contains("absent.toml")
-    Assert.that(str(error)).contains(str((tmp_path / "repo").resolve()))
+    Assert.that(str(error)).contains(absent.root)
+    Assert.that(str(error)).contains(str(repo.resolve()))
     Assert.that(str(error)).contains(str(expected.root))
 
 
@@ -211,8 +216,9 @@ def test_without_either_file_or_an_origin_remote_the_error_says_so(tmp_path: Pat
         WorkingDirectory(tmp_path), ConfigFileName.fake(), NoOverrideFile(expected=None)
     )
 
+    no_origin_remote = "no origin remote"
     error = Assert.that(resolved.error).exists()
-    Assert.that(str(error)).contains("no origin remote")
+    Assert.that(str(error)).contains(no_origin_remote)
 
 
 def test_an_override_file_alone_resolves_the_configuration(tmp_path: Path) -> None:
@@ -240,12 +246,13 @@ def test_an_invalid_override_file_alone_is_an_error_naming_it(tmp_path: Path) ->
 
 
 def test_a_malformed_configuration_file_names_itself(tmp_path: Path) -> None:
-    _ = (tmp_path / "mb-workflow.toml").write_text('[issues]\ntracker = "jira"\n')
+    config_file = tmp_path / "mb-workflow.toml"
+    _ = config_file.write_text('[issues]\ntracker = "jira"\n')
     with pytest.raises(InvalidConfigError) as raised:
         _ = Configuration.resolved(
             WorkingDirectory(tmp_path), ConfigFileName.fake(), NoOverrideFile.fake()
         ).unwrap()
-    Assert.that(str(raised.value)).contains(str(tmp_path / "mb-workflow.toml"))
+    Assert.that(str(raised.value)).contains(str(config_file))
 
 
 def test_a_linear_configuration_names_only_its_tracker() -> None:
@@ -261,19 +268,20 @@ def test_a_linear_configuration_without_a_team_or_project_creates_tickets_withou
 
 
 def test_a_linear_configuration_names_the_team_and_project_tickets_are_created_in() -> None:
+    team = TeamKey("MB")
+    project = ProjectName("mb-workflow")
     settings = settings_with_fake_workspace(
-        issues={"tracker": "linear", "team": "MB", "project": "mb-workflow"}
+        issues={"tracker": "linear", "team": team.root, "project": project.root}
     )
-    Assert.that(settings.ticket_defaults()).matches(
-        TicketDefaults(team=TeamKey("MB"), project=ProjectName("mb-workflow"))
-    )
+    Assert.that(settings.ticket_defaults()).matches(TicketDefaults(team=team, project=project))
 
 
 def test_creating_a_ticket_outside_linear_is_refused() -> None:
     settings = settings_with_fake_workspace(
         issues={"tracker": "todoist", "project_tag": "it-mb-workflow"}
     )
-    with pytest.raises(InvalidConfigError, match="linear"):
+    linear = "linear"
+    with pytest.raises(InvalidConfigError, match=linear):
         _ = settings.ticket_defaults()
 
 
@@ -287,24 +295,28 @@ def test_a_todoist_configuration_names_its_project_tag() -> None:
 
 
 def test_a_todoist_configuration_without_a_project_tag_is_refused() -> None:
-    with pytest.raises(ValueError, match=r"todoist\.project_tag"):
+    todoist_project_tag = r"todoist\.project_tag"
+    with pytest.raises(ValueError, match=todoist_project_tag):
         _ = settings_with_fake_workspace(issues={"tracker": "todoist"})
 
 
 def test_a_project_tag_without_todoist_is_refused() -> None:
-    with pytest.raises(ValueError, match=r"linear\.project_tag"):
+    linear_project_tag = r"linear\.project_tag"
+    with pytest.raises(ValueError, match=linear_project_tag):
         _ = settings_with_fake_workspace(
             issues={"tracker": "linear", "project_tag": "it-mb-workflow"}
         )
 
 
 def test_an_unknown_tracker_is_refused() -> None:
-    with pytest.raises(ValueError, match="union_tag_invalid"):
+    invalid_tag = "union_tag_invalid"
+    with pytest.raises(ValueError, match=invalid_tag):
         _ = settings_with_fake_workspace(issues={"tracker": "jira"})
 
 
 def test_a_configuration_naming_no_tracker_is_refused() -> None:
-    with pytest.raises(ValueError, match="issues"):
+    issues_table = "issues"
+    with pytest.raises(ValueError, match=issues_table):
         _ = settings_with_fake_workspace()
 
 
@@ -324,32 +336,34 @@ def test_the_status_store_can_be_named_explicitly() -> None:
 
 
 def test_an_unknown_status_store_is_refused() -> None:
-    with pytest.raises(ValueError, match=r"status\.store"):
+    status_store = r"status\.store"
+    with pytest.raises(ValueError, match=status_store):
         _ = settings_with_fake_workspace(
             issues={"tracker": "linear"}, status={"store": "sticky-notes"}
         )
 
 
 def test_a_setting_the_file_does_not_define_is_refused() -> None:
-    with pytest.raises(ValueError, match="extra_forbidden"):
+    extra_forbidden = "extra_forbidden"
+    with pytest.raises(ValueError, match=extra_forbidden):
         _ = settings_with_fake_workspace(issues={"tracker": "linear"}, sttaus={"store": "orca"})
 
 
 def test_the_workspace_table_names_the_orca_project_and_the_assignee() -> None:
+    orca_project = ProjectSelector("github:other/project")
+    assignee = Assignee("other@flowbase.io")
     settings = settings_with_fake_workspace(
         issues={"tracker": "linear"},
-        workspace={"orca_project": "github:other/project", "assignee": "other@flowbase.io"},
+        workspace={"orca_project": orca_project.root, "assignee": assignee.root},
     )
     Assert.that(settings.workspace).matches(
-        WorkspaceSettings(
-            orca_project=ProjectSelector("github:other/project"),
-            assignee=Assignee("other@flowbase.io"),
-        )
+        WorkspaceSettings(orca_project=orca_project, assignee=assignee)
     )
 
 
 def test_a_configuration_without_a_workspace_table_is_refused() -> None:
-    with pytest.raises(ValueError, match="workspace"):
+    workspace_table = "workspace"
+    with pytest.raises(ValueError, match=workspace_table):
         _ = Settings.model_validate(
             {
                 "issues": {"tracker": "linear"},
@@ -359,48 +373,53 @@ def test_a_configuration_without_a_workspace_table_is_refused() -> None:
 
 
 def test_a_workspace_table_without_an_assignee_is_refused() -> None:
-    with pytest.raises(ValueError, match=r"workspace\.assignee"):
+    workspace_assignee = r"workspace\.assignee"
+    with pytest.raises(ValueError, match=workspace_assignee):
         _ = settings_with_fake_workspace(
             issues={"tracker": "linear"}, workspace={"orca_project": "github:other/project"}
         )
 
 
 def test_a_workspace_table_without_an_orca_project_is_refused() -> None:
-    with pytest.raises(ValueError, match=r"workspace\.orca_project"):
+    workspace_orca_project = r"workspace\.orca_project"
+    with pytest.raises(ValueError, match=workspace_orca_project):
         _ = settings_with_fake_workspace(
             issues={"tracker": "linear"}, workspace={"assignee": "other@flowbase.io"}
         )
 
 
 def test_claims_are_labelled_workspace_unless_configured() -> None:
+    workspace_label = LabelName("workspace")
     settings = settings_with_fake_workspace(issues={"tracker": "linear"})
-    Assert.that(settings.claims).matches(ClaimSettings(label=LabelName("workspace")))
+    Assert.that(settings.claims).matches(ClaimSettings(label=workspace_label))
 
 
 def test_a_configured_claim_label_is_read() -> None:
+    claimed = LabelName("claimed")
     settings = settings_with_fake_workspace(
-        issues={"tracker": "linear"}, claims={"label": "claimed"}
+        issues={"tracker": "linear"}, claims={"label": claimed.root}
     )
-    Assert.that(settings.claims.label).matches(LabelName("claimed"))
+    Assert.that(settings.claims.label).matches(claimed)
 
 
 def test_a_configured_pool_names_its_view() -> None:
-    settings = settings_with_fake_workspace(
-        issues={"tracker": "linear"}, pool={"view": "4efb86b38740"}
-    )
-    Assert.that(settings.pool).matches(PoolSettings(view=ViewSlug("4efb86b38740")))
+    view = ViewSlug("4efb86b38740")
+    settings = settings_with_fake_workspace(issues={"tracker": "linear"}, pool={"view": view.root})
+    Assert.that(settings.pool).matches(PoolSettings(view=view))
 
 
 def test_a_configured_skip_limits_label_is_read() -> None:
+    expedite = LabelName("expedite")
     settings = settings_with_fake_workspace(
         issues={"tracker": "linear"},
-        pool={"view": "4efb86b38740", "skip_limits_label": "expedite"},
+        pool={"view": "4efb86b38740", "skip_limits_label": expedite.root},
     )
-    Assert.that(settings.required_pool().skip_limits_label).matches(LabelName("expedite"))
+    Assert.that(settings.required_pool().skip_limits_label).matches(expedite)
 
 
 def test_a_pool_outside_linear_is_refused() -> None:
-    with pytest.raises(ValueError, match="pool"):
+    pool_table = "pool"
+    with pytest.raises(ValueError, match=pool_table):
         _ = settings_with_fake_workspace(
             issues={"tracker": "todoist", "project_tag": "it-mb-workflow"},
             pool={"view": "4efb86b38740"},
@@ -409,7 +428,8 @@ def test_a_pool_outside_linear_is_refused() -> None:
 
 def test_draining_without_a_pool_is_refused() -> None:
     settings = settings_with_fake_workspace(issues={"tracker": "linear"})
-    with pytest.raises(InvalidConfigError, match=r"\[pool\] view"):
+    pool_view = r"\[pool\] view"
+    with pytest.raises(InvalidConfigError, match=pool_view):
         _ = settings.required_pool()
 
 
@@ -421,6 +441,8 @@ def test_a_pool_without_limits_takes_the_default_limits() -> None:
 
 
 def test_the_pool_limits_table_sets_the_limits(tmp_path: Path) -> None:
+    total, qa_limit, refactor_limit = Limit(6), Limit(2), Limit(1)
+    default_grill_limit = Limit(1)
     _ = (tmp_path / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
@@ -428,16 +450,17 @@ def test_the_pool_limits_table_sets_the_limits(tmp_path: Path) -> None:
         'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
         '[pool]\nview = "4efb86b38740"\n'
-        "[pool.limits]\ntotal = 6\n[pool.limits.states]\nQA = 2\n[pool.limits.labels]\nrefactor = 1\n"
+        f"[pool.limits]\ntotal = {total.root}\n[pool.limits.states]\nQA = {qa_limit.root}\n"
+        f"[pool.limits.labels]\nrefactor = {refactor_limit.root}\n"
     )
     resolved = Configuration.resolved(
         WorkingDirectory(tmp_path), ConfigFileName.fake(), NoOverrideFile.fake()
     ).unwrap()
     Assert.that(resolved.settings.required_pool().limits).matches(
         PoolLimits(
-            total=Limit(6),
-            states={StateName("grill"): Limit(1), StateName("qa"): Limit(2)},
-            labels={LabelName("refactor"): Limit(1)},
+            total=total,
+            states={StateName("grill"): default_grill_limit, StateName("qa"): qa_limit},
+            labels={LabelName("refactor"): refactor_limit},
         )
     )
 
@@ -452,7 +475,8 @@ def test_a_limit_on_a_state_outside_the_chart_is_a_config_error(tmp_path: Path) 
         '[pool]\nview = "4efb86b38740"\n'
         "[pool.limits.states]\nSpecced = 1\n"
     )
-    with pytest.raises(InvalidConfigError, match="Specced"):
+    specced = "Specced"
+    with pytest.raises(InvalidConfigError, match=specced):
         _ = Configuration.resolved(
             WorkingDirectory(tmp_path), ConfigFileName.fake(), NoOverrideFile.fake()
         ).unwrap()
@@ -461,18 +485,19 @@ def test_a_limit_on_a_state_outside_the_chart_is_a_config_error(tmp_path: Path) 
 def test_the_ticket_statuses_table_maps_each_flow_state_to_a_ticket_status(
     tmp_path: Path,
 ) -> None:
+    ready_for_release = IssueStatusName("Ready For Release")
     _ = (tmp_path / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
-        'merging = "Ready For Release"\nmerged = "Done"\n'
+        f'merging = "{ready_for_release.root}"\nmerged = "Done"\n'
     )
     resolved = Configuration.resolved(
         WorkingDirectory(tmp_path), ConfigFileName.fake(), NoOverrideFile.fake()
     ).unwrap()
     Assert.that(resolved.settings.ticket_statuses.of(StateName("merging"))).matches(
-        IssueStatusName("Ready For Release")
+        ready_for_release
     )
 
 
@@ -486,14 +511,16 @@ def test_a_ticket_statuses_table_with_a_gap_is_a_config_error_naming_the_state(
         'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
         'merged = "Done"\n'
     )
-    with pytest.raises(InvalidConfigError, match="lacks merging"):
+    missing_merging = "lacks merging"
+    with pytest.raises(InvalidConfigError, match=missing_merging):
         _ = Configuration.resolved(
             WorkingDirectory(tmp_path), ConfigFileName.fake(), NoOverrideFile.fake()
         ).unwrap()
 
 
 def test_a_configuration_without_a_ticket_statuses_table_is_refused() -> None:
-    with pytest.raises(ValueError, match="ticket_statuses"):
+    ticket_statuses_table = "ticket_statuses"
+    with pytest.raises(ValueError, match=ticket_statuses_table):
         _ = Settings.model_validate(
             {
                 "issues": {"tracker": "linear"},
@@ -510,9 +537,10 @@ def test_an_override_file_sets_one_nested_key_and_keeps_its_siblings(tmp_path: P
         'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
     )
+    mine = Assignee("me@example.com")
     override = OverrideFile(
         path=OverridePath.fake(),
-        table=SettingsTable({"workspace": {"assignee": "me@example.com"}}),
+        table=SettingsTable({"workspace": {"assignee": mine.root}}),
     )
 
     resolved = Configuration.resolved(
@@ -520,16 +548,15 @@ def test_an_override_file_sets_one_nested_key_and_keeps_its_siblings(tmp_path: P
     ).unwrap()
 
     Assert.that(resolved.settings.workspace).matches(
-        WorkspaceSettings(
-            orca_project=WorkspaceSettings.fake().orca_project, assignee=Assignee("me@example.com")
-        )
+        WorkspaceSettings(orca_project=WorkspaceSettings.fake().orca_project, assignee=mine)
     )
 
 
 def test_an_override_making_the_configuration_invalid_is_an_error_naming_both_files(
     tmp_path: Path,
 ) -> None:
-    _ = (tmp_path / "mb-workflow.toml").write_text(
+    repo_file = tmp_path / "mb-workflow.toml"
+    _ = repo_file.write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
@@ -543,7 +570,7 @@ def test_an_override_making_the_configuration_invalid_is_an_error_naming_both_fi
     resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake(), override)
 
     error = Assert.that(resolved.error).is_instance(InvalidConfigError)
-    Assert.that(str(error)).contains(str(tmp_path / "mb-workflow.toml"))
+    Assert.that(str(error)).contains(str(repo_file))
     Assert.that(str(error)).contains(str(OverridePath.fake().root))
 
 
@@ -555,13 +582,14 @@ def test_an_override_may_supply_a_setting_the_repository_file_lacks(tmp_path: Pa
         'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
     )
+    mine = Assignee("me@example.com")
     override = OverrideFile(
-        path=OverridePath.fake(), table=SettingsTable({"workspace": {"assignee": "me@example.com"}})
+        path=OverridePath.fake(), table=SettingsTable({"workspace": {"assignee": mine.root}})
     )
 
     resolved = Configuration.resolved(WorkingDirectory(tmp_path), ConfigFileName.fake(), override)
 
-    Assert.that(resolved.unwrap().settings.workspace.assignee).matches(Assignee("me@example.com"))
+    Assert.that(resolved.unwrap().settings.workspace.assignee).matches(mine)
 
 
 def test_an_override_state_limit_in_another_casing_limits_the_chart_state(

@@ -23,8 +23,9 @@ def test_a_linked_worktree_yields_its_issue() -> None:
 
 
 def test_an_unlinked_worktree_points_to_mw_link() -> None:
+    remedy = "mw link"
     unlinked = Worktree.fake().model_copy(update={"issue": None})
-    with pytest.raises(UnlinkedWorktreeError, match="mw link"):
+    with pytest.raises(UnlinkedWorktreeError, match=remedy):
         _ = unlinked.linked_issue()
 
 

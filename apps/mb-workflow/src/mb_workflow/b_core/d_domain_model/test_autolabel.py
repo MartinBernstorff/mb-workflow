@@ -125,5 +125,7 @@ def test_a_ledger_does_not_record_an_issue_it_has_not_seen() -> None:
 
 
 def test_extending_a_ledger_keeps_each_issue_once() -> None:
-    extended = ledger().extended((IssueIdentifier("E-10"), IssueIdentifier("E-4")))
-    Assert.that(extended).matches(Ledger((IssueIdentifier("E-10"), IssueIdentifier("E-4"))))
+    recorded = IssueIdentifier("E-10")
+    unseen = IssueIdentifier("E-4")
+    extended = ledger().extended((recorded, unseen))
+    Assert.that(extended).matches(Ledger((recorded, unseen)))

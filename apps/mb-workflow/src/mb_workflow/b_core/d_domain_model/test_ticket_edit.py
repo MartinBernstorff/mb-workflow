@@ -218,10 +218,11 @@ def test_setting_and_removing_the_milestone_together_are_refused() -> None:
 
 
 def test_label_flags_split_on_commas() -> None:
-    flags = LabelNames((LabelName("Backend, d-grill"), LabelName("d-implement")))
-    Assert.that(flags.split()).matches(
-        LabelNames((LabelName("Backend"), LabelName("d-grill"), LabelName("d-implement")))
-    )
+    backend = LabelName("Backend")
+    d_grill = LabelName("d-grill")
+    d_implement = LabelName("d-implement")
+    flags = LabelNames((LabelName(f"{backend.root}, {d_grill.root}"), d_implement))
+    Assert.that(flags.split()).matches(LabelNames((backend, d_grill, d_implement)))
 
 
 def test_a_state_sets_its_flow_label_and_status() -> None:
