@@ -2,19 +2,20 @@ language: "python"
 stack: "backend"
 layer: "application"
 
-# The tests import mb-assertions from source, so its changes must invalidate the cached runs.
-dependsOn:
-  - "mb-assertions"
+fileGroups:
+  # The tests import mb-assertions from source, so its changes must invalidate the cached runs.
+  assertions:
+    - "/apps/mb-assertions/src/**/*.py"
 
 tasks:
   test:
     inputs:
       - "raise-baseline/*.txt"
-      - "/apps/mb-assertions/src/**/*.py"
+      - "@group(assertions)"
 
   types:
     inputs:
-      - "/apps/mb-assertions/src/**/*.py"
+      - "@group(assertions)"
 
   # Serial, because every test rewrites the same seeded issues in the integration-test workspace.
   test-linear-live:
