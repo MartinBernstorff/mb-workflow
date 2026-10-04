@@ -1,5 +1,5 @@
 from datetime import date, timedelta
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import TYPE_CHECKING
 
 from mb_workflow.d_lib.models import Model, Value
@@ -277,6 +277,15 @@ class Projects(Value[tuple[Project, ...]]):
 
     def matching(self, project: ProjectName) -> Project | None:
         return next((known for known in self.root if known.name.names(project).root), None)
+
+
+# Numbered as Linear numbers them, so tickets read their priority without translation.
+class Priority(IntEnum):
+    no_priority = 0
+    urgent = 1
+    high = 2
+    medium = 3
+    low = 4
 
 
 class IssueDetail(Model):

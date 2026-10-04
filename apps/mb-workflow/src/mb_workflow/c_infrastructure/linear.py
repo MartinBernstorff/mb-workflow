@@ -39,12 +39,13 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Milestone,
     MilestoneName,
     NewIssue,
+    Priority,
     ProjectName,
     TeamKey,
     TeamName,
     TicketCount,
 )
-from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority
+from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets
 from mb_workflow.d_lib.models import Payload, Value
 
 if TYPE_CHECKING:

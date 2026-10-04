@@ -1,7 +1,7 @@
 from mb_workflow.b_core.b_domain_services.pick_order import in_pick_order
 from mb_workflow.b_core.c_secondary_ports.tie_break import ReversingTieBreak
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, LabelNames
-from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName, LabelNames, Priority
+from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets
 
 
 def ticket(

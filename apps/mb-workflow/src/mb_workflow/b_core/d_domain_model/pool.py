@@ -1,4 +1,3 @@
-from enum import IntEnum
 from typing import TYPE_CHECKING
 
 from pydantic import Field, JsonValue, NonNegativeInt, field_validator, model_validator
@@ -20,6 +19,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Issues,
     LabelName,
     LabelNames,
+    Priority,
 )
 from mb_workflow.d_lib.models import Model, Value
 
@@ -34,15 +34,6 @@ class ViewSlug(Value[str]):
     @staticmethod
     def fake() -> ViewSlug:
         return ViewSlug("4efb86b38740")
-
-
-# Numbered as Linear numbers them, so a view's tickets read their priority without translation.
-class Priority(IntEnum):
-    no_priority = 0
-    urgent = 1
-    high = 2
-    medium = 3
-    low = 4
 
 
 class Ready(Value[bool]):

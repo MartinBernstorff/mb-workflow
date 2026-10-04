@@ -34,6 +34,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Milestone,
     MilestoneName,
     NewIssue,
+    Priority,
     Project,
     ProjectName,
     Projects,
@@ -44,7 +45,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     TeamName,
     TicketCount,
 )
-from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, Priority, ViewSlug
+from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, ViewSlug
 from mb_workflow.d_lib.logging import Activity
 from mb_workflow.d_lib.models import Model
 

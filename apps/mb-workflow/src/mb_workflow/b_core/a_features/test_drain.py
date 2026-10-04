@@ -42,6 +42,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueStatusName,
     LabelName,
     LabelNames,
+    Priority,
     StatusType,
 )
 from mb_workflow.b_core.d_domain_model.pool import (
@@ -49,7 +50,6 @@ from mb_workflow.b_core.d_domain_model.pool import (
     PoolLimits,
     PoolTicket,
     PoolTickets,
-    Priority,
     Refusal,
 )
 from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
