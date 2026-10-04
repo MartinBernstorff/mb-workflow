@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
+    from mb_workflow.b_core.d_domain_model.workspace import Worktree
 
 
 # A workspace manager error, so the board's refusals travel the status store's error channel.
@@ -139,14 +140,16 @@ class WorkspaceBoard(WorkspaceStatusStore):
         manager: WorkspaceManager,
         columns: Callable[[], Result[Columns, WorkspaceManagerError]],
         start: StateName,
+        locate_worktree: Callable[[], Result[Worktree, WorkspaceManagerError]],
     ) -> None:
         self._manager = manager
         self._read_columns = columns
         self._start = start
+        self._locate_worktree = locate_worktree
 
     @staticmethod
     def of_orca(orca: Orca, start: StateName) -> WorkspaceBoard:
-        return WorkspaceBoard(orca, lambda: WorkspaceBoard.columns_of(orca), start)
+        return WorkspaceBoard(orca, lambda: WorkspaceBoard.columns_of(orca), start, orca.current)
 
     @staticmethod
     def columns_of(orca: Orca) -> Result[Columns, WorkspaceManagerError]:
@@ -155,6 +158,9 @@ class WorkspaceBoard(WorkspaceStatusStore):
                 return Columns.parse(refusal)
             case Err() as failed:
                 return failed
+
+    def at(self, worktree: Worktree) -> WorkspaceBoard:
+        return WorkspaceBoard(self._manager, self._read_columns, self._start, lambda: Ok(worktree))
 
     # Read on first use, so a command that never touches the board never asks Orca for its columns.
     @cached_property
@@ -168,7 +174,7 @@ class WorkspaceBoard(WorkspaceStatusStore):
                 pass
             case Err() as unread:
                 return unread
-        match self._manager.current():
+        match self._locate_worktree():
             case Ok(here):
                 return Ok(columns.state_of(here.status, self._start))
             case Err() as failed:
@@ -176,7 +182,7 @@ class WorkspaceBoard(WorkspaceStatusStore):
 
     @override
     def write(self, state: StateName) -> Result[None, WorkspaceManagerError]:
-        match self._manager.current():
+        match self._locate_worktree():
             case Ok(here):
                 pass
             case Err() as failed:

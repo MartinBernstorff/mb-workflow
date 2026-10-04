@@ -1,0 +1,50 @@
+source_roots = ["src"]
+ignore_type_checking_imports = false
+
+# Tests sit beside the code they cover, so each layer also owns their imports.
+[[modules]]
+path = "hemolint"
+depends_on = ["hemolint.a_presentation"]
+
+[[modules]]
+path = "hemolint.a_presentation"
+depends_on = [
+    "hemolint.b_core.a_features",
+    "hemolint.b_core.c_secondary_ports",
+    "hemolint.b_core.d_domain_model",
+    "hemolint.c_infrastructure",
+    "hemolint.d_lib",
+]
+
+[[modules]]
+path = "hemolint.b_core"
+depends_on = []
+
+[[modules]]
+path = "hemolint.b_core.a_features"
+depends_on = [
+    "hemolint.b_core.c_secondary_ports",
+    "hemolint.b_core.d_domain_model",
+    "hemolint.d_lib",
+]
+
+# Any layer may reach the secondary ports; they reach nothing but the domain model.
+[[modules]]
+path = "hemolint.b_core.c_secondary_ports"
+depends_on = ["hemolint.b_core.d_domain_model", "hemolint.d_lib"]
+
+[[modules]]
+path = "hemolint.b_core.d_domain_model"
+depends_on = ["hemolint.d_lib"]
+
+[[modules]]
+path = "hemolint.c_infrastructure"
+depends_on = [
+    "hemolint.b_core.c_secondary_ports",
+    "hemolint.b_core.d_domain_model",
+    "hemolint.d_lib",
+]
+
+[[modules]]
+path = "hemolint.d_lib"
+depends_on = []

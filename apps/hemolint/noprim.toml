@@ -1,0 +1,4 @@
+exempt-typer-args = true
+
+# The cli package is the Typer boundary: Typer can only bind primitives, and every param there is wrapped into a domain type on the first line of the body.
+exclude = ["src/hemolint/a_presentation/cli"]
