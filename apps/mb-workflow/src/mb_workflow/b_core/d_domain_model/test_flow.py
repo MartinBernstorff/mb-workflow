@@ -154,9 +154,10 @@ def test_an_illegal_event_names_the_current_state_and_the_events_legal_from_it()
 
 
 def test_an_illegal_event_suggests_forcing_it() -> None:
+    suggestion = r"Use --force to do it anyway\.$"
     refused = Edges.of_chart(WorkflowChart).target_from(GRILL, EventName("merge"))
     error = Assert.that(refused.error).is_instance(FlowError)
-    Assert.that(str(error)).matches_pattern(r"Use --force to do it anyway\.$")
+    Assert.that(str(error)).matches_pattern(suggestion)
 
 
 def test_an_event_outside_the_chart_is_illegal_from_every_state() -> None:
