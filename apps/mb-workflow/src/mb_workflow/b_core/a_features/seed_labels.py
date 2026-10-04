@@ -1,10 +1,12 @@
+import logging
 from typing import TYPE_CHECKING
 
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.d_domain_model.flow_labels import GroupSync
 from mb_workflow.b_core.d_domain_model.issue import LabelGroupName, LabelNames, TeamKey
-from mb_workflow.d_lib.models import Model
+from mb_workflow.d_lib.logging import Activity
+from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_transition import Force
@@ -17,6 +19,9 @@ if TYPE_CHECKING:
         ColoredLabels,
         TeamName,
     )
+
+
+logger = logging.getLogger(__name__)
 
 
 class PendingLabelChangesError(Exception):
@@ -56,6 +61,22 @@ class PlannedGroup(Model):
     def fake() -> PlannedGroup:
         return PlannedGroup(team=TeamKey.fake(), sync=GroupSync.fake())
 
+    def place(self, group: LabelGroupName) -> GroupPlace:
+        return GroupPlace.of(group, self.team)
+
+
+# Where a label group lives, worded for a log line or an error.
+class GroupPlace(Value[str]):
+    @staticmethod
+    def fake() -> GroupPlace:
+        return GroupPlace("the workspace's flowy group")
+
+    @staticmethod
+    def of(group: LabelGroupName, team: TeamKey | None) -> GroupPlace:
+        if team is None:
+            return GroupPlace(f"the workspace's {group.root} group")
+        return GroupPlace(f"the {group.root} group of team {team.root}")
+
 
 class FlowLabelSeeding:
     # A complete workspace-level group already serves every team, so seeding a team beside it would only shadow it.
@@ -64,13 +85,16 @@ class FlowLabelSeeding:
     def seed_flow_labels(
         tracker: TicketTracker, wanted: FlowLabels, team: TeamName, force: Force
     ) -> Result[CoveredByWorkspace | SeededTeam, TicketTrackerError | PendingLabelChangesError]:
-        key = tracker.team_named(team)
+        with Activity(f"Looking up team {team.root}").logged(logger):
+            key = tracker.team_named(team)
         if isinstance(key, Err):
             return key
-        workspace = tracker.group_labels(wanted.group, None)
+        with Activity(f"Reading {GroupPlace.of(wanted.group, None).root}").logged(logger):
+            workspace = tracker.group_labels(wanted.group, None)
         if isinstance(workspace, Err):
             return workspace
-        held = tracker.group_labels(wanted.group, key.value)
+        with Activity(f"Reading {GroupPlace.of(wanted.group, key.value).root}").logged(logger):
+            held = tracker.group_labels(wanted.group, key.value)
         if isinstance(held, Err):
             return held
         workspace_sync = wanted.sync_plan(workspace.value)
@@ -96,7 +120,11 @@ class FlowLabelSeeding:
             else FlowLabelSeeding.missing_labels(wanted, workspace.value, held.value)
         )
         if missing.root:
-            tracker.create_group_labels(wanted.group, wanted.colored(missing), key.value)
+            with Activity(
+                f"Creating {', '.join(label.root for label in missing.root)}"
+                f" in {GroupPlace.of(wanted.group, key.value).root}"
+            ).logged(logger):
+                tracker.create_group_labels(wanted.group, wanted.colored(missing), key.value)
         return Ok(SeededTeam(created=missing, workspace=workspace_sync, team=team_sync))
 
     @staticmethod
@@ -126,11 +154,7 @@ class FlowLabelSeeding:
     ) -> Result[None, TicketTrackerError | PendingLabelChangesError]:
         pending: list[str] = []
         for plan in plans:
-            place = (
-                f"the workspace's {group.root} group"
-                if plan.team is None
-                else f"the {group.root} group of team {plan.team.root}"
-            )
+            place = plan.place(group).root
             changes = (
                 *(
                     (rename.held, f"Rename {rename.held.root} to {rename.renamed.root} in {place}")
@@ -139,7 +163,8 @@ class FlowLabelSeeding:
                 *((label, f"Delete {label.root} from {place}") for label in plan.sync.deleted.root),
             )
             for label, change in changes:
-                counted = tracker.labelled_ticket_count(group, label, plan.team)
+                with Activity(f"Counting the tickets that carry {label.root}").logged(logger):
+                    counted = tracker.labelled_ticket_count(group, label, plan.team)
                 if isinstance(counted, Err):
                     return counted
                 tickets = counted.value.root
@@ -158,18 +183,27 @@ class FlowLabelSeeding:
     def apply_sync(
         tracker: TicketTracker, wanted: FlowLabels, plan: PlannedGroup
     ) -> Result[None, TicketTrackerError]:
+        place = plan.place(wanted.group).root
         for rename in plan.sync.renamed.root:
-            renamed = tracker.rename_group_label(
-                wanted.group, rename.held, rename.renamed, plan.team
-            )
+            with Activity(
+                f"Renaming {rename.held.root} to {rename.renamed.root} in {place}"
+            ).logged(logger):
+                renamed = tracker.rename_group_label(
+                    wanted.group, rename.held, rename.renamed, plan.team
+                )
             if isinstance(renamed, Err):
                 return renamed
         for label in plan.sync.deleted.root:
-            deleted = tracker.delete_group_label(wanted.group, label, plan.team)
+            with Activity(f"Deleting {label.root} from {place}").logged(logger):
+                deleted = tracker.delete_group_label(wanted.group, label, plan.team)
             if isinstance(deleted, Err):
                 return deleted
         if plan.sync.recolored.root:
-            tracker.recolor_group_labels(
-                wanted.group, wanted.colored(plan.sync.recolored), plan.team
-            )
+            with Activity(
+                f"Recoloring {', '.join(label.root for label in plan.sync.recolored.root)}"
+                f" in {place}"
+            ).logged(logger):
+                tracker.recolor_group_labels(
+                    wanted.group, wanted.colored(plan.sync.recolored), plan.team
+                )
         return Ok(None)
