@@ -15,6 +15,7 @@ from mb_workflow.c_infrastructure.credentials import (
     HomeDirectory,
     RemoteUrl,
     RepositorySlug,
+    UnreadableRemoteError,
 )
 from mb_workflow.c_infrastructure.linear import LinearApiKey
 from mb_workflow.c_infrastructure.project_override import override_at, override_of_origin
@@ -90,7 +91,7 @@ def test_a_repository_without_an_origin_remote_has_no_override_file(tmp_path: Pa
     assert found == Ok(NoOverrideFile(expected=None))
 
 
-def test_an_origin_without_an_owner_is_an_error_value(tmp_path: Path) -> None:
+def test_an_origin_without_an_owner_is_an_unreadable_remote(tmp_path: Path) -> None:
     _ = subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
     _ = subprocess.run(("git", "remote", "add", "origin", "mb-workflow"), cwd=tmp_path, check=True)
     directory = CredentialsDirectory.of_home(HomeDirectory(tmp_path / "home"))
@@ -98,4 +99,4 @@ def test_an_origin_without_an_owner_is_an_error_value(tmp_path: Path) -> None:
     found = override_of_origin(directory, Shell(ExistingDirectory(tmp_path)))
 
     assert isinstance(found, Err)
-    assert isinstance(found.error, InvalidOverrideError)
+    assert isinstance(found.error, UnreadableRemoteError)

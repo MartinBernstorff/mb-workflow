@@ -16,6 +16,7 @@ from mb_workflow.c_infrastructure.credentials import (
     CredentialTables,
     NoOriginError,
     RepositorySlug,
+    RepositorySlugError,
 )
 
 if TYPE_CHECKING:
@@ -43,11 +44,11 @@ def override_at(path: OverridePath) -> Result[ProjectOverride, InvalidOverrideEr
 
 def override_of_origin(
     directory: CredentialsDirectory, runner: CommandRunner
-) -> Result[ProjectOverride, InvalidOverrideError]:
+) -> Result[ProjectOverride, InvalidOverrideError | RepositorySlugError]:
     match RepositorySlug.of_origin(runner):
         case Ok(repository):
             return override_at(OverridePath(directory.path_for(repository).root))
         case Err(NoOriginError()):
             return Ok(NoOverrideFile(expected=None))
-        case Err(error):
-            return Err(InvalidOverrideError(str(error)))
+        case Err() as failed:
+            return failed
