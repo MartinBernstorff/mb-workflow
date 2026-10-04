@@ -12,6 +12,7 @@ from pydantic_settings import (
 )
 from safe_result import Err, Ok, Result, safe_with
 
+from mb_workflow.b_core.d_domain_model.config_override import SettingsTable
 from mb_workflow.c_infrastructure.linear import LinearApiKey
 from mb_workflow.c_infrastructure.shell import Command, CommandRunner
 from mb_workflow.d_lib.models import Model, Value
@@ -91,6 +92,13 @@ class ProjectCredentials(BaseSettings):
     def fake() -> ProjectCredentials:
         return ProjectCredentials(linear=LinearCredentials.fake())
 
+    @staticmethod
+    def of_table(table: SettingsTable) -> Result[ProjectCredentials, ValidationError]:
+        credential_tables = CredentialTables.of_credentials().root
+        return safe_with(ValidationError)(ProjectCredentials)(
+            **{key: value for key, value in table.root.items() if key in credential_tables}
+        )
+
     # The file is the one source, so a stray environment variable cannot shadow a project's key.
     @override
     @classmethod
@@ -128,11 +136,8 @@ class CredentialsPath(Value[Path]):
                     f'No credentials at {self.root}. Create it with:\n[linear]\napi_key = "lin_api_…"'
                 )
             )
-        table = TomlConfigSettingsSource(ProjectCredentials, self.root)()
-        credential_tables = CredentialTables.of_credentials().root
-        match safe_with(ValidationError)(ProjectCredentials)(
-            **{key: value for key, value in table.items() if key in credential_tables}
-        ):
+        table = SettingsTable(TomlConfigSettingsSource(ProjectCredentials, self.root)())
+        match ProjectCredentials.of_table(table):
             case Ok(credentials):
                 return Ok(credentials)
             case Err(error):

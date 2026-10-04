@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 import pytest
 from safe_result import Err, Ok
 
+from mb_workflow.b_core.d_domain_model.config_override import SettingsTable
 from mb_workflow.c_infrastructure.credentials import (
     CredentialsDirectory,
     InvalidCredentialsError,
@@ -69,7 +70,18 @@ def test_a_project_without_a_credentials_file_is_refused(tmp_path: Path) -> None
     assert isinstance(read.error, MissingCredentialsError)
 
 
-def test_a_credentials_file_without_a_linear_key_is_refused(tmp_path: Path) -> None:
+def test_credentials_without_a_linear_key_are_refused() -> None:
+    assert isinstance(ProjectCredentials.of_table(SettingsTable({"linear": {}})), Err)
+
+
+def test_project_settings_beside_the_credentials_are_not_credentials() -> None:
+    table = SettingsTable(
+        {"linear": {"api_key": LinearApiKey.fake().root}} | SettingsTable.fake().root
+    )
+    assert ProjectCredentials.of_table(table) == Ok(ProjectCredentials.fake())
+
+
+def test_an_invalid_credentials_file_is_refused(tmp_path: Path) -> None:
     path = CredentialsDirectory(tmp_path).path_for(RepositorySlug.fake())
     path.root.parent.mkdir(parents=True)
     _ = path.root.write_text("[linear]\n")
@@ -77,13 +89,3 @@ def test_a_credentials_file_without_a_linear_key_is_refused(tmp_path: Path) -> N
     read = path.credentials()
     assert isinstance(read, Err)
     assert isinstance(read.error, InvalidCredentialsError)
-
-
-def test_project_settings_beside_the_credentials_are_not_credentials(tmp_path: Path) -> None:
-    path = CredentialsDirectory(tmp_path).path_for(RepositorySlug.fake())
-    path.root.parent.mkdir(parents=True)
-    _ = path.root.write_text(
-        f'[linear]\napi_key = "{LinearApiKey.fake().root}"\n[workspace]\nassignee = "me@x.com"\n'
-    )
-
-    assert path.credentials() == Ok(ProjectCredentials.fake())
