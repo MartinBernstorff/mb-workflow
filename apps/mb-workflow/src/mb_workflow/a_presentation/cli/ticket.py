@@ -40,7 +40,7 @@ class PriorityChoice(StrEnum):
     medium = "medium"
     low = "low"
 
-    def priority(self) -> Priority:
+    def to_priority(self) -> Priority:
         return Priority[self.name]
 
 
@@ -72,7 +72,7 @@ def ticket_create(
         None, "--project", "-p", help="Add the ticket to a project, overriding the config."
     ),
     priority: PriorityChoice | None = typer.Option(
-        None, "--priority", help="Set the priority.", case_sensitive=False
+        None, "--priority", help='Set the priority. Use "none" to clear it.', case_sensitive=False
     ),
     blocks: list[str] = typer.Option([], "--blocks", help="Mark the ticket as blocking an issue."),
     blocked_by: list[str] = typer.Option(
@@ -89,7 +89,7 @@ def ticket_create(
         assignee=Assignee.from_nullable(assignee),
         project=ProjectName.from_nullable(project),
         milestone=MilestoneName.from_nullable(milestone),
-        priority=priority.priority() if priority is not None else None,
+        priority=priority.to_priority() if priority is not None else None,
         blocks=tuple(map(IssueIdentifier, blocks)),
         blocked_by=tuple(map(IssueIdentifier, blocked_by)),
     )
@@ -136,7 +136,7 @@ def ticket_edit(
         False, "--remove-milestone", help="Remove the milestone."
     ),
     priority: PriorityChoice | None = typer.Option(
-        None, "--priority", help="Set the priority.", case_sensitive=False
+        None, "--priority", help='Set the priority. Use "none" to clear it.', case_sensitive=False
     ),
     add_blocks: list[str] = typer.Option(
         [], "--add-blocks", help="Mark the ticket as blocking an issue."
@@ -160,7 +160,7 @@ def ticket_edit(
         state=StateName.from_nullable(state),
         milestone=MilestoneName.from_nullable(milestone),
         remove_milestone=RemoveMilestone(remove_milestone),
-        priority=priority.priority() if priority is not None else None,
+        priority=priority.to_priority() if priority is not None else None,
         add_blocks=tuple(map(IssueIdentifier, add_blocks)),
         add_blocked_by=tuple(map(IssueIdentifier, add_blocked_by)),
     )

@@ -110,8 +110,9 @@ def test_a_flow_label_among_the_labels_is_refused() -> None:
 
 
 def test_the_priority_carries_over() -> None:
-    draft = TicketDraft.fake().model_copy(update={"priority": Priority.high})
-    assert drafted(draft).unwrap().priority == Priority.high
+    high = Priority.high
+    draft = TicketDraft.fake().model_copy(update={"priority": high})
+    assert drafted(draft).unwrap().priority == high
 
 
 def test_a_ticket_without_a_priority_leaves_it_unset() -> None:

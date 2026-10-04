@@ -73,11 +73,12 @@ def test_editing_a_ticket_swaps_labels() -> None:
 
 def test_editing_a_ticket_sets_the_priority() -> None:
     tracker = tracking()
-    edit = TicketEdit.nothing().model_copy(update={"priority": Priority.urgent})
+    urgent = Priority.urgent
+    edit = TicketEdit.nothing().model_copy(update={"priority": urgent})
     _ = TicketEditor.apply_edit(
         tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
     ).unwrap()
-    assert tracker.read_issue_detail(IssueIdentifier.fake()).unwrap().priority == Priority.urgent
+    assert tracker.read_issue_detail(IssueIdentifier.fake()).unwrap().priority == urgent
 
 
 def test_editing_an_unknown_ticket_fails() -> None:

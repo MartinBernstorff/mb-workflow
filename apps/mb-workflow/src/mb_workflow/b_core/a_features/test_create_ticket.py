@@ -124,6 +124,7 @@ def test_a_flow_label_passed_as_a_label_creates_no_ticket() -> None:
 
 def test_a_created_ticket_takes_the_drafted_priority() -> None:
     tracker = tracking()
-    draft = TicketDraft.fake().model_copy(update={"priority": Priority.low})
+    low = Priority.low
+    draft = TicketDraft.fake().model_copy(update={"priority": low})
     identifier = created(tracker, draft)
-    assert tracker.read_issue_detail(identifier).unwrap().priority == Priority.low
+    assert tracker.read_issue_detail(identifier).unwrap().priority == low

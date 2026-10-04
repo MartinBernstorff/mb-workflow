@@ -1372,23 +1372,21 @@ def test_an_update_can_clear_the_milestone(tracker: TicketTracker, backlog: Back
 
 
 def test_an_update_sets_the_priority(tracker: TicketTracker, backlog: Backlog) -> None:
+    urgent = Priority.urgent
     tracker.update_issue(
         backlog.identifier(Seed.newest),
-        IssueUpdate.nothing().model_copy(update={"priority": Priority.urgent}),
+        IssueUpdate.nothing().model_copy(update={"priority": urgent}),
     ).unwrap()
-    assert tracker.read_issue_detail(backlog.identifier(Seed.newest)).unwrap().priority == (
-        Priority.urgent
-    )
+    assert tracker.read_issue_detail(backlog.identifier(Seed.newest)).unwrap().priority == urgent
 
 
 def test_an_update_can_clear_the_priority(tracker: TicketTracker, backlog: Backlog) -> None:
+    cleared = Priority.no_priority
     tracker.update_issue(
         backlog.identifier(Seed.old),
-        IssueUpdate.nothing().model_copy(update={"priority": Priority.no_priority}),
+        IssueUpdate.nothing().model_copy(update={"priority": cleared}),
     ).unwrap()
-    assert tracker.read_issue_detail(backlog.identifier(Seed.old)).unwrap().priority == (
-        Priority.no_priority
-    )
+    assert tracker.read_issue_detail(backlog.identifier(Seed.old)).unwrap().priority == cleared
 
 
 def test_an_unknown_milestone_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:

@@ -306,7 +306,8 @@ def test_a_relation_named_twice_is_added_once() -> None:
 
 
 def test_a_priority_edit_changes_only_the_priority() -> None:
-    edit = TicketEdit.nothing().model_copy(update={"priority": Priority.urgent})
+    urgent = Priority.urgent
+    edit = TicketEdit.nothing().model_copy(update={"priority": urgent})
     assert edit.update(
         IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake()
-    ) == IssueUpdate.nothing().model_copy(update={"priority": Priority.urgent})
+    ) == IssueUpdate.nothing().model_copy(update={"priority": urgent})
