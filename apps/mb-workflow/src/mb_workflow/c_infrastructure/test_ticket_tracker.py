@@ -65,6 +65,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     Team,
     TeamKey,
     TeamName,
+    TicketCount,
 )
 from mb_workflow.b_core.d_domain_model.pool import PoolTicket, Priority, ViewSlug
 from mb_workflow.c_infrastructure.credentials import CredentialsDirectory, RepositorySlug
@@ -292,9 +293,9 @@ def fake_backlog() -> Backlog:
 @pytest.fixture(scope="session")
 def linear_client() -> LinearClient:
     path = CredentialsDirectory.of_user().path_for(
-        RepositorySlug.of_origin(Shell(ExistingDirectory(Path.cwd())))
+        RepositorySlug.of_origin(Shell(ExistingDirectory(Path.cwd()))).unwrap()
     )
-    key = path.credentials().linear.integration_test_api_key
+    key = path.credentials().unwrap().linear.integration_test_api_key
     if key is None:
         pytest.fail(f"Set [linear] integration_test_api_key in {path.root}.")
     client = LinearClient(api_key=key.root)
@@ -703,6 +704,122 @@ def test_recoloring_a_label_the_group_lacks_is_refused(
     yellow = ColoredLabels((ColoredLabel(name=GRILLING, color=LabelColor.yellow()),))
     with pytest.raises(TicketTrackerError, match=GRILLING.root):
         groupless.recolor_group_labels(LabelGroupName.fake(), yellow, backlog.team)
+
+
+def test_a_renamed_label_reads_back_its_new_name(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
+    )
+    renamed = LabelName("qa")
+    groupless.rename_group_label(LabelGroupName.fake(), QA, renamed, backlog.team).unwrap()
+    assert groupless.group_labels(
+        LabelGroupName.fake(), backlog.team
+    ).unwrap().label_names() == LabelNames((renamed,))
+
+
+def test_a_renamed_label_stays_on_its_tickets(groupless: TicketTracker, backlog: Backlog) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), None
+    )
+    groupless.add_label(backlog.identifier(Seed.done), QA)
+    renamed = LabelName("qa")
+    groupless.rename_group_label(LabelGroupName.fake(), QA, renamed, None).unwrap()
+    assert renamed in groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels.root
+
+
+def test_a_renamed_team_label_stays_on_the_teams_tickets(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
+    )
+    groupless.add_label(backlog.identifier(Seed.done), QA)
+    renamed = LabelName("qa")
+    groupless.rename_group_label(LabelGroupName.fake(), QA, renamed, backlog.team).unwrap()
+    assert renamed in groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels.root
+
+
+def test_a_deleted_team_label_leaves_the_teams_tickets(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
+    )
+    groupless.add_label(backlog.identifier(Seed.done), QA)
+    groupless.delete_group_label(LabelGroupName.fake(), QA, backlog.team).unwrap()
+    held = groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels
+    assert held.matching(QA) is None
+
+
+def test_renaming_a_label_the_group_lacks_is_refused(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
+    )
+    refused = groupless.rename_group_label(
+        LabelGroupName.fake(), GRILLING, LabelName("grilling"), backlog.team
+    )
+    assert isinstance(refused, Err)
+    assert GRILLING.root in str(refused.error)
+
+
+def test_a_deleted_label_leaves_its_group(groupless: TicketTracker, backlog: Backlog) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILLING, QA))), backlog.team
+    )
+    groupless.delete_group_label(LabelGroupName.fake(), QA, backlog.team).unwrap()
+    assert groupless.group_labels(
+        LabelGroupName.fake(), backlog.team
+    ).unwrap().label_names() == LabelNames((GRILLING,))
+
+
+def test_a_deleted_label_leaves_its_tickets(groupless: TicketTracker, backlog: Backlog) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), None
+    )
+    groupless.add_label(backlog.identifier(Seed.done), QA)
+    groupless.delete_group_label(LabelGroupName.fake(), QA, None).unwrap()
+    held = groupless.read_issue(backlog.identifier(Seed.done)).unwrap().labels
+    assert held.matching(QA) is None
+
+
+def test_deleting_a_label_the_group_lacks_is_refused(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
+    )
+    refused = groupless.delete_group_label(LabelGroupName.fake(), GRILLING, backlog.team)
+    assert isinstance(refused, Err)
+    assert GRILLING.root in str(refused.error)
+
+
+def test_a_group_label_counts_the_tickets_carrying_it(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((GRILLING, QA))), None
+    )
+    carrying = (Seed.done, Seed.recent)
+    for seed in carrying:
+        groupless.add_label(backlog.identifier(seed), QA)
+    assert groupless.labelled_ticket_count(LabelGroupName.fake(), QA, None).unwrap() == (
+        TicketCount(len(carrying))
+    )
+
+
+def test_a_group_label_no_ticket_carries_counts_none(
+    groupless: TicketTracker, backlog: Backlog
+) -> None:
+    groupless.create_group_labels(
+        LabelGroupName.fake(), FlowLabels.fake().colored(LabelNames((QA,))), backlog.team
+    )
+    assert groupless.labelled_ticket_count(
+        LabelGroupName.fake(), QA, backlog.team
+    ).unwrap() == TicketCount(0)
 
 
 def test_a_group_that_does_not_exist_lists_no_labels(groupless: TicketTracker) -> None:

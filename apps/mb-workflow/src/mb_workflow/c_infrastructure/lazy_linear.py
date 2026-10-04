@@ -1,13 +1,9 @@
 from typing import TYPE_CHECKING, override
 
-from safe_result import Err, Ok, Result, safe_with
+from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker, TicketTrackerError
-from mb_workflow.c_infrastructure.credentials import (
-    InvalidCredentialsError,
-    MissingCredentialsError,
-)
 from mb_workflow.c_infrastructure.linear import Linear
 from mb_workflow.c_infrastructure.linear_claims import LinearClaims
 
@@ -32,15 +28,19 @@ if TYPE_CHECKING:
         StatusTypes,
         TeamKey,
         TeamName,
+        TicketCount,
     )
     from mb_workflow.b_core.d_domain_model.pool import PoolTickets, ViewSlug
+    from mb_workflow.c_infrastructure.credentials import CredentialsError, RepositorySlugError
     from mb_workflow.c_infrastructure.linear import LinearApiKey
+
+    type KeyRead = Callable[[], Result[LinearApiKey, CredentialsError | RepositorySlugError]]
 
 
 class LinearKey:
     @staticmethod
-    def read(key: Callable[[], LinearApiKey]) -> Result[LinearApiKey, TicketTrackerError]:
-        match safe_with(InvalidCredentialsError, MissingCredentialsError)(key)():
+    def read(key: KeyRead) -> Result[LinearApiKey, TicketTrackerError]:
+        match key():
             case Ok(read):
                 return Ok(read)
             case Err(error):
@@ -49,7 +49,7 @@ class LinearKey:
 
 # Reads the key on first use, so a run that releases no claim needs no Linear credentials.
 class LazyLinearClaims(ClaimRegistry):
-    def __init__(self, key: Callable[[], LinearApiKey]) -> None:
+    def __init__(self, key: KeyRead) -> None:
         self._key = key
         self._connected: LinearClaims | None = None
 
@@ -82,7 +82,7 @@ class LazyLinearClaims(ClaimRegistry):
 
 # Reads the key on first use, so a run that releases no claim needs no Linear credentials.
 class LazyLinear(TicketTracker):
-    def __init__(self, key: Callable[[], LinearApiKey]) -> None:
+    def __init__(self, key: KeyRead) -> None:
         self._key = key
         self._connected: Linear | None = None
 
@@ -111,6 +111,26 @@ class LazyLinear(TicketTracker):
         self, group: LabelGroupName, labels: ColoredLabels, team: TeamKey | None
     ) -> None:
         self._tracker().unwrap().recolor_group_labels(group, labels, team)
+
+    @override
+    def rename_group_label(
+        self, group: LabelGroupName, label: LabelName, renamed: LabelName, team: TeamKey | None
+    ) -> Result[None, TicketTrackerError]:
+        return self._looked_up(
+            lambda tracker: tracker.rename_group_label(group, label, renamed, team)
+        )
+
+    @override
+    def delete_group_label(
+        self, group: LabelGroupName, label: LabelName, team: TeamKey | None
+    ) -> Result[None, TicketTrackerError]:
+        return self._looked_up(lambda tracker: tracker.delete_group_label(group, label, team))
+
+    @override
+    def labelled_ticket_count(
+        self, group: LabelGroupName, label: LabelName, team: TeamKey | None
+    ) -> Result[TicketCount, TicketTrackerError]:
+        return self._looked_up(lambda tracker: tracker.labelled_ticket_count(group, label, team))
 
     @override
     def team_named(self, name: TeamName) -> Result[TeamKey, TicketTrackerError]:
