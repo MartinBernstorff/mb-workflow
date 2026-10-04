@@ -10,6 +10,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     WorkspaceStatus,
     WorkspaceStatuses,
     Worktree,
+    WorktreeName,
     WorktreePath,
     Worktrees,
 )
@@ -104,7 +105,9 @@ def standing_in(status: WorkspaceStatus | None) -> FakeWorkspaceManager:
 def board_over(
     manager: FakeWorkspaceManager, columns: Result[Columns, WorkspaceManagerError]
 ) -> WorkspaceBoard:
-    return WorkspaceBoard(manager, lambda: columns, StateNames.initial_state(WorkflowChart))
+    return WorkspaceBoard(
+        manager, lambda: columns, StateNames.initial_state(WorkflowChart), manager.current
+    )
 
 
 def test_the_board_reads_the_state_of_the_column_you_stand_in() -> None:
@@ -128,3 +131,42 @@ def test_unreadable_columns_leave_the_worktree_where_it_was() -> None:
     assert store.read() == unread
     assert store.write(StateName("review")) == unread
     assert manager.current().unwrap().status == standing
+
+
+def there() -> WorktreePath:
+    return WorktreePath.fake().sibling(WorktreeName("there"))
+
+
+def standing_beside(
+    here: WorkspaceStatus, beside_status: WorkspaceStatus | None
+) -> FakeWorkspaceManager:
+    standing = Worktree.bare(RepoId.fake(), WorktreePath.fake()).model_copy(update={"status": here})
+    beside = Worktree.bare(RepoId.fake(), there()).model_copy(update={"status": beside_status})
+    return FakeWorkspaceManager(
+        Worktrees((standing, beside)),
+        standing.path,
+        WorkspaceStatuses(tuple(c.id for c in board().root)),
+    )
+
+
+def test_the_board_at_a_worktree_reads_that_worktree_s_column() -> None:
+    qa = StateName("qa")
+    manager = standing_beside(WorkspaceStatus("status-5-2"), WorkspaceStatus("in-review"))
+    assert board_over(manager, Ok(board())).at(there()).read() == Ok(qa)
+
+
+def test_the_board_at_a_worktree_moves_that_worktree_and_not_the_one_you_stand_in() -> None:
+    standing = WorkspaceStatus("status-5-2")
+    review_column = WorkspaceStatus("status-5")
+    manager = standing_beside(standing, None)
+    assert board_over(manager, Ok(board())).at(there()).write(StateName("review")) == Ok(None)
+    moved = manager.worktrees().unwrap().at(there())
+    assert moved is not None
+    assert moved.status == review_column
+    assert manager.current().unwrap().status == standing
+
+
+def test_the_board_at_a_path_with_no_worktree_is_a_clear_error() -> None:
+    missing = WorktreePath.fake().sibling(WorktreeName("missing"))
+    store = board_over(standing_in(None), Ok(board())).at(missing)
+    assert store.read() == Err(WorkspaceManagerError(f"No worktree is at {missing.root}."))

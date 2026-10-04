@@ -476,17 +476,22 @@ def flow_show(as_json: AsJson) -> ExitCode:
 
 @guarded
 def flow_event(
-    event: EventName, force: Force, directory: WorkingDirectory, name: ConfigFileName
+    event: EventName,
+    force: Force,
+    ticket: IssueIdentifier | None,
+    directory: WorkingDirectory,
+    name: ConfigFileName,
 ) -> ExitCode:
     manager = connected_orca()
     match LinkedTicketTransition.move_linked_ticket(
-        store=workspace_board(manager),
+        board_at=workspace_board(manager).at,
         tracker=linear(),
         manager=manager,
         wanted=flow_labels_of_chart(),
         statuses=resolved_configuration(directory, name).settings.ticket_statuses,
         event=event,
         force=force,
+        ticket=ticket,
     ):
         case Ok(moved_to):
             logger.info("Moved to %s.", moved_to.root)

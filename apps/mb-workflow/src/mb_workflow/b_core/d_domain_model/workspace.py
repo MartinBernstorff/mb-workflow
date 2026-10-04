@@ -181,6 +181,9 @@ class Worktrees(Value[tuple[Worktree, ...]]):
     def at(self, path: WorktreePath) -> Worktree | None:
         return next((worktree for worktree in self.root if worktree.path.same_as(path).root), None)
 
+    def linked_to(self, issue: IssueIdentifier) -> Worktree | None:
+        return next((worktree for worktree in self.root if worktree.issue == issue), None)
+
     def named(self, name: WorktreeName) -> Worktree | None:
         return next((worktree for worktree in self.root if worktree.path.name() == name), None)
 
