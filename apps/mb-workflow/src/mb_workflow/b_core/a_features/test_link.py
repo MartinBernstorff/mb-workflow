@@ -97,7 +97,14 @@ def linking(
     request: LinkRequest,
     *,
     workspace: WorkspaceSettings | None = None,
-) -> Result[None, FlowError | TicketTrackerError | UnknownClaimLabelError | WorkspaceManagerError]:
+) -> Result[
+    None,
+    FlowError
+    | TicketTrackerError
+    | UnknownClaimLabelError
+    | ClaimRefusedError
+    | WorkspaceManagerError,
+]:
     return TicketLinking.link_ticket(
         manager=manager,
         tracker=tracker,
@@ -220,8 +227,11 @@ def test_a_ticket_without_a_flow_label_is_neither_claimed_nor_linked() -> None:
 def test_a_ticket_claimed_by_another_host_is_not_linked() -> None:
     rival = HostName("bob-mbp.local")
     manager = managing(here_linked_to(None))
-    with pytest.raises(ClaimRefusedError, match=re.escape(rival.root)):
-        _ = linking(manager, tracking(StateName.fake()), claimed_by_host(rival), LinkRequest.fake())
+    refused = linking(
+        manager, tracking(StateName.fake()), claimed_by_host(rival), LinkRequest.fake()
+    )
+    assert isinstance(refused.error, ClaimRefusedError)
+    assert re.search(re.escape(rival.root), str(refused.error))
     assert manager.current().unwrap().issue is None
 
 
@@ -270,8 +280,8 @@ def refusing_to_link() -> LinkRefusingWorkspaceManager:
 def test_a_refused_link_leaves_neither_claim_nor_claim_label() -> None:
     tracker = tracking(StateName.fake())
     claims = FakeClaimRegistry()
-    with pytest.raises(WorkspaceManagerError):
-        _ = linking(refusing_to_link(), tracker, claims, LinkRequest.fake())
+    failed = linking(refusing_to_link(), tracker, claims, LinkRequest.fake())
+    assert isinstance(failed.error, WorkspaceManagerError)
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
     labels = tracker.read_issue(IssueIdentifier.fake()).unwrap().labels
     assert not labels.has(ClaimSettings.fake().label).root
@@ -280,8 +290,8 @@ def test_a_refused_link_leaves_neither_claim_nor_claim_label() -> None:
 def test_a_refused_link_restores_the_previous_assignee() -> None:
     previous = Assignee("previous@flowbase.io")
     tracker = tracking(StateName.fake(), assignee=previous)
-    with pytest.raises(WorkspaceManagerError):
-        _ = linking(refusing_to_link(), tracker, FakeClaimRegistry(), LinkRequest.fake())
+    failed = linking(refusing_to_link(), tracker, FakeClaimRegistry(), LinkRequest.fake())
+    assert isinstance(failed.error, WorkspaceManagerError)
     assert tracker.read_issue_detail(IssueIdentifier.fake()).unwrap().assignee == previous
 
 
@@ -291,8 +301,8 @@ def test_a_refused_link_puts_the_worktree_back_in_its_column() -> None:
     manager = LinkRefusingWorkspaceManager(
         Worktrees((here,)), WorktreePath.fake(), fake_board_statuses()
     )
-    with pytest.raises(WorkspaceManagerError):
-        _ = linking(manager, tracking(StateName.fake()), FakeClaimRegistry(), LinkRequest.fake())
+    failed = linking(manager, tracking(StateName.fake()), FakeClaimRegistry(), LinkRequest.fake())
+    assert isinstance(failed.error, WorkspaceManagerError)
     assert manager.current().unwrap().status == column
 
 
@@ -300,7 +310,7 @@ def test_a_refused_status_leaves_neither_claim_nor_link() -> None:
     board_without_columns = WorkspaceStatuses(())
     manager = FakeWorkspaceManager(here_linked_to(None), WorktreePath.fake(), board_without_columns)
     claims = FakeClaimRegistry()
-    with pytest.raises(WorkspaceManagerError):
-        _ = linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake())
+    failed = linking(manager, tracking(StateName.fake()), claims, LinkRequest.fake())
+    assert isinstance(failed.error, WorkspaceManagerError)
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
     assert manager.current().unwrap().issue is None

@@ -1,14 +1,16 @@
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Never, override
 
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.c_secondary_ports.claims import (
     Claiming,
+    ClaimLostError,
     ClaimRefusedError,
     LabelledClaim,
 )
+from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.d_domain_model.claim import Posted
 from mb_workflow.b_core.d_domain_model.issue import Cleared, IssueUpdate
 from mb_workflow.d_lib.logging import Activity
@@ -21,10 +23,7 @@ if TYPE_CHECKING:
         ClaimRequest,
         UnknownClaimLabelError,
     )
-    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
-        TicketTracker,
-        TicketTrackerError,
-    )
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.issue import Assignee, IssueIdentifier
 
@@ -42,7 +41,7 @@ class TicketTaking:
         claim_settings: ClaimSettings,
         request: ClaimRequest,
         previous: Assignee | None,
-    ) -> Result[None, TicketTrackerError | UnknownClaimLabelError]:
+    ) -> Result[None, TicketTrackerError | UnknownClaimLabelError | ClaimRefusedError]:
         steps = TicketTaking.saga_steps(
             claims=claims,
             tracker=tracker,
@@ -53,8 +52,7 @@ class TicketTaking:
         )
         if isinstance(steps, Err):
             return steps
-        Saga.run(steps.value).unwrap()
-        return Ok(None)
+        return Saga.run(steps.value)
 
     # `previous` is the assignee before taking, restored when a later step fails.
     @staticmethod
@@ -66,7 +64,10 @@ class TicketTaking:
         claim_settings: ClaimSettings,
         request: ClaimRequest,
         previous: Assignee | None,
-    ) -> Result[tuple[SagaStep, ...], TicketTrackerError | UnknownClaimLabelError]:
+    ) -> Result[
+        tuple[SagaStep[TicketTrackerError | ClaimRefusedError], ...],
+        TicketTrackerError | UnknownClaimLabelError,
+    ]:
         checked = Claiming.require_claim_label(tracker, claim_settings.label)
         if isinstance(checked, Err):
             return checked
@@ -85,21 +86,18 @@ class TicketTaking:
 # Reverting withdraws only this holder's claims; rival claims withdrawn by a takeover stay withdrawn.
 # Mutable, as it holds whether it posted a claim, so revert withdraws only a claim it made.
 @dataclass
-class ClaimStep(SagaStep):
+class ClaimStep(SagaStep[TicketTrackerError | ClaimLostError]):
     registry: ClaimRegistry
     request: ClaimRequest
     _posted: Posted = field(default=Posted(False), init=False)
 
     @override
-    def apply(self) -> Result[None, Exception]:
-        try:
-            with Activity(
-                f"Claiming {self.request.ticket.root} for worktree"
-                f" {self.request.holder.worktree.root} on {self.request.holder.host.root}"
-            ).logged(logger):
-                claimed = Claiming.claim_ticket(self.registry, self.request)
-        except ClaimRefusedError as error:
-            return Err(error)
+    def apply(self) -> Result[None, TicketTrackerError | ClaimLostError]:
+        with Activity(
+            f"Claiming {self.request.ticket.root} for worktree"
+            f" {self.request.holder.worktree.root} on {self.request.holder.host.root}"
+        ).logged(logger):
+            claimed = Claiming.claim_ticket(self.registry, self.request)
         match claimed:
             case Ok(posted):
                 self._posted = posted
@@ -127,14 +125,14 @@ class Added(Value[bool]):
 
 # Mutable, as it holds whether it added the label, so revert removes only a label it put on.
 @dataclass
-class ClaimLabelStep(SagaStep):
+class ClaimLabelStep(SagaStep[TicketTrackerError | ClaimRefusedError]):
     registry: ClaimRegistry
     tracker: TicketTracker
     request: LabelledClaim
     _added: Added = field(default=Added(False), init=False)
 
     @override
-    def apply(self) -> Result[None, Exception]:
+    def apply(self) -> Result[None, TicketTrackerError | ClaimRefusedError]:
         held = self.tracker.read_issue(self.request.ticket)
         if isinstance(held, Err):
             return held
@@ -161,7 +159,7 @@ class ClaimLabelStep(SagaStep):
 
 
 @dataclass(frozen=True)
-class AssignmentStep(SagaStep):
+class AssignmentStep(SagaStep[Never]):
     tracker: TicketTracker
     ticket: IssueIdentifier
     assignee: Assignee
@@ -169,7 +167,7 @@ class AssignmentStep(SagaStep):
 
     # Assignment is a convenience, not the point of taking a ticket, so never fail the run over it.
     @override
-    def apply(self) -> Result[None, Exception]:
+    def apply(self) -> Result[None, Never]:
         with Activity(f"Assigning {self.ticket.root} to {self.assignee.root}").logged(logger):
             assigned = self.tracker.assign(self.ticket, self.assignee)
         if isinstance(assigned, Err):

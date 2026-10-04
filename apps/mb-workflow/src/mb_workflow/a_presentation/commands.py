@@ -44,7 +44,6 @@ from mb_workflow.b_core.a_features.transition import LinkedTicketTransition
 from mb_workflow.b_core.a_features.unclaim import TicketUnclaiming
 from mb_workflow.b_core.a_features.view_ticket import TicketViewing
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
-from mb_workflow.b_core.c_secondary_ports.claims import ClaimRefusedError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
@@ -104,7 +103,6 @@ logger = logging.getLogger(__name__)
 FAILURES = (
     AlreadyLinkedError,
     CalledProcessError,
-    ClaimRefusedError,
     ConfigExistsError,
     CredentialsError,
     InvalidConfigError,
@@ -360,7 +358,7 @@ def drain_watch(
     manager = connected_orca()
     key = unwrapped_linear_key()
     with SignalStop.installed(PollSeconds(0.2)) as stop:
-        DrainWatch.watch_pool(
+        watched = DrainWatch.watch_pool(
             tracker=Linear.connected(key),
             claims=LinearClaims.connected(key),
             manager=manager,
@@ -372,8 +370,13 @@ def drain_watch(
             stop=stop,
             narrator=LoggingDrainNarrator(),
             request=request,
-        ).unwrap()
-    return ExitCode(0)
+        )
+    match watched:
+        case Ok():
+            return ExitCode(0)
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
 
 
 @guarded
