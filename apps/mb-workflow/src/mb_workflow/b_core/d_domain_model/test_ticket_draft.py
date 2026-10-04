@@ -118,7 +118,7 @@ def test_a_flow_label_among_the_labels_is_refused() -> None:
     state_option = "--state"
     refused = GrillDraft.new_issue(draft)
     error = Assert.that(refused.error).is_instance(FlowLabelOptionError)
-    assert state_option in str(error)
+    Assert.that(str(error)).contains(state_option)
 
 
 def test_the_priority_carries_over() -> None:
