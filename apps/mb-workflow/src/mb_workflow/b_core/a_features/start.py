@@ -245,7 +245,7 @@ class TicketStart:
         )
         if isinstance(taking_steps, Err):
             return taking_steps
-        return TicketStart.open_worktree(
+        return TicketStart.take_into_worktree(
             manager=manager,
             taking_steps=(*entry_steps, *taking_steps.value),
             worktree_step=worktree_step,
@@ -256,7 +256,7 @@ class TicketStart:
 
     # Takes the ticket, opens its worktree, and types the prompt, if any, into it.
     @staticmethod
-    def open_worktree(
+    def take_into_worktree(
         *,
         manager: WorkspaceManager,
         taking_steps: tuple[SagaStep[TicketTrackerError | ClaimRefusedError], ...],

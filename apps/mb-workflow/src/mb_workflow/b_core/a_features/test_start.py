@@ -361,10 +361,12 @@ def ours() -> ClaimHolder:
     )
 
 
+def rival_host() -> HostName:
+    return HostName("bob-mbp.local")
+
+
 def claimed_by_a_rival() -> FakeClaimRegistry:
-    rival = ClaimHolder(
-        host=HostName("bob-mbp.local"), worktree=WorktreeName.of_issue(IssueIdentifier.fake())
-    )
+    rival = ClaimHolder(host=rival_host(), worktree=WorktreeName.of_issue(IssueIdentifier.fake()))
     return FakeClaimRegistry(
         {IssueIdentifier.fake(): Claims((Claim(id=ClaimId("rival"), holder=rival),))}
     )
@@ -387,7 +389,7 @@ def test_a_ticket_claimed_by_another_holder_is_neither_opened_nor_assigned() -> 
     tracker = tracking(StateName("Specced"))
     refused = starting(manager, tracker, StartRequest.fake(), claimed_by_a_rival())
     assert isinstance(refused.error, ClaimRefusedError)
-    assert re.search(r"bob-mbp\.local", str(refused.error))
+    assert re.search(re.escape(rival_host().root), str(refused.error))
     assert manager.worktrees().unwrap() == Worktrees.fake()
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().assigned == Assigned(False)
 

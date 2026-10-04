@@ -1622,7 +1622,7 @@ def test_of_two_racing_claimers_exactly_one_wins(
     raced = RacedRegistry(claims, lambda: Claiming.claim_ticket(claims, second))
     lost = Claiming.claim_ticket(raced, first)
     assert isinstance(lost.error, ClaimLostError)
-    assert re.search("bob-mbp", str(lost.error))
+    assert re.search(re.escape(second.holder.host.root), str(lost.error))
     assert holders(claims.claims(ticket).unwrap()) == (second.holder,)
 
 

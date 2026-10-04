@@ -356,7 +356,7 @@ def drain_watch(
     manager = connected_orca()
     key = unwrapped_linear_key()
     with SignalStop.installed(PollSeconds(0.2)) as stop:
-        DrainWatch.watch_pool(
+        watched = DrainWatch.watch_pool(
             tracker=Linear.connected(key),
             claims=LinearClaims.connected(key),
             manager=manager,
@@ -368,8 +368,13 @@ def drain_watch(
             stop=stop,
             narrator=LoggingDrainNarrator(),
             request=request,
-        ).unwrap()
-    return ExitCode(0)
+        )
+    match watched:
+        case Ok():
+            return ExitCode(0)
+        case Err(error):
+            logger.error("%s", error)
+            return ExitCode(1)
 
 
 @guarded

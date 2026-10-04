@@ -112,7 +112,7 @@ def test_a_label_the_tracker_lacks_refuses_the_claim() -> None:
     )
 
 
-def test_claiming_a_ticket_another_holder_holds_returns_the_lost_claim() -> None:
+def test_claiming_a_ticket_another_holder_holds_is_refused_as_lost() -> None:
     registry = registry_held_by(rival())
     claimed = Claiming.claim_ticket(registry, ClaimRequest.fake())
     assert isinstance(claimed.error, ClaimLostError)
@@ -133,7 +133,8 @@ class WithdrawingRegistry(FakeClaimRegistry):
         self, ticket: IssueIdentifier, holder: ClaimHolder
     ) -> Result[ClaimId, TicketTrackerError]:
         posted = super().post(ticket, holder)
-        _ = Claiming.withdraw_claims(self, ticket, self.claims(ticket).unwrap())
+        for claim in self.claims(ticket).unwrap().root:
+            _ = super().withdraw(ticket, claim.id)
         return posted
 
 
