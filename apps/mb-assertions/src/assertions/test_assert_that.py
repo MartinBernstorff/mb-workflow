@@ -1,3 +1,4 @@
+import re
 import subprocess
 import sys
 import tempfile
@@ -9,17 +10,13 @@ import pytest
 from assertions import Assert
 
 
-class FakeNamed(pydantic.BaseModel):
+class Pet(pydantic.BaseModel):
     name: str
     tags: list[str]
 
 
-class FakeOwner(pydantic.BaseModel):
-    pet: FakeNamed
-
-
-def _raises(match: str) -> pytest.RaisesExc[AssertionError]:
-    return pytest.raises(AssertionError, match=match)
+class Owner(pydantic.BaseModel):
+    pet: Pet
 
 
 def test_matches_passes_on_equal_values() -> None:
@@ -27,7 +24,7 @@ def test_matches_passes_on_equal_values() -> None:
 
 
 def test_matches_reports_both_values() -> None:
-    with _raises("1 != 2"):
+    with pytest.raises(AssertionError, match="1 != 2"):
         Assert.that(1).matches(2)
 
 
@@ -36,56 +33,56 @@ def test_matches_compares_sequences_by_their_elements() -> None:
 
 
 def test_matches_reports_differing_sequences() -> None:
-    with _raises(r"\[1, 2\] != \(2, 1\)"):
+    with pytest.raises(AssertionError, match=r"\[1, 2\] != \(2, 1\)"):
         Assert.that([1, 2]).matches((2, 1))
 
 
 def test_matches_compares_models_by_value() -> None:
-    Assert.that(FakeNamed(name="a", tags=[])).matches(FakeNamed(name="a", tags=[]))
+    Assert.that(Pet(name="a", tags=[])).matches(Pet(name="a", tags=[]))
 
 
 def test_matches_reports_both_model_dumps() -> None:
-    with _raises("'name': 'a'.*'name': 'b'"):
-        Assert.that(FakeNamed(name="a", tags=[])).matches(FakeNamed(name="b", tags=[]))
+    with pytest.raises(AssertionError, match=r"'name': 'a'.*'name': 'b'"):
+        Assert.that(Pet(name="a", tags=[])).matches(Pet(name="b", tags=[]))
 
 
 def test_matches_populated_exactly_ignores_unset_fields() -> None:
-    Assert.that(FakeNamed(name="a", tags=["x"])).matches_populated_exactly(
-        FakeNamed.model_construct(name="a"),
+    Assert.that(Pet(name="a", tags=["x"])).matches_populated_exactly(
+        Pet.model_construct(name="a"),
     )
 
 
 def test_matches_populated_exactly_reports_the_differing_path() -> None:
-    with _raises(r"tags: 1 element != 2 elements"):
-        Assert.that(FakeNamed(name="a", tags=["x"])).matches_populated_exactly(
-            FakeNamed.model_construct(tags=["x", "y"]),
+    with pytest.raises(AssertionError, match=r"tags: 1 element != 2 elements"):
+        Assert.that(Pet(name="a", tags=["x"])).matches_populated_exactly(
+            Pet.model_construct(tags=["x", "y"]),
         )
 
 
 def test_matches_populated_exactly_reports_the_nested_element_path() -> None:
-    with _raises(r"pet\.tags\[0\]: x != y"):
-        Assert.that(FakeOwner(pet=FakeNamed(name="a", tags=["x"]))).matches_populated_exactly(
-            FakeOwner.model_construct(pet=FakeNamed.model_construct(tags=["y"])),
+    with pytest.raises(AssertionError, match=r"pet\.tags\[0\]: x != y"):
+        Assert.that(Owner(pet=Pet(name="a", tags=["x"]))).matches_populated_exactly(
+            Owner.model_construct(pet=Pet.model_construct(tags=["y"])),
         )
 
 
 def test_matches_populated_exactly_reports_differing_types_by_name() -> None:
-    actual: pydantic.BaseModel = FakeNamed(name="a", tags=[])
+    actual: pydantic.BaseModel = Pet(name="a", tags=[])
 
-    with _raises(r"FakeNamed != FakeOwner"):
-        Assert.that(actual).matches_populated_exactly(FakeOwner.model_construct())
+    with pytest.raises(AssertionError, match=r"Pet != Owner"):
+        Assert.that(actual).matches_populated_exactly(Owner.model_construct())
 
 
 def test_matches_populated_containing_allows_extra_list_elements() -> None:
-    Assert.that(FakeNamed(name="a", tags=["x", "y"])).matches_populated_containing(
-        FakeNamed.model_construct(tags=["y"]),
+    Assert.that(Pet(name="a", tags=["x", "y"])).matches_populated_containing(
+        Pet.model_construct(tags=["y"]),
     )
 
 
 def test_matches_populated_containing_reports_the_missing_element() -> None:
-    with _raises(r"tags: <missing> != z"):
-        Assert.that(FakeNamed(name="a", tags=["x"])).matches_populated_containing(
-            FakeNamed.model_construct(tags=["z"]),
+    with pytest.raises(AssertionError, match=r"tags: <missing> != z"):
+        Assert.that(Pet(name="a", tags=["x"])).matches_populated_containing(
+            Pet.model_construct(tags=["z"]),
         )
 
 
@@ -94,7 +91,7 @@ def test_in_container_passes_when_present() -> None:
 
 
 def test_in_container_reports_item_and_container() -> None:
-    with _raises(r"3 not found in container \[1, 2\]"):
+    with pytest.raises(AssertionError, match=r"3 not found in container \[1, 2\]"):
         Assert.that(3).in_container([1, 2])
 
 
@@ -103,7 +100,7 @@ def test_not_in_container_passes_when_absent() -> None:
 
 
 def test_not_in_container_reports_item_and_container() -> None:
-    with _raises(r"1 unexpectedly found in container \[1, 2\]"):
+    with pytest.raises(AssertionError, match=r"1 unexpectedly found in container \[1, 2\]"):
         Assert.that(1).not_in_container([1, 2])
 
 
@@ -112,7 +109,7 @@ def test_container_exactly_ignores_order() -> None:
 
 
 def test_container_exactly_reports_missing_and_extra_items() -> None:
-    with _raises(r"Missing: \[3\]\n\tExtra: \[1\]"):
+    with pytest.raises(AssertionError, match=r"Missing: \[3\]\n\tExtra: \[1\]"):
         Assert.that([1, 2]).container_exactly([2, 3])
 
 
@@ -125,7 +122,7 @@ def test_all_in_accepts_any_sequence() -> None:
 
 
 def test_all_in_reports_the_missing_items() -> None:
-    with _raises(r"Items not found in container: \[4\]"):
+    with pytest.raises(AssertionError, match=r"Items not found in container: \[4\]"):
         Assert.that([1, 4]).all_in([1, 2, 3])
 
 
@@ -134,7 +131,7 @@ def test_none_in_passes_on_disjoint_items() -> None:
 
 
 def test_none_in_reports_the_present_items() -> None:
-    with _raises(r"Unexpected items found in container: \[1\]"):
+    with pytest.raises(AssertionError, match=r"Unexpected items found in container: \[1\]"):
         Assert.that([1, 4]).none_in([1, 2, 3])
 
 
@@ -143,7 +140,7 @@ def test_all_passes_when_every_item_satisfies_the_predicate() -> None:
 
 
 def test_all_reports_each_failing_item() -> None:
-    with _raises(r"\['1 is odd', '3 is odd'\]"):
+    with pytest.raises(AssertionError, match=r"\['1 is odd', '3 is odd'\]"):
         Assert.that([1, 2, 3]).all(lambda n: n % 2 == 0, lambda n: f"{n} is odd")
 
 
@@ -152,7 +149,7 @@ def test_has_length_passes_on_the_length() -> None:
 
 
 def test_has_length_reports_the_length() -> None:
-    with _raises(r"length 2, but it had length 1: \[1\]"):
+    with pytest.raises(AssertionError, match=r"length 2, but it had length 1: \[1\]"):
         Assert.that([1]).has_length(2)
 
 
@@ -161,7 +158,7 @@ def test_is_true_passes_on_true() -> None:
 
 
 def test_is_true_rejects_false() -> None:
-    with _raises("Expected True, but it was False"):
+    with pytest.raises(AssertionError, match="Expected True, but it was False"):
         Assert.that(False).is_true()
 
 
@@ -170,7 +167,7 @@ def test_is_false_passes_on_false() -> None:
 
 
 def test_is_false_rejects_true() -> None:
-    with _raises("Expected False, but it was True"):
+    with pytest.raises(AssertionError, match="Expected False, but it was True"):
         Assert.that(True).is_false()
 
 
@@ -185,7 +182,7 @@ def test_is_instance_returns_the_narrowed_value() -> None:
 def test_is_instance_reports_the_expected_and_actual_types() -> None:
     value: int | str = 1
 
-    with _raises("Expected an instance of str, but got int: 1"):
+    with pytest.raises(AssertionError, match="Expected an instance of str, but got int: 1"):
         _ = Assert.that(value).is_instance(str)
 
 
@@ -200,7 +197,7 @@ def test_exists_returns_the_narrowed_value() -> None:
 def test_exists_rejects_none() -> None:
     value: int | None = None
 
-    with _raises("Expected value to exist, but it was None"):
+    with pytest.raises(AssertionError, match="Expected value to exist, but it was None"):
         _ = Assert.that(value).exists()
 
 
@@ -226,11 +223,11 @@ class TestTypeChecks:
                 text=True,
                 check=False,
             )
-        return [
-            line.rsplit(" ", 1)[-1]
-            for line in (result.stdout + result.stderr).splitlines()
-            if line.startswith("ERROR")
-        ]
+        output = result.stdout + result.stderr
+        # Without the summary line, pyrefly crashed rather than checked the snippet.
+        if not re.search(r"INFO \d+ errors?$", output, re.MULTILINE):
+            pytest.fail(f"pyrefly did not check the snippet:\n{output}")
+        return [line.rsplit(" ", 1)[-1] for line in output.splitlines() if line.startswith("ERROR")]
 
     @pytest.mark.parametrize(
         ("source", "error_kind"),

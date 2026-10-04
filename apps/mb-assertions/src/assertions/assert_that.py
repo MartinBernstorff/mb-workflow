@@ -104,10 +104,6 @@ class ThatElements[T, E](That[T]):
         super().__init__(actual)
         self._elements = list(elements)
 
-    @property
-    def elements(self) -> Sequence[E]:
-        return self._elements
-
     @override
     def matches(self, expected: T) -> None:
         if isinstance(self._actual, Sequence) and isinstance(expected, Sequence):
