@@ -3,7 +3,7 @@ from pathlib import Path
 
 from safe_result import Err
 
-from hemolint.b_core.d_domain_model.linter_output import LinterOutput, UnparsableLineError
+from hemolint.b_core.d_domain_model.linter_output import LinterOutput, UnparsableOutputError
 from hemolint.b_core.d_domain_model.ruff_json import RuffJsonParser, RuffMessage
 from hemolint.b_core.d_domain_model.violation import (
     LineNumber,
@@ -66,7 +66,7 @@ def test_an_empty_list_holds_no_violations() -> None:
 def test_invalid_json_is_a_parse_error() -> None:
     result = RuffJsonParser.parse(LinterOutput("a.py:1:8: F401 `os` imported but unused"))
     assert isinstance(result, Err)
-    assert isinstance(result.error, UnparsableLineError)
+    assert isinstance(result.error, UnparsableOutputError)
 
 
 def test_json_without_a_rule_code_is_a_parse_error() -> None:

@@ -4,7 +4,7 @@ from safe_result import Err, Ok, Result
 from hemolint.b_core.d_domain_model.linter_output import (
     LinterOutput,
     ReportedViolations,
-    UnparsableLineError,
+    UnparsableOutputError,
 )
 from hemolint.b_core.d_domain_model.violation import (
     LineNumber,
@@ -57,11 +57,11 @@ class RuffJsonParser:
 
     # Keeps ruff's absolute paths; ViolationFinder makes them relative to the working directory.
     @staticmethod
-    def parse(output: LinterOutput) -> Result[ReportedViolations, UnparsableLineError]:
+    def parse(output: LinterOutput) -> Result[ReportedViolations, UnparsableOutputError]:
         try:
             entries = RuffJsonParser._OUTPUT.validate_json(output.root)
         except ValidationError as error:
-            return Err(UnparsableLineError(f"Not ruff JSON output: {error}"))
+            return Err(UnparsableOutputError(f"Not ruff JSON output: {error}"))
         return Ok(
             ReportedViolations(
                 tuple(

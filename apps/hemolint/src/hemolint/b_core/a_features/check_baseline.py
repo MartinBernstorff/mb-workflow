@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     )
     from hemolint.b_core.c_secondary_ports.source_lines import SourceLines
     from hemolint.b_core.d_domain_model.linter_format import LinterFormat
-    from hemolint.b_core.d_domain_model.linter_output import LinterOutput, UnparsableLineError
+    from hemolint.b_core.d_domain_model.linter_output import LinterOutput, UnparsableOutputError
     from hemolint.b_core.d_domain_model.violation import (
         MissingSourceLineError,
         OutsideWorkingDirectoryError,
@@ -30,7 +30,7 @@ class BaselineCheck:
         store: BaselineStore,
     ) -> Result[
         Drift,
-        UnparsableLineError
+        UnparsableOutputError
         | OutsideWorkingDirectoryError
         | MissingSourceLineError
         | BaselineStoreError,

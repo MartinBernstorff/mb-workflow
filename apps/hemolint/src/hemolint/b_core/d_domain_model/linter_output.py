@@ -2,7 +2,7 @@ from hemolint.b_core.d_domain_model.violation import ReportedViolation
 from hemolint.d_lib.models import Value
 
 
-class UnparsableLineError(Exception):
+class UnparsableOutputError(Exception):
     pass
 
 

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from hemolint.b_core.d_domain_model.linter_output import (
         LinterOutput,
         ReportedViolations,
-        UnparsableLineError,
+        UnparsableOutputError,
     )
 
 
@@ -28,7 +28,7 @@ class LinterFormat(StrEnum):
             case LinterFormat.ruff_json:
                 return LinterName("ruff")
 
-    def parse(self, output: LinterOutput) -> Result[ReportedViolations, UnparsableLineError]:
+    def parse(self, output: LinterOutput) -> Result[ReportedViolations, UnparsableOutputError]:
         match self:
             case LinterFormat.fixit:
                 return FixitParser.parse(output)
