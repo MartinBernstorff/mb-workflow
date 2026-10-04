@@ -37,7 +37,7 @@ class WorkspaceStateColumn(Model):
 
     @staticmethod
     def fake() -> WorkspaceStateColumn:
-        return WorkspaceStateColumn(state=StateName("Implementing"), label=ColumnLabel.fake())
+        return WorkspaceStateColumn(state=StateName("implementing"), label=ColumnLabel.fake())
 
 
 class StateColumns(Value[tuple[WorkspaceStateColumn, ...]]):
@@ -49,18 +49,18 @@ class StateColumns(Value[tuple[WorkspaceStateColumn, ...]]):
     def of_chart() -> StateColumns:
         return StateColumns(
             (
-                WorkspaceStateColumn(state=StateName("Grilling"), label=ColumnLabel("Grilling")),
-                WorkspaceStateColumn(state=StateName("Speccing"), label=ColumnLabel("Speccing")),
-                WorkspaceStateColumn(state=StateName("Specced"), label=ColumnLabel("Tomorrow")),
+                WorkspaceStateColumn(state=StateName("grill"), label=ColumnLabel("Grilling")),
+                WorkspaceStateColumn(state=StateName("to-ticket"), label=ColumnLabel("Speccing")),
+                WorkspaceStateColumn(state=StateName("todo"), label=ColumnLabel("Tomorrow")),
                 WorkspaceStateColumn(
-                    state=StateName("Implementing"), label=ColumnLabel("Implementing")
+                    state=StateName("implementing"), label=ColumnLabel("Implementing")
                 ),
-                WorkspaceStateColumn(state=StateName("QA"), label=ColumnLabel("My QA")),
+                WorkspaceStateColumn(state=StateName("qa"), label=ColumnLabel("My QA")),
                 WorkspaceStateColumn(
-                    state=StateName("Review"), label=ColumnLabel("Awaiting review")
+                    state=StateName("review"), label=ColumnLabel("Awaiting review")
                 ),
-                WorkspaceStateColumn(state=StateName("Merging"), label=ColumnLabel("Merging")),
-                WorkspaceStateColumn(state=StateName("Merged"), label=ColumnLabel("Merged")),
+                WorkspaceStateColumn(state=StateName("merging"), label=ColumnLabel("Merging")),
+                WorkspaceStateColumn(state=StateName("merged"), label=ColumnLabel("Merged")),
             )
         )
 

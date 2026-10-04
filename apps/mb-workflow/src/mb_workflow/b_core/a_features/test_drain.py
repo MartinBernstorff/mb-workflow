@@ -74,7 +74,7 @@ if TYPE_CHECKING:
 def pooled(
     identifier: IssueIdentifier,
     priority: Priority,
-    state: StateName | None = StateName("Specced"),
+    state: StateName | None = StateName("todo"),
     labels: LabelNames = LabelNames(()),
     status: IssueStatusName = IssueStatusName("In Progress"),
 ) -> TrackedIssue:
@@ -171,7 +171,7 @@ def standard_pool(kind: type[FakeTicketTracker] = FakeTicketTracker) -> FakeTick
     return pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
         pooled(IssueIdentifier("MB-2"), Priority.high),
-        pooled(IssueIdentifier("MB-3"), Priority.high, state=StateName("QA")),
+        pooled(IssueIdentifier("MB-3"), Priority.high, state=StateName("qa")),
         kind=kind,
     )
 
@@ -331,9 +331,9 @@ def test_labelled_tickets_in_progress_count_toward_the_total() -> None:
         pooled(IssueIdentifier("MB-1"), Priority.low),
         pooled(IssueIdentifier("MB-2"), Priority.high),
         elsewhere=(
-            in_progress(IssueIdentifier("MB-10"), StateName("Implementing")),
-            in_progress(IssueIdentifier("MB-11"), StateName("QA")),
-            in_progress(IssueIdentifier("MB-12"), StateName("Review")),
+            in_progress(IssueIdentifier("MB-10"), StateName("implementing")),
+            in_progress(IssueIdentifier("MB-11"), StateName("qa")),
+            in_progress(IssueIdentifier("MB-12"), StateName("review")),
         ),
     )
     assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
@@ -349,7 +349,7 @@ def test_labelled_tickets_in_progress_count_toward_the_total() -> None:
 def test_labelled_tickets_that_are_closed_do_not_count(closing: IssueStatus) -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
-        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("QA"), closing.name),),
+        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("qa"), closing.name),),
         closing=(closing,),
     )
     assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-1"),)
@@ -358,7 +358,7 @@ def test_labelled_tickets_that_are_closed_do_not_count(closing: IssueStatus) -> 
 def test_unlabelled_tickets_do_not_count() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
-        elsewhere=(pooled(IssueIdentifier("MB-10"), Priority.low, state=StateName("QA")),),
+        elsewhere=(pooled(IssueIdentifier("MB-10"), Priority.low, state=StateName("qa")),),
     )
     assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-1"),)
 
@@ -366,23 +366,23 @@ def test_unlabelled_tickets_do_not_count() -> None:
 def test_a_ticket_whose_state_is_full_is_skipped_for_the_next() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
-        pooled(IssueIdentifier("MB-2"), Priority.high, state=StateName("Grilling")),
-        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Grilling")),),
+        pooled(IssueIdentifier("MB-2"), Priority.high, state=StateName("grill")),
+        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("grill")),),
     )
     assert picked(draining(tracker)) == (IssueIdentifier("MB-1"),)
 
 
 def test_a_ticket_started_in_the_pass_fills_its_state() -> None:
     tracker = pool_of(
-        pooled(IssueIdentifier("MB-1"), Priority.low, state=StateName("Grilling")),
-        pooled(IssueIdentifier("MB-2"), Priority.high, state=StateName("Grilling")),
+        pooled(IssueIdentifier("MB-1"), Priority.low, state=StateName("grill")),
+        pooled(IssueIdentifier("MB-2"), Priority.high, state=StateName("grill")),
     )
     assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
 
 
 def test_a_claimed_ticket_without_a_flow_label_does_not_count_toward_the_limits() -> None:
     tracker = pool_of(
-        pooled(IssueIdentifier("MB-2"), Priority.high, state=StateName("Grilling")),
+        pooled(IssueIdentifier("MB-2"), Priority.high, state=StateName("grill")),
         elsewhere=(
             pooled(
                 IssueIdentifier("MB-10"),
@@ -427,7 +427,7 @@ def test_a_start_that_fails_after_claiming_releases_the_claim() -> None:
     assert isinstance(failed.error, WorkspaceManagerError)
     assert holders(claims, IssueIdentifier("MB-2")) == ()
     assert tracker.read_issue(IssueIdentifier("MB-2")).unwrap().labels == LabelNames(
-        (LabelName("Specced"),)
+        (LabelName("todo"),)
     )
 
 
@@ -483,13 +483,13 @@ def test_a_dry_run_lists_the_tickets_the_limits_allow_and_starts_nothing() -> No
     claims = FakeClaimRegistry()
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
-        pooled(IssueIdentifier("MB-2"), Priority.high, state=StateName("Grilling")),
-        pooled(IssueIdentifier("MB-3"), Priority.high, state=StateName("QA")),
+        pooled(IssueIdentifier("MB-2"), Priority.high, state=StateName("grill")),
+        pooled(IssueIdentifier("MB-3"), Priority.high, state=StateName("qa")),
         pooled(IssueIdentifier("MB-4"), Priority.high),
         pooled(IssueIdentifier("MB-5"), Priority.no_priority),
         elsewhere=(
-            in_progress(IssueIdentifier("MB-10"), StateName("Grilling")),
-            in_progress(IssueIdentifier("MB-11"), StateName("QA")),
+            in_progress(IssueIdentifier("MB-10"), StateName("grill")),
+            in_progress(IssueIdentifier("MB-11"), StateName("qa")),
         ),
     )
     dry = DrainRequest.fake().model_copy(update={"dry_run": DryRun(True)})
@@ -502,7 +502,7 @@ def test_a_dry_run_lists_the_tickets_the_limits_allow_and_starts_nothing() -> No
 def test_a_pool_with_no_ready_ticket_starts_nothing() -> None:
     manager = fake_manager()
     outcome = draining(
-        pool_of(pooled(IssueIdentifier("MB-3"), Priority.high, state=StateName("QA"))),
+        pool_of(pooled(IssueIdentifier("MB-3"), Priority.high, state=StateName("qa"))),
         manager=manager,
     )
     assert outcome.ready == PoolTickets(())
@@ -536,9 +536,9 @@ def test_a_ticket_labelled_skip_limits_starts_past_the_total() -> None:
 def test_a_ticket_labelled_skip_limits_starts_in_a_full_state() -> None:
     tracker = pool_of(
         pooled(
-            IssueIdentifier("MB-2"), Priority.low, state=StateName("Grilling"), labels=skip_limits()
+            IssueIdentifier("MB-2"), Priority.low, state=StateName("grill"), labels=skip_limits()
         ),
-        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Grilling")),),
+        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("grill")),),
     )
     assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
 
@@ -587,8 +587,8 @@ def test_a_ticket_another_host_wins_keeps_its_skip_limits_label() -> None:
 
 def test_an_urgent_ticket_keeps_to_the_limits() -> None:
     tracker = pool_of(
-        pooled(IssueIdentifier("MB-2"), Priority.urgent, state=StateName("Grilling")),
-        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Grilling")),),
+        pooled(IssueIdentifier("MB-2"), Priority.urgent, state=StateName("grill")),
+        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("grill")),),
     )
     assert picked(draining(tracker)) == ()
 
@@ -616,11 +616,11 @@ def drain_logged(
 def test_the_outcome_says_why_a_ticket_in_the_view_is_not_ready() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-2"), Priority.high, labels=LabelNames((LabelName("claimed"),))),
-        pooled(IssueIdentifier("MB-3"), Priority.high, state=StateName("QA")),
+        pooled(IssueIdentifier("MB-3"), Priority.high, state=StateName("qa")),
         pooled(IssueIdentifier("MB-4"), Priority.high, state=None),
     )
     claimed = UnreadyReason("it is already claimed")
-    unworked = UnreadyReason("no agent works tickets in QA")
+    unworked = UnreadyReason("no agent works tickets in qa")
     stateless = UnreadyReason("it has no flow state")
     outcome = draining(tracker)
     assert tuple(
@@ -635,12 +635,12 @@ def test_the_outcome_says_why_a_ticket_in_the_view_is_not_ready() -> None:
 def test_a_ticket_in_the_view_with_two_flow_labels_refuses_the_pass() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
-        pooled(IssueIdentifier("MB-2"), Priority.high, labels=LabelNames((LabelName("QA"),))),
+        pooled(IssueIdentifier("MB-2"), Priority.high, labels=LabelNames((LabelName("qa"),))),
     )
     claims = FakeClaimRegistry()
     refused = draining_or_refused(tracker, claims=claims)
     assert isinstance(refused, Err)
-    assert re.search("Specced, QA", str(refused.error))
+    assert re.search("todo, qa", str(refused.error))
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
@@ -650,15 +650,15 @@ def test_a_claimed_ticket_with_two_flow_labels_refuses_the_pass() -> None:
         elsewhere=(
             in_progress(
                 IssueIdentifier("MB-10"),
-                StateName("Grilling"),
-                labels=LabelNames((LabelName("QA"),)),
+                StateName("grill"),
+                labels=LabelNames((LabelName("qa"),)),
             ),
         ),
     )
     claims = FakeClaimRegistry()
     refused = draining_or_refused(tracker, claims=claims)
     assert isinstance(refused, Err)
-    assert re.search("Grilling, QA", str(refused.error))
+    assert re.search("grill, qa", str(refused.error))
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
@@ -677,8 +677,8 @@ def test_the_outcome_of_a_pass_with_room_left_is_not_full() -> None:
 def test_the_log_names_each_ticket_started(caplog: pytest.LogCaptureFixture) -> None:
     drain_logged(caplog, standard_pool())
     log = caplog.text
-    assert "Taking MB-2 (high, Specced)…" in log
-    assert "Taking MB-1 (low, Specced)…" in log
+    assert "Taking MB-2 (high, todo)…" in log
+    assert "Taking MB-1 (low, todo)…" in log
 
 
 def test_a_dry_run_logs_each_ticket_it_would_start(caplog: pytest.LogCaptureFixture) -> None:
@@ -687,7 +687,7 @@ def test_a_dry_run_logs_each_ticket_it_would_start(caplog: pytest.LogCaptureFixt
             standard_pool(),
             request=DrainRequest.fake().model_copy(update={"dry_run": DryRun(True)}),
         )
-    assert "Would start MB-2 (high, Specced)." in caplog.text
+    assert "Would start MB-2 (high, todo)." in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -696,7 +696,7 @@ def test_a_dry_run_logs_each_ticket_it_would_start(caplog: pytest.LogCaptureFixt
         "Draining the pool",
         f"Listing the tickets in view {PoolSettings.fake().view.root}",
         "Listing the tickets labelled claimed",
-        "Taking MB-2 (high, Specced)",
+        "Taking MB-2 (high, todo)",
         "Reading MB-2",
         f"Claiming MB-2 for worktree MB-2 on {DrainRequest.fake().host.root}",
         "Labelling MB-2 as claimed",
@@ -718,13 +718,13 @@ def test_the_log_says_a_ticket_labelled_skip_limits_overrode_the_limits(
 ) -> None:
     tracker = pool_of(
         pooled(
-            IssueIdentifier("MB-2"), Priority.low, state=StateName("Grilling"), labels=skip_limits()
+            IssueIdentifier("MB-2"), Priority.low, state=StateName("grill"), labels=skip_limits()
         ),
-        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Grilling")),),
+        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("grill")),),
     )
     drain_logged(caplog, tracker)
     assert (
-        "MB-2 is labelled skip-limits, so it starts although Grilling is at its limit of 1."
+        "MB-2 is labelled skip-limits, so it starts although grill is at its limit of 1."
         in caplog.text
     )
 
@@ -734,7 +734,7 @@ def test_a_ticket_whose_label_is_full_is_skipped_for_the_next() -> None:
         pooled(IssueIdentifier("MB-1"), Priority.low),
         pooled(IssueIdentifier("MB-2"), Priority.high, labels=refactors()),
         labels=labels_with_refactor(),
-        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Review"), labels=refactors()),),
+        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("review"), labels=refactors()),),
     )
     assert picked(draining(tracker, pool=pool_capping_refactors_at(Limit(1)))) == (
         IssueIdentifier("MB-1"),
@@ -784,7 +784,7 @@ def test_a_ticket_labelled_skip_limits_starts_past_its_label_limit() -> None:
             labels=LabelNames((*refactors().root, *skip_limits().root)),
         ),
         labels=labels_with_refactor(),
-        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("Review"), labels=refactors()),),
+        elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("review"), labels=refactors()),),
     )
     outcome = draining(tracker, pool=pool_capping_refactors_at(Limit(1)))
     assert picked(outcome) == (IssueIdentifier("MB-2"),)

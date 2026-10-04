@@ -232,7 +232,7 @@ def test_label_flags_split_on_commas() -> None:
 
 
 def test_a_state_sets_its_flow_label_and_status() -> None:
-    review = LabelName("Review")
+    review = LabelName("review")
     in_review = IssueStatusName("In Review")
     edit = TicketEdit.nothing().model_copy(update={"state": StateName(review.root)})
     update = edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake())
@@ -240,7 +240,7 @@ def test_a_state_sets_its_flow_label_and_status() -> None:
 
 
 def test_a_state_is_spelled_as_the_chart_spells_it() -> None:
-    review = StateName("Review")
+    review = StateName("review")
     edit = TicketEdit.nothing().model_copy(update={"state": StateName("rEVIEW")})
     assert edit.checked(FlowLabels.fake(), IssueIdentifier.fake()).unwrap().state == review
 
@@ -254,7 +254,7 @@ def test_an_unknown_state_is_refused() -> None:
 
 @pytest.mark.parametrize("option", ["add_labels", "remove_labels"])
 def test_a_flow_label_in_a_label_option_is_refused(option: str) -> None:
-    edit = TicketEdit.nothing().model_copy(update={option: LabelNames((LabelName("specced"),))})
+    edit = TicketEdit.nothing().model_copy(update={option: LabelNames((LabelName("TODO"),))})
     state_option = "--state"
     refused = edit.checked(FlowLabels.fake(), IssueIdentifier.fake())
     assert isinstance(refused, Err)

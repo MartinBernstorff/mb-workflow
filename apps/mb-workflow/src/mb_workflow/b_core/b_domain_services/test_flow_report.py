@@ -7,26 +7,26 @@ from mb_workflow.b_core.d_domain_model.flow import FlowStatus, StateName, Workfl
 
 
 def test_prints_the_current_state_and_the_events_legal_from_it() -> None:
-    status = FlowStatus.of(WorkflowChart, StateName("Merging"))
-    assert StatusReport.of(status, AsJson(False)) == StatusReport("Merging\n  merged\n  qa\n")
+    status = FlowStatus.of(WorkflowChart, StateName("merging"))
+    assert StatusReport.of(status, AsJson(False)) == StatusReport("merging\n  merged\n  qa\n")
 
 
 def test_a_final_state_prints_on_its_own() -> None:
-    status = FlowStatus.of(WorkflowChart, StateName("Merged"))
-    assert StatusReport.of(status, AsJson(False)) == StatusReport("Merged\n")
+    status = FlowStatus.of(WorkflowChart, StateName("merged"))
+    assert StatusReport.of(status, AsJson(False)) == StatusReport("merged\n")
 
 
 def test_json_emits_the_same_state_and_events_for_scripting() -> None:
-    status = FlowStatus.of(WorkflowChart, StateName("Merging"))
+    status = FlowStatus.of(WorkflowChart, StateName("merging"))
     assert StatusReport.of(status, AsJson(True)) == StatusReport(
-        '{"state":"Merging","events":["merged","qa"]}\n'
+        '{"state":"merging","events":["merged","qa"]}\n'
     )
 
 
 def test_reads_the_state_from_the_status_store() -> None:
-    store = FakeStatusStore(StateName("Merging"))
+    store = FakeStatusStore(StateName("merging"))
     assert status_report(WorkflowChart, store, AsJson(False)) == Ok(
-        StatusReport("Merging\n  merged\n  qa\n")
+        StatusReport("merging\n  merged\n  qa\n")
     )
 
 

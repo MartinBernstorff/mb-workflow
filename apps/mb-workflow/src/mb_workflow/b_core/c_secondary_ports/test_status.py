@@ -5,18 +5,18 @@ from mb_workflow.b_core.d_domain_model.flow import StateName
 
 
 def test_the_fake_store_reads_back_what_it_was_given() -> None:
-    assert FakeStatusStore(StateName("Merging")).read().unwrap() == StateName("Merging")
+    assert FakeStatusStore(StateName("merging")).read().unwrap() == StateName("merging")
 
 
 def test_writing_moves_the_fake_store_to_the_new_state() -> None:
-    implementing = StateName("Implementing")
-    store = FakeStatusStore(StateName("Grilling"))
+    implementing = StateName("implementing")
+    store = FakeStatusStore(StateName("grill"))
     assert store.write(implementing) == Ok(None)
     assert store.read().unwrap() == implementing
 
 
 def test_the_fake_store_gives_each_state_its_own_status() -> None:
-    store = FakeStatusStore(StateName("Grilling"))
+    store = FakeStatusStore(StateName("grill"))
     assert (
-        store.status_for(StateName("QA")).unwrap() != store.status_for(StateName("Review")).unwrap()
+        store.status_for(StateName("qa")).unwrap() != store.status_for(StateName("review")).unwrap()
     )

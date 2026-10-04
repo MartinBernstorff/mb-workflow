@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class MermaidDiagram(Value[str]):
     @staticmethod
     def fake() -> MermaidDiagram:
-        return MermaidDiagram("stateDiagram-v2\n    direction LR\n    [*] --> grilling\n")
+        return MermaidDiagram("stateDiagram-v2\n    direction LR\n    [*] --> grill\n")
 
 
 class MermaidDocument(Value[str]):
@@ -65,7 +65,7 @@ def format_of(destination: DiagramPath) -> MermaidFormat | ImageFormat:
 class DotSource(Value[str]):
     @staticmethod
     def fake() -> DotSource:
-        return DotSource("digraph WorkflowChart {\n__initial_0 -> grilling;\n}\n")
+        return DotSource("digraph WorkflowChart {\n__initial_0 -> grill;\n}\n")
 
     def with_stable_ids(self) -> DotSource:
         # The library names the initial node and atomic cluster after id() of their parent graph, which differs every run.

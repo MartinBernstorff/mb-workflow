@@ -25,14 +25,14 @@ from mb_workflow.b_core.d_domain_model.issue import (
 @pytest.mark.parametrize(
     ("state", "action"),
     [
-        (StateName("Grilling"), Skill("/grill")),
-        (StateName("Speccing"), Skill("/to-ticket")),
-        (StateName("Specced"), Skill("/implement")),
-        (StateName("Implementing"), Skill("/implement")),
-        (StateName("QA"), AwaitingHuman()),
-        (StateName("Review"), AwaitingHuman()),
-        (StateName("Merging"), Skill("/merge")),
-        (StateName("Merged"), Finished()),
+        (StateName("grill"), Skill("/grill")),
+        (StateName("to-ticket"), Skill("/to-ticket")),
+        (StateName("todo"), Skill("/implement")),
+        (StateName("implementing"), Skill("/implement")),
+        (StateName("qa"), AwaitingHuman()),
+        (StateName("review"), AwaitingHuman()),
+        (StateName("merging"), Skill("/merge")),
+        (StateName("merged"), Finished()),
     ],
 )
 def test_every_state_leads_to_the_action_the_chart_names_for_it(
@@ -69,7 +69,7 @@ def test_a_ticket_without_a_flow_label_is_refused() -> None:
 
 
 def test_a_finished_ticket_is_refused() -> None:
-    merged = flow_labelled(StateName("Merged"))
+    merged = flow_labelled(StateName("merged"))
     refused = TicketState.state_with_work_left(WorkflowChart, FlowLabels.fake(), merged)
     assert isinstance(refused, Err)
     assert isinstance(refused.error, FlowError)

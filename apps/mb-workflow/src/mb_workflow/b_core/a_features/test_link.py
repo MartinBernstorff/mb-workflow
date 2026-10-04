@@ -296,7 +296,7 @@ def test_a_refused_link_restores_the_previous_assignee() -> None:
 
 
 def test_a_refused_link_puts_the_worktree_back_in_its_column() -> None:
-    column = fake_board().status_for(StateName("Specced")).unwrap()
+    column = fake_board().status_for(StateName("todo")).unwrap()
     here = Worktree.bare(RepoId.fake(), WorktreePath.fake()).model_copy(update={"status": column})
     manager = LinkRefusingWorkspaceManager(
         Worktrees((here,)), WorktreePath.fake(), fake_board_statuses()

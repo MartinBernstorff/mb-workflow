@@ -22,7 +22,7 @@ class UnknownStateError(FlowError, ValueError):
 class StateName(Value[str]):
     @staticmethod
     def fake() -> StateName:
-        return StateName("Grilling")
+        return StateName("grill")
 
 
 class Skill(Value[str]):
@@ -65,23 +65,21 @@ class WorkflowChart(StateChart[ChartModel]):
     allow_event_without_transition = False
     catch_errors_as_events = False
 
-    grilling = WorkState(StateName("Grilling"), Skill("/grill"), Phase.entry)
-    speccing = WorkState(StateName("Speccing"), Skill("/to-ticket"), Phase.entry)
-    specced = WorkState(StateName("Specced"), Skill("/implement"), Phase.entry)
-    implementing = WorkState(StateName("Implementing"), Skill("/implement"), Phase.delivery)
-    qa = WorkState(StateName("QA"), AwaitingHuman(), Phase.delivery)
-    review = WorkState(StateName("Review"), AwaitingHuman(), Phase.delivery)
-    merging = WorkState(StateName("Merging"), Skill("/merge"), Phase.delivery)
-    merged = WorkState(StateName("Merged"), Finished(), Phase.delivery)
+    grill = WorkState(StateName("grill"), Skill("/grill"), Phase.entry)
+    to_ticket = WorkState(StateName("to-ticket"), Skill("/to-ticket"), Phase.entry)
+    todo = WorkState(StateName("todo"), Skill("/implement"), Phase.entry)
+    implementing = WorkState(StateName("implementing"), Skill("/implement"), Phase.delivery)
+    qa = WorkState(StateName("qa"), AwaitingHuman(), Phase.delivery)
+    review = WorkState(StateName("review"), AwaitingHuman(), Phase.delivery)
+    merging = WorkState(StateName("merging"), Skill("/merge"), Phase.delivery)
+    merged = WorkState(StateName("merged"), Finished(), Phase.delivery)
 
-    grill = Event(grilling.to.itself() | implementing.to(grilling), id="grill", name="grill")
-    to_ticket = Event(
-        grilling.to(speccing) | implementing.to(speccing), id="to-ticket", name="to-ticket"
+    to_grill = Event(grill.to.itself() | implementing.to(grill), id="grill", name="grill")
+    to_to_ticket = Event(
+        grill.to(to_ticket) | implementing.to(to_ticket), id="to-ticket", name="to-ticket"
     )
-    to_specced = Event(speccing.to(specced), id="specced", name="specced")
-    implement = Event(
-        specced.to(implementing) | qa.to(implementing), id="implement", name="implement"
-    )
+    to_todo = Event(to_ticket.to(todo), id="todo", name="todo")
+    implement = Event(todo.to(implementing) | qa.to(implementing), id="implement", name="implement")
     to_qa = Event(implementing.to(qa) | review.to(qa) | merging.to(qa), id="qa", name="qa")
     ready = Event(qa.to(review), id="ready", name="ready")
     merge = Event(qa.to(merging) | review.to(merging), id="merge", name="merge")
@@ -104,7 +102,7 @@ class Edge(Model):
 
     @staticmethod
     def fake() -> Edge:
-        return Edge(source=StateName.fake(), event=EventName.fake(), target=StateName("Speccing"))
+        return Edge(source=StateName.fake(), event=EventName.fake(), target=StateName("to-ticket"))
 
     @staticmethod
     def of_transition(transition: Transition, name: EventName) -> Edge:

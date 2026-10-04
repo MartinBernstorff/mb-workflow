@@ -62,7 +62,7 @@ def test_every_state_the_chart_holds_has_a_board_column() -> None:
 
 
 def test_a_column_id_resolves_to_the_state_its_label_stands_for() -> None:
-    assert state_of(WorkspaceStatus("in-review")) == StateName("QA")
+    assert state_of(WorkspaceStatus("in-review")) == StateName("qa")
 
 
 def test_a_column_outside_the_chart_reads_as_the_start_state() -> None:
@@ -78,12 +78,12 @@ def test_a_column_the_board_no_longer_defines_reads_as_the_start_state() -> None
 
 
 def test_a_state_maps_to_the_id_of_the_board_column_its_label_names() -> None:
-    assert board().status_for(StateName("Review")).unwrap() == WorkspaceStatus("status-5")
+    assert board().status_for(StateName("review")).unwrap() == WorkspaceStatus("status-5")
 
 
 def test_a_state_the_board_has_no_column_for_is_a_clear_error() -> None:
     columns = Columns((Column(id=WorkspaceStatus("in-progress"), label=ColumnLabel("Grilling")),))
-    unrecorded = columns.status_for(StateName("Merged"))
+    unrecorded = columns.status_for(StateName("merged"))
     assert isinstance(unrecorded, Err)
     assert "defines no Merged column" in str(unrecorded.error)
 
@@ -108,7 +108,7 @@ def board_over(
 
 
 def test_the_board_reads_the_state_of_the_column_you_stand_in() -> None:
-    qa = StateName("QA")
+    qa = StateName("qa")
     manager = standing_in(WorkspaceStatus("in-review"))
     assert board_over(manager, Ok(board())).read() == Ok(qa)
 
@@ -116,7 +116,7 @@ def test_the_board_reads_the_state_of_the_column_you_stand_in() -> None:
 def test_the_board_moves_the_worktree_you_stand_in_to_the_state_column() -> None:
     review_column = WorkspaceStatus("status-5")
     manager = standing_in(None)
-    assert board_over(manager, Ok(board())).write(StateName("Review")) == Ok(None)
+    assert board_over(manager, Ok(board())).write(StateName("review")) == Ok(None)
     assert manager.current().unwrap().status == review_column
 
 
@@ -126,5 +126,5 @@ def test_unreadable_columns_leave_the_worktree_where_it_was() -> None:
     unread = Err(WorkspaceManagerError("Orca printed no columns."))
     store = board_over(manager, unread)
     assert store.read() == unread
-    assert store.write(StateName("Review")) == unread
+    assert store.write(StateName("review")) == unread
     assert manager.current().unwrap().status == standing

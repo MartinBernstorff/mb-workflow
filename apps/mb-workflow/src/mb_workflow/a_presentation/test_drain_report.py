@@ -44,7 +44,7 @@ def test_the_listing_names_each_ready_ticket_its_priority_and_state_in_order() -
     )
     assert DrainReport.pick_listing(
         PoolTickets((urgent, unprioritised)), FlowLabels.fake()
-    ) == Output("E-2\turgent\tSpecced\nE-1\tno_priority\tSpecced\n")
+    ) == Output("E-2\turgent\ttodo\nE-1\tno_priority\ttodo\n")
 
 
 def test_the_listing_marks_a_ticket_without_a_flow_label_as_stateless() -> None:

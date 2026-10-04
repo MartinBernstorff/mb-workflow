@@ -34,7 +34,7 @@ def test_labels_the_issue_linked_to_the_worktree_you_stand_in() -> None:
     tracker = seeded_tracker()
     manager = FakeWorkspaceManager(Worktrees.fake(), WorktreePath.fake())
     _ = LinkedTicketTransition.move_linked_ticket(
-        store=FakeStatusStore(StateName("Implementing")),
+        store=FakeStatusStore(StateName("implementing")),
         tracker=tracker,
         manager=manager,
         wanted=FlowLabels.fake(),
@@ -43,12 +43,12 @@ def test_labels_the_issue_linked_to_the_worktree_you_stand_in() -> None:
         force=Force(False),
     ).unwrap()
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == LabelNames(
-        (LabelName.fake(), LabelName("QA"))
+        (LabelName.fake(), LabelName("qa"))
     )
 
 
 def test_a_worktree_with_no_linked_issue_leaves_the_board_where_it_was() -> None:
-    store = FakeStatusStore(StateName("Implementing"))
+    store = FakeStatusStore(StateName("implementing"))
     unlinked = Worktree.fake().model_copy(update={"issue": None})
     manager = FakeWorkspaceManager(Worktrees((unlinked,)), unlinked.path)
     with pytest.raises(UnlinkedWorktreeError, match="no linked Linear issue"):
@@ -61,14 +61,14 @@ def test_a_worktree_with_no_linked_issue_leaves_the_board_where_it_was() -> None
             event=EventName("qa"),
             force=Force(False),
         ).unwrap()
-    assert store.read().unwrap() == StateName("Implementing")
+    assert store.read().unwrap() == StateName("implementing")
 
 
 def test_an_unlisted_current_worktree_leaves_the_ticket_where_it_was() -> None:
     tracker = seeded_tracker()
     before = tracker.read_issue(IssueIdentifier.fake()).unwrap()
     refused = LinkedTicketTransition.move_linked_ticket(
-        store=FakeStatusStore(StateName("Implementing")),
+        store=FakeStatusStore(StateName("implementing")),
         tracker=tracker,
         manager=FakeWorkspaceManager(Worktrees(()), WorktreePath.fake()),
         wanted=FlowLabels.fake(),

@@ -26,9 +26,9 @@ def with_repo_config(directory: WorkingDirectory) -> WorkingDirectory:
     _ = (directory.root / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
-        '[ticket_statuses]\nGrilling = "Maturing"\nSpeccing = "Maturing"\nSpecced = "Todo"\n'
-        'Implementing = "In Progress"\nQA = "In Progress"\nReview = "In Review"\n'
-        'Merging = "Ready For Release"\nMerged = "Done"\n'
+        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'merging = "Ready For Release"\nmerged = "Done"\n'
     )
     return directory
 

@@ -29,13 +29,34 @@ class LabelRename(Model):
 
     @staticmethod
     def fake() -> LabelRename:
-        return LabelRename(held=LabelName("implementing"), renamed=LabelName("Implementing"))
+        return LabelRename(held=LabelName("Implementing"), renamed=LabelName("implementing"))
 
 
 class LabelRenames(Value[tuple[LabelRename, ...]]):
     @staticmethod
     def fake() -> LabelRenames:
         return LabelRenames((LabelRename.fake(),))
+
+    # The entry states were renamed, so tickets labelled before the rename keep their state.
+    @staticmethod
+    def former_state_labels() -> LabelRenames:
+        return LabelRenames(
+            tuple(
+                LabelRename(held=LabelName(held), renamed=LabelName(renamed))
+                for held, renamed in (
+                    ("Grilling", "grill"),
+                    ("Speccing", "to-ticket"),
+                    ("Specced", "todo"),
+                )
+            )
+        )
+
+    def renamed_from(self, label: LabelName) -> LabelName | None:
+        wanted = label.root.casefold()
+        return next(
+            (rename.renamed for rename in self.root if rename.held.root.casefold() == wanted),
+            None,
+        )
 
 
 # The changes that bring one label group in line with the flow labels.
@@ -55,17 +76,23 @@ class GroupSync(Model):
         return GroupSync(renamed=LabelRenames(()), deleted=LabelNames(()), recolored=LabelNames(()))
 
 
+# Former names a held label still carries are renamed to the flow label they became.
 class FlowLabels(Model):
     group: LabelGroupName
     labels: LabelNames
     entry: LabelNames
+    former: LabelRenames
 
     @staticmethod
     def fake() -> FlowLabels:
-        return FlowLabels.of_chart(WorkflowChart, LabelGroupName.fake())
+        return FlowLabels.of_chart(
+            WorkflowChart, LabelGroupName.fake(), LabelRenames.former_state_labels()
+        )
 
     @staticmethod
-    def of_chart(chart: type[WorkflowChart], group: LabelGroupName) -> FlowLabels:
+    def of_chart(
+        chart: type[WorkflowChart], group: LabelGroupName, former: LabelRenames
+    ) -> FlowLabels:
         entry = LabelNames(
             tuple(
                 LabelName(state.name)
@@ -73,7 +100,9 @@ class FlowLabels(Model):
                 if isinstance(state, WorkState) and state.phase == Phase.entry
             )
         )
-        return FlowLabels(group=group, labels=FlowLabels.chart_labels(chart), entry=entry)
+        return FlowLabels(
+            group=group, labels=FlowLabels.chart_labels(chart), entry=entry, former=former
+        )
 
     def colored(self, labels: LabelNames) -> ColoredLabels:
         return ColoredLabels(
@@ -95,23 +124,40 @@ class FlowLabels(Model):
         return LabelColor.yellow() if self.entry.matching(label) is not None else LabelColor.grey()
 
     def missing(self, held: LabelNames) -> LabelNames:
-        return held.unmatched(self.labels)
+        return LabelNames(
+            (*held.root, *(rename.renamed for rename in self._renames(held).root))
+        ).unmatched(self.labels)
 
     def sync_plan(self, held: ColoredLabels) -> GroupSync:
-        names = held.label_names().root
+        names = held.label_names()
+        renamed = self._renames(names)
         return GroupSync(
-            renamed=LabelRenames(
-                tuple(
-                    LabelRename(held=label, renamed=spelled)
-                    for label in names
-                    if (spelled := self.labels.matching(label)) is not None and spelled != label
-                )
-            ),
+            renamed=renamed,
             deleted=LabelNames(
-                tuple(label for label in names if self.labels.matching(label) is None)
+                tuple(
+                    label
+                    for label in names.root
+                    if self.labels.matching(label) is None
+                    and all(rename.held != label for rename in renamed.root)
+                )
             ),
             recolored=self.labels.spelled(self.miscolored(held)),
         )
+
+    # A label is renamed to its spelling in the spec, or from a former name to the label it became.
+    # A former name whose label is already held has nothing to become, so it is deleted instead.
+    def _renames(self, held: LabelNames) -> LabelRenames:
+        renames: list[LabelRename] = []
+        for label in held.root:
+            spelled = self.labels.matching(label)
+            if spelled is not None:
+                if spelled != label:
+                    renames.append(LabelRename(held=label, renamed=spelled))
+                continue
+            current = self.former.renamed_from(label)
+            if current is not None and held.matching(current) is None:
+                renames.append(LabelRename(held=label, renamed=current))
+        return LabelRenames(tuple(renames))
 
     # A flow label set by hand would disagree with the status, so the state is moved with --state instead.
     def checked_label_options(

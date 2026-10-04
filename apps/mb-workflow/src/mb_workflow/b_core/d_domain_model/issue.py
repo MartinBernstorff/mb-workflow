@@ -117,7 +117,7 @@ class GroupedLabel(Model):
 
     @staticmethod
     def fake() -> GroupedLabel:
-        return GroupedLabel(group=LabelGroupName.fake(), label=LabelName("Specced"))
+        return GroupedLabel(group=LabelGroupName.fake(), label=LabelName("todo"))
 
 
 class GroupedLabels(Value[tuple[GroupedLabel, ...]]):
