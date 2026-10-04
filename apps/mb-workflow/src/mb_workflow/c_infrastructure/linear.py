@@ -385,11 +385,7 @@ class UpdateLookup(Payload):
             return Ok(None)
         if not self.milestone_projects:
             return Err(TicketTrackerError(f"No project is named {milestone.project.root}."))
-        match self.milestone_projects[0].milestone(milestone.name):
-            case Ok(found):
-                return Ok(found)
-            case Err() as failed:
-                return failed
+        return self.milestone_projects[0].milestone(milestone.name)
 
     def state_id(self, status: IssueStatusName) -> Result[StateId, TicketTrackerError]:
         found = next((known for known in self.states if known.name.names(status).root), None)
@@ -769,9 +765,9 @@ class LinearCall:
             case Err(error):
                 return Err(TicketTrackerError(str(error)))
 
-    # For a write whose answer the caller does not need.
+    # Runs a write whose answer the caller does not need.
     @staticmethod
-    def done[T](call: Callable[[], T]) -> Result[None, TicketTrackerError]:
+    def written[T](call: Callable[[], T]) -> Result[None, TicketTrackerError]:
         match LinearCall.answered(call):
             case Ok():
                 return Ok(None)
@@ -1202,7 +1198,7 @@ class Linear(TicketTracker):
         if isinstance(label_ids, Err):
             return label_ids
         (label_id,) = label_ids.value
-        return LinearCall.done(
+        return LinearCall.written(
             lambda: self._client.add_label(
                 IssueAddLabelRequest(id=issue.root, label_id=label_id.root)
             )
@@ -1216,7 +1212,7 @@ class Linear(TicketTracker):
         if isinstance(label_ids, Err):
             return label_ids
         (label_id,) = label_ids.value
-        return LinearCall.done(
+        return LinearCall.written(
             lambda: self._client.remove_label(
                 IssueRemoveLabelRequest(id=issue.root, label_id=label_id.root)
             )
@@ -1230,7 +1226,7 @@ class Linear(TicketTracker):
         if isinstance(label_ids, Err):
             return label_ids
         wanted = [label_id.root for label_id in label_ids.value]
-        return LinearCall.done(
+        return LinearCall.written(
             lambda: self._client.update_issue(IssueUpdateRequest(id=issue.root, label_ids=wanted))
         )
 
@@ -1246,7 +1242,7 @@ class Linear(TicketTracker):
         user_id = found.value.id if found.value is not None else None
         if user_id is None:
             return Err(TicketTrackerError(f"No Linear user has the email {assignee.root}."))
-        return LinearCall.done(
+        return LinearCall.written(
             lambda: self._client.update_issue(
                 IssueUpdateRequest(id=issue.root, assignee_id=user_id)
             )
@@ -1369,7 +1365,7 @@ class Linear(TicketTracker):
     def _relate(
         self, *, blocker: IssueIdentifier, blocked: IssueIdentifier
     ) -> Result[None, TicketTrackerError]:
-        return LinearCall.done(
+        return LinearCall.written(
             lambda: self._client.execute(
                 "mutation($input: IssueRelationCreateInput!) {"
                 " issueRelationCreate(input: $input) { success } }",

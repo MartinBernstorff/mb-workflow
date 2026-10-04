@@ -5,7 +5,6 @@ from safe_result import Err, Ok, Result
 from mb_workflow.b_core.a_features.start import PromptUndeliveredError, TicketStart
 from mb_workflow.b_core.a_features.teardown import Teardown
 from mb_workflow.b_core.b_domain_services.worktree_reconciliation import obsolete, uncovered
-from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
     WorkspaceNaming,
@@ -218,7 +217,7 @@ class ReviewWorkspaces:
 
         for worktree in to_remove.root:
             narrator.removing(worktree.path)
-            match ReviewWorkspaces.release_and_remove(
+            match Teardown.release_and_remove(
                 manager=manager,
                 claims=claims,
                 tracker=tracker,
@@ -271,29 +270,6 @@ class ReviewWorkspaces:
         if isinstance(current, Err):
             return current
         return Ok((listed.value, current.value))
-
-    # The tracker's writes still raise, so their errors become values here.
-    @staticmethod
-    def release_and_remove(
-        *,
-        manager: WorkspaceManager,
-        claims: ClaimRegistry,
-        tracker: TicketTracker,
-        claim_settings: ClaimSettings,
-        worktree: Worktree,
-        host: HostName,
-    ) -> Result[None, TicketTrackerError | WorkspaceManagerError]:
-        try:
-            return Teardown.release_and_remove(
-                manager=manager,
-                claims=claims,
-                tracker=tracker,
-                claim_settings=claim_settings,
-                worktree=worktree,
-                host=host,
-            )
-        except TicketTrackerError as error:
-            return Err(error)
 
     @staticmethod
     def create_review_workspace(

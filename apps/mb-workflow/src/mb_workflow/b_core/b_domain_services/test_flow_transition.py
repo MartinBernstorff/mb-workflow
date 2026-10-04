@@ -157,9 +157,10 @@ def test_a_status_the_tracker_lacks_leaves_the_ticket_and_the_board_where_they_w
         statuses=IssueStatuses((IssueStatus.fake(),)),
         groups={wanted.group: wanted.labels},
     )
+    in_review = TicketStatuses.fake().of(StateName("Review"))
     refused = transition_with_fake_flow_labels(store, tracker, EventName("ready"), Force(False))
     assert isinstance(refused, Err)
-    assert TicketStatuses.fake().of(StateName("Review")).root in str(refused.error)
+    assert in_review.root in str(refused.error)
     assert store.read().unwrap() == StateName("QA")
     assert tracker.read_issue(IssueIdentifier.fake()).unwrap().labels == Issue.fake().labels
 
