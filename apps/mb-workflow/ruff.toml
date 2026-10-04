@@ -20,10 +20,4 @@ ignore = [
     "TRY003",
     # Logged errors are user-facing messages; a traceback would be noise.
     "TRY400",
-    # Bools are passed wrapped in Value[bool] types, e.g. Force(True), so the call site names them.
-    "FBT003",
 ]
-
-[lint.extend-per-file-ignores]
-# A Typer command's bool parameter and its typer.Option default are a CLI flag, not a boolean trap.
-"src/mb_workflow/a_presentation/cli/**" = ["FBT001", "FBT003"]

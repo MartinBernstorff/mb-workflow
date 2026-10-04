@@ -24,7 +24,6 @@ select = [
     "ERA",
     "TC",
     "ASYNC",
-    "FBT",
     "ISC",
     "LOG",
     "G",
