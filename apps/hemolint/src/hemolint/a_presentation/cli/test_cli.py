@@ -41,7 +41,7 @@ def test_recording_a_baseline_exits_zero_and_says_what_it_added(workdir: Path) -
     result = HemolintProcess.run_in(
         workdir, ["check", "--format", "fixit", "--baseline"], violation
     )
-    written = workdir / ".hemolint" / source / f"fixit-{rule}.json"
+    written = workdir / ".hemolint" / f"fixit-{rule}" / f"{source}.json"
     added = "Added 1"
     assert result.returncode == success
     assert added in result.stdout
@@ -61,7 +61,7 @@ def test_ruff_json_with_absolute_paths_records_them_relative_to_the_working_dire
     _ = HemolintProcess.run_in(
         workdir, ["check", "--format", "ruff-json", "--baseline"], json.dumps([entry])
     )
-    written = workdir / ".hemolint" / source / f"ruff-{ruff_rule}.json"
+    written = workdir / ".hemolint" / f"ruff-{ruff_rule}" / f"{source}.json"
     assert json.loads(written.read_text()) == {code: 1}
 
 
@@ -70,7 +70,7 @@ def test_another_directory_holds_the_baseline_when_given(workdir: Path) -> None:
     _ = HemolintProcess.run_in(
         workdir, ["check", "--format", "fixit", "--baseline", "--dir", directory], violation
     )
-    assert (workdir / directory / source).is_dir()
+    assert (workdir / directory / f"fixit-{rule}" / f"{source}.json").is_file()
 
 
 def test_unparsable_output_exits_two_and_writes_nothing(workdir: Path) -> None:
@@ -173,9 +173,9 @@ def test_tach_json_records_located_and_global_violations(workdir: Path) -> None:
     )
     success = 0
     assert result.returncode == success
-    located = workdir / ".hemolint" / source / f"tach-{located_kind}.json"
+    located = workdir / ".hemolint" / f"tach-{located_kind}" / f"{source}.json"
     assert json.loads(located.read_text()) == {code: 1}
-    assert (workdir / ".hemolint" / "_global" / f"tach-{global_kind}.json").is_file()
+    assert (workdir / ".hemolint" / f"tach-{global_kind}" / "_global.json").is_file()
 
 
 def test_a_tach_error_exits_two_and_writes_nothing(workdir: Path) -> None:
