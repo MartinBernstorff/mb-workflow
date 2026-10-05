@@ -67,6 +67,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 )
 
 if TYPE_CHECKING:
+    from mb_workflow.b_core.a_features.start import PromptUndeliveredError
     from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 
@@ -252,7 +253,8 @@ def draining_or_refused(
     | ClaimRefusedError
     | UnknownLabelError
     | MissingFlowLabelsError
-    | WorkspaceManagerError,
+    | WorkspaceManagerError
+    | PromptUndeliveredError,
 ]:
     return DrainRuns.attempted(tracker, manager=manager, claims=claims, pool=pool)
 
@@ -276,7 +278,8 @@ class DrainRuns:
         | ClaimRefusedError
         | UnknownLabelError
         | MissingFlowLabelsError
-        | WorkspaceManagerError,
+        | WorkspaceManagerError
+        | PromptUndeliveredError,
     ]:
         return Drain.drain_pool(
             tracker=tracker,

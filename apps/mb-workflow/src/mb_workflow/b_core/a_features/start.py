@@ -190,7 +190,8 @@ class TicketStart:
         | UnknownClaimLabelError
         | ClaimRefusedError
         | MissingFlowLabelsError
-        | WorkspaceManagerError,
+        | WorkspaceManagerError
+        | PromptUndeliveredError,
     ]:
         with Activity(f"Reading {request.ticket.root}").logged(logger):
             read = tracker.read_issue_detail(request.ticket)
@@ -263,7 +264,10 @@ class TicketStart:
         display_name: DisplayName,
         prompt: TerminalText | None,
         request: StartRequest,
-    ) -> Result[None, TicketTrackerError | ClaimRefusedError | WorkspaceManagerError]:
+    ) -> Result[
+        None,
+        TicketTrackerError | ClaimRefusedError | WorkspaceManagerError | PromptUndeliveredError,
+    ]:
         ran = Saga.run((*taking_steps, worktree_step))
         if isinstance(ran, Err):
             return ran
@@ -280,7 +284,7 @@ class TicketStart:
         opened: OpenedWorktree,
         prompt: TerminalText | None,
         request: StartRequest,
-    ) -> Result[None, WorkspaceManagerError]:
+    ) -> Result[None, WorkspaceManagerError | PromptUndeliveredError]:
         if prompt is None:
             return Ok(None)
         return TicketStart.send_prompt(
@@ -343,9 +347,11 @@ class TicketStart:
         prompt: TerminalText,
         idle_timeout: TimeoutMs,
         submit: Submit,
-    ) -> Result[None, WorkspaceManagerError]:
+    ) -> Result[None, WorkspaceManagerError | PromptUndeliveredError]:
         if opened.terminal is None:
-            raise PromptUndeliveredError("No agent terminal handle returned; prompt not typed.")
+            return Err(
+                PromptUndeliveredError("No agent terminal handle returned; prompt not typed.")
+            )
 
         with Activity("Waiting for the agent terminal to go idle").logged(logger):
             idle = manager.wait_for_idle(opened.terminal, idle_timeout)

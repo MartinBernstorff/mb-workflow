@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
-from mb_workflow.b_core.a_features.start import StartRequest, TicketStart
+from mb_workflow.b_core.a_features.start import PromptUndeliveredError, StartRequest, TicketStart
 from mb_workflow.b_core.b_domain_services.pick_order import in_pick_order
 from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimLostError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import LabelCheck
@@ -258,7 +258,8 @@ class Drain:
         | ClaimRefusedError
         | UnknownLabelError
         | MissingFlowLabelsError
-        | WorkspaceManagerError,
+        | WorkspaceManagerError
+        | PromptUndeliveredError,
     ]:
         match lock.acquire():
             case Ok(held):
@@ -301,7 +302,8 @@ class Drain:
         | ClaimRefusedError
         | UnknownLabelError
         | MissingFlowLabelsError
-        | WorkspaceManagerError,
+        | WorkspaceManagerError
+        | PromptUndeliveredError,
     ]:
         with Activity("Draining the pool").logged(logger):
             read = Drain.read_pool(tracker, claim_settings, flow_labels, pool)
@@ -414,7 +416,8 @@ class Drain:
         | UnknownClaimLabelError
         | ClaimRefusedError
         | MissingFlowLabelsError
-        | WorkspaceManagerError,
+        | WorkspaceManagerError
+        | PromptUndeliveredError,
     ]:
         started = TicketStart.start_ticket(
             manager=manager,

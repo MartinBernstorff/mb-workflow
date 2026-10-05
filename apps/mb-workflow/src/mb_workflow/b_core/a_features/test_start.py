@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 import pytest
 from safe_result import Err, Ok, Result
 
-from mb_workflow.b_core.a_features.start import StartRequest, TicketStart
+from mb_workflow.b_core.a_features.start import PromptUndeliveredError, StartRequest, TicketStart
 from mb_workflow.b_core.c_secondary_ports.claims import (
     ClaimRefusedError,
     FakeClaimRegistry,
@@ -19,6 +19,7 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     DisplayNameRefusingWorkspaceManager,
     FakeWorkspaceManager,
+    TerminalWithholdingWorkspaceManager,
     WorkspaceManagerError,
 )
 from mb_workflow.b_core.d_domain_model.claim import (
@@ -140,7 +141,8 @@ def starting(
     | UnknownClaimLabelError
     | ClaimRefusedError
     | MissingFlowLabelsError
-    | WorkspaceManagerError,
+    | WorkspaceManagerError
+    | PromptUndeliveredError,
 ]:
     return TicketStart.start_ticket(
         manager=manager,
@@ -584,3 +586,12 @@ def test_a_failed_start_keeps_the_claim_and_label_this_worktree_already_held() -
         .labels.has(ClaimSettings.fake().label)
         .root
     )
+
+
+def test_an_agent_terminal_that_is_never_handed_back_fails_the_start_after_opening() -> None:
+    manager = TerminalWithholdingWorkspaceManager(
+        Worktrees.fake(), WorktreePath.fake(), fake_board_statuses()
+    )
+    failed = starting(manager, tracking(StateName("todo")), StartRequest.fake())
+    assert isinstance(failed.error, PromptUndeliveredError)
+    assert opened_in(manager).issue == IssueIdentifier.fake()

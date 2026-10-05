@@ -284,6 +284,13 @@ class LinkRefusingWorkspaceManager(FakeWorkspaceManager):
         return Err(WorkspaceManagerError(f"Orca refused to link {issue.root}."))
 
 
+# Orca can open a worktree for an agent yet hand back no handle to its terminal.
+class TerminalWithholdingWorkspaceManager(FakeWorkspaceManager):
+    @override
+    def _opened(self, worktree: Worktree, agent: AgentName | None) -> OpenedWorktree:
+        return OpenedWorktree(worktree=worktree, terminal=None)
+
+
 class WorkspaceNaming:
     # The display name is cosmetic, so a refusal leaves the worktree under its directory name.
     @staticmethod
