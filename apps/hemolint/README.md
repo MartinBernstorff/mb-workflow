@@ -22,7 +22,7 @@ Remove fixed violations from the baseline instead of failing on them:
 fixit lint | uv run hemolint check --format fixit --prune
 ```
 
-It still exits 1 on new violations, but never adds them to the baseline, so a pre-commit hook can run it to shrink the baseline as violations are fixed. The baseline directories of deleted source files are removed with their violations.
+It still exits 1 on new violations, but never adds them to the baseline, so a pre-commit hook can run it to shrink the baseline as violations are fixed. The baseline files of deleted source files are removed with their violations.
 
 Ruff's JSON output works in all three modes. Its absolute paths are recorded relative to the current directory:
 
@@ -36,8 +36,8 @@ Tach's JSON output works too. Run it from the tach project root, since tach's pa
 tach check --output json | uv run hemolint check --format tach
 ```
 
-Each diagnostic kind, e.g. `UndeclaredDependency`, is a rule. Diagnostics for the whole project rather than a line are kept under `_global/`, fingerprinted by their details. Configuration diagnostics, skipped files and tach errors such as a circular dependency exit 2, since tach could not check everything.
+Each diagnostic kind, e.g. `UndeclaredDependency`, is a rule. Diagnostics for the whole project rather than a line are kept in `<linter>-<rule>/_global.json`, fingerprinted by their details. Configuration diagnostics, skipped files and tach errors such as a circular dependency exit 2, since tach could not check everything.
 
-The baseline lives in `.hemolint/`, one JSON file per source file per rule, at `<source path>/<linter>-<rule>.json`.
+The baseline lives in `.hemolint/`, one directory per rule and one JSON file per source file in it, at `<linter>-<rule>/<source path>.json`.
 
 All checks run through moon from the repository root: `moon ci`.
