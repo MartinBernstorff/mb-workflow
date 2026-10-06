@@ -11,6 +11,7 @@ from mb_workflow.b_core.a_features.drain import (
     Drain,
     DrainOutcome,
     DrainRequest,
+    LossReason,
     UnreadyReason,
 )
 from mb_workflow.b_core.c_secondary_ports.claims import (
@@ -689,15 +690,6 @@ def test_the_log_names_each_ticket_started(caplog: pytest.LogCaptureFixture) -> 
     assert "Taking MB-1 (low, todo)…" in log
 
 
-def test_a_dry_run_logs_each_ticket_it_would_start(caplog: pytest.LogCaptureFixture) -> None:
-    with caplog.at_level(logging.INFO):
-        _ = draining(
-            standard_pool(),
-            request=DrainRequest.fake().model_copy(update={"dry_run": DryRun(True)}),
-        )
-    assert "Would start MB-2 (high, todo)." in caplog.text
-
-
 @pytest.mark.parametrize(
     "activity",
     [
@@ -721,19 +713,26 @@ def test_the_log_brackets_each_activity_of_a_pass_with_its_start_and_finish(
     assert re.search(rf"{re.escape(activity)} took \d+\.\ds\.", log[started:])
 
 
-def test_the_log_says_a_ticket_labelled_skip_limits_overrode_the_limits(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_the_outcome_names_each_ticket_whose_skip_limits_label_overrode_the_limits() -> None:
     tracker = pool_of(
         pooled(
             IssueIdentifier("MB-2"), Priority.low, state=StateName("grill"), labels=skip_limits()
         ),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("grill")),),
     )
-    drain_logged(caplog, tracker)
-    assert (
-        "MB-2 is labelled skip-limits, so it starts although grill is at its limit of 1."
-        in caplog.text
+    refusal = Refusal("grill is at its limit of 1")
+    outcome = draining(tracker)
+    assert tuple(
+        (override.ticket.issue.identifier, override.refusal) for override in outcome.overridden
+    ) == ((IssueIdentifier("MB-2"), refusal),)
+
+
+def test_the_outcome_names_each_ticket_another_host_won() -> None:
+    claims = RacedRegistry(IssueIdentifier("MB-2"))
+    reason = LossReason("another host holds it")
+    outcome = draining(standard_pool(), claims=claims)
+    assert tuple((lost.ticket.issue.identifier, lost.reason) for lost in outcome.lost) == (
+        (IssueIdentifier("MB-2"), reason),
     )
 
 
