@@ -19,6 +19,7 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     DisplayNameRefusingWorkspaceManager,
     FakeWorkspaceManager,
+    PriorityRefusingWorkspaceManager,
     WorkspaceManagerError,
 )
 from mb_workflow.b_core.d_domain_model.claim import (
@@ -49,6 +50,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueTitle,
     LabelName,
     LabelNames,
+    Priority,
     StatusType,
 )
 from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
@@ -58,6 +60,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     ProjectSelector,
     Submit,
     TerminalText,
+    WorkspacePriority,
     WorkspaceStatuses,
     Worktree,
     WorktreeName,
@@ -85,6 +88,7 @@ def tracking(
     tracker: type[FakeTicketTracker] = FakeTicketTracker,
     status: IssueStatusName = IssueStatusName.fake(),
     assignee: Assignee | None = None,
+    priority: Priority = Priority.medium,
 ) -> FakeTicketTracker:
     issue = Issue.fake().model_copy(
         update={
@@ -95,7 +99,11 @@ def tracking(
     )
     return tracker(
         LabelNames((*LabelNames.fake().root, LabelName("claimed"), *FlowLabels.fake().labels.root)),
-        (TrackedIssue.fake().model_copy(update={"issue": issue, "assignee": assignee}),),
+        (
+            TrackedIssue.fake().model_copy(
+                update={"issue": issue, "assignee": assignee, "priority": priority}
+            ),
+        ),
         statuses=mapped_statuses(),
         groups={FlowLabels.fake().group: FlowLabels.fake().labels},
     )
@@ -174,6 +182,22 @@ def test_names_the_worktree_after_the_ticket_title() -> None:
 
 def test_a_refused_display_name_still_opens_the_worktree() -> None:
     manager = DisplayNameRefusingWorkspaceManager(
+        Worktrees.fake(), WorktreePath.fake(), fake_board_statuses()
+    )
+    assert starting(manager, tracking(StateName("todo")), StartRequest.fake()) == Ok(None)
+    assert opened_in(manager).issue == IssueIdentifier.fake()
+
+
+def test_gives_the_worktree_the_ticket_priority() -> None:
+    manager = fake_manager()
+    assert starting(
+        manager, tracking(StateName("todo"), priority=Priority.urgent), StartRequest.fake()
+    ) == Ok(None)
+    assert opened_in(manager).priority == WorkspacePriority.urgent
+
+
+def test_a_refused_priority_still_opens_the_worktree() -> None:
+    manager = PriorityRefusingWorkspaceManager(
         Worktrees.fake(), WorktreePath.fake(), fake_board_statuses()
     )
     assert starting(manager, tracking(StateName("todo")), StartRequest.fake()) == Ok(None)

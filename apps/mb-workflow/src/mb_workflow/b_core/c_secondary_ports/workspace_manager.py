@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         Submit,
         TerminalText,
         TimeoutMs,
+        WorkspacePriority,
         WorkspaceStatus,
     )
 
@@ -69,6 +70,10 @@ class WorkspaceManager(Protocol):
 
     def set_linked_issue(
         self, path: WorktreePath, issue: IssueIdentifier
+    ) -> Result[None, WorkspaceManagerError]: ...
+
+    def set_priority(
+        self, path: WorktreePath, priority: WorkspacePriority
     ) -> Result[None, WorkspaceManagerError]: ...
 
     def wait_for_idle(
@@ -181,6 +186,12 @@ class FakeWorkspaceManager(WorkspaceManager):
         return self._update(path, lambda w: w.model_copy(update={"issue": issue}))
 
     @override
+    def set_priority(
+        self, path: WorktreePath, priority: WorkspacePriority
+    ) -> Result[None, WorkspaceManagerError]:
+        return self._update(path, lambda w: w.model_copy(update={"priority": priority}))
+
+    @override
     def wait_for_idle(
         self, terminal: TerminalHandle, timeout: TimeoutMs
     ) -> Result[None, WorkspaceManagerError]:
@@ -284,6 +295,14 @@ class LinkRefusingWorkspaceManager(FakeWorkspaceManager):
         return Err(WorkspaceManagerError(f"Orca refused to link {issue.root}."))
 
 
+class PriorityRefusingWorkspaceManager(FakeWorkspaceManager):
+    @override
+    def set_priority(
+        self, path: WorktreePath, priority: WorkspacePriority
+    ) -> Result[None, WorkspaceManagerError]:
+        return Err(WorkspaceManagerError(f"Orca refused the priority {priority.value}."))
+
+
 class WorkspaceNaming:
     # The display name is cosmetic, so a refusal leaves the worktree under its directory name.
     @staticmethod
@@ -295,3 +314,16 @@ class WorkspaceNaming:
                 pass
             case Err(error):
                 logger.warning("Could not name %s %s: %s", path.root, name.root, error)
+
+    # The priority only orders the board, so a refusal leaves the worktree unprioritised.
+    @staticmethod
+    def set_priority_or_warn(
+        manager: WorkspaceManager, path: WorktreePath, priority: WorkspacePriority
+    ) -> None:
+        match manager.set_priority(path, priority):
+            case Ok():
+                pass
+            case Err(error):
+                logger.warning(
+                    "Could not prioritise %s as %s: %s", path.root, priority.value, error
+                )

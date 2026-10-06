@@ -1,9 +1,10 @@
+from enum import StrEnum
 from pathlib import Path
 
 from pydantic import JsonValue, model_validator
 
 from mb_workflow.b_core.d_domain_model.git import Ref
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueTitle
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueTitle, Priority
 from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
 from mb_workflow.d_lib.models import Model, Value
 
@@ -82,6 +83,32 @@ class WorkspaceStatus(Value[str]):
         return WorkspaceStatus("status-8")
 
 
+class WorkspacePriority(StrEnum):
+    urgent = "urgent"
+    high = "high"
+    medium = "medium"
+    low = "low"
+    none = "none"
+
+    @staticmethod
+    def fake() -> WorkspacePriority:
+        return WorkspacePriority.of_ticket(Priority.high)
+
+    @staticmethod
+    def of_ticket(priority: Priority) -> WorkspacePriority:
+        match priority:
+            case Priority.urgent:
+                return WorkspacePriority.urgent
+            case Priority.high:
+                return WorkspacePriority.high
+            case Priority.medium:
+                return WorkspacePriority.medium
+            case Priority.low:
+                return WorkspacePriority.low
+            case Priority.no_priority:
+                return WorkspacePriority.none
+
+
 class WorkspaceStatuses(Value[tuple[WorkspaceStatus, ...]]):
     @staticmethod
     def fake() -> WorkspaceStatuses:
@@ -140,6 +167,7 @@ class Worktree(Model):
     issue: IssueIdentifier | None
     status: WorkspaceStatus | None
     display_name: DisplayName | None
+    priority: WorkspacePriority | None
 
     @staticmethod
     def fake() -> Worktree:
@@ -151,6 +179,7 @@ class Worktree(Model):
             issue=IssueIdentifier.fake(),
             status=WorkspaceStatus.fake(),
             display_name=DisplayName.fake(),
+            priority=WorkspacePriority.fake(),
         )
 
     def linked_issue(self) -> IssueIdentifier:
@@ -170,6 +199,7 @@ class Worktree(Model):
             issue=None,
             status=None,
             display_name=None,
+            priority=None,
         )
 
 

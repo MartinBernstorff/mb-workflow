@@ -16,6 +16,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     DisplayName,
     ProjectSelector,
     RepoId,
+    WorkspacePriority,
     WorkspaceStatus,
     WorkspaceStatuses,
     Worktree,
@@ -323,5 +324,26 @@ def test_setting_a_linked_issue_on_an_unknown_worktree_is_refused(
 ) -> None:
     refused = manager.set_linked_issue(
         board.here.sibling(WorktreeName("mw-contract-never-created")), IssueIdentifier.fake()
+    )
+    _ = Assert.that(refused).is_err(WorkspaceManagerError)
+
+
+def test_a_priority_set_on_a_worktree_is_listed_back(
+    manager: WorkspaceManager, board: Board
+) -> None:
+    opened = manager.create_for_issue(
+        board.project, contract_name(), None, None, None, activate=Activate(False)
+    ).unwrap()
+    manager.set_priority(opened.worktree.path, WorkspacePriority.fake()).unwrap()
+    listed = manager.worktrees().unwrap().at(opened.worktree.path)
+    listed = Assert.that(listed).exists()
+    Assert.that(listed.priority).matches(WorkspacePriority.fake())
+
+
+def test_setting_a_priority_on_an_unknown_worktree_is_refused(
+    manager: WorkspaceManager, board: Board
+) -> None:
+    refused = manager.set_priority(
+        board.here.sibling(WorktreeName("mw-contract-never-created")), WorkspacePriority.fake()
     )
     _ = Assert.that(refused).is_err(WorkspaceManagerError)
