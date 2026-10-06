@@ -17,6 +17,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     OpenedWorktree,
     RepoId,
     TerminalHandle,
+    WorkspacePriority,
     WorkspaceStatus,
     Worktree,
     WorktreeName,
@@ -169,6 +170,7 @@ class WorktreePayload(Payload):
     linked_linear_issue: IssueIdentifier | None = None
     workspace_status: WorkspaceStatus | None = None
     display_name: DisplayName | None = None
+    priority: WorkspacePriority | None = None
 
     @staticmethod
     def fake() -> WorktreePayload:
@@ -180,6 +182,7 @@ class WorktreePayload(Payload):
             linked_linear_issue=IssueIdentifier.fake(),
             workspace_status=WorkspaceStatus.fake(),
             display_name=DisplayName.fake(),
+            priority=WorkspacePriority.fake(),
         )
 
     def worktree(self) -> Worktree:
@@ -191,6 +194,7 @@ class WorktreePayload(Payload):
             issue=self.linked_linear_issue,
             status=self.workspace_status,
             display_name=self.display_name,
+            priority=self.priority,
         )
 
 
@@ -420,6 +424,27 @@ class Orca(WorkspaceManager):
                         WorktreeSelector.of(path).root,
                         "--linear-issue",
                         issue.root,
+                        "--json",
+                    )
+                )
+            )
+        )
+
+    @override
+    def set_priority(
+        self, path: WorktreePath, priority: WorkspacePriority
+    ) -> Result[None, WorkspaceManagerError]:
+        return Orca._discarded(
+            self._single(
+                Command(
+                    (
+                        "orca",
+                        "worktree",
+                        "set",
+                        "--worktree",
+                        WorktreeSelector.of(path).root,
+                        "--priority",
+                        priority.value,
                         "--json",
                     )
                 )

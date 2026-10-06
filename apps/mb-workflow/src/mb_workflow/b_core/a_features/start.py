@@ -32,6 +32,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     Submit,
     TerminalText,
     TimeoutMs,
+    WorkspacePriority,
     WorkspaceStatus,
     WorktreeName,
 )
@@ -249,6 +250,7 @@ class TicketStart:
             taking_steps=(*entry.steps, *taking_steps.value),
             worktree_step=worktree_step,
             display_name=DisplayName.of_issue(detail.title),
+            priority=WorkspacePriority.of_ticket(detail.priority),
             prompt=prompt,
             request=request,
         )
@@ -261,6 +263,7 @@ class TicketStart:
         taking_steps: tuple[SagaStep[TicketTrackerError | ClaimRefusedError], ...],
         worktree_step: WorktreeStep,
         display_name: DisplayName,
+        priority: WorkspacePriority,
         prompt: TerminalText | None,
         request: StartRequest,
     ) -> Result[None, TicketTrackerError | ClaimRefusedError | WorkspaceManagerError]:
@@ -272,6 +275,8 @@ class TicketStart:
         logger.info("Created worktree %s.", opened.worktree.path.root)
         with Activity(f"Naming worktree {worktree_step.creation.name.root}").logged(logger):
             WorkspaceNaming.set_display_name_or_warn(manager, opened.worktree.path, display_name)
+        with Activity(f"Prioritising worktree {worktree_step.creation.name.root}").logged(logger):
+            WorkspaceNaming.set_priority_or_warn(manager, opened.worktree.path, priority)
         return TicketStart.prompt_if_any(manager, opened, prompt, request)
 
     @staticmethod

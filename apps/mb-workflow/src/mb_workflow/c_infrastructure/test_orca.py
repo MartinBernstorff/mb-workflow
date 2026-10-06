@@ -15,6 +15,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     TerminalHandle,
     TerminalText,
     TimeoutMs,
+    WorkspacePriority,
     WorkspaceStatus,
     WorktreeName,
     WorktreePath,
@@ -119,6 +120,23 @@ def test_parses_the_display_name() -> None:
     Assert.that(WorktreeList.parse(output).unwrap().root[0].display_name).matches(
         DisplayName.fake()
     )
+
+
+def test_parses_the_priority() -> None:
+    output = CommandOutput(
+        '{"ok":true,"result":{"worktrees":[{"repoId":"r","path":"/tmp/x",'
+        f'"priority":"{WorkspacePriority.fake().value}"}}]}}}}'
+    )
+    Assert.that(WorktreeList.parse(output).unwrap().root[0].priority).matches(
+        WorkspacePriority.fake()
+    )
+
+
+def test_an_unprioritised_worktree_parses() -> None:
+    output = CommandOutput(
+        '{"ok":true,"result":{"worktrees":[{"repoId":"r","path":"/tmp/x","priority":null}]}}'
+    )
+    Assert.that(WorktreeList.parse(output).unwrap().root[0].priority).matches(None)
 
 
 def test_prefers_the_agent_terminal_handle() -> None:
@@ -274,6 +292,7 @@ def test_a_refusing_orca_is_returned_as_a_workspace_manager_error(tmp_path: Path
         orca.set_status(path, WorkspaceStatus.fake()),
         orca.set_display_name(path, DisplayName.fake()),
         orca.set_linked_issue(path, IssueIdentifier.fake()),
+        orca.set_priority(path, WorkspacePriority.fake()),
         orca.wait_for_idle(terminal, TimeoutMs.fake()),
         orca.send_text(terminal, TerminalText.fake(), Submit.fake()),
     )
@@ -295,6 +314,7 @@ def test_an_unreadable_orca_reply_is_returned_as_a_workspace_manager_error(
         orca.set_status(path, WorkspaceStatus.fake()),
         orca.set_display_name(path, DisplayName.fake()),
         orca.set_linked_issue(path, IssueIdentifier.fake()),
+        orca.set_priority(path, WorkspacePriority.fake()),
     )
     for result in results:
         error = Assert.that(result).is_err(WorkspaceManagerError)
