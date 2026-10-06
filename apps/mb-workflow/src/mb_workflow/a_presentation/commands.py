@@ -8,7 +8,7 @@ from safe_result import Err, Ok, Result
 
 from mb_workflow.a_presentation.autolabel_report import log_outcome
 from mb_workflow.a_presentation.console import ExitCode, Output, write
-from mb_workflow.a_presentation.drain_report import DrainReport, LoggingDrainNarrator
+from mb_workflow.a_presentation.drain_report import ConsoleDrainNarrator, DrainReport
 from mb_workflow.a_presentation.review_workspaces_report import (
     LoggingNarrator,
     log_review_workspaces_outcome,
@@ -323,11 +323,7 @@ def drain(
     )
     match attempted:
         case Ok(outcome):
-            DrainReport.log_pass(outcome)
-            if request.dry_run.root:
-                write(DrainReport.pick_listing(outcome.picked, flow_labels_of_chart()))
-            else:
-                DrainReport.log_drain_outcome(outcome)
+            write(DrainReport.summary(outcome, flow_labels_of_chart(), request.dry_run))
             return ExitCode(0)
         case Err(error):
             logger.error("%s", error)
@@ -369,7 +365,7 @@ def drain_watch(
             flow_labels=flow_labels_of_chart(),
             settings=ConfiguredDrainSettings(directory, name),
             stop=stop,
-            narrator=LoggingDrainNarrator(),
+            narrator=ConsoleDrainNarrator(flow_labels_of_chart()),
             request=request,
         )
     match watched:

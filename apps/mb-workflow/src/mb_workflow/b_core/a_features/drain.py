@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     )
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName
+    from mb_workflow.b_core.d_domain_model.pool import Slot
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,32 @@ class Unready(Model):
                 return UnreadyReason(f"no agent works tickets in {state.root}")
 
 
+# A ticket the skip-limits label started although the limits refused it.
+class Override(Model):
+    ticket: PoolTicket
+    refusal: Refusal
+
+    @staticmethod
+    def fake() -> Override:
+        return Override(ticket=PoolTicket.fake(), refusal=Refusal.fake())
+
+
+class LossReason(Value[str]):
+    @staticmethod
+    def fake() -> LossReason:
+        return LossReason("another host holds it")
+
+
+# A ticket that was ready when listed but could not be started.
+class Lost(Model):
+    ticket: PoolTicket
+    reason: LossReason
+
+    @staticmethod
+    def fake() -> Lost:
+        return Lost(ticket=PoolTicket.fake(), reason=LossReason.fake())
+
+
 # The pass stopped at the total, leaving these ready tickets unstarted.
 class PoolFull(Model):
     total: Limit
@@ -141,6 +168,8 @@ class DrainOutcome(Model):
     skipped: tuple[Skip, ...]
     unready: tuple[Unready, ...] = ()
     full: PoolFull | None = None
+    overridden: tuple[Override, ...] = ()
+    lost: tuple[Lost, ...] = ()
 
     @staticmethod
     def fake() -> DrainOutcome:
@@ -318,6 +347,8 @@ class Drain:
             )
             picked: list[PoolTicket] = []
             skipped: list[Skip] = []
+            overridden: list[Override] = []
+            lost: list[Lost] = []
             full: PoolFull | None = None
             for position, ticket in enumerate(ready.root):
                 skips_limits = ticket.skips_limits(pool.skip_limits_label).root
@@ -339,40 +370,30 @@ class Drain:
                     if not skips_limits:
                         skipped.append(Skip(ticket=ticket, refusal=refusal))
                         continue
-                    logger.info(
-                        "%s is labelled %s, so it starts although %s.",
-                        ticket.issue.identifier.root,
-                        pool.skip_limits_label.root,
-                        refusal.root,
-                    )
-                ticket_summary = (
-                    f"{ticket.issue.identifier.root} ({ticket.priority.name}, {slot.state.root})"
-                )
+                    overridden.append(Override(ticket=ticket, refusal=refusal))
                 if request.dry_run.root:
-                    logger.info("Would start %s.", ticket_summary)
                     picked.append(ticket)
                 else:
-                    with Activity(f"Taking {ticket_summary}").logged(logger):
-                        started = Drain.try_start_ticket(
-                            tracker=tracker,
-                            claims=claims,
-                            manager=manager,
-                            board=board,
-                            workspace=workspace,
-                            claim_settings=claim_settings,
-                            flow_labels=flow_labels,
-                            statuses=statuses,
-                            request=request.start_request(ticket.issue.identifier),
-                        )
-                    if isinstance(started, Err):
-                        return started
-                    if started.value.root:
+                    attempted = Drain.take_ticket(
+                        tracker=tracker,
+                        claims=claims,
+                        manager=manager,
+                        board=board,
+                        workspace=workspace,
+                        claim_settings=claim_settings,
+                        flow_labels=flow_labels,
+                        statuses=statuses,
+                        skip_limits_label=pool.skip_limits_label,
+                        ticket=ticket,
+                        slot=slot,
+                        request=request,
+                    )
+                    if isinstance(attempted, Err):
+                        return attempted
+                    if attempted.value is None:
                         picked.append(ticket)
-                        removed = Drain.remove_skip_limits_label(
-                            tracker, ticket, pool.skip_limits_label
-                        )
-                        if isinstance(removed, Err):
-                            return removed
+                    else:
+                        lost.append(Lost(ticket=ticket, reason=attempted.value))
                 # A ticket lost to another host is now in progress there, so it fills a slot too.
                 occupancy = occupancy.with_slot(slot)
             return Ok(
@@ -382,8 +403,55 @@ class Drain:
                     skipped=tuple(skipped),
                     unready=unready,
                     full=full,
+                    overridden=tuple(overridden),
+                    lost=tuple(lost),
                 )
             )
+
+    @staticmethod
+    def take_ticket(
+        *,
+        tracker: TicketTracker,
+        claims: ClaimRegistry,
+        manager: WorkspaceManager,
+        board: WorkspaceStatusStore,
+        workspace: WorkspaceSettings,
+        claim_settings: ClaimSettings,
+        flow_labels: FlowLabels,
+        statuses: TicketStatuses,
+        skip_limits_label: LabelName,
+        ticket: PoolTicket,
+        slot: Slot,
+        request: DrainRequest,
+    ) -> Result[
+        LossReason | None,
+        TicketTrackerError
+        | UnknownClaimLabelError
+        | ClaimRefusedError
+        | MissingFlowLabelsError
+        | WorkspaceManagerError,
+    ]:
+        ticket_summary = (
+            f"{ticket.issue.identifier.root} ({ticket.priority.name}, {slot.state.root})"
+        )
+        with Activity(f"Taking {ticket_summary}").logged(logger):
+            attempted = Drain.try_start_ticket(
+                tracker=tracker,
+                claims=claims,
+                manager=manager,
+                board=board,
+                workspace=workspace,
+                claim_settings=claim_settings,
+                flow_labels=flow_labels,
+                statuses=statuses,
+                request=request.start_request(ticket.issue.identifier),
+            )
+        if isinstance(attempted, Err) or attempted.value is not None:
+            return attempted
+        removed = Drain.remove_skip_limits_label(tracker, ticket, skip_limits_label)
+        if isinstance(removed, Err):
+            return removed
+        return Ok(None)
 
     @staticmethod
     def remove_skip_limits_label(
@@ -409,7 +477,7 @@ class Drain:
         statuses: TicketStatuses,
         request: StartRequest,
     ) -> Result[
-        Started,
+        LossReason | None,
         TicketTrackerError
         | UnknownClaimLabelError
         | ClaimRefusedError
@@ -429,21 +497,11 @@ class Drain:
         )
         match started:
             case Ok():
-                return Ok(Started(True))
+                return Ok(None)
             case Err(error):
                 if isinstance(error, ClaimLostError):
-                    logger.info(
-                        "Another host holds %s; trying the next ticket.", request.ticket.root
-                    )
-                    return Ok(Started(False))
+                    return Ok(LossReason("another host holds it"))
                 # The ticket was ready when listed, so a flow refusal here means its labels changed since.
                 if isinstance(error, FlowError):
-                    logger.warning("Not starting %s: %s", request.ticket.root, error)
-                    return Ok(Started(False))
+                    return Ok(LossReason(str(error)))
                 return Err(error)
-
-
-class Started(Value[bool]):
-    @staticmethod
-    def fake() -> Started:
-        return Started(True)
