@@ -84,6 +84,30 @@ def test_pyrefly_json_records_its_errors_by_rule(workdir: Path) -> None:
     assert json.loads(written.read_text()) == {code: 1}
 
 
+def test_linters_sharing_a_baseline_directory_leave_each_other_alone(workdir: Path) -> None:
+    success = 0
+    error = {
+        "line": 2,
+        "column": 0,
+        "stop_line": 2,
+        "stop_column": 1,
+        "path": source,
+        "name": "bad-assignment",
+        "concise_description": "`bool` is not assignable to `None`",
+        "severity": "error",
+    }
+    _ = HemolintProcess.run_in(workdir, ["check", "--format", "fixit", "--baseline"], violation)
+    _ = HemolintProcess.run_in(
+        workdir, ["check", "--format", "pyrefly", "--baseline"], json.dumps({"errors": [error]})
+    )
+    checked = HemolintProcess.run_in(workdir, ["check", "--format", "fixit"], violation)
+    pruned = HemolintProcess.run_in(workdir, ["check", "--format", "fixit", "--prune"], violation)
+    assert checked.returncode == success
+    assert pruned.returncode == success
+    assert (workdir / ".hemolint" / f"fixit-{rule}" / f"{source}.json").is_file()
+    assert (workdir / ".hemolint" / "pyrefly-bad-assignment" / f"{source}.json").is_file()
+
+
 def test_another_directory_holds_the_baseline_when_given(workdir: Path) -> None:
     directory = "lint-baseline"
     _ = HemolintProcess.run_in(

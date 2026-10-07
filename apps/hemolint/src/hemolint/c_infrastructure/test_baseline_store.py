@@ -42,25 +42,44 @@ baseline = Baseline.of((known, known, other))
 
 
 def test_a_baseline_never_written_reads_as_empty(store: BaselineStore) -> None:
-    assert store.read().unwrap() == Baseline.of(())
+    assert store.read(linter).unwrap() == Baseline.of(())
 
 
 def test_a_written_baseline_reads_back(store: BaselineStore) -> None:
-    _ = store.write(baseline).unwrap()
-    assert store.read().unwrap() == baseline
+    _ = store.write(linter, baseline).unwrap()
+    assert store.read(linter).unwrap() == baseline
 
 
 def test_a_second_write_replaces_the_first(store: BaselineStore) -> None:
     remaining = Baseline.of((other,))
-    _ = store.write(baseline).unwrap()
-    _ = store.write(remaining).unwrap()
-    assert store.read().unwrap() == remaining
+    _ = store.write(linter, baseline).unwrap()
+    _ = store.write(linter, remaining).unwrap()
+    assert store.read(linter).unwrap() == remaining
 
 
 def test_an_empty_write_empties_the_baseline(store: BaselineStore) -> None:
-    _ = store.write(baseline).unwrap()
-    _ = store.write(Baseline.of(())).unwrap()
-    assert store.read().unwrap() == Baseline.of(())
+    _ = store.write(linter, baseline).unwrap()
+    _ = store.write(linter, Baseline.of(())).unwrap()
+    assert store.read(linter).unwrap() == Baseline.of(())
+
+
+def test_a_write_leaves_the_violations_of_other_linters(store: BaselineStore) -> None:
+    pyrefly = LinterName("pyrefly")
+    typed = Baseline.of(
+        (
+            Violation(
+                file=BaselineFile(
+                    source=nested.source, linter=pyrefly, rule=RuleName("bad-assignment")
+                ),
+                fingerprint=Fingerprint.fake(),
+            ),
+        )
+    )
+    _ = store.write(pyrefly, typed).unwrap()
+    _ = store.write(linter, baseline).unwrap()
+    _ = store.write(linter, Baseline.of(())).unwrap()
+    assert store.read(linter).unwrap() == Baseline.of(())
+    assert store.read(pyrefly).unwrap() == typed
 
 
 def test_a_source_file_named_like_a_baseline_file_reads_back(store: BaselineStore) -> None:
@@ -72,9 +91,9 @@ def test_a_source_file_named_like_a_baseline_file_reads_back(store: BaselineStor
             ),
         )
     )
-    _ = store.write(json_source).unwrap()
-    _ = store.write(json_source).unwrap()
-    assert store.read().unwrap() == json_source
+    _ = store.write(linter, json_source).unwrap()
+    _ = store.write(linter, json_source).unwrap()
+    assert store.read(linter).unwrap() == json_source
 
 
 def test_the_disk_baseline_keeps_one_sorted_file_per_source_file_per_rule(tmp_path: Path) -> None:
@@ -83,13 +102,14 @@ def test_the_disk_baseline_keeps_one_sorted_file_per_source_file_per_rule(tmp_pa
     _ = (
         DiskBaselineStore(BaselineDirectory(directory))
         .write(
+            linter,
             Baseline.of(
                 (
                     Violation(file=nested, fingerprint=later),
                     Violation(file=nested, fingerprint=earlier),
                     Violation(file=nested, fingerprint=earlier),
                 )
-            )
+            ),
         )
         .unwrap()
     )
@@ -104,8 +124,8 @@ def test_the_disk_baseline_drops_the_directory_of_a_source_file_without_violatio
 ) -> None:
     directory = tmp_path / ".hemolint"
     store = DiskBaselineStore(BaselineDirectory(directory))
-    _ = store.write(baseline).unwrap()
-    _ = store.write(Baseline.of((other,))).unwrap()
+    _ = store.write(linter, baseline).unwrap()
+    _ = store.write(linter, Baseline.of((other,))).unwrap()
     assert not (directory / f"{linter.root}-{rule.root}" / "src").exists()
 
 
@@ -113,11 +133,11 @@ def test_a_baseline_file_that_is_no_json_is_an_error(tmp_path: Path) -> None:
     directory = tmp_path / ".hemolint"
     (directory / f"{linter.root}-{rule.root}").mkdir(parents=True)
     _ = (directory / f"{linter.root}-{rule.root}" / "a.py.json").write_text("{")
-    assert DiskBaselineStore(BaselineDirectory(directory)).read().is_err()
+    assert DiskBaselineStore(BaselineDirectory(directory)).read(linter).is_err()
 
 
 def test_a_baseline_file_outside_a_rule_directory_is_an_error(tmp_path: Path) -> None:
     directory = tmp_path / ".hemolint"
     directory.mkdir()
     _ = (directory / "a.py.json").write_text("{}")
-    assert DiskBaselineStore(BaselineDirectory(directory)).read().is_err()
+    assert DiskBaselineStore(BaselineDirectory(directory)).read(linter).is_err()

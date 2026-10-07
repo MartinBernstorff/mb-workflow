@@ -26,6 +26,15 @@ reported_line = f"{source.root}@1:0 {rule.root}: Use `is`."
 lines = FakeSourceLines({source: SourceText(f"{code.root}\n")})
 
 
+def other_linters_violation() -> Violation:
+    return Violation(
+        file=BaselineFile(
+            source=source, linter=LinterName("pyrefly"), rule=RuleName("bad-assignment")
+        ),
+        fingerprint=code,
+    )
+
+
 def test_a_violation_missing_from_the_baseline_is_new_under_its_linter_line() -> None:
     drift = BaselineCheck.check(
         LinterOutput(f"{reported_line}\n"),
@@ -59,3 +68,14 @@ def test_checking_leaves_the_baseline_as_it_was() -> None:
         store,
     ).unwrap()
     assert store.baseline == previous
+
+
+def test_another_linters_baselined_violation_is_not_fixed() -> None:
+    drift = BaselineCheck.check(
+        LinterOutput(""),
+        LinterFormat.fixit,
+        WorkingDirectory.fake(),
+        lines,
+        FakeBaselineStore(Baseline.of((other_linters_violation(),))),
+    ).unwrap()
+    assert not drift.exists()

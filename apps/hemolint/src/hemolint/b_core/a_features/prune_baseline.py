@@ -39,12 +39,12 @@ class BaselinePruning:
         found = ViolationFinder.find(output, linter_format, directory, lines)
         if isinstance(found, Err):
             return found
-        baseline = store.read()
+        baseline = store.read(linter_format.linter_name())
         if isinstance(baseline, Err):
             return baseline
         drift = Drift.between(baseline.value, found.value)
         if drift.fixed.root:
-            written = store.write(baseline.value.without(drift.fixed))
+            written = store.write(linter_format.linter_name(), baseline.value.without(drift.fixed))
             if isinstance(written, Err):
                 return written
         return Ok(drift)
