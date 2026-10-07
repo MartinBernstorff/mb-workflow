@@ -661,6 +661,10 @@ class IssueDetailPayload(IssuePayload):
     description: IssueDescription | None = None
     milestone: MilestonePayload | None = Field(default=None, validation_alias="projectMilestone")
     priority: Priority
+    parent: IssueIdentifierRecord | None = None
+    children: tuple[IssueIdentifierRecord, ...] = Field(
+        validation_alias=AliasPath("children", "nodes")
+    )
     relations: tuple[Relation, ...] = Field(validation_alias=AliasPath("relations", "nodes"))
     inverse_relations: tuple[InverseRelation, ...] = Field(
         validation_alias=AliasPath("inverseRelations", "nodes")
@@ -677,6 +681,7 @@ class IssueDetailPayload(IssuePayload):
             title=IssueTitle.fake(),
             description=IssueDescription.fake(),
             priority=Priority.medium,
+            children=(IssueIdentifierRecord.fake(),),
             relations=(Relation.fake(),),
             inverse_relations=(InverseRelation.fake(),),
         )
@@ -689,6 +694,8 @@ class IssueDetailPayload(IssuePayload):
             assignee=self.assignee.email if self.assignee is not None else None,
             milestone=self.milestone.name if self.milestone is not None else None,
             priority=self.priority,
+            parent=self.parent.identifier if self.parent is not None else None,
+            sub_tickets=frozenset(child.identifier for child in self.children),
             blocks=frozenset(
                 relation.identifier
                 for relation in self.relations
@@ -698,6 +705,11 @@ class IssueDetailPayload(IssuePayload):
                 relation.identifier
                 for relation in self.inverse_relations
                 if relation.type == RelationType.blocks
+            ),
+            related=frozenset(
+                relation.identifier
+                for relation in (*self.relations, *self.inverse_relations)
+                if relation.type == RelationType.related
             ),
         )
 
@@ -1186,6 +1198,8 @@ class Linear(TicketTracker):
                     assignee { email }
                     projectMilestone { name }
                     priority
+                    parent { identifier }
+                    children(first: 250) { nodes { identifier } }
                     relations(first: 250) { nodes { type relatedIssue { identifier } } }
                     inverseRelations(first: 250) { nodes { type issue { identifier } } }
                   }

@@ -108,6 +108,8 @@ class SeededIssue(Model):
     description: IssueDescription | None
     priority: Priority
     blocked_by: tuple[Seed, ...]
+    parent: Seed | None
+    related: tuple[Seed, ...]
 
     def issue(self, identifier: IssueIdentifier) -> Issue:
         return Issue(
@@ -125,8 +127,7 @@ class SeededIssue(Model):
     def detail(
         self,
         identifier: IssueIdentifier,
-        blocks: frozenset[IssueIdentifier],
-        blocked_by: frozenset[IssueIdentifier],
+        relationships: Relationships,
     ) -> IssueDetail:
         return IssueDetail(
             issue=self.issue(identifier),
@@ -135,8 +136,29 @@ class SeededIssue(Model):
             assignee=None,
             milestone=None,
             priority=self.priority,
-            blocks=blocks,
-            blocked_by=blocked_by,
+            parent=relationships.parent,
+            sub_tickets=relationships.sub_tickets,
+            blocks=relationships.blocks,
+            blocked_by=relationships.blocked_by,
+            related=relationships.related,
+        )
+
+
+class Relationships(Model):
+    parent: IssueIdentifier | None
+    sub_tickets: frozenset[IssueIdentifier]
+    blocks: frozenset[IssueIdentifier]
+    blocked_by: frozenset[IssueIdentifier]
+    related: frozenset[IssueIdentifier]
+
+    @staticmethod
+    def fake() -> Relationships:
+        return Relationships(
+            parent=None,
+            sub_tickets=frozenset(),
+            blocks=frozenset(),
+            blocked_by=frozenset(),
+            related=frozenset(),
         )
 
 
@@ -145,7 +167,13 @@ def workspace_labels() -> LabelNames:
 
 
 def seeded(
-    seed: Seed, created: CreatedOn, priority: Priority, blocked_by: tuple[Seed, ...] = ()
+    seed: Seed,
+    created: CreatedOn,
+    priority: Priority,
+    *,
+    blocked_by: tuple[Seed, ...] = (),
+    parent: Seed | None = None,
+    related: tuple[Seed, ...] = (),
 ) -> SeededIssue:
     return SeededIssue(
         seed=seed,
@@ -156,6 +184,8 @@ def seeded(
         description=IssueDescription.fake(),
         priority=priority,
         blocked_by=blocked_by,
+        parent=parent,
+        related=related,
     )
 
 
@@ -168,7 +198,13 @@ def seeds() -> tuple[SeededIssue, ...]:
             blocked_by=(Seed.old, Seed.done),
         ),
         seeded(Seed.old, CreatedOn(date(2026, 8, 1)), Priority.low),
-        seeded(Seed.newest, CreatedOn(date(2026, 9, 2)), Priority.no_priority),
+        seeded(
+            Seed.newest,
+            CreatedOn(date(2026, 9, 2)),
+            Priority.no_priority,
+            parent=Seed.old,
+            related=(Seed.done,),
+        ),
         SeededIssue(
             seed=Seed.done,
             created_on=CreatedOn.fake(),
@@ -178,6 +214,8 @@ def seeds() -> tuple[SeededIssue, ...]:
             description=None,
             priority=Priority.high,
             blocked_by=(),
+            parent=None,
+            related=(),
         ),
     )
 
@@ -202,10 +240,21 @@ class Backlog(Model):
         planted = next(planted for planted in seeds() if planted.seed == seed)
         return planted.detail(
             self.identifier(seed),
-            blocks=frozenset(
-                self.identifier(other.seed) for other in seeds() if seed in other.blocked_by
+            Relationships(
+                parent=self.identifier(planted.parent) if planted.parent is not None else None,
+                sub_tickets=frozenset(
+                    self.identifier(other.seed) for other in seeds() if other.parent == seed
+                ),
+                blocks=frozenset(
+                    self.identifier(other.seed) for other in seeds() if seed in other.blocked_by
+                ),
+                blocked_by=frozenset(self.identifier(blocker) for blocker in planted.blocked_by),
+                related=frozenset(
+                    self.identifier(other.seed)
+                    for other in seeds()
+                    if other.seed in planted.related or seed in other.related
+                ),
             ),
-            blocked_by=frozenset(self.identifier(blocker) for blocker in planted.blocked_by),
         )
 
     def ticket(self, seed: Seed) -> PoolTicket:
@@ -465,6 +514,14 @@ def ensure_relation(
     )
 
 
+def ensure_parent(client: LinearClient, child: IssueIdentifier, parent: IssueIdentifier) -> None:
+    _ = client.execute(
+        "mutation($id: String!, $input: IssueUpdateInput!) {"
+        " issueUpdate(id: $id, input: $input) { success } }",
+        {"id": child.root, "input": {"parentId": parent.root}},
+    )
+
+
 # The view filters on the seeds' shared title prefix, so it holds every seed and nothing else.
 def ensure_view(client: LinearClient) -> ViewSlug:
     name = "contract: pool"
@@ -522,13 +579,17 @@ def linear_backlog(linear_client: LinearClient) -> Backlog:
                 backlog.identifier(planted.seed),
                 RelationKind.blocks,
             )
-    # Only a blocking relation holds a ticket back, so the suite also seeds one that doesn't.
-    ensure_relation(
-        linear_client,
-        backlog.identifier(Seed.newest),
-        backlog.identifier(Seed.done),
-        RelationKind.related,
-    )
+        for related in planted.related:
+            ensure_relation(
+                linear_client,
+                backlog.identifier(planted.seed),
+                backlog.identifier(related),
+                RelationKind.related,
+            )
+        if planted.parent is not None:
+            ensure_parent(
+                linear_client, backlog.identifier(planted.seed), backlog.identifier(planted.parent)
+            )
     return backlog
 
 
@@ -595,6 +656,8 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
                 created_on=planted.created_on,
                 priority=planted.priority,
                 blocked_by=tuple(backlog.identifier(blocker) for blocker in planted.blocked_by),
+                parent=backlog.identifier(planted.parent) if planted.parent is not None else None,
+                related=tuple(backlog.identifier(related) for related in planted.related),
                 team=backlog.team,
             )
             for planted in seeds()
@@ -1172,6 +1235,28 @@ def test_viewing_an_issue_leaves_out_relations_that_do_not_block(
     Assert.that((detail.blocks, detail.blocked_by)).matches((frozenset(), frozenset()))
 
 
+def test_viewing_an_issue_carries_its_parent(tracker: TicketTracker, backlog: Backlog) -> None:
+    Assert.that(tracker.read_issue_detail(backlog.identifier(Seed.newest)).unwrap().parent).matches(
+        backlog.identifier(Seed.old)
+    )
+
+
+def test_viewing_an_issue_carries_its_sub_tickets(tracker: TicketTracker, backlog: Backlog) -> None:
+    Assert.that(
+        tracker.read_issue_detail(backlog.identifier(Seed.old)).unwrap().sub_tickets
+    ).matches(frozenset({backlog.identifier(Seed.newest)}))
+
+
+def test_a_related_issue_is_carried_on_both_sides_of_the_relation(
+    tracker: TicketTracker, backlog: Backlog
+) -> None:
+    newest = tracker.read_issue_detail(backlog.identifier(Seed.newest)).unwrap()
+    done = tracker.read_issue_detail(backlog.identifier(Seed.done)).unwrap()
+    Assert.that((newest.related, done.related)).matches(
+        (frozenset({backlog.identifier(Seed.done)}), frozenset({backlog.identifier(Seed.newest)}))
+    )
+
+
 def test_an_issue_without_a_description_carries_none(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
@@ -1540,8 +1625,11 @@ def test_a_created_issue_reads_back_as_it_was_given(
             assignee=backlog.assignee,
             milestone=MilestoneName.fake(),
             priority=Priority.high,
+            parent=None,
+            sub_tickets=frozenset(),
             blocks=frozenset(),
             blocked_by=frozenset(),
+            related=frozenset(),
         )
     )
 
