@@ -65,6 +65,25 @@ def test_ruff_json_with_absolute_paths_records_them_relative_to_the_working_dire
     assert json.loads(written.read_text()) == {code: 1}
 
 
+def test_pyrefly_json_records_its_errors_by_rule(workdir: Path) -> None:
+    pyrefly_rule = "bad-assignment"
+    error = {
+        "line": 2,
+        "column": 4,
+        "stop_line": 2,
+        "stop_column": 13,
+        "path": source,
+        "name": pyrefly_rule,
+        "concise_description": "`bool` is not assignable to `None`",
+        "severity": "error",
+    }
+    _ = HemolintProcess.run_in(
+        workdir, ["check", "--format", "pyrefly", "--baseline"], json.dumps({"errors": [error]})
+    )
+    written = workdir / ".hemolint" / f"pyrefly-{pyrefly_rule}" / f"{source}.json"
+    assert json.loads(written.read_text()) == {code: 1}
+
+
 def test_another_directory_holds_the_baseline_when_given(workdir: Path) -> None:
     directory = "lint-baseline"
     _ = HemolintProcess.run_in(

@@ -55,6 +55,12 @@ class LineNumber(Value[int]):
         return LineNumber(1)
 
 
+class ColumnNumber(Value[int]):
+    @staticmethod
+    def fake() -> ColumnNumber:
+        return ColumnNumber(1)
+
+
 class RuleName(Value[str]):
     @staticmethod
     def fake() -> RuleName:
