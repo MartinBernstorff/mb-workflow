@@ -51,10 +51,18 @@ def test_an_empty_description_reports_no_body() -> None:
 def test_relations_are_reported_after_the_labels_in_identifier_order() -> None:
     related = IssueDetail.fake().model_copy(
         update={
+            "parent": IssueIdentifier("E-9"),
+            "sub_tickets": frozenset({IssueIdentifier("E-8"), IssueIdentifier("E-7")}),
             "blocks": frozenset({IssueIdentifier("E-3"), IssueIdentifier("E-2")}),
             "blocked_by": frozenset({IssueIdentifier("E-1")}),
+            "related": frozenset({IssueIdentifier("E-5"), IssueIdentifier("E-4")}),
         }
     )
     Assert.that(TicketReport.of(related).root).contains(
-        "labels: d-implement\nblocks: E-2, E-3\nblocked by: E-1\n"
+        "labels: d-implement\n"
+        "parent: E-9\n"
+        "sub-tickets: E-7, E-8\n"
+        "blocks: E-2, E-3\n"
+        "blocked by: E-1\n"
+        "related: E-4, E-5\n"
     )

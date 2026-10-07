@@ -166,6 +166,8 @@ class TrackedIssue(Model):
     created_on: CreatedOn
     priority: Priority
     blocked_by: tuple[IssueIdentifier, ...]
+    parent: IssueIdentifier | None
+    related: tuple[IssueIdentifier, ...]
     team: TeamKey
 
     @staticmethod
@@ -180,6 +182,8 @@ class TrackedIssue(Model):
             created_on=CreatedOn.fake(),
             priority=Priority.medium,
             blocked_by=(),
+            parent=None,
+            related=(),
             team=TeamKey.fake(),
         )
 
@@ -425,12 +429,28 @@ class FakeTicketTracker(TicketTracker):
                         assignee=tracked.assignee,
                         milestone=tracked.milestone,
                         priority=tracked.priority,
+                        parent=tracked.parent,
+                        sub_tickets=frozenset(
+                            identifier
+                            for identifier, other in self._issues.items()
+                            if other.parent == issue
+                        ),
                         blocks=frozenset(
                             identifier
                             for identifier, other in self._issues.items()
                             if issue in other.blocked_by
                         ),
                         blocked_by=frozenset(tracked.blocked_by),
+                        related=frozenset(
+                            (
+                                *tracked.related,
+                                *(
+                                    identifier
+                                    for identifier, other in self._issues.items()
+                                    if issue in other.related
+                                ),
+                            )
+                        ),
                     )
                 )
             case Err() as failed:
@@ -668,6 +688,8 @@ class FakeTicketTracker(TicketTracker):
                 created_on=CreatedOn.fake(),
                 priority=Priority.no_priority if new.priority is None else new.priority,
                 blocked_by=new.blocked_by,
+                parent=None,
+                related=(),
                 team=team.value.key,
             )
         )

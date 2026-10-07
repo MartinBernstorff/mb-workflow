@@ -294,8 +294,11 @@ class IssueDetail(Model):
     assignee: Assignee | None
     milestone: MilestoneName | None
     priority: Priority
+    parent: IssueIdentifier | None
+    sub_tickets: frozenset[IssueIdentifier]
     blocks: frozenset[IssueIdentifier]
     blocked_by: frozenset[IssueIdentifier]
+    related: frozenset[IssueIdentifier]
 
     @staticmethod
     def fake() -> IssueDetail:
@@ -306,8 +309,11 @@ class IssueDetail(Model):
             assignee=None,
             milestone=MilestoneName.fake(),
             priority=Priority.medium,
+            parent=None,
+            sub_tickets=frozenset(),
             blocks=frozenset(),
             blocked_by=frozenset(),
+            related=frozenset(),
         )
 
 
