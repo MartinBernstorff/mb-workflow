@@ -79,7 +79,7 @@ class DiskBaselineStore(BaselineStore):
         self._directory = directory
 
     @override
-    def read(self) -> Result[Baseline, BaselineStoreError]:
+    def read(self, linter: LinterName) -> Result[Baseline, BaselineStoreError]:
         violations: list[Violation] = []
         for path in self._baseline_file_paths():
             file = path.decode(self._directory)
@@ -87,6 +87,8 @@ class DiskBaselineStore(BaselineStore):
                 return Err(
                     BaselineStoreError(f"{path.root} is not at <linter>-<rule>/<source>.json.")
                 )
+            if file.linter != linter:
+                continue
             try:
                 counts = BaselineFileText(path.root.read_text()).decode()
             except OSError as error:
@@ -100,7 +102,7 @@ class DiskBaselineStore(BaselineStore):
         return Ok(Baseline.of(violations))
 
     @override
-    def write(self, baseline: Baseline) -> Result[None, BaselineStoreError]:
+    def write(self, linter: LinterName, baseline: Baseline) -> Result[None, BaselineStoreError]:
         root = self._directory.root
         by_file: defaultdict[BaselineFile, Counter[Fingerprint]] = defaultdict(Counter)
         for violation in baseline.root:
@@ -110,7 +112,7 @@ class DiskBaselineStore(BaselineStore):
         }
         try:
             for stale in self._baseline_file_paths():
-                if stale not in wanted:
+                if stale not in wanted and self._belongs_to(stale, linter):
                     stale.root.unlink()
             for path, counts in wanted.items():
                 path.root.parent.mkdir(parents=True, exist_ok=True)
@@ -125,6 +127,10 @@ class DiskBaselineStore(BaselineStore):
         if not root.exists():
             return []
         return [BaselineFilePath(path) for path in sorted(root.rglob("*.json")) if path.is_file()]
+
+    def _belongs_to(self, path: BaselineFilePath, linter: LinterName) -> bool:
+        file = path.decode(self._directory)
+        return file is not None and file.linter == linter
 
     # Drops the directories that no longer hold violations, deepest first.
     def _remove_empty_directories(self) -> None:

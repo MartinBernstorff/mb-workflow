@@ -38,7 +38,7 @@ class BaselineCheck:
         found = ViolationFinder.find(output, linter_format, directory, lines)
         if isinstance(found, Err):
             return found
-        baseline = store.read()
+        baseline = store.read(linter_format.linter_name())
         if isinstance(baseline, Err):
             return baseline
         return Ok(Drift.between(baseline.value, found.value))

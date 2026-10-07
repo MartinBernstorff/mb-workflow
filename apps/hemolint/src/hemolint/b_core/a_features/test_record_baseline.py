@@ -137,3 +137,21 @@ def test_a_global_violation_is_recorded_under_the_global_source_without_reading_
         fingerprint=Fingerprint('{"dependency":"b"}'),
     )
     assert store.baseline == Baseline.of((recorded,))
+
+
+def test_another_linters_violation_is_kept() -> None:
+    pyrefly = Violation(
+        file=BaselineFile(
+            source=source, linter=LinterName("pyrefly"), rule=RuleName("bad-assignment")
+        ),
+        fingerprint=code,
+    )
+    store = FakeBaselineStore(Baseline.of((pyrefly,)))
+    _ = BaselineRecording.record(
+        on_line_1,
+        LinterFormat.fixit,
+        WorkingDirectory.fake(),
+        SourceFile.lines_holding(SourceText(f"{code.root}\n")),
+        store,
+    ).unwrap()
+    assert store.baseline == Baseline.of((pyrefly, known))

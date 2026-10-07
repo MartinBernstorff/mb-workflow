@@ -41,10 +41,10 @@ class BaselineRecording:
         if isinstance(found, Err):
             return found
         current = Baseline.of(reported.violation for reported in found.value)
-        previous = store.read()
+        previous = store.read(linter_format.linter_name())
         if isinstance(previous, Err):
             return previous
-        written = store.write(current)
+        written = store.write(linter_format.linter_name(), current)
         if isinstance(written, Err):
             return written
         return Ok(current.change_from(previous.value))

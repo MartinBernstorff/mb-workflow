@@ -90,6 +90,11 @@ class Baseline(Value[tuple[Violation, ...]]):
             )
         )
 
+    def of_linter(self, linter: LinterName) -> Baseline:
+        return Baseline(
+            tuple(violation for violation in self.root if violation.file.linter == linter)
+        )
+
     # Removes one held copy per copy in the other baseline.
     def without(self, other: Baseline) -> Baseline:
         return Baseline.of((Counter(self.root) - Counter(other.root)).elements())

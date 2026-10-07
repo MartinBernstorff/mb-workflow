@@ -46,6 +46,6 @@ tach check --output json | uv run hemolint check --format tach
 
 Each diagnostic kind, e.g. `UndeclaredDependency`, is a rule. Diagnostics for the whole project rather than a line are kept in `<linter>-<rule>/_global.json`, fingerprinted by their details. Configuration diagnostics, skipped files and tach errors such as a circular dependency exit 2, since tach could not check everything.
 
-The baseline lives in `.hemolint/`, one directory per rule and one JSON file per source file in it, at `<linter>-<rule>/<source path>.json`.
+The baseline lives in `.hemolint/`, one directory per rule and one JSON file per source file in it, at `<linter>-<rule>/<source path>.json`. Several linters can share it: each run reads and writes only the files of its own linter.
 
 All checks run through moon from the repository root: `moon ci`.
