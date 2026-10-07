@@ -7,6 +7,7 @@ from hemolint.b_core.d_domain_model.linter_output import (
     UnparsableOutputError,
 )
 from hemolint.b_core.d_domain_model.violation import (
+    ColumnNumber,
     LineNumber,
     LinterLine,
     LocatedViolation,
@@ -14,12 +15,6 @@ from hemolint.b_core.d_domain_model.violation import (
     SourcePath,
 )
 from hemolint.d_lib.models import Model, Value
-
-
-class ColumnNumber(Value[int]):
-    @staticmethod
-    def fake() -> ColumnNumber:
-        return ColumnNumber(1)
 
 
 class RuffMessage(Value[str]):

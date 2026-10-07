@@ -30,6 +30,14 @@ Ruff's JSON output works in all three modes. Its absolute paths are recorded rel
 ruff check --output-format json | uv run hemolint check --format ruff-json
 ```
 
+Pyrefly's JSON output works too. Its paths are relative to the directory pyrefly ran in, so run both from the same directory:
+
+```sh
+pyrefly check --output-format json | uv run hemolint check --format pyrefly
+```
+
+Each error kind, e.g. `bad-assignment`, is a rule. Pyrefly prints its summary to stderr, so only the JSON reaches hemolint. Only errors at or above `--min-severity` are reported, so only those are recorded.
+
 Tach's JSON output works too. Run it from the tach project root, since tach's paths are relative to it:
 
 ```sh
