@@ -8,7 +8,7 @@ from mb_workflow.a_presentation import commands
 from mb_workflow.a_presentation.cli.dev import dev_app
 from mb_workflow.a_presentation.cli.group import AlphabeticalGroup
 from mb_workflow.a_presentation.cli.ticket import ticket_app
-from mb_workflow.a_presentation.diagram import ChartName, DiagramPath, diagram
+from mb_workflow.a_presentation.diagram import ChartDiagram, ChartName, DiagramPath
 from mb_workflow.b_core.a_features.autolabel import DryRun
 from mb_workflow.b_core.a_features.drain import DrainRequest
 from mb_workflow.b_core.a_features.drain_watch import WatchRequest
@@ -281,7 +281,9 @@ def flow_diagram(
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    raise typer.Exit(code=diagram(chart, DiagramPath(Path(output)) if output else None).root)
+    raise typer.Exit(
+        code=ChartDiagram.draw_diagram(chart, DiagramPath(Path(output)) if output else None).root
+    )
 
 
 @flow_app.command("show")

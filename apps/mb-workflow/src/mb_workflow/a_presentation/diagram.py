@@ -22,7 +22,7 @@ class ChartName(StrEnum):
     def fake() -> ChartName:
         return ChartName.workflow
 
-    def chart(self) -> Chart:
+    def to_chart(self) -> Chart:
         match self:
             case ChartName.workflow:
                 return WorkflowChart
@@ -73,12 +73,6 @@ class MermaidFormat(Model):
         return MermaidFormat()
 
 
-def format_of(destination: DiagramPath) -> MermaidFormat | ImageFormat:
-    if destination.root.suffix == ".md":
-        return MermaidFormat()
-    return ImageFormat.of(destination)
-
-
 class DotSource(Value[str]):
     @staticmethod
     def fake() -> DotSource:
@@ -96,45 +90,53 @@ class DotSource(Value[str]):
         return DotSource(source)
 
 
-def render_mermaid(chart: Chart) -> MermaidDiagram:
-    return MermaidDiagram(MermaidGraphMachine(chart).get_mermaid())
+class ChartDiagram:
+    @staticmethod
+    def render_mermaid(chart: Chart) -> MermaidDiagram:
+        return MermaidDiagram(MermaidGraphMachine(chart).get_mermaid())
 
+    @staticmethod
+    def render_dot(chart: Chart) -> DotSource:
+        return DotSource(DotGraphMachine(chart).get_graph().to_string()).with_stable_ids()
 
-def render_dot(chart: Chart) -> DotSource:
-    return DotSource(DotGraphMachine(chart).get_graph().to_string()).with_stable_ids()
+    @staticmethod
+    def write_image(chart: Chart, destination: DiagramPath, image_format: ImageFormat) -> None:
+        graphs = pydot.graph_from_dot_data(ChartDiagram.render_dot(chart).root)
+        if not graphs:
+            raise ValueError("The chart's DOT source could not be parsed.")
+        _ = graphs[0].write(str(destination.root), format=image_format.root)
 
+    @staticmethod
+    def write_mermaid(chart: Chart, destination: DiagramPath) -> None:
+        _ = destination.root.write_text(MermaidDocument.of(ChartDiagram.render_mermaid(chart)).root)
 
-def write_image(chart: Chart, destination: DiagramPath, image_format: ImageFormat) -> None:
-    graphs = pydot.graph_from_dot_data(render_dot(chart).root)
-    if not graphs:
-        raise ValueError("The chart's DOT source could not be parsed.")
-    _ = graphs[0].write(str(destination.root), format=image_format.root)
+    @staticmethod
+    def write_diagram(chart: Chart, destination: DiagramPath) -> None:
+        match ChartDiagram.format_of(destination):
+            case MermaidFormat():
+                ChartDiagram.write_mermaid(chart, destination)
+            case ImageFormat() as image_format:
+                ChartDiagram.write_image(chart, destination, image_format)
 
+    @staticmethod
+    def format_of(destination: DiagramPath) -> MermaidFormat | ImageFormat:
+        if destination.root.suffix == ".md":
+            return MermaidFormat()
+        return ImageFormat.of(destination)
 
-def write_mermaid(chart: Chart, destination: DiagramPath) -> None:
-    _ = destination.root.write_text(MermaidDocument.of(render_mermaid(chart)).root)
-
-
-def write_diagram(chart: Chart, destination: DiagramPath) -> None:
-    match format_of(destination):
-        case MermaidFormat():
-            write_mermaid(chart, destination)
-        case ImageFormat() as image_format:
-            write_image(chart, destination, image_format)
-
-
-def diagram(chart_name: ChartName, destination: DiagramPath | None) -> ExitCode:
-    chart = chart_name.chart()
-    if destination is None:
-        _ = sys.stdout.write(render_mermaid(chart).root)
+    @staticmethod
+    def draw_diagram(chart_name: ChartName, destination: DiagramPath | None) -> ExitCode:
+        chart = chart_name.to_chart()
+        if destination is None:
+            _ = sys.stdout.write(ChartDiagram.render_mermaid(chart).root)
+            return ExitCode(0)
+        try:
+            ChartDiagram.write_diagram(chart, destination)
+        except OSError as error:
+            logger.error("Could not write %s: %s", destination.root, error)
+            return ExitCode(1)
+        except ValueError as error:
+            logger.error("%s", error)
+            return ExitCode(1)
+        logger.info("Wrote %s", destination.root)
         return ExitCode(0)
-    try:
-        write_diagram(chart, destination)
-    except OSError as error:
-        logger.error("Could not write %s: %s", destination.root, error)
-        return ExitCode(1)
-    except ValueError as error:
-        logger.error("%s", error)
-        return ExitCode(1)
-    logger.info("Wrote %s", destination.root)
-    return ExitCode(0)
