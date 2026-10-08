@@ -43,6 +43,7 @@ def test_every_state_of_the_chart_gets_a_label_in_chart_order() -> None:
                 "to-ticket",
                 "todo",
                 "implementing",
+                "agent-reviewing",
                 "qa",
                 "review",
                 "merging",

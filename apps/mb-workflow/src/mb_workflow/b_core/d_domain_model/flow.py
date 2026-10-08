@@ -69,6 +69,8 @@ class WorkflowChart(StateChart[ChartModel]):
     to_ticket = WorkState(StateName("to-ticket"), Skill("/to-ticket"), Phase.entry)
     todo = WorkState(StateName("todo"), Skill("/implement"), Phase.entry)
     implementing = WorkState(StateName("implementing"), Skill("/implement"), Phase.delivery)
+    # The agent reviews its own work, so it reaches QA already reviewed.
+    agent_reviewing = WorkState(StateName("agent-reviewing"), Skill("/review-mine"), Phase.delivery)
     qa = WorkState(StateName("qa"), AwaitingHuman(), Phase.delivery)
     review = WorkState(StateName("review"), AwaitingHuman(), Phase.delivery)
     merging = WorkState(StateName("merging"), Skill("/merge"), Phase.delivery)
@@ -84,7 +86,8 @@ class WorkflowChart(StateChart[ChartModel]):
         id="implement",
         name="implement",
     )
-    to_qa = Event(implementing.to(qa) | review.to(qa) | merging.to(qa), id="qa", name="qa")
+    agent_review = Event(implementing.to(agent_reviewing), id="agent-review", name="agent-review")
+    to_qa = Event(agent_reviewing.to(qa) | review.to(qa) | merging.to(qa), id="qa", name="qa")
     ready = Event(qa.to(review), id="ready", name="ready")
     merge = Event(qa.to(merging) | review.to(merging), id="merge", name="merge")
     to_merged = Event(review.to(merged) | merging.to(merged), id="merged", name="merged")

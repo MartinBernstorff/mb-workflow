@@ -2,6 +2,7 @@
 stateDiagram-v2
     direction LR
     state "to-ticket" as to_ticket
+    state "agent-reviewing" as agent_reviewing
     [*] --> grill
     merged --> [*]
     grill --> grill : grill
@@ -11,7 +12,8 @@ stateDiagram-v2
     implementing --> grill : grill
     implementing --> to_ticket : to-ticket
     implementing --> implementing : implement
-    implementing --> qa : qa
+    implementing --> agent_reviewing : agent-review
+    agent_reviewing --> qa : qa
     qa --> implementing : implement
     qa --> review : ready
     qa --> merging : merge

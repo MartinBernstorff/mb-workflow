@@ -364,6 +364,17 @@ def flow_implement(
     raise typer.Exit(code=flow_event(EventName("implement"), Force(force), ticket).root)
 
 
+@flow_app.command("agent-review")
+def flow_agent_review(
+    ticket: str | None = typer.Argument(None, help=TICKET),
+    force: bool = typer.Option(False, "--force", help=FORCING),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Move the workspace to the state this event leads to."""
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
+    raise typer.Exit(code=flow_event(EventName("agent-review"), Force(force), ticket).root)
+
+
 @flow_app.command("qa")
 def flow_qa(
     ticket: str | None = typer.Argument(None, help=TICKET),

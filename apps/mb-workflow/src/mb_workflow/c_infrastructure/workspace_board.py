@@ -56,6 +56,9 @@ class StateColumns(Value[tuple[WorkspaceStateColumn, ...]]):
                 WorkspaceStateColumn(
                     state=StateName("implementing"), label=ColumnLabel("Implementing")
                 ),
+                WorkspaceStateColumn(
+                    state=StateName("agent-reviewing"), label=ColumnLabel("Agent reviewing")
+                ),
                 WorkspaceStateColumn(state=StateName("qa"), label=ColumnLabel("My QA")),
                 WorkspaceStateColumn(
                     state=StateName("review"), label=ColumnLabel("Awaiting review")

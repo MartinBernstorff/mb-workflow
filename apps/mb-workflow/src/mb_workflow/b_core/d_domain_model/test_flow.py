@@ -23,6 +23,7 @@ GRILL = StateName("grill")
 TO_TICKET = StateName("to-ticket")
 TODO = StateName("todo")
 IMPLEMENTING = StateName("implementing")
+AGENT_REVIEWING = StateName("agent-reviewing")
 QA = StateName("qa")
 REVIEW = StateName("review")
 MERGING = StateName("merging")
@@ -35,7 +36,11 @@ def edge(source: StateName, name: EventName, target: StateName) -> Edge:
 
 def test_the_chart_holds_every_state_the_work_passes_through() -> None:
     Assert.that(StateNames.of_chart(WorkflowChart)).matches(
-        StateNames(frozenset({GRILL, TO_TICKET, TODO, IMPLEMENTING, QA, REVIEW, MERGING, MERGED}))
+        StateNames(
+            frozenset(
+                {GRILL, TO_TICKET, TODO, IMPLEMENTING, AGENT_REVIEWING, QA, REVIEW, MERGING, MERGED}
+            )
+        )
     )
 
 
@@ -56,7 +61,8 @@ def test_the_chart_holds_every_transition_the_work_can_take() -> None:
             edge(TO_TICKET, EventName("todo"), TODO),
             edge(TODO, EventName("implement"), IMPLEMENTING),
             edge(IMPLEMENTING, EventName("implement"), IMPLEMENTING),
-            edge(IMPLEMENTING, EventName("qa"), QA),
+            edge(IMPLEMENTING, EventName("agent-review"), AGENT_REVIEWING),
+            edge(AGENT_REVIEWING, EventName("qa"), QA),
             edge(IMPLEMENTING, EventName("grill"), GRILL),
             edge(IMPLEMENTING, EventName("to-ticket"), TO_TICKET),
             edge(QA, EventName("implement"), IMPLEMENTING),
@@ -121,6 +127,7 @@ def test_a_status_pairs_a_state_with_the_events_legal_from_it() -> None:
 def test_the_chart_names_every_event_it_holds() -> None:
     every_event = EventNames(
         (
+            EventName("agent-review"),
             EventName("grill"),
             EventName("implement"),
             EventName("merge"),
@@ -154,6 +161,20 @@ def test_only_todo_opens_in_the_delivery_state_running_the_same_skill() -> None:
     }
     moved = {state: target for state, target in opened.items() if target != state}
     Assert.that(moved).matches({TODO: IMPLEMENTING})
+
+
+def test_the_agent_reviews_its_work_before_it_reaches_qa() -> None:
+    edges = Edges.of_chart(WorkflowChart)
+    Assert.that(edges.target_from(IMPLEMENTING, EventName("agent-review"))).matches(
+        Ok(AGENT_REVIEWING)
+    )
+    Assert.that(edges.target_from(AGENT_REVIEWING, EventName("qa"))).matches(Ok(QA))
+
+
+def test_implementing_cannot_skip_the_agent_review_on_its_way_to_qa() -> None:
+    refused = Edges.of_chart(WorkflowChart).target_from(IMPLEMENTING, EventName("qa"))
+    error = Assert.that(refused.error).is_instance(FlowError)
+    Assert.that(str(error)).matches_pattern(r"qa is not legal from implementing\.")
 
 
 def test_resolving_a_review_from_qa_returns_the_work_to_implementing() -> None:
@@ -206,7 +227,7 @@ def test_every_event_leads_to_one_state_so_any_of_them_can_be_forced() -> None:
 
 def test_forcing_an_event_outside_the_chart_lists_the_events_it_holds() -> None:
     abandon = EventName("abandon")
-    refusal = rf"{abandon.root} is no event of the chart\. Its events: grill,"
+    refusal = rf"{abandon.root} is no event of the chart\. Its events: agent-review, grill,"
     refused = Edges.of_chart(WorkflowChart).target_of(abandon)
     error = Assert.that(refused.error).is_instance(FlowError)
     Assert.that(str(error)).matches_pattern(refusal)

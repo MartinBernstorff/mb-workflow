@@ -17,6 +17,7 @@ class TicketStatuses(Value[dict[StateName, IssueStatusName]]):
                     ("to-ticket", "Maturing"),
                     ("todo", "Todo"),
                     ("implementing", "In Progress"),
+                    ("agent-reviewing", "In Progress"),
                     ("qa", "In Progress"),
                     ("review", "In Review"),
                     ("merging", "Ready For Release"),
