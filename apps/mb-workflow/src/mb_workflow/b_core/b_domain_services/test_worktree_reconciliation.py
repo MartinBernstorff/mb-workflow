@@ -7,6 +7,7 @@ from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames, Ref
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.pull_request import (
     PrNumber,
+    PrNumbers,
     PrTitle,
     PullRequest,
     PullRequests,
@@ -120,9 +121,18 @@ def test_a_workspace_in_another_repo_is_never_stale() -> None:
     Assert.that(stale_among(PullRequests(()), worktrees)).matches(Worktrees(()))
 
 
+def test_a_workspace_linked_to_no_pull_request_is_never_stale_in_a_review_column() -> None:
+    worktrees = Worktrees((review_worktree().model_copy(update={"pull_request": None}),))
+    Assert.that(stale_among(PullRequests(()), worktrees)).matches(Worktrees(()))
+
+
 def test_a_review_workspace_matched_only_by_branch_survives() -> None:
     worktrees = Worktrees(
-        (review_worktree().model_copy(update={"pull_request": None, "branch": Ref.fake()}),)
+        (
+            review_worktree().model_copy(
+                update={"pull_request": other_pr().number, "branch": Ref.fake()}
+            ),
+        )
     )
     Assert.that(stale_among(PullRequests.fake(), worktrees)).matches(Worktrees(()))
 
@@ -190,13 +200,15 @@ def test_selects_the_workspaces_on_the_given_branches() -> None:
     ).matches(Worktrees((wanted,)))
 
 
-def obsolete_among(prs: PullRequests, merged: BranchNames, worktrees: Worktrees) -> Worktrees:
+def obsolete_among(
+    prs: PullRequests, merged: BranchNames, worktrees: Worktrees, mine: PrNumbers | None = None
+) -> Worktrees:
     return WorktreeReconciliation.obsolete(
-        requested=prs,
+        stale=stale_among(prs, worktrees),
+        mine=PrNumbers(()) if mine is None else mine,
         merged=merged,
         worktrees=worktrees,
         repo=RepoId.fake(),
-        statuses=review_statuses(),
         here=elsewhere(),
     )
 
@@ -219,3 +231,15 @@ def test_a_workspace_on_an_unmerged_branch_outside_review_is_not_obsolete() -> N
 def test_a_workspace_both_stale_and_merged_is_obsolete_once() -> None:
     worktrees = Worktrees((review_worktree().model_copy(update={"branch": Ref.fake()}),))
     Assert.that(obsolete_among(PullRequests(()), BranchNames.fake(), worktrees)).matches(worktrees)
+
+
+def test_a_stale_workspace_for_a_pull_request_i_opened_is_not_obsolete() -> None:
+    worktrees = Worktrees((review_worktree(),))
+    Assert.that(
+        obsolete_among(PullRequests(()), BranchNames(()), worktrees, PrNumbers.fake())
+    ).matches(Worktrees(()))
+
+
+def test_a_worktree_list_names_the_pull_requests_linked_to_it() -> None:
+    worktrees = Worktrees((review_worktree(), bare_worktree()))
+    Assert.that(worktrees.pull_requests()).matches(PrNumbers.fake())

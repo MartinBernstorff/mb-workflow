@@ -5,7 +5,7 @@ from pydantic import JsonValue, model_validator
 
 from mb_workflow.b_core.d_domain_model.git import Ref
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueTitle, Priority
-from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
+from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrNumbers, PrTitle
 from mb_workflow.d_lib.models import Model, Value
 
 
@@ -228,6 +228,11 @@ class Worktrees(Value[tuple[Worktree, ...]]):
 
     def named(self, name: WorktreeName) -> Worktree | None:
         return next((worktree for worktree in self.root if worktree.path.name() == name), None)
+
+    def pull_requests(self) -> PrNumbers:
+        return PrNumbers(
+            tuple(pr for pr in (worktree.pull_request for worktree in self.root) if pr is not None)
+        )
 
     def without(self, path: WorktreePath) -> Worktrees:
         return Worktrees(

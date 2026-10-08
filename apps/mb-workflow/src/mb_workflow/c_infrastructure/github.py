@@ -16,6 +16,7 @@ from mb_workflow.b_core.d_domain_model.pull_request import (
     CheckoutDirectory,
     MergedSince,
     PrNumber,
+    PrNumbers,
     PrTitle,
     PullRequest,
     PullRequests,
@@ -285,6 +286,27 @@ class GitHub(CodeForge):
     def _checkout(self, pr: PrNumber, into: CheckoutDirectory) -> None:
         _ = self._shell.at(ExistingDirectory(into.root)).run(
             Command(("gh", "pr", "checkout", str(pr.root), "--force"))
+        )
+
+    # Only the given pull requests are looked up, so a run with nothing to clean up asks GitHub nothing.
+    @override
+    def authored_by_me(self, prs: PrNumbers) -> Result[PrNumbers, CodeReviewError]:
+        if len(prs.root) == 0:
+            return Ok(prs)
+        return GitHubFailure.as_code_review_error(self._authored_by_me(prs))
+
+    @safe_with(CalledProcessError, ValidationError)
+    def _authored_by_me(self, prs: PrNumbers) -> PrNumbers:
+        me = self.viewer()
+        return PrNumbers(tuple(pr for pr in prs.root if self.author_of(pr) == me))
+
+    def author_of(self, pr: PrNumber) -> UserLogin:
+        return UserLogin.parse(
+            self._shell.run(
+                Command(
+                    ("gh", "pr", "view", str(pr.root), "--json", "author", "--jq", ".author.login")
+                )
+            )
         )
 
     def viewer(self) -> UserLogin:

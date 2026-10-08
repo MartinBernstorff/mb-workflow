@@ -8,6 +8,7 @@ from mb_workflow.b_core.d_domain_model.pull_request import (
     CheckoutDirectory,
     MergedSince,
     PrNumber,
+    PrNumbers,
     PullRequest,
     PullRequests,
     ReviewRequest,
@@ -27,6 +28,9 @@ class CodeForge(Protocol):
     def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> Result[None, CodeReviewError]: ...
 
     def submit(self, pr: PrNumber, request: ReviewRequest) -> Result[None, CodeReviewError]: ...
+
+    # Those of the given pull requests that I opened myself.
+    def authored_by_me(self, prs: PrNumbers) -> Result[PrNumbers, CodeReviewError]: ...
 
 
 class CodeReviewRefusal:
@@ -82,10 +86,12 @@ class FakeCodeReview(CodeForge):
         requested: PullRequests,
         merged: tuple[MergedPullRequest, ...] = (),
         pending: tuple[PrNumber, ...] = (),
+        mine: tuple[PrNumber, ...] = (),
     ) -> None:
         self._requested = requested
         self._merged = merged
         self._pending = set(pending)
+        self._mine = mine
         self._submitted: list[SubmittedReview] = []
         self._checkouts: dict[CheckoutDirectory, PrNumber] = {}
 
@@ -125,6 +131,10 @@ class FakeCodeReview(CodeForge):
             case Err() as refused:
                 return refused
 
+    @override
+    def authored_by_me(self, prs: PrNumbers) -> Result[PrNumbers, CodeReviewError]:
+        return Ok(PrNumbers(tuple(pr for pr in prs.root if pr in self._mine)))
+
     def submitted(self) -> tuple[SubmittedReview, ...]:
         return tuple(self._submitted)
 
@@ -150,4 +160,8 @@ class UnreachableCodeReview(CodeForge):
 
     @override
     def submit(self, pr: PrNumber, request: ReviewRequest) -> Result[None, CodeReviewError]:
+        return Err(self._unreachable)
+
+    @override
+    def authored_by_me(self, prs: PrNumbers) -> Result[PrNumbers, CodeReviewError]:
         return Err(self._unreachable)

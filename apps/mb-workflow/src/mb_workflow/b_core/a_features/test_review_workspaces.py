@@ -262,6 +262,17 @@ def test_keeps_my_own_ticket_workspace_in_agent_review(here: WorktreePath) -> No
     assert manager.worktrees().unwrap().at(mine.path) == mine
 
 
+# The agent-reviewing column also holds my own work, so a worktree for my own PR that links no
+# ticket can sit in it.
+def test_keeps_the_workspace_of_my_own_pull_request_in_agent_review(here: WorktreePath) -> None:
+    mine = in_review(here)
+    review = FakeCodeReview(PullRequests(()), mine=(PrNumber.fake(),))
+    manager = standing_in(here, mine)
+    outcome = run_review_workspaces(review, manager)
+    assert outcome.removed == ()
+    assert manager.worktrees().unwrap().at(mine.path) == mine
+
+
 def test_releases_the_claim_of_a_workspace_it_removes(here: WorktreePath) -> None:
     name = WorktreeName.of_issue(IssueIdentifier.fake())
     merged = Worktree.fake().model_copy(update={"path": here.sibling(name)})

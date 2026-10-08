@@ -203,24 +203,23 @@ class ReviewWorkspaces:
                 narrator.awaiting_review(requested)
             case Err() as unlisted:
                 return unlisted
-        match review.merged_branches(since):
-            case Ok(merged):
-                pass
-            case Err() as unlisted:
-                return unlisted
 
         created: list[CreatedWorkspace] = []
         removed: list[WorktreePath] = []
         failed: list[Failure] = []
 
-        to_remove = WorktreeReconciliation.obsolete(
+        match ReviewWorkspaces.obsolete_worktrees(
+            review=review,
             requested=requested,
-            merged=merged,
+            since=since,
             worktrees=worktrees,
-            repo=repo,
-            statuses=columns.held,
-            here=here,
-        )
+            current=current,
+            columns=columns,
+        ):
+            case Ok(to_remove):
+                pass
+            case Err() as unchecked:
+                return unchecked
         narrator.found_obsolete(to_remove)
 
         for worktree in to_remove.root:
@@ -266,6 +265,40 @@ class ReviewWorkspaces:
                     failed.append(failure)
 
         return Ok(Outcome(created=tuple(created), removed=tuple(removed), failed=tuple(failed)))
+
+    # A worktree for a pull request I opened is never torn down as a stale review.
+    @staticmethod
+    def obsolete_worktrees(
+        *,
+        review: CodeForge,
+        requested: PullRequests,
+        since: MergedSince,
+        worktrees: Worktrees,
+        current: Worktree,
+        columns: ReviewColumns,
+    ) -> Result[Worktrees, CodeReviewError]:
+        match review.merged_branches(since):
+            case Ok(merged):
+                pass
+            case Err() as unlisted:
+                return unlisted
+        stale = WorktreeReconciliation.stale(
+            requested, worktrees, current.repo, columns.held, current.path
+        )
+        match review.authored_by_me(stale.pull_requests()):
+            case Ok(mine):
+                return Ok(
+                    WorktreeReconciliation.obsolete(
+                        stale=stale,
+                        mine=mine,
+                        merged=merged,
+                        worktrees=worktrees,
+                        repo=current.repo,
+                        here=current.path,
+                    )
+                )
+            case Err() as unchecked:
+                return unchecked
 
     @staticmethod
     def listed_from_here(

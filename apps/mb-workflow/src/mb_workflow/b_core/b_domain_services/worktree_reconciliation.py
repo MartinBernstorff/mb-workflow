@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from mb_workflow.b_core.d_domain_model.pull_request import PullRequests
+from mb_workflow.b_core.d_domain_model.pull_request import PrNumbers, PullRequests
 from mb_workflow.b_core.d_domain_model.workspace import Worktrees
 
 if TYPE_CHECKING:
@@ -22,8 +22,9 @@ class WorktreeReconciliation:
         )
 
     # A review worktree goes stale once its PR no longer awaits review, whichever review column it is in.
-    # A worktree linked to a ticket of mine is never a review worktree, even when it shares a column
-    # with one, as agent-reviewing does.
+    # A worktree linked to a ticket of mine, or to no pull request, is never a review worktree, even
+    # when it shares a column with one, as agent-reviewing does. A worktree for a pull request I
+    # opened can still land here; `others` drops it.
     @staticmethod
     def stale(
         prs: PullRequests,
@@ -40,10 +41,18 @@ class WorktreeReconciliation:
                 for worktree in worktrees.without(here).root
                 if worktree.repo == repo
                 and worktree.issue is None
+                and worktree.pull_request is not None
                 and worktree.status in statuses.root
                 and worktree.pull_request not in numbers
                 and (worktree.branch is None or worktree.branch.branch() not in branches)
             )
+        )
+
+    # Cleanup never removes the worktree of a pull request I opened, whichever column it sits in.
+    @staticmethod
+    def others(worktrees: Worktrees, mine: PrNumbers) -> Worktrees:
+        return Worktrees(
+            tuple(worktree for worktree in worktrees.root if worktree.pull_request not in mine.root)
         )
 
     @staticmethod
@@ -78,15 +87,15 @@ class WorktreeReconciliation:
     @staticmethod
     def obsolete(
         *,
-        requested: PullRequests,
+        stale: Worktrees,
+        mine: PrNumbers,
         merged: BranchNames,
         worktrees: Worktrees,
         repo: RepoId,
-        statuses: WorkspaceStatuses,
         here: WorktreePath,
     ) -> Worktrees:
         return WorktreeReconciliation.union(
-            WorktreeReconciliation.stale(requested, worktrees, repo, statuses, here),
+            WorktreeReconciliation.others(stale, mine),
             WorktreeReconciliation.on_branches(
                 WorktreeReconciliation.prunable(worktrees, repo, here), merged
             ),
