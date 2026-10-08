@@ -31,5 +31,5 @@ def test_a_review_worktree_lists_the_events_of_the_review_chart() -> None:
 def test_a_worktree_for_my_own_ticket_lists_the_events_of_the_workflow_chart() -> None:
     agent_reviewing = StateName("agent-reviewing")
     Assert.that(shown(Worktree.fake(), agent_reviewing)).matches(
-        Ok(StatusReport("agent-reviewing\n  qa\n"))
+        Ok(StatusReport("agent-reviewing\n  grill\n  implement\n  qa\n  to-ticket\n"))
     )

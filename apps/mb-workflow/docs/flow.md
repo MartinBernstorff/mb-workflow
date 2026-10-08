@@ -13,6 +13,9 @@ stateDiagram-v2
     implementing --> to_ticket : to-ticket
     implementing --> implementing : implement
     implementing --> agent_reviewing : agent-review
+    agent_reviewing --> grill : grill
+    agent_reviewing --> to_ticket : to-ticket
+    agent_reviewing --> implementing : implement
     agent_reviewing --> qa : qa
     qa --> implementing : implement
     qa --> review : ready

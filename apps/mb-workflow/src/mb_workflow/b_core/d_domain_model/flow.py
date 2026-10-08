@@ -91,13 +91,23 @@ class WorkflowChart(StateChart[ChartModel]):
     merging = WorkState(StateName("merging"), Skill("/merge"), Phase.delivery)
     merged = WorkState(StateName("merged"), Finished(), Phase.delivery)
 
-    to_grill = Event(grill.to.itself() | implementing.to(grill), id="grill", name="grill")
+    # The agent's own review can find a problem that sends the work back, as implementing can.
+    to_grill = Event(
+        grill.to.itself() | implementing.to(grill) | agent_reviewing.to(grill),
+        id="grill",
+        name="grill",
+    )
     to_to_ticket = Event(
-        grill.to(to_ticket) | implementing.to(to_ticket), id="to-ticket", name="to-ticket"
+        grill.to(to_ticket) | implementing.to(to_ticket) | agent_reviewing.to(to_ticket),
+        id="to-ticket",
+        name="to-ticket",
     )
     to_todo = Event(to_ticket.to(todo), id="todo", name="todo")
     implement = Event(
-        todo.to(implementing) | implementing.to.itself() | qa.to(implementing),
+        todo.to(implementing)
+        | implementing.to.itself()
+        | agent_reviewing.to(implementing)
+        | qa.to(implementing),
         id="implement",
         name="implement",
     )
