@@ -8,7 +8,7 @@ from mb_workflow.a_presentation import commands
 from mb_workflow.a_presentation.cli.dev import dev_app
 from mb_workflow.a_presentation.cli.group import AlphabeticalGroup
 from mb_workflow.a_presentation.cli.ticket import ticket_app
-from mb_workflow.a_presentation.diagram import DiagramPath, diagram
+from mb_workflow.a_presentation.diagram import ChartName, DiagramPath, diagram
 from mb_workflow.b_core.a_features.autolabel import DryRun
 from mb_workflow.b_core.a_features.drain import DrainRequest
 from mb_workflow.b_core.a_features.drain_watch import WatchRequest
@@ -273,10 +273,15 @@ def flow_diagram(
         "-o",
         help="Write the chart here; .md writes a fenced mermaid state diagram, any other extension picks the image format. Prints the mermaid diagram when omitted.",
     ),
+    chart: ChartName = typer.Option(
+        ChartName.workflow,
+        "--chart",
+        help="The chart to draw: workflow for my tickets, review for teammates' PRs.",
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    raise typer.Exit(code=diagram(DiagramPath(Path(output)) if output else None).root)
+    raise typer.Exit(code=diagram(chart, DiagramPath(Path(output)) if output else None).root)
 
 
 @flow_app.command("show")
