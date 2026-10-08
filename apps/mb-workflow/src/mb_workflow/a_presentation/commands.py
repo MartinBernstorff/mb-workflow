@@ -33,14 +33,14 @@ from mb_workflow.b_core.a_features.link import AlreadyLinkedError, LinkRequest, 
 from mb_workflow.b_core.a_features.review_workspaces import ReviewPrompt, ReviewWorkspaces
 from mb_workflow.b_core.a_features.seed_labels import CoveredByWorkspace, FlowLabelSeeding
 from mb_workflow.b_core.a_features.show_config import show_config
-from mb_workflow.b_core.a_features.show_flow import show_flow
+from mb_workflow.b_core.a_features.show_flow import FlowShow
 from mb_workflow.b_core.a_features.start import (
     PromptUndeliveredError,
     StartRequest,
     TicketStart,
 )
 from mb_workflow.b_core.a_features.teardown import Teardown, TeardownRequest
-from mb_workflow.b_core.a_features.transition import LinkedTicketTransition
+from mb_workflow.b_core.a_features.transition import WorktreeTransition
 from mb_workflow.b_core.a_features.unclaim import TicketUnclaiming
 from mb_workflow.b_core.a_features.view_ticket import TicketViewing
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
@@ -462,7 +462,8 @@ def dev_setup() -> ExitCode:
 
 @guarded
 def flow_show(as_json: AsJson) -> ExitCode:
-    match show_flow(workspace_board(connected_orca()), as_json):
+    manager = connected_orca()
+    match FlowShow.show_flow(manager, workspace_board(manager).at, as_json):
         case Ok(report):
             write(Output(report.root))
             return ExitCode(0)
@@ -480,7 +481,7 @@ def flow_event(
     name: ConfigFileName,
 ) -> ExitCode:
     manager = connected_orca()
-    match LinkedTicketTransition.move_linked_ticket(
+    match WorktreeTransition.move_worktree(
         board_at=workspace_board(manager).at,
         tracker=linear(),
         manager=manager,

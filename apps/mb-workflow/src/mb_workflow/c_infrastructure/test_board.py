@@ -5,7 +5,7 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     FakeWorkspaceManager,
     WorkspaceManagerError,
 )
-from mb_workflow.b_core.d_domain_model.flow import StateName, StateNames, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import ReviewChart, StateName, StateNames, WorkflowChart
 from mb_workflow.b_core.d_domain_model.workspace import (
     RepoId,
     WorkspaceStatus,
@@ -63,10 +63,12 @@ def test_an_id_the_board_does_not_define_has_no_label() -> None:
     Assert.that(board().label_of(WorkspaceStatus("status-404"))).matches(None)
 
 
-def test_every_state_the_chart_holds_has_a_board_column() -> None:
+def test_every_state_either_chart_holds_has_a_board_column() -> None:
     Assert.that(
-        StateNames(frozenset(pairing.state for pairing in StateColumns.of_chart().root))
-    ).matches(StateNames.of_chart(WorkflowChart))
+        StateNames(frozenset(pairing.state for pairing in StateColumns.of_charts().root))
+    ).matches(
+        StateNames(StateNames.of_chart(WorkflowChart).root | StateNames.of_chart(ReviewChart).root)
+    )
 
 
 def test_a_column_id_resolves_to_the_state_its_label_stands_for() -> None:
@@ -81,10 +83,16 @@ def test_agent_reviewing_is_recorded_in_the_agent_reviewing_column() -> None:
     )
 
 
-def test_a_column_outside_the_chart_reads_as_the_start_state() -> None:
-    Assert.that(state_of(WorkspaceStatus("status-8"))).matches(
-        StateNames.initial_state(WorkflowChart)
-    )
+def test_a_worktree_in_me_reviewing_others_reads_as_reviewing() -> None:
+    reviewing = StateName("reviewing")
+    Assert.that(state_of(WorkspaceStatus("status-8"))).matches(reviewing)
+
+
+def test_reviewing_is_recorded_in_the_me_reviewing_others_column() -> None:
+    reviewing_others = WorkspaceStatus("status-8")
+    manager = standing_in(WorkspaceStatus("status-10"))
+    Assert.that(board_over(manager, Ok(board())).write(StateName("reviewing"))).matches(Ok(None))
+    Assert.that(manager.current().unwrap().status).matches(reviewing_others)
 
 
 def test_a_workspace_with_no_column_reads_as_the_start_state() -> None:
@@ -110,7 +118,7 @@ def test_a_state_the_board_has_no_column_for_is_a_clear_error() -> None:
 
 
 def test_a_state_outside_the_chart_has_no_board_column() -> None:
-    Assert.that(StateColumns.of_chart().label_of(StateName("Abandoned"))).matches(
+    Assert.that(StateColumns.of_charts().label_of(StateName("Abandoned"))).matches(
         Err(BoardError("Abandoned has no board column."))
     )
 

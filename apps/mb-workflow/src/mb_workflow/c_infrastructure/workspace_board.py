@@ -47,7 +47,7 @@ class StateColumns(Value[tuple[WorkspaceStateColumn, ...]]):
         return StateColumns((WorkspaceStateColumn.fake(),))
 
     @staticmethod
-    def of_chart() -> StateColumns:
+    def of_charts() -> StateColumns:
         return StateColumns(
             (
                 WorkspaceStateColumn(state=StateName("grill"), label=ColumnLabel("Grilling")),
@@ -58,6 +58,9 @@ class StateColumns(Value[tuple[WorkspaceStateColumn, ...]]):
                 ),
                 WorkspaceStateColumn(
                     state=StateName("agent-reviewing"), label=ColumnLabel("Agent reviewing")
+                ),
+                WorkspaceStateColumn(
+                    state=StateName("reviewing"), label=ColumnLabel("Me reviewing others")
                 ),
                 WorkspaceStateColumn(state=StateName("qa"), label=ColumnLabel("My QA")),
                 WorkspaceStateColumn(
@@ -113,7 +116,7 @@ class Columns(Value[tuple[Column, ...]]):
         return None
 
     def status_for(self, state: StateName) -> Result[WorkspaceStatus, BoardError]:
-        match StateColumns.of_chart().label_of(state):
+        match StateColumns.of_charts().label_of(state):
             case Ok(label):
                 pass
             case Err() as unmapped:
@@ -133,7 +136,7 @@ class Columns(Value[tuple[Column, ...]]):
         label = self.label_of(status)
         if label is None:
             return start
-        state = StateColumns.of_chart().state_of(label)
+        state = StateColumns.of_charts().state_of(label)
         return state if state is not None else start
 
 

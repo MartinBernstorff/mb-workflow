@@ -386,6 +386,16 @@ def flow_qa(
     raise typer.Exit(code=flow_event(EventName("qa"), Force(force), ticket).root)
 
 
+@flow_app.command("reviewed")
+def flow_reviewed(
+    force: bool = typer.Option(False, "--force", help=FORCING),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Hand the review of a teammate's pull request from the agent to you."""
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
+    raise typer.Exit(code=flow_event(EventName("reviewed"), Force(force), None).root)
+
+
 @flow_app.command("ready")
 def flow_ready(
     ticket: str | None = typer.Argument(None, help=TICKET),

@@ -7,6 +7,7 @@ from safe_result import Err, Ok, Result
 from mb_workflow.b_core.b_domain_services.flow_label_check import FlowLabelCheck
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.d_domain_model.flow import (
+    Chart,
     Edges,
     EventName,
     FlowError,
@@ -54,14 +55,7 @@ class FlowTransition:
         StateName,
         FlowError | TicketTrackerError | MissingFlowLabelsError | WorkspaceManagerError,
     ]:
-        edges = Edges.of_chart(chart)
-        if force.root:
-            target = edges.target_of(event)
-        else:
-            current = store.read()
-            if isinstance(current, Err):
-                return current
-            target = edges.target_from(current.value, event)
+        target = FlowTransition.target(chart, store, event, force)
         if isinstance(target, Err):
             return target
         put = FlowTransition.put_in_state(tracker, issue, wanted, statuses, target.value)
@@ -71,6 +65,31 @@ class FlowTransition:
         if isinstance(written, Err):
             return written
         return Ok(target.value)
+
+    # Moves the board alone, for work whose state lives nowhere else.
+    @staticmethod
+    def move_board(
+        *, chart: Chart, store: WorkspaceStatusStore, event: EventName, force: Force
+    ) -> Result[StateName, FlowError | WorkspaceManagerError]:
+        target = FlowTransition.target(chart, store, event, force)
+        if isinstance(target, Err):
+            return target
+        written = store.write(target.value)
+        if isinstance(written, Err):
+            return written
+        return Ok(target.value)
+
+    @staticmethod
+    def target(
+        chart: Chart, store: WorkspaceStatusStore, event: EventName, force: Force
+    ) -> Result[StateName, FlowError | WorkspaceManagerError]:
+        edges = Edges.of_chart(chart)
+        if force.root:
+            return edges.target_of(event)
+        current = store.read()
+        if isinstance(current, Err):
+            return current
+        return edges.target_from(current.value, event)
 
     @staticmethod
     def put_in_state(

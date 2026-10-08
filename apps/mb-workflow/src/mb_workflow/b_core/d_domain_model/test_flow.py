@@ -11,6 +11,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
     EventNames,
     FlowError,
     FlowStatus,
+    ReviewChart,
     StateName,
     StateNames,
     UnknownStateError,
@@ -28,6 +29,7 @@ QA = StateName("qa")
 REVIEW = StateName("review")
 MERGING = StateName("merging")
 MERGED = StateName("merged")
+REVIEWING = StateName("reviewing")
 
 
 def edge(source: StateName, name: EventName, target: StateName) -> Edge:
@@ -247,3 +249,30 @@ def test_an_unknown_state_lists_only_the_accepted_states_in_chart_order() -> Non
     looked_up = AcceptedStates((TO_TICKET, GRILL)).named_ignoring_case(unknown)
     error = Assert.that(looked_up.error).is_instance(UnknownStateError)
     Assert.that(str(error)).matches(refusal)
+
+
+def test_a_review_starts_with_the_agent_and_ends_with_me() -> None:
+    Assert.that(StateNames.of_chart(ReviewChart)).matches(
+        StateNames(frozenset({AGENT_REVIEWING, REVIEWING}))
+    )
+    Assert.that(StateNames.initial_state(ReviewChart)).matches(AGENT_REVIEWING)
+
+
+def test_the_review_chart_holds_only_the_agent_handing_the_review_to_me() -> None:
+    Assert.that(Edges.of_chart(ReviewChart).root).matches(
+        frozenset({edge(AGENT_REVIEWING, EventName("reviewed"), REVIEWING)})
+    )
+
+
+def test_every_review_state_names_what_happens_in_it() -> None:
+    for state in ReviewChart.states:
+        _ = Assert.that(state).is_instance(WorkState)
+
+
+def test_reviewing_is_where_the_review_chart_ends() -> None:
+    Assert.that(EventNames.of_state(ReviewChart, REVIEWING)).matches(EventNames(()))
+
+
+# Every workflow state needs a ticket status; reviewing has no ticket, so it stays out.
+def test_reviewing_is_no_state_of_the_workflow_chart() -> None:
+    Assert.that(REVIEWING in StateNames.of_chart(WorkflowChart).root).matches(False)

@@ -52,10 +52,25 @@ class Phase(StrEnum):
     delivery = "delivery"
 
 
+# Whether the chart ends in a state. A state ends it when nothing follows, even if someone
+# still has to act in it.
+class Ending(Value[bool]):
+    @staticmethod
+    def fake() -> Ending:
+        return Ending(False)
+
+    @staticmethod
+    def of_action(action: NextAction) -> Ending:
+        return Ending(isinstance(action, Finished))
+
+
 # Each state names its next action, so no state can be added without deciding what happens in it.
 class WorkState(State):
-    def __init__(self, name: StateName, action: NextAction, phase: Phase) -> None:
-        super().__init__(name.root, final=isinstance(action, Finished))
+    def __init__(
+        self, name: StateName, action: NextAction, phase: Phase, ending: Ending | None = None
+    ) -> None:
+        ends = Ending.of_action(action) if ending is None else ending
+        super().__init__(name.root, final=ends.root)
         self.action: NextAction = action
         self.phase: Phase = phase
 
@@ -94,6 +109,25 @@ class WorkflowChart(StateChart[ChartModel]):
     resolve_review = Event(
         review.to(implementing) | qa.to(implementing), id="resolve-review", name="resolve-review"
     )
+
+
+# A teammate's pull request I review. It has no ticket of mine, so its state lives only on the
+# board and never reaches the ticket tracker; that is why it is a chart of its own, whose states
+# need no ticket status.
+class ReviewChart(StateChart[ChartModel]):
+    allow_event_without_transition = False
+    catch_errors_as_events = False
+
+    agent_reviewing = WorkState(
+        StateName("agent-reviewing"), Skill("/review-others"), Phase.delivery
+    )
+    # The review is mine to finish; finishing it removes the worktree, so the chart ends here.
+    reviewing = WorkState(StateName("reviewing"), AwaitingHuman(), Phase.delivery, Ending(True))
+
+    reviewed = Event(agent_reviewing.to(reviewing), id="reviewed", name="reviewed")
+
+
+type Chart = type[WorkflowChart] | type[ReviewChart]
 
 
 # An entry state whose skill a delivery state also runs hands its work to that delivery state
@@ -156,7 +190,7 @@ class Edges(Value[frozenset[Edge]]):
         return Edges(frozenset({Edge.fake()}))
 
     @staticmethod
-    def of_chart(chart: type[WorkflowChart]) -> Edges:
+    def of_chart(chart: Chart) -> Edges:
         return Edges(
             frozenset(
                 Edge.of_transition(transition, EventName(str(name)))
@@ -198,11 +232,11 @@ class StateNames(Value[frozenset[StateName]]):
         return StateNames(frozenset({StateName.fake()}))
 
     @staticmethod
-    def of_chart(chart: type[WorkflowChart]) -> StateNames:
+    def of_chart(chart: Chart) -> StateNames:
         return StateNames(frozenset(StateName(state.name) for state in chart.states))
 
     @staticmethod
-    def initial_state(chart: type[WorkflowChart]) -> StateName:
+    def initial_state(chart: Chart) -> StateName:
         initial = chart.initial_state
         if initial is None:
             raise ValueError("The chart has no state to start in.")
@@ -238,11 +272,11 @@ class EventNames(Value[tuple[EventName, ...]]):
         return EventNames(tuple(EventName(text) for text in sorted(name.root for name in names)))
 
     @staticmethod
-    def of_chart(chart: type[WorkflowChart]) -> EventNames:
+    def of_chart(chart: Chart) -> EventNames:
         return Edges.of_chart(chart).events()
 
     @staticmethod
-    def of_state(chart: type[WorkflowChart], state: StateName) -> EventNames:
+    def of_state(chart: Chart, state: StateName) -> EventNames:
         return Edges.of_chart(chart).events_from(state)
 
 
@@ -255,5 +289,5 @@ class FlowStatus(Model):
         return FlowStatus(state=StateName.fake(), events=EventNames.fake())
 
     @staticmethod
-    def of(chart: type[WorkflowChart], state: StateName) -> FlowStatus:
+    def of(chart: Chart, state: StateName) -> FlowStatus:
         return FlowStatus(state=state, events=EventNames.of_state(chart, state))

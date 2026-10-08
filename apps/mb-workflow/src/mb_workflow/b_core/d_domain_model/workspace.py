@@ -182,6 +182,10 @@ class Worktree(Model):
             priority=WorkspacePriority.fake(),
         )
 
+    # A review worktree checks out a teammate's pull request and is linked to no ticket of mine.
+    def reviewed_pull_request(self) -> PrNumber | None:
+        return self.pull_request if self.issue is None else None
+
     def linked_issue(self) -> IssueIdentifier:
         if self.issue is None:
             raise UnlinkedWorktreeError(
