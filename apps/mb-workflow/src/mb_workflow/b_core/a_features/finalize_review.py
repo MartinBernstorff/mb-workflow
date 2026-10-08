@@ -24,9 +24,15 @@ class NotFinalizableError(Exception):
 
 class FinalizeReview:
     @staticmethod
-    def reviewed_pr(
+    def linked_pr(worktree: Worktree) -> Result[PrNumber, NotFinalizableError]:
+        if worktree.pull_request is None:
+            return Err(NotFinalizableError(f"{worktree.path.root} has no linked pull request"))
+        return Ok(worktree.pull_request)
+
+    @staticmethod
+    def check_finishing(
         worktree: Worktree, status: WorkspaceStatus
-    ) -> Result[PrNumber, NotFinalizableError]:
+    ) -> Result[None, NotFinalizableError]:
         found = worktree.status
         if found is None or found != status:
             return Err(
@@ -36,9 +42,28 @@ class FinalizeReview:
                     f"({ReviewColumns.finishing_state().root})"
                 )
             )
-        if worktree.pull_request is None:
-            return Err(NotFinalizableError(f"{worktree.path.root} has no linked pull request"))
-        return Ok(worktree.pull_request)
+        return Ok(None)
+
+    # The pull request is checked before the board, so a worktree with none costs no Orca call.
+    @staticmethod
+    def finishable_pr(
+        worktree: Worktree, board: WorkspaceStatusStore
+    ) -> Result[PrNumber, NotFinalizableError | WorkspaceManagerError]:
+        match FinalizeReview.linked_pr(worktree):
+            case Ok(pr):
+                pass
+            case Err() as unlinked:
+                return unlinked
+        match board.status_for(ReviewColumns.finishing_state()):
+            case Ok(finishing):
+                pass
+            case Err() as unmapped:
+                return unmapped
+        match FinalizeReview.check_finishing(worktree, finishing):
+            case Ok():
+                return Ok(pr)
+            case Err() as misplaced:
+                return misplaced
 
     @staticmethod
     def finalize(
@@ -52,24 +77,19 @@ class FinalizeReview:
                 pass
             case Err() as unread:
                 return unread
-        match board.status_for(ReviewColumns.finishing_state()):
-            case Ok(finishing):
-                pass
-            case Err() as unmapped:
-                return unmapped
-        match FinalizeReview.reviewed_pr(worktree, finishing):
+        match FinalizeReview.finishable_pr(worktree, board):
             case Ok(pr):
-                match review.submit(pr, request):
-                    case Ok():
-                        logger.info("Submitted %s on PR #%s.", request.decision.value, pr.root)
-                    case Err() as refused:
-                        return refused
-
-                match manager.remove(worktree.path):
-                    case Ok():
-                        logger.info("Removed %s.", worktree.path.root)
-                        return Ok(None)
-                    case Err() as kept:
-                        return kept
+                pass
             case Err() as refused:
                 return refused
+        match review.submit(pr, request):
+            case Ok():
+                logger.info("Submitted %s on PR #%s.", request.decision.value, pr.root)
+            case Err() as refused:
+                return refused
+        match manager.remove(worktree.path):
+            case Ok():
+                logger.info("Removed %s.", worktree.path.root)
+                return Ok(None)
+            case Err() as kept:
+                return kept

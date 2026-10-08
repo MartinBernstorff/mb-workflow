@@ -45,9 +45,23 @@ def standing_in(worktree: Worktree) -> FakeWorkspaceManager:
     return FakeWorkspaceManager(Worktrees((worktree,)), WorktreePath.fake())
 
 
-def test_reads_the_pull_request_of_a_worktree_in_the_reviewing_status() -> None:
-    reviewed = FinalizeReview.reviewed_pr(awaiting_me(), column_of(StateName("reviewing")))
-    assert reviewed == Ok(PrNumber.fake())
+def test_reads_the_pull_request_linked_to_the_worktree() -> None:
+    assert FinalizeReview.linked_pr(awaiting_me()) == Ok(PrNumber.fake())
+
+
+def test_a_worktree_in_the_reviewing_status_is_ready_to_finish() -> None:
+    finishing = column_of(StateName("reviewing"))
+    assert FinalizeReview.check_finishing(awaiting_me(), finishing) == Ok(None)
+
+
+def test_a_worktree_with_no_pull_request_is_refused_before_the_board_is_asked() -> None:
+    review = FakeCodeReview(PullRequests.fake())
+    manager = standing_in(awaiting_me().model_copy(update={"pull_request": None}))
+    finalized = FinalizeReview.finalize(
+        review, manager, UnreachableStatusStore(), ReviewRequest.fake()
+    )
+    assert isinstance(finalized, Err)
+    assert isinstance(finalized.error, NotFinalizableError)
 
 
 @pytest.mark.parametrize(
