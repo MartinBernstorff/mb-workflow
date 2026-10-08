@@ -121,9 +121,14 @@ def standing_in(
     )
 
 
+# A review worktree checks out a teammate's PR, so it links no ticket of mine.
 def in_review(here: WorktreePath, state: StateName = StateName("agent-reviewing")) -> Worktree:
     return Worktree.fake().model_copy(
-        update={"path": here.sibling(WorktreeName("stale")), "status": column_of(state)}
+        update={
+            "path": here.sibling(WorktreeName("stale")),
+            "status": column_of(state),
+            "issue": None,
+        }
     )
 
 
@@ -249,9 +254,18 @@ def test_keeps_a_workspace_outside_the_review_columns(here: WorktreePath) -> Non
     assert manager.worktrees().unwrap().at(elsewhere.path) == elsewhere
 
 
+def test_keeps_my_own_ticket_workspace_in_agent_review(here: WorktreePath) -> None:
+    mine = in_review(here).model_copy(update={"issue": IssueIdentifier.fake()})
+    manager = standing_in(here, mine)
+    outcome = run_review_workspaces(FakeCodeReview(PullRequests(())), manager)
+    assert outcome.removed == ()
+    assert manager.worktrees().unwrap().at(mine.path) == mine
+
+
 def test_releases_the_claim_of_a_workspace_it_removes(here: WorktreePath) -> None:
     name = WorktreeName.of_issue(IssueIdentifier.fake())
-    stale = in_review(here).model_copy(update={"path": here.sibling(name)})
+    merged = Worktree.fake().model_copy(update={"path": here.sibling(name)})
+    review = FakeCodeReview(PullRequests(()), merged=(MergedPullRequest.fake(),))
     claims = FakeClaimRegistry(
         {
             IssueIdentifier.fake(): Claims(
@@ -263,9 +277,7 @@ def test_releases_the_claim_of_a_workspace_it_removes(here: WorktreePath) -> Non
             )
         }
     )
-    _ = run_review_workspaces(
-        FakeCodeReview(PullRequests(())), standing_in(here, stale), claims=claims
-    )
+    _ = run_review_workspaces(review, standing_in(here, merged), claims=claims)
     assert claims.claims(IssueIdentifier.fake()).unwrap().holding(IssueStatusName.fake()) is None
 
 

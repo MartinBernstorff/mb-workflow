@@ -4,6 +4,7 @@ from assertions import Assert
 
 from mb_workflow.b_core.b_domain_services.worktree_reconciliation import WorktreeReconciliation
 from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames, Ref
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.pull_request import (
     PrNumber,
     PrTitle,
@@ -102,6 +103,11 @@ def test_a_review_workspace_is_stale_once_its_pr_no_longer_awaits_review() -> No
 def test_a_review_workspace_in_another_review_column_also_goes_stale() -> None:
     worktrees = Worktrees((review_worktree().model_copy(update={"status": awaiting_me()}),))
     Assert.that(stale_among(PullRequests((other_pr(),)), worktrees)).matches(worktrees)
+
+
+def test_a_workspace_linked_to_my_ticket_is_never_stale_in_a_review_column() -> None:
+    worktrees = Worktrees((review_worktree().model_copy(update={"issue": IssueIdentifier.fake()}),))
+    Assert.that(stale_among(PullRequests((other_pr(),)), worktrees)).matches(Worktrees(()))
 
 
 def test_a_workspace_outside_the_review_status_is_never_stale() -> None:

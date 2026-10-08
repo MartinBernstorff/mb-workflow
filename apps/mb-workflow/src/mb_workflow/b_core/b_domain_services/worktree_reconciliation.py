@@ -22,6 +22,8 @@ class WorktreeReconciliation:
         )
 
     # A review worktree goes stale once its PR no longer awaits review, whichever review column it is in.
+    # A worktree linked to a ticket of mine is never a review worktree, even when it shares a column
+    # with one, as agent-reviewing does.
     @staticmethod
     def stale(
         prs: PullRequests,
@@ -37,6 +39,7 @@ class WorktreeReconciliation:
                 worktree
                 for worktree in worktrees.without(here).root
                 if worktree.repo == repo
+                and worktree.issue is None
                 and worktree.status in statuses.root
                 and worktree.pull_request not in numbers
                 and (worktree.branch is None or worktree.branch.branch() not in branches)

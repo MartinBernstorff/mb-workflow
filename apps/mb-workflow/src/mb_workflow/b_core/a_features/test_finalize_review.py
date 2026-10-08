@@ -53,8 +53,14 @@ def test_reads_the_pull_request_of_a_worktree_in_the_reviewing_status() -> None:
 @pytest.mark.parametrize(
     ("update", "reason"),
     [
-        ({"status": column_of(StateName("agent-reviewing"))}, "expected status-reviewing"),
-        ({"status": WorkspaceStatus("in-progress")}, "expected status-reviewing"),
+        (
+            {"status": column_of(StateName("agent-reviewing"))},
+            f"expected {column_of(StateName('reviewing')).root}",
+        ),
+        (
+            {"status": WorkspaceStatus("in-progress")},
+            f"expected {column_of(StateName('reviewing')).root}",
+        ),
         ({"status": None}, "status none"),
         ({"pull_request": None}, "no linked pull request"),
     ],

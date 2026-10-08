@@ -27,15 +27,17 @@ class ReviewColumns(Model):
 
     @staticmethod
     def on_board(board: WorkspaceStatusStore) -> Result[ReviewColumns, WorkspaceManagerError]:
-        held: list[WorkspaceStatus] = []
+        columns: dict[StateName, WorkspaceStatus] = {}
         for state in ReviewChart.states:
-            match board.status_for(StateName(state.name)):
+            name = StateName(state.name)
+            match board.status_for(name):
                 case Ok(status):
-                    held.append(status)
+                    columns[name] = status
                 case Err() as unmapped:
                     return unmapped
-        match board.status_for(StateNames.initial_state(ReviewChart)):
-            case Ok(start):
-                return Ok(ReviewColumns(start=start, held=WorkspaceStatuses(tuple(held))))
-            case Err() as unmapped:
-                return unmapped
+        return Ok(
+            ReviewColumns(
+                start=columns[StateNames.initial_state(ReviewChart)],
+                held=WorkspaceStatuses(tuple(columns.values())),
+            )
+        )
