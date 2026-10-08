@@ -61,7 +61,7 @@ from mb_workflow.b_core.d_domain_model.config_override import (
     ProjectOverride,
 )
 from mb_workflow.b_core.d_domain_model.config_template import ConfigTemplate
-from mb_workflow.b_core.d_domain_model.flow import EventName, StateNames, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import EventName, WorkflowChart
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, LabelRenames
 from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
 from mb_workflow.b_core.d_domain_model.workspace import UnlinkedWorktreeError
@@ -175,7 +175,7 @@ def flow_labels_of_chart() -> FlowLabels:
 
 
 def workspace_board(manager: Orca) -> WorkspaceBoard:
-    return WorkspaceBoard.of_orca(manager, StateNames.initial_state(WorkflowChart))
+    return WorkspaceBoard.of_orca(manager)
 
 
 @guarded

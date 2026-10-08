@@ -2,8 +2,8 @@ from typing import TYPE_CHECKING
 
 from safe_result import Err, Ok
 
-from mb_workflow.b_core.a_features.transition import WorktreeTransition
 from mb_workflow.b_core.b_domain_services.flow_report import AsJson, StatusReport
+from mb_workflow.b_core.d_domain_model.flow import Charts
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -28,8 +28,6 @@ class FlowShow:
     ) -> Result[StatusReport, WorkspaceManagerError]:
         match manager.current():
             case Ok(here):
-                return StatusReport.of_store(
-                    WorktreeTransition.chart_of(here), board_at(here), as_json
-                )
+                return StatusReport.of_store(Charts.of_worktree(here), board_at(here), as_json)
             case Err() as unlocated:
                 return unlocated

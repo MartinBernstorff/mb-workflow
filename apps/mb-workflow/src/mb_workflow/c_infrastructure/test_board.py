@@ -1,3 +1,4 @@
+import pytest
 from assertions import Assert
 from safe_result import Err, Ok, Result
 
@@ -124,7 +125,12 @@ def test_a_state_outside_the_chart_has_no_board_column() -> None:
 
 
 def standing_in(status: WorkspaceStatus | None) -> FakeWorkspaceManager:
-    here = Worktree.bare(RepoId.fake(), WorktreePath.fake()).model_copy(update={"status": status})
+    return standing_in_worktree(
+        Worktree.bare(RepoId.fake(), WorktreePath.fake()).model_copy(update={"status": status})
+    )
+
+
+def standing_in_worktree(here: Worktree) -> FakeWorkspaceManager:
     return FakeWorkspaceManager(
         Worktrees((here,)), here.path, WorkspaceStatuses(tuple(c.id for c in board().root))
     )
@@ -133,9 +139,7 @@ def standing_in(status: WorkspaceStatus | None) -> FakeWorkspaceManager:
 def board_over(
     manager: FakeWorkspaceManager, columns: Result[Columns, WorkspaceManagerError]
 ) -> WorkspaceBoard:
-    return WorkspaceBoard(
-        manager, lambda: columns, StateNames.initial_state(WorkflowChart), manager.current
-    )
+    return WorkspaceBoard(manager, lambda: columns, manager.current)
 
 
 def test_the_board_reads_the_state_of_the_column_you_stand_in() -> None:
@@ -182,3 +186,27 @@ def test_the_board_at_a_worktree_moves_that_worktree_and_not_the_one_you_stand_i
     moved = Assert.that(manager.worktrees().unwrap().at(there.path)).exists()
     Assert.that(moved.status).matches(review_column)
     Assert.that(manager.current().unwrap().status).matches(standing)
+
+
+def reviewing_teammate_pr(status: WorkspaceStatus | None) -> Worktree:
+    return Worktree.fake().model_copy(update={"issue": None, "status": status})
+
+
+@pytest.mark.parametrize("status", [None, WorkspaceStatus("status-404")])
+def test_a_review_worktree_outside_any_known_column_reads_as_the_review_start_state(
+    status: WorkspaceStatus | None,
+) -> None:
+    manager = standing_in_worktree(reviewing_teammate_pr(status))
+    Assert.that(board_over(manager, Ok(board())).read()).matches(
+        Ok(StateNames.initial_state(ReviewChart))
+    )
+
+
+@pytest.mark.parametrize("status", [None, WorkspaceStatus("status-404")])
+def test_a_worktree_for_my_own_ticket_outside_any_known_column_reads_as_the_workflow_start_state(
+    status: WorkspaceStatus | None,
+) -> None:
+    manager = standing_in_worktree(Worktree.fake().model_copy(update={"status": status}))
+    Assert.that(board_over(manager, Ok(board())).read()).matches(
+        Ok(StateNames.initial_state(WorkflowChart))
+    )

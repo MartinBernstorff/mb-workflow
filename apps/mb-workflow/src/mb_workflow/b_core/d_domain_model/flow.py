@@ -10,6 +10,8 @@ from mb_workflow.d_lib.models import Model, Value
 if TYPE_CHECKING:
     from statemachine.transition import Transition
 
+    from mb_workflow.b_core.d_domain_model.workspace import Worktree
+
 
 class FlowError(Exception):
     pass
@@ -138,6 +140,14 @@ class ReviewChart(StateChart[ChartModel]):
 
 
 type Chart = type[WorkflowChart] | type[ReviewChart]
+
+
+class Charts:
+    # A worktree reviewing a teammate's pull request follows the review chart; any other follows
+    # the workflow chart.
+    @staticmethod
+    def of_worktree(worktree: Worktree) -> Chart:
+        return WorkflowChart if worktree.reviewed_pull_request() is None else ReviewChart
 
 
 # An entry state whose skill a delivery state also runs hands its work to that delivery state
