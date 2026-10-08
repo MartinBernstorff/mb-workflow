@@ -5,7 +5,6 @@ from safe_result import Err, Ok
 from mb_workflow.b_core.b_domain_services.flow_transition import FlowTransition
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.flow import (
-    Chart,
     EventNames,
     FlowError,
     ReviewChart,
@@ -59,17 +58,23 @@ class WorktreeTransition:
         if isinstance(located, Err):
             return located
         worktree = located.value
+        store = board_at(worktree)
+        review_events = EventNames.of_chart(ReviewChart)
         reviewed = worktree.reviewed_pull_request()
         if reviewed is not None:
             return WorktreeTransition.move_review(
-                board_at(worktree), worktree, reviewed, event, force
+                store=store,
+                worktree=worktree,
+                pr=reviewed,
+                review_events=review_events,
+                event=event,
+                force=force,
             )
-        review_events = EventNames.of_chart(ReviewChart).root
-        if event in review_events and event not in EventNames.of_chart(WorkflowChart).root:
+        if event in review_events.root and event not in EventNames.of_chart(WorkflowChart).root:
             return Err(WorktreeTransition.not_a_review(worktree, event))
         return FlowTransition.move_ticket(
             chart=WorkflowChart,
-            store=board_at(worktree),
+            store=store,
             tracker=tracker,
             issue=worktree.linked_issue(),
             wanted=wanted,
@@ -79,18 +84,15 @@ class WorktreeTransition:
         )
 
     @staticmethod
-    def chart_of(worktree: Worktree) -> Chart:
-        return WorkflowChart if worktree.reviewed_pull_request() is None else ReviewChart
-
-    @staticmethod
     def move_review(
+        *,
         store: WorkspaceStatusStore,
         worktree: Worktree,
         pr: PrNumber,
+        review_events: EventNames,
         event: EventName,
         force: Force,
     ) -> Result[StateName, FlowError | WorkspaceManagerError]:
-        review_events = EventNames.of_chart(ReviewChart)
         if event not in review_events.root:
             taken = ", ".join(name.root for name in review_events.root)
             return Err(
