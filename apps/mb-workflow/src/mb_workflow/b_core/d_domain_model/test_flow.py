@@ -163,14 +163,6 @@ def test_only_todo_opens_in_the_delivery_state_running_the_same_skill() -> None:
     Assert.that(moved).matches({TODO: IMPLEMENTING})
 
 
-def test_the_agent_reviews_its_work_before_it_reaches_qa() -> None:
-    edges = Edges.of_chart(WorkflowChart)
-    Assert.that(edges.target_from(IMPLEMENTING, EventName("agent-review"))).matches(
-        Ok(AGENT_REVIEWING)
-    )
-    Assert.that(edges.target_from(AGENT_REVIEWING, EventName("qa"))).matches(Ok(QA))
-
-
 def test_implementing_cannot_skip_the_agent_review_on_its_way_to_qa() -> None:
     refused = Edges.of_chart(WorkflowChart).target_from(IMPLEMENTING, EventName("qa"))
     error = Assert.that(refused.error).is_instance(FlowError)

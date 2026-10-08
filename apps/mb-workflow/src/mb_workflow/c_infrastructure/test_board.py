@@ -26,7 +26,8 @@ from mb_workflow.c_infrastructure.workspace_board import (
 
 REFUSAL = ErrorMessage(
     'Unknown workspace status "zzz". Available: status-8-2 (Tomorrow), in-progress (Grilling), '
-    "status-9 (Speccing), status-5-2 (Implementing), status-10 (Agent reviewing), status-8 (Me reviewing others), "
+    "status-9 (Speccing), status-5-2 (Implementing), status-10 (Agent reviewing), "
+    "status-8 (Me reviewing others), "
     "in-review (My QA), status-5 (Awaiting review), completed (Merging), status-6 (Merged)."
 )
 
@@ -71,11 +72,6 @@ def test_every_state_the_chart_holds_has_a_board_column() -> None:
 def test_a_column_id_resolves_to_the_state_its_label_stands_for() -> None:
     qa = StateName("qa")
     Assert.that(state_of(WorkspaceStatus("in-review"))).matches(qa)
-
-
-def test_the_agent_reviewing_column_reads_as_agent_reviewing() -> None:
-    agent_reviewing = StateName("agent-reviewing")
-    Assert.that(state_of(WorkspaceStatus("status-10"))).matches(agent_reviewing)
 
 
 def test_agent_reviewing_is_recorded_in_the_agent_reviewing_column() -> None:

@@ -142,6 +142,9 @@ def test_a_named_ticket_no_worktree_links_to_leaves_the_ticket_where_it_was() ->
 
 def test_the_agent_review_moves_the_ticket_and_the_board_to_agent_reviewing() -> None:
     agent_reviewing = StateName("agent-reviewing")
+    # A status no neighbouring state maps to, so only agent-reviewing's own mapping can set it.
+    reviewing_status = IssueStatusName("Done")
+    statuses = TicketStatuses({**TicketStatuses.fake().root, agent_reviewing: reviewing_status})
     tracker = seeded_tracker()
     board = FakeStatusStore(StateName("implementing"))
     moved = LinkedTicketTransition.move_linked_ticket(
@@ -149,13 +152,11 @@ def test_the_agent_review_moves_the_ticket_and_the_board_to_agent_reviewing() ->
         tracker=tracker,
         manager=FakeWorkspaceManager(Worktrees.fake(), WorktreePath.fake()),
         wanted=FlowLabels.fake(),
-        statuses=TicketStatuses.fake(),
+        statuses=statuses,
         event=EventName("agent-review"),
         force=Force(False),
         ticket=None,
     )
     assert moved.unwrap() == agent_reviewing
     assert board.read().unwrap() == agent_reviewing
-    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().status == IssueStatusName(
-        "In Progress"
-    )
+    assert tracker.read_issue(IssueIdentifier.fake()).unwrap().status == reviewing_status
