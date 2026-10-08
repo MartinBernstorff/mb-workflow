@@ -94,7 +94,6 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.pull_request import MergedSince, ReviewRequest
     from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDraft
     from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit
-    from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +180,6 @@ def workspace_board(manager: Orca) -> WorkspaceBoard:
 
 @guarded
 def review_workspaces(
-    status: WorkspaceStatus,
     since: MergedSince,
     lock: LockName,
     host: HostName,
@@ -201,16 +199,17 @@ def review_workspaces(
         case Err(error):
             logger.error("%s", error)
             return ExitCode(1)
+    manager = connected_orca()
     reconciled = ReviewWorkspaces.create_workspaces(
         review=github,
-        manager=connected_orca(),
+        manager=manager,
         claims=LazyLinearClaims(linear_key),
         tracker=LazyLinear(linear_key),
         claim_settings=claim_settings,
         host=host,
         lock=FlockRunLock(LockPath.of(lock)),
         narrator=LoggingNarrator(),
-        status=status,
+        board=workspace_board(manager),
         since=since,
         prompt=prompt,
     )
@@ -224,7 +223,7 @@ def review_workspaces(
 
 
 @guarded
-def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode:
+def finalize_review(request: ReviewRequest) -> ExitCode:
     shell = here()
     match GitHub.connected(shell):
         case Ok(github):
@@ -232,7 +231,8 @@ def finalize_review(request: ReviewRequest, status: WorkspaceStatus) -> ExitCode
         case Err(error):
             logger.error("%s", error)
             return ExitCode(1)
-    match FinalizeReview.finalize(github, connected_orca(), request, status):
+    manager = connected_orca()
+    match FinalizeReview.finalize(github, manager, workspace_board(manager), request):
         case Ok():
             return ExitCode(0)
         case Err(error):

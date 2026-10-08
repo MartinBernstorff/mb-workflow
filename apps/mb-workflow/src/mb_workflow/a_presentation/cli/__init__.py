@@ -36,7 +36,6 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     Submit,
     TerminalText,
     TimeoutMs,
-    WorkspaceStatus,
     WorktreeName,
 )
 from mb_workflow.c_infrastructure.flock import LockName
@@ -58,7 +57,6 @@ app.add_typer(ticket_app, name="ticket")
 workspace_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
 app.add_typer(workspace_app, name="workspace")
 
-REVIEWING = "status-8"
 FORCING = "Write the target state without checking the event is legal from the current one."
 TICKET = (
     "Ticket to move, e.g. MB-33, along with the worktree linked to it."
@@ -70,9 +68,10 @@ TICKET = (
 def workspace_create_reviews(
     *,
     prompt: str = typer.Argument(
-        "", help="Prompt to submit to a Claude agent in each newly created workspace."
+        "/review-others",
+        help="Prompt to submit to a Claude agent in each newly created workspace."
+        " Pass an empty string to start no agent.",
     ),
-    status: str = typer.Option(REVIEWING, "--status"),
     merged_within_days: int = typer.Option(30, "--merged-within-days"),
     lock: str = typer.Option("review-workspaces", "--lock"),
     idle_timeout_ms: int = typer.Option(60000, "--idle-timeout-ms"),
@@ -87,7 +86,7 @@ def workspace_create_reviews(
     )
     raise typer.Exit(
         code=commands.review_workspaces(
-            WorkspaceStatus(status), since, LockName(lock), HostName.of_machine(), review_prompt
+            since, LockName(lock), HostName.of_machine(), review_prompt
         ).root
     )
 
@@ -96,36 +95,33 @@ def workspace_create_reviews(
 @review_app.command("a", hidden=True)
 def approve(
     comment: str = typer.Argument("", help="Review body."),
-    status: str = typer.Option(REVIEWING, "--status"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = ReviewRequest(decision=ReviewDecision.approve, body=ReviewBody(comment))
-    raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
+    raise typer.Exit(code=commands.finalize_review(request).root)
 
 
 @review_app.command("reject")
 @review_app.command("r", hidden=True)
 def reject(
     comment: str = typer.Argument("See comments", help="Review body."),
-    status: str = typer.Option(REVIEWING, "--status"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = ReviewRequest(decision=ReviewDecision.request_changes, body=ReviewBody(comment))
-    raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
+    raise typer.Exit(code=commands.finalize_review(request).root)
 
 
 @review_app.command("comment")
 @review_app.command("c", hidden=True)
 def comment(
     comment: str = typer.Argument("", help="Review body."),
-    status: str = typer.Option(REVIEWING, "--status"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = ReviewRequest(decision=ReviewDecision.comment, body=ReviewBody(comment))
-    raise typer.Exit(code=commands.finalize_review(request, WorkspaceStatus(status)).root)
+    raise typer.Exit(code=commands.finalize_review(request).root)
 
 
 @workspace_app.command("start")

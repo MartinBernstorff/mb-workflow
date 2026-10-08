@@ -3,8 +3,11 @@ from typing import TYPE_CHECKING
 
 from safe_result import Err, Ok, Result
 
+from mb_workflow.b_core.b_domain_services.review_columns import ReviewColumns
+
 if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge, CodeReviewError
+    from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
         WorkspaceManager,
         WorkspaceManagerError,
@@ -29,7 +32,8 @@ class FinalizeReview:
             return Err(
                 NotFinalizableError(
                     f"{worktree.path.root} is in status "
-                    f"{found.root if found is not None else 'none'}, expected {status.root}"
+                    f"{found.root if found is not None else 'none'}, expected {status.root} "
+                    f"({ReviewColumns.finishing_state().root})"
                 )
             )
         if worktree.pull_request is None:
@@ -40,15 +44,20 @@ class FinalizeReview:
     def finalize(
         review: CodeForge,
         manager: WorkspaceManager,
+        board: WorkspaceStatusStore,
         request: ReviewRequest,
-        status: WorkspaceStatus,
     ) -> Result[None, NotFinalizableError | CodeReviewError | WorkspaceManagerError]:
         match manager.current():
             case Ok(worktree):
                 pass
             case Err() as unread:
                 return unread
-        match FinalizeReview.reviewed_pr(worktree, status):
+        match board.status_for(ReviewColumns.finishing_state()):
+            case Ok(finishing):
+                pass
+            case Err() as unmapped:
+                return unmapped
+        match FinalizeReview.reviewed_pr(worktree, finishing):
             case Ok(pr):
                 match review.submit(pr, request):
                     case Ok():

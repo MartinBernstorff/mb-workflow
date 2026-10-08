@@ -8,10 +8,12 @@ from mb_workflow.b_core.c_secondary_ports.code_review import (
     FakeCodeReview,
     SubmittedReview,
 )
+from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore, UnreachableStatusStore
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     FakeWorkspaceManager,
     WorkspaceManagerError,
 )
+from mb_workflow.b_core.d_domain_model.flow import StateName
 from mb_workflow.b_core.d_domain_model.pull_request import (
     PrNumber,
     PullRequests,
@@ -27,19 +29,32 @@ from mb_workflow.b_core.d_domain_model.workspace import (
 )
 
 
+def board() -> FakeStatusStore:
+    return FakeStatusStore(StateName.fake())
+
+
+def column_of(state: StateName) -> WorkspaceStatus:
+    return board().status_for(state).unwrap()
+
+
+def awaiting_me() -> Worktree:
+    return Worktree.fake().model_copy(update={"status": column_of(StateName("reviewing"))})
+
+
 def standing_in(worktree: Worktree) -> FakeWorkspaceManager:
     return FakeWorkspaceManager(Worktrees((worktree,)), WorktreePath.fake())
 
 
 def test_reads_the_pull_request_of_a_worktree_in_the_reviewing_status() -> None:
-    reviewed = FinalizeReview.reviewed_pr(Worktree.fake(), WorkspaceStatus.fake())
+    reviewed = FinalizeReview.reviewed_pr(awaiting_me(), column_of(StateName("reviewing")))
     assert reviewed == Ok(PrNumber.fake())
 
 
 @pytest.mark.parametrize(
     ("update", "reason"),
     [
-        ({"status": WorkspaceStatus("in-progress")}, "expected status-8"),
+        ({"status": column_of(StateName("agent-reviewing"))}, "expected status-reviewing"),
+        ({"status": WorkspaceStatus("in-progress")}, "expected status-reviewing"),
         ({"status": None}, "status none"),
         ({"pull_request": None}, "no linked pull request"),
     ],
@@ -48,11 +63,9 @@ def test_an_unfinalizable_worktree_is_refused_and_left_alone(
     update: dict[str, object], reason: str
 ) -> None:
     review = FakeCodeReview(PullRequests.fake())
-    manager = standing_in(Worktree.fake().model_copy(update=update))
+    manager = standing_in(awaiting_me().model_copy(update=update))
     before = manager.worktrees().unwrap()
-    finalized = FinalizeReview.finalize(
-        review, manager, ReviewRequest.fake(), WorkspaceStatus.fake()
-    )
+    finalized = FinalizeReview.finalize(review, manager, board(), ReviewRequest.fake())
     assert isinstance(finalized, Err)
     assert isinstance(finalized.error, NotFinalizableError)
     assert reason in str(finalized.error)
@@ -63,7 +76,7 @@ def test_an_unfinalizable_worktree_is_refused_and_left_alone(
 def test_submits_the_decision_on_the_linked_pull_request() -> None:
     review = FakeCodeReview(PullRequests.fake())
     finalized = FinalizeReview.finalize(
-        review, standing_in(Worktree.fake()), ReviewRequest.fake(), WorkspaceStatus.fake()
+        review, standing_in(awaiting_me()), board(), ReviewRequest.fake()
     )
     assert finalized == Ok(None)
     assert review.submitted() == (
@@ -72,31 +85,41 @@ def test_submits_the_decision_on_the_linked_pull_request() -> None:
 
 
 def test_removes_the_worktree_once_the_review_is_in() -> None:
-    manager = standing_in(Worktree.fake())
+    manager = standing_in(awaiting_me())
     finalized = FinalizeReview.finalize(
-        FakeCodeReview(PullRequests.fake()), manager, ReviewRequest.fake(), WorkspaceStatus.fake()
+        FakeCodeReview(PullRequests.fake()), manager, board(), ReviewRequest.fake()
     )
     assert finalized == Ok(None)
     assert manager.worktrees().unwrap() == Worktrees(())
 
 
 def test_a_refused_review_keeps_the_worktree() -> None:
-    manager = standing_in(Worktree.fake())
+    manager = standing_in(awaiting_me())
     bare = ReviewRequest(decision=ReviewDecision.comment, body=ReviewBody(""))
     reason = "comment requires comment text"
-    finalized = FinalizeReview.finalize(
-        FakeCodeReview(PullRequests.fake()), manager, bare, WorkspaceStatus.fake()
-    )
+    finalized = FinalizeReview.finalize(FakeCodeReview(PullRequests.fake()), manager, board(), bare)
     assert isinstance(finalized, Err)
     assert isinstance(finalized.error, CodeReviewError)
     assert reason in str(finalized.error)
-    assert manager.worktrees().unwrap() == Worktrees.fake()
+    assert manager.worktrees().unwrap() == Worktrees((awaiting_me(),))
+
+
+def test_an_unreachable_board_submits_no_review_and_keeps_the_worktree() -> None:
+    review = FakeCodeReview(PullRequests.fake())
+    manager = standing_in(awaiting_me())
+    finalized = FinalizeReview.finalize(
+        review, manager, UnreachableStatusStore(), ReviewRequest.fake()
+    )
+    assert isinstance(finalized, Err)
+    assert isinstance(finalized.error, WorkspaceManagerError)
+    assert review.submitted() == ()
+    assert manager.worktrees().unwrap() == Worktrees((awaiting_me(),))
 
 
 def test_an_unlisted_current_worktree_submits_no_review() -> None:
     review = FakeCodeReview(PullRequests.fake())
     finalized = FinalizeReview.finalize(
-        review, standing_in_nothing(), ReviewRequest.fake(), WorkspaceStatus.fake()
+        review, standing_in_nothing(), board(), ReviewRequest.fake()
     )
     assert isinstance(finalized, Err)
     assert isinstance(finalized.error, WorkspaceManagerError)

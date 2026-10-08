@@ -2,14 +2,7 @@ from pathlib import Path
 
 from assertions import Assert
 
-from mb_workflow.b_core.b_domain_services.worktree_reconciliation import (
-    obsolete,
-    on_branches,
-    prunable,
-    stale,
-    uncovered,
-    union,
-)
+from mb_workflow.b_core.b_domain_services.worktree_reconciliation import WorktreeReconciliation
 from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames, Ref
 from mb_workflow.b_core.d_domain_model.pull_request import (
     PrNumber,
@@ -20,6 +13,7 @@ from mb_workflow.b_core.d_domain_model.pull_request import (
 from mb_workflow.b_core.d_domain_model.workspace import (
     RepoId,
     WorkspaceStatus,
+    WorkspaceStatuses,
     Worktree,
     WorktreePath,
     Worktrees,
@@ -42,38 +36,56 @@ def review_worktree() -> Worktree:
     )
 
 
+def awaiting_me() -> WorkspaceStatus:
+    return WorkspaceStatus("status-reviewing")
+
+
+def review_statuses() -> WorkspaceStatuses:
+    return WorkspaceStatuses((WorkspaceStatus.fake(), awaiting_me()))
+
+
 def elsewhere() -> WorktreePath:
     return WorktreePath(Path.cwd())
 
 
 def stale_among(prs: PullRequests, worktrees: Worktrees) -> Worktrees:
-    return stale(prs, worktrees, RepoId.fake(), WorkspaceStatus.fake(), elsewhere())
+    return WorktreeReconciliation.stale(
+        prs, worktrees, RepoId.fake(), review_statuses(), elsewhere()
+    )
 
 
 def test_keeps_prs_with_no_workspace() -> None:
-    Assert.that(uncovered(PullRequests.fake(), Worktrees((bare_worktree(),)))).matches(
-        PullRequests.fake()
-    )
+    Assert.that(
+        WorktreeReconciliation.uncovered(PullRequests.fake(), Worktrees((bare_worktree(),)))
+    ).matches(PullRequests.fake())
 
 
 def test_skips_a_pr_linked_by_issue_number() -> None:
     worktrees = Worktrees((bare_worktree().model_copy(update={"pull_request": PrNumber.fake()}),))
-    Assert.that(uncovered(PullRequests.fake(), worktrees)).matches(PullRequests(()))
+    Assert.that(WorktreeReconciliation.uncovered(PullRequests.fake(), worktrees)).matches(
+        PullRequests(())
+    )
 
 
 def test_skips_a_pr_whose_branch_is_already_checked_out() -> None:
     worktrees = Worktrees((bare_worktree().model_copy(update={"branch": Ref.fake()}),))
-    Assert.that(uncovered(PullRequests.fake(), worktrees)).matches(PullRequests(()))
+    Assert.that(WorktreeReconciliation.uncovered(PullRequests.fake(), worktrees)).matches(
+        PullRequests(())
+    )
 
 
 def test_a_workspace_for_another_pr_does_not_cover_this_one() -> None:
     prs = PullRequests((PullRequest.fake(), other_pr()))
     worktrees = Worktrees((bare_worktree().model_copy(update={"branch": Ref.fake()}),))
-    Assert.that(uncovered(prs, worktrees)).matches(PullRequests((other_pr(),)))
+    Assert.that(WorktreeReconciliation.uncovered(prs, worktrees)).matches(
+        PullRequests((other_pr(),))
+    )
 
 
 def test_no_prs_yields_nothing_to_do() -> None:
-    Assert.that(uncovered(PullRequests(()), Worktrees.fake())).matches(PullRequests(()))
+    Assert.that(WorktreeReconciliation.uncovered(PullRequests(()), Worktrees.fake())).matches(
+        PullRequests(())
+    )
 
 
 def test_a_review_workspace_survives_while_its_pr_awaits_review() -> None:
@@ -84,6 +96,11 @@ def test_a_review_workspace_survives_while_its_pr_awaits_review() -> None:
 
 def test_a_review_workspace_is_stale_once_its_pr_no_longer_awaits_review() -> None:
     worktrees = Worktrees((review_worktree(),))
+    Assert.that(stale_among(PullRequests((other_pr(),)), worktrees)).matches(worktrees)
+
+
+def test_a_review_workspace_in_another_review_column_also_goes_stale() -> None:
+    worktrees = Worktrees((review_worktree().model_copy(update={"status": awaiting_me()}),))
     Assert.that(stale_among(PullRequests((other_pr(),)), worktrees)).matches(worktrees)
 
 
@@ -108,26 +125,32 @@ def test_the_workspace_you_are_standing_in_is_never_stale() -> None:
     here = elsewhere()
     worktrees = Worktrees((review_worktree().model_copy(update={"path": here}),))
     Assert.that(
-        stale(PullRequests(()), worktrees, RepoId.fake(), WorkspaceStatus.fake(), here)
+        WorktreeReconciliation.stale(
+            PullRequests(()), worktrees, RepoId.fake(), review_statuses(), here
+        )
     ).matches(Worktrees(()))
 
 
 def test_a_workspace_on_a_branch_is_prunable() -> None:
     worktrees = Worktrees((bare_worktree().model_copy(update={"branch": Ref.fake()}),))
-    Assert.that(prunable(worktrees, RepoId.fake(), elsewhere())).matches(worktrees)
+    Assert.that(WorktreeReconciliation.prunable(worktrees, RepoId.fake(), elsewhere())).matches(
+        worktrees
+    )
 
 
 def test_a_workspace_without_a_branch_is_not_prunable() -> None:
-    Assert.that(prunable(Worktrees((bare_worktree(),)), RepoId.fake(), elsewhere())).matches(
-        Worktrees(())
-    )
+    Assert.that(
+        WorktreeReconciliation.prunable(Worktrees((bare_worktree(),)), RepoId.fake(), elsewhere())
+    ).matches(Worktrees(()))
 
 
 def test_a_workspace_in_another_repo_is_not_prunable() -> None:
     worktrees = Worktrees(
         (bare_worktree().model_copy(update={"branch": Ref.fake(), "repo": RepoId("elsewhere")}),)
     )
-    Assert.that(prunable(worktrees, RepoId.fake(), elsewhere())).matches(Worktrees(()))
+    Assert.that(WorktreeReconciliation.prunable(worktrees, RepoId.fake(), elsewhere())).matches(
+        Worktrees(())
+    )
 
 
 def test_the_workspace_you_are_standing_in_is_not_prunable() -> None:
@@ -135,16 +158,20 @@ def test_the_workspace_you_are_standing_in_is_not_prunable() -> None:
     worktrees = Worktrees(
         (bare_worktree().model_copy(update={"branch": Ref.fake(), "path": here}),)
     )
-    Assert.that(prunable(worktrees, RepoId.fake(), here)).matches(Worktrees(()))
+    Assert.that(WorktreeReconciliation.prunable(worktrees, RepoId.fake(), here)).matches(
+        Worktrees(())
+    )
 
 
 def test_a_union_keeps_each_workspace_once() -> None:
-    Assert.that(union(Worktrees.fake(), Worktrees.fake())).matches(Worktrees.fake())
+    Assert.that(WorktreeReconciliation.union(Worktrees.fake(), Worktrees.fake())).matches(
+        Worktrees.fake()
+    )
 
 
 def test_a_union_keeps_distinct_workspaces() -> None:
     second = bare_worktree().model_copy(update={"path": WorktreePath(Path("/tmp/other"))})
-    Assert.that(union(Worktrees.fake(), Worktrees((second,)))).matches(
+    Assert.that(WorktreeReconciliation.union(Worktrees.fake(), Worktrees((second,)))).matches(
         Worktrees((Worktree.fake(), second))
     )
 
@@ -152,18 +179,18 @@ def test_a_union_keeps_distinct_workspaces() -> None:
 def test_selects_the_workspaces_on_the_given_branches() -> None:
     wanted = bare_worktree().model_copy(update={"branch": Ref.fake()})
     other = bare_worktree().model_copy(update={"branch": Ref("refs/heads/feat/other")})
-    Assert.that(on_branches(Worktrees((wanted, other)), BranchNames.fake())).matches(
-        Worktrees((wanted,))
-    )
+    Assert.that(
+        WorktreeReconciliation.on_branches(Worktrees((wanted, other)), BranchNames.fake())
+    ).matches(Worktrees((wanted,)))
 
 
 def obsolete_among(prs: PullRequests, merged: BranchNames, worktrees: Worktrees) -> Worktrees:
-    return obsolete(
+    return WorktreeReconciliation.obsolete(
         requested=prs,
         merged=merged,
         worktrees=worktrees,
         repo=RepoId.fake(),
-        status=WorkspaceStatus.fake(),
+        statuses=review_statuses(),
         here=elsewhere(),
     )
 

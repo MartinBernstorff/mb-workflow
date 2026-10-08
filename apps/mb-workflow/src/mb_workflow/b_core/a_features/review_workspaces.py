@@ -4,7 +4,8 @@ from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.a_features.start import PromptUndeliveredError, TicketStart
 from mb_workflow.b_core.a_features.teardown import Teardown
-from mb_workflow.b_core.b_domain_services.worktree_reconciliation import obsolete, uncovered
+from mb_workflow.b_core.b_domain_services.review_columns import ReviewColumns
+from mb_workflow.b_core.b_domain_services.worktree_reconciliation import WorktreeReconciliation
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
     WorkspaceNaming,
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import ClaimRegistry
     from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge, CodeReviewError
     from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, RunLock
+    from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.claim import HostName
@@ -88,7 +90,7 @@ class ReviewPrompt(Model):
 
     @staticmethod
     def fake() -> ReviewPrompt:
-        return ReviewPrompt(text=TerminalText("/review-mine"), idle_timeout=TimeoutMs.fake())
+        return ReviewPrompt(text=TerminalText("/review-others"), idle_timeout=TimeoutMs.fake())
 
 
 class Unchanged(Value[bool]):
@@ -147,27 +149,33 @@ class ReviewWorkspaces:
         host: HostName,
         lock: RunLock,
         narrator: Narrator,
-        status: WorkspaceStatus,
+        board: WorkspaceStatusStore,
         since: MergedSince,
         prompt: ReviewPrompt | None,
     ) -> Result[Outcome, AlreadyRunningError | CodeReviewError | WorkspaceManagerError]:
         match lock.acquire():
             case Ok(held):
-                with held:
-                    return ReviewWorkspaces.reconcile_workspaces(
-                        review=review,
-                        manager=manager,
-                        claims=claims,
-                        tracker=tracker,
-                        claim_settings=claim_settings,
-                        host=host,
-                        narrator=narrator,
-                        status=status,
-                        since=since,
-                        prompt=prompt,
-                    )
+                pass
             case Err() as refused:
                 return refused
+        with held:
+            match ReviewColumns.on_board(board):
+                case Ok(columns):
+                    pass
+                case Err() as unmapped:
+                    return unmapped
+            return ReviewWorkspaces.reconcile_workspaces(
+                review=review,
+                manager=manager,
+                claims=claims,
+                tracker=tracker,
+                claim_settings=claim_settings,
+                host=host,
+                narrator=narrator,
+                columns=columns,
+                since=since,
+                prompt=prompt,
+            )
 
     @staticmethod
     def reconcile_workspaces(
@@ -179,7 +187,7 @@ class ReviewWorkspaces:
         claim_settings: ClaimSettings,
         host: HostName,
         narrator: Narrator,
-        status: WorkspaceStatus,
+        columns: ReviewColumns,
         since: MergedSince,
         prompt: ReviewPrompt | None,
     ) -> Result[Outcome, CodeReviewError | WorkspaceManagerError]:
@@ -205,12 +213,12 @@ class ReviewWorkspaces:
         removed: list[WorktreePath] = []
         failed: list[Failure] = []
 
-        to_remove = obsolete(
+        to_remove = WorktreeReconciliation.obsolete(
             requested=requested,
             merged=merged,
             worktrees=worktrees,
             repo=repo,
-            status=status,
+            statuses=columns.held,
             here=here,
         )
         narrator.found_obsolete(to_remove)
@@ -235,7 +243,7 @@ class ReviewWorkspaces:
                     narrator.removal_failed(failure)
                     failed.append(failure)
 
-        missing = uncovered(requested, worktrees)
+        missing = WorktreeReconciliation.uncovered(requested, worktrees)
         narrator.found_uncovered(missing)
 
         for pr in missing.root:
@@ -245,7 +253,7 @@ class ReviewWorkspaces:
                 narrator=narrator,
                 repo=repo,
                 pr=pr,
-                status=status,
+                status=columns.start,
                 prompt=prompt,
             ):
                 case Ok(workspace):
