@@ -9,6 +9,7 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
+    Estimate,
     Issue,
     IssueIdentifier,
     IssueStatus,
@@ -128,3 +129,10 @@ def test_a_created_ticket_takes_the_drafted_priority() -> None:
     draft = TicketDraft.fake().model_copy(update={"priority": low})
     identifier = created(tracker, draft)
     assert tracker.read_issue_detail(identifier).unwrap().priority == low
+
+
+def test_a_created_ticket_takes_the_drafted_estimate() -> None:
+    tracker = tracking()
+    draft = TicketDraft.fake().model_copy(update={"estimate": Estimate.fake()})
+    identifier = created(tracker, draft)
+    assert tracker.read_issue_detail(identifier).unwrap().estimate == Estimate.fake()

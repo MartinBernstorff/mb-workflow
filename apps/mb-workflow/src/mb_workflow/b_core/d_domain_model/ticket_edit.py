@@ -11,6 +11,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     Cleared,
+    Estimate,
     IssueDescription,
     IssueDetail,
     IssueIdentifier,
@@ -53,6 +54,7 @@ class TicketEdit(Model):
     milestone: MilestoneName | None
     remove_milestone: RemoveMilestone
     priority: Priority | None
+    estimate: Estimate | None
     add_blocks: tuple[IssueIdentifier, ...]
     add_blocked_by: tuple[IssueIdentifier, ...]
 
@@ -76,6 +78,7 @@ class TicketEdit(Model):
             milestone=None,
             remove_milestone=RemoveMilestone(False),
             priority=None,
+            estimate=None,
             add_blocks=(),
             add_blocked_by=(),
         )
@@ -126,6 +129,7 @@ class TicketEdit(Model):
             status=statuses.of(self.state) if self.state is not None else None,
             milestone=self._milestone(current, project),
             priority=self.priority,
+            estimate=self.estimate,
             blocks=TicketEdit._unheld(self.add_blocks, current.blocks),
             blocked_by=TicketEdit._unheld(self.add_blocked_by, current.blocked_by),
         )

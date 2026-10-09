@@ -16,6 +16,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     CreatedAfter,
     CreatedWithin,
     Creator,
+    Estimate,
     IssueDescription,
     IssueIdentifier,
     IssueTitle,
@@ -73,6 +74,9 @@ def ticket_create(
     priority: PriorityChoice | None = typer.Option(
         None, "--priority", help='Set the priority. Use "none" to clear it.', case_sensitive=False
     ),
+    estimate: int | None = typer.Option(
+        None, "--estimate", "-e", min=0, help="Set the estimate in points on the team's scale."
+    ),
     blocks: list[str] = typer.Option([], "--blocks", help="Mark the ticket as blocking an issue."),
     blocked_by: list[str] = typer.Option(
         [], "--blocked-by", help="Mark the ticket as blocked by an issue."
@@ -89,6 +93,7 @@ def ticket_create(
         project=ProjectName.from_nullable(project),
         milestone=MilestoneName.from_nullable(milestone),
         priority=priority.to_priority() if priority is not None else None,
+        estimate=Estimate.from_nullable(estimate),
         blocks=tuple(map(IssueIdentifier, blocks)),
         blocked_by=tuple(map(IssueIdentifier, blocked_by)),
     )
@@ -137,6 +142,9 @@ def ticket_edit(
     priority: PriorityChoice | None = typer.Option(
         None, "--priority", help='Set the priority. Use "none" to clear it.', case_sensitive=False
     ),
+    estimate: int | None = typer.Option(
+        None, "--estimate", "-e", min=0, help="Set the estimate in points on the team's scale."
+    ),
     add_blocks: list[str] = typer.Option(
         [], "--add-blocks", help="Mark the ticket as blocking an issue."
     ),
@@ -160,6 +168,7 @@ def ticket_edit(
         milestone=MilestoneName.from_nullable(milestone),
         remove_milestone=RemoveMilestone(remove_milestone),
         priority=priority.to_priority() if priority is not None else None,
+        estimate=Estimate.from_nullable(estimate),
         add_blocks=tuple(map(IssueIdentifier, add_blocks)),
         add_blocked_by=tuple(map(IssueIdentifier, add_blocked_by)),
     )

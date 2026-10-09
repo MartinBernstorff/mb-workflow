@@ -7,6 +7,7 @@ from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabelOptionError, 
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     Cleared,
+    Estimate,
     Issue,
     IssueDescription,
     IssueDetail,
@@ -306,3 +307,10 @@ def test_a_priority_edit_changes_only_the_priority() -> None:
     Assert.that(
         edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake())
     ).matches(IssueUpdate.nothing().model_copy(update={"priority": urgent}))
+
+
+def test_an_estimate_edit_changes_only_the_estimate() -> None:
+    edit = TicketEdit.nothing().model_copy(update={"estimate": Estimate.fake()})
+    Assert.that(
+        edit.update(IssueDetail.fake(), viewer(), FlowLabels.fake(), TicketStatuses.fake())
+    ).matches(IssueUpdate.nothing().model_copy(update={"estimate": Estimate.fake()}))

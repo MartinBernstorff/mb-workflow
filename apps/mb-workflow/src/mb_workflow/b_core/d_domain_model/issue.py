@@ -287,6 +287,13 @@ class Priority(IntEnum):
     low = 4
 
 
+# Points on the team's estimate scale, which Linear checks.
+class Estimate(Value[int]):
+    @staticmethod
+    def fake() -> Estimate:
+        return Estimate(3)
+
+
 class IssueDetail(Model):
     issue: Issue
     title: IssueTitle
@@ -294,6 +301,7 @@ class IssueDetail(Model):
     assignee: Assignee | None
     milestone: MilestoneName | None
     priority: Priority
+    estimate: Estimate | None
     parent: IssueIdentifier | None
     sub_tickets: frozenset[IssueIdentifier]
     blocks: frozenset[IssueIdentifier]
@@ -309,6 +317,7 @@ class IssueDetail(Model):
             assignee=None,
             milestone=MilestoneName.fake(),
             priority=Priority.medium,
+            estimate=None,
             parent=None,
             sub_tickets=frozenset(),
             blocks=frozenset(),
@@ -364,6 +373,7 @@ class IssueUpdate(Model):
     status: IssueStatusName | None
     milestone: Milestone | Cleared | None
     priority: Priority | None
+    estimate: Estimate | None
     blocks: tuple[IssueIdentifier, ...]
     blocked_by: tuple[IssueIdentifier, ...]
 
@@ -378,6 +388,7 @@ class IssueUpdate(Model):
             status=IssueStatusName.fake(),
             milestone=Milestone.fake(),
             priority=Priority.medium,
+            estimate=Estimate.fake(),
             blocks=(),
             blocked_by=(),
         )
@@ -393,6 +404,7 @@ class IssueUpdate(Model):
             status=None,
             milestone=None,
             priority=None,
+            estimate=None,
             blocks=(),
             blocked_by=(),
         )
@@ -430,6 +442,7 @@ class NewIssue(Model):
     status: IssueStatusName
     milestone: Milestone | None
     priority: Priority | None
+    estimate: Estimate | None
     blocks: tuple[IssueIdentifier, ...]
     blocked_by: tuple[IssueIdentifier, ...]
 
@@ -445,6 +458,7 @@ class NewIssue(Model):
             status=IssueStatusName.fake(),
             milestone=Milestone.fake(),
             priority=Priority.medium,
+            estimate=Estimate.fake(),
             blocks=(),
             blocked_by=(),
         )

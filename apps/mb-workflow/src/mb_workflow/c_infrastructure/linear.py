@@ -21,6 +21,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     ColoredLabel,
     ColoredLabels,
     CreatedIssue,
+    Estimate,
     GroupedLabel,
     GroupedLabels,
     Issue,
@@ -482,6 +483,7 @@ class CreationLookup(UpdateLookup):
                 state_id=state_id.value,
                 project_milestone_id=milestone_id.value,
                 priority=new.priority,
+                estimate=new.estimate,
             )
         )
 
@@ -531,6 +533,7 @@ class IssueCreation(Payload):
     state_id: StateId
     project_milestone_id: MilestoneId | None
     priority: Priority | None
+    estimate: Estimate | None
 
     @staticmethod
     def fake() -> IssueCreation:
@@ -544,6 +547,7 @@ class IssueCreation(Payload):
             state_id=StateId.fake(),
             project_milestone_id=None,
             priority=None,
+            estimate=None,
         )
 
 
@@ -661,6 +665,7 @@ class IssueDetailPayload(IssuePayload):
     description: IssueDescription | None = None
     milestone: MilestonePayload | None = Field(default=None, validation_alias="projectMilestone")
     priority: Priority
+    estimate: Estimate | None = None
     parent: IssueIdentifierRecord | None = None
     children: tuple[IssueIdentifierRecord, ...] = Field(
         validation_alias=AliasPath("children", "nodes")
@@ -694,6 +699,7 @@ class IssueDetailPayload(IssuePayload):
             assignee=self.assignee.email if self.assignee is not None else None,
             milestone=self.milestone.name if self.milestone is not None else None,
             priority=self.priority,
+            estimate=self.estimate,
             parent=self.parent.identifier if self.parent is not None else None,
             sub_tickets=frozenset(child.identifier for child in self.children),
             blocks=frozenset(
@@ -724,6 +730,7 @@ class IssueChanges(Payload):
     state_id: StateId | None = None
     project_milestone_id: MilestoneId | None = None
     priority: Priority | None = None
+    estimate: Estimate | None = None
 
     @staticmethod
     def fake() -> IssueChanges:
@@ -1198,6 +1205,7 @@ class Linear(TicketTracker):
                     assignee { email }
                     projectMilestone { name }
                     priority
+                    estimate
                     parent { identifier }
                     children(first: 250) { nodes { identifier } }
                     relations(first: 250) { nodes { type relatedIssue { identifier } } }
@@ -1319,6 +1327,8 @@ class Linear(TicketTracker):
             resolving["project_milestone_id"] = found.milestone_id(update.milestone)
         if update.priority is not None:
             resolving["priority"] = Ok(update.priority)
+        if update.estimate is not None:
+            resolving["estimate"] = Ok(update.estimate)
         changes: dict[str, object] = {}
         for field_name, resolved in resolving.items():
             if isinstance(resolved, Err):

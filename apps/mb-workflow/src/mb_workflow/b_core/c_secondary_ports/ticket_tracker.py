@@ -14,6 +14,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     CreatedIssue,
     CreatedOn,
     Creator,
+    Estimate,
     GroupedLabel,
     GroupedLabels,
     Issue,
@@ -165,6 +166,7 @@ class TrackedIssue(Model):
     creator: Creator
     created_on: CreatedOn
     priority: Priority
+    estimate: Estimate | None
     blocked_by: tuple[IssueIdentifier, ...]
     parent: IssueIdentifier | None
     related: tuple[IssueIdentifier, ...]
@@ -181,6 +183,7 @@ class TrackedIssue(Model):
             creator=Creator.fake(),
             created_on=CreatedOn.fake(),
             priority=Priority.medium,
+            estimate=None,
             blocked_by=(),
             parent=None,
             related=(),
@@ -429,6 +432,7 @@ class FakeTicketTracker(TicketTracker):
                         assignee=tracked.assignee,
                         milestone=tracked.milestone,
                         priority=tracked.priority,
+                        estimate=tracked.estimate,
                         parent=tracked.parent,
                         sub_tickets=frozenset(
                             identifier
@@ -647,6 +651,7 @@ class FakeTicketTracker(TicketTracker):
                     "assignee": held,
                     "milestone": milestone.value,
                     "priority": tracked.priority if update.priority is None else update.priority,
+                    "estimate": tracked.estimate if update.estimate is None else update.estimate,
                     "blocked_by": (*tracked.blocked_by, *update.blocked_by),
                 }
             )
@@ -687,6 +692,7 @@ class FakeTicketTracker(TicketTracker):
                 creator=Creator(self._viewer.root),
                 created_on=CreatedOn.fake(),
                 priority=Priority.no_priority if new.priority is None else new.priority,
+                estimate=new.estimate,
                 blocked_by=new.blocked_by,
                 parent=None,
                 related=(),
