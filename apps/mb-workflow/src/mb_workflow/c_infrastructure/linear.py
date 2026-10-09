@@ -47,6 +47,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     TeamKey,
     TeamName,
     TicketCount,
+    UpdatedAt,
 )
 from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets
 from mb_workflow.d_lib.models import Payload, Value
@@ -646,6 +647,7 @@ class IssuePayload(Payload):
 
 class PoolTicketPayload(IssuePayload):
     priority: Priority
+    updated_at: UpdatedAt
 
     @override
     @staticmethod
@@ -656,10 +658,11 @@ class PoolTicketPayload(IssuePayload):
             project=ProjectPayload.fake(),
             labels=(LabelPayload.fake(),),
             priority=Priority.medium,
+            updated_at=UpdatedAt.fake(),
         )
 
     def ticket(self) -> PoolTicket:
-        return PoolTicket(issue=self.issue(), priority=self.priority)
+        return PoolTicket(issue=self.issue(), priority=self.priority, updated_at=self.updated_at)
 
 
 class IssueDetailPayload(IssuePayload):
@@ -1163,6 +1166,7 @@ class Linear(TicketTracker):
                           nodes {
                             identifier
                             priority
+                            updatedAt
                             state { name }
                             project { name }
                             labels { nodes { name parent { name } } }

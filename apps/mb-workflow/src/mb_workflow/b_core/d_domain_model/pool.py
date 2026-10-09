@@ -20,6 +20,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     LabelName,
     LabelNames,
     Priority,
+    UpdatedAt,
 )
 from mb_workflow.d_lib.models import Model, Value
 
@@ -51,6 +52,7 @@ class SkipsLimits(Value[bool]):
 class PoolTicket(Model):
     issue: Issue
     priority: Priority
+    updated_at: UpdatedAt
 
     @staticmethod
     def fake() -> PoolTicket:
@@ -62,6 +64,7 @@ class PoolTicket(Model):
                 }
             ),
             priority=Priority.medium,
+            updated_at=UpdatedAt.fake(),
         )
 
     # A ticket is ready when its state names a skill an agent can run.

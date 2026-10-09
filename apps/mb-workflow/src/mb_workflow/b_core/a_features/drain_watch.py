@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.stop_signal import StopSignal
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
-    from mb_workflow.b_core.c_secondary_ports.tie_break import TieBreak
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 
@@ -81,7 +80,6 @@ class DrainWatch:
         manager: WorkspaceManager,
         board: WorkspaceStatusStore,
         lock: RunLock,
-        tie_break: TieBreak,
         flow_labels: FlowLabels,
         settings: DrainSettingsSource,
         stop: StopSignal,
@@ -98,7 +96,6 @@ class DrainWatch:
                     manager=manager,
                     board=board,
                     lock=lock,
-                    tie_break=tie_break,
                     workspace=current.workspace,
                     claim_settings=current.claims,
                     flow_labels=flow_labels,

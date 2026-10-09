@@ -5,24 +5,38 @@ from mb_workflow.b_core.d_domain_model.issue import Priority
 from mb_workflow.b_core.d_domain_model.pool import PoolTickets
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.c_secondary_ports.tie_break import TieBreak
+    from collections.abc import Iterable
+
     from mb_workflow.b_core.d_domain_model.issue import LabelName
+    from mb_workflow.b_core.d_domain_model.pool import PoolTicket
 
 
-# Shuffling before a stable sort leaves the tie-break to order only tickets of equal priority.
-def in_pick_order(
-    tickets: PoolTickets, skip_limits_label: LabelName, tie_break: TieBreak
-) -> PoolTickets:
-    shuffled = tie_break.shuffled(tickets).root
-    prioritised = sorted(
-        (ticket for ticket in shuffled if ticket.priority != Priority.no_priority),
-        key=attrgetter("priority"),
-    )
-    unprioritised = (ticket for ticket in shuffled if ticket.priority == Priority.no_priority)
-    ordered = (*prioritised, *unprioritised)
-    return PoolTickets(
-        (
-            *(ticket for ticket in ordered if ticket.skips_limits(skip_limits_label).root),
-            *(ticket for ticket in ordered if not ticket.skips_limits(skip_limits_label).root),
+class PickOrder:
+    # Sorting newest first before the stable sorts leaves recency to order only tickets of equal
+    # priority, so work continues on the tickets touched last.
+    @staticmethod
+    def ordered(tickets: PoolTickets, skip_limits_label: LabelName) -> PoolTickets:
+        newest_first = sorted(tickets.root, key=attrgetter("updated_at.root"), reverse=True)
+        return PoolTickets(
+            (
+                *PickOrder.by_priority(
+                    ticket for ticket in newest_first if ticket.skips_limits(skip_limits_label).root
+                ),
+                *PickOrder.by_priority(
+                    ticket
+                    for ticket in newest_first
+                    if not ticket.skips_limits(skip_limits_label).root
+                ),
+            )
         )
-    )
+
+    @staticmethod
+    def by_priority(tickets: Iterable[PoolTicket]) -> tuple[PoolTicket, ...]:
+        listed = tuple(tickets)
+        return (
+            *sorted(
+                (ticket for ticket in listed if ticket.priority != Priority.no_priority),
+                key=attrgetter("priority"),
+            ),
+            *(ticket for ticket in listed if ticket.priority == Priority.no_priority),
+        )

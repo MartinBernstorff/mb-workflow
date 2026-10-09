@@ -30,7 +30,6 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
     TicketTrackerError,
 )
-from mb_workflow.b_core.c_secondary_ports.tie_break import ReversingTieBreak
 from mb_workflow.b_core.d_domain_model.config import InvalidConfigError, PoolSettings
 from mb_workflow.b_core.d_domain_model.flow import StateName
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
@@ -115,7 +114,6 @@ def watching(
         manager=manager or fake_manager(),
         board=fake_board(),
         lock=lock or FakeRunLock(),
-        tie_break=ReversingTieBreak(),
         flow_labels=FlowLabels.fake(),
         settings=settings or SequencedSettings(PoolSettings.fake()),
         stop=stop,
