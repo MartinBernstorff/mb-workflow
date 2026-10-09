@@ -1,5 +1,6 @@
 from datetime import date
 from enum import StrEnum
+from operator import attrgetter
 from pathlib import Path
 from typing import TYPE_CHECKING, override
 
@@ -69,8 +70,9 @@ from mb_workflow.b_core.d_domain_model.issue import (
     TeamKey,
     TeamName,
     TicketCount,
+    UpdatedAt,
 )
-from mb_workflow.b_core.d_domain_model.pool import PoolTicket, ViewSlug
+from mb_workflow.b_core.d_domain_model.pool import ViewSlug
 from mb_workflow.c_infrastructure.credentials import CredentialsDirectory, RepositorySlug
 from mb_workflow.c_infrastructure.linear import (
     LabelGroupRead,
@@ -259,12 +261,9 @@ class Backlog(Model):
             ),
         )
 
-    def ticket(self, seed: Seed) -> PoolTicket:
+    def pooled(self, seed: Seed) -> tuple[Issue, Priority]:
         planted = next(planted for planted in seeds() if planted.seed == seed)
-        return PoolTicket(
-            issue=self.issue(seed),
-            priority=planted.priority,
-        )
+        return (self.issue(seed), planted.priority)
 
     def picked(self, wanted: IssueFilter, tracker: TicketTracker) -> tuple[Seed, ...]:
         swept = tracker.list_issues(wanted).unwrap().identifiers()
@@ -657,6 +656,7 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
                 milestone=None,
                 creator=backlog.creator,
                 created_on=planted.created_on,
+                updated_at=UpdatedAt.fake(),
                 priority=planted.priority,
                 estimate=None,
                 blocked_by=tuple(backlog.identifier(blocker) for blocker in planted.blocked_by),
@@ -1130,9 +1130,35 @@ def listed(tracker: TicketTracker, backlog: Backlog) -> set[Seed]:
 def test_a_view_lists_its_unblocked_tickets_with_their_priority(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    Assert.that(set(tracker.unblocked_view_tickets(backlog.view).unwrap().root)).matches(
-        {backlog.ticket(seed) for seed in set(Seed) - {Seed.recent}}
-    )
+    Assert.that(
+        {
+            (ticket.issue, ticket.priority)
+            for ticket in tracker.unblocked_view_tickets(backlog.view).unwrap().root
+        }
+    ).matches({backlog.pooled(seed) for seed in set(Seed) - {Seed.recent}})
+
+
+def most_recently_updated(tracker: TicketTracker, backlog: Backlog) -> IssueIdentifier:
+    listed = tracker.unblocked_view_tickets(backlog.view).unwrap().root
+    return max(listed, key=attrgetter("updated_at.root")).issue.identifier
+
+
+def test_an_updated_ticket_is_the_most_recently_updated_in_its_view(
+    tracker: TicketTracker, backlog: Backlog
+) -> None:
+    updated = backlog.identifier(Seed.old)
+    tracker.update_issue(
+        updated, IssueUpdate.nothing().model_copy(update={"priority": Priority.urgent})
+    ).unwrap()
+    Assert.that(most_recently_updated(tracker, backlog)).matches(updated)
+
+
+def test_a_ticket_given_a_label_is_the_most_recently_updated_in_its_view(
+    tracker: TicketTracker, backlog: Backlog
+) -> None:
+    labelled = backlog.identifier(Seed.old)
+    tracker.add_label(labelled, LabelName.fake()).unwrap()
+    Assert.that(most_recently_updated(tracker, backlog)).matches(labelled)
 
 
 def test_a_ticket_with_one_open_blocker_among_closed_ones_is_left_out_of_a_view(

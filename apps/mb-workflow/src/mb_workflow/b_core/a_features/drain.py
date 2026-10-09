@@ -5,7 +5,7 @@ from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
 from mb_workflow.b_core.a_features.start import StartRequest, TicketStart
-from mb_workflow.b_core.b_domain_services.pick_order import in_pick_order
+from mb_workflow.b_core.b_domain_services.pick_order import PickOrder
 from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimLostError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import LabelCheck
 from mb_workflow.b_core.d_domain_model.claim import HostName, Released, TakeOver
@@ -35,7 +35,6 @@ if TYPE_CHECKING:
         TicketTracker,
         TicketTrackerError,
     )
-    from mb_workflow.b_core.c_secondary_ports.tie_break import TieBreak
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
         WorkspaceManager,
         WorkspaceManagerError,
@@ -271,7 +270,6 @@ class Drain:
         manager: WorkspaceManager,
         board: WorkspaceStatusStore,
         lock: RunLock,
-        tie_break: TieBreak,
         workspace: WorkspaceSettings,
         claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
@@ -297,7 +295,6 @@ class Drain:
                         claims=claims,
                         manager=manager,
                         board=board,
-                        tie_break=tie_break,
                         workspace=workspace,
                         claim_settings=claim_settings,
                         flow_labels=flow_labels,
@@ -315,7 +312,6 @@ class Drain:
         claims: ClaimRegistry,
         manager: WorkspaceManager,
         board: WorkspaceStatusStore,
-        tie_break: TieBreak,
         workspace: WorkspaceSettings,
         claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
@@ -342,8 +338,8 @@ class Drain:
                 for ticket in listed.root
                 if not ticket.ready(claim_settings.label, flow_labels).root
             )
-            ready = in_pick_order(
-                listed.ready(claim_settings.label, flow_labels), pool.skip_limits_label, tie_break
+            ready = PickOrder.ordered(
+                listed.ready(claim_settings.label, flow_labels), pool.skip_limits_label
             )
             picked: list[PoolTicket] = []
             skipped: list[Skip] = []

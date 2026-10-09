@@ -26,7 +26,6 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     TicketTrackerError,
     TrackedIssue,
 )
-from mb_workflow.b_core.c_secondary_ports.tie_break import ReversingTieBreak
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     FakeWorkspaceManager,
     WorkspaceManagerError,
@@ -285,7 +284,6 @@ class DrainRuns:
             manager=manager or fake_manager(),
             board=fake_board(),
             lock=lock or FakeRunLock(),
-            tie_break=ReversingTieBreak(),
             workspace=WorkspaceSettings.fake(),
             claim_settings=ClaimSettings(label=LabelName("claimed")),
             flow_labels=FlowLabels.fake(),
@@ -327,6 +325,15 @@ def test_starts_every_ready_ticket_in_pick_order_while_the_total_allows() -> Non
     outcome = draining(standard_pool(), manager=manager)
     assert picked(outcome) == (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
     assert opened_issues(manager) == (IssueIdentifier("MB-2"), IssueIdentifier("MB-1"))
+
+
+def test_starts_the_most_recently_updated_of_equal_priority_first() -> None:
+    older = pooled(IssueIdentifier("MB-1"), Priority.high)
+    newer = pooled(IssueIdentifier("MB-2"), Priority.high).model_copy(
+        update={"updated_at": older.updated_at.later()}
+    )
+    outcome = draining(pool_of(older, newer), pool=pool_with_total(Limit(1)))
+    assert picked(outcome) == (newer.issue.identifier,)
 
 
 def test_the_pass_stops_once_the_total_is_reached() -> None:
@@ -531,15 +538,14 @@ def test_a_pass_is_refused_while_another_holds_the_lock() -> None:
 
 
 def test_a_ticket_labelled_skip_limits_starts_past_the_total() -> None:
-    tracker = pool_of(
-        pooled(IssueIdentifier("MB-1"), Priority.urgent),
+    skipping = (
         pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()),
         pooled(IssueIdentifier("MB-3"), Priority.low, labels=skip_limits()),
     )
-    assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (
-        IssueIdentifier("MB-3"),
-        IssueIdentifier("MB-2"),
-    )
+    tracker = pool_of(pooled(IssueIdentifier("MB-1"), Priority.urgent), *skipping)
+    assert set(picked(draining(tracker, pool=pool_with_total(Limit(1))))) == {
+        ticket.issue.identifier for ticket in skipping
+    }
 
 
 def test_a_ticket_labelled_skip_limits_starts_in_a_full_state() -> None:
