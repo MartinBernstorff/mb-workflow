@@ -35,6 +35,7 @@ def test_reports_the_file_it_came_from_and_every_resolved_setting() -> None:
         "  to-ticket: Maturing (repo)\n"
         "  todo: Todo (repo)\n"
         "  implementing: In Progress (repo)\n"
+        "  agent-reviewing: In Progress (repo)\n"
         "  qa: In Progress (repo)\n"
         "  review: In Review (repo)\n"
         "  merging: Ready For Release (repo)\n"

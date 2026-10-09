@@ -16,6 +16,12 @@ class PrNumber(Value[int]):
         return PrNumber(1234)
 
 
+class PrNumbers(Value[tuple[PrNumber, ...]]):
+    @staticmethod
+    def fake() -> PrNumbers:
+        return PrNumbers((PrNumber.fake(),))
+
+
 class PrTitle(Value[str]):
     @staticmethod
     def fake() -> PrTitle:

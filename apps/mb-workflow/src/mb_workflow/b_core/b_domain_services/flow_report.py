@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from safe_result import Err, Ok, Result
 
-from mb_workflow.b_core.d_domain_model.flow import FlowStatus, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import Chart, FlowStatus
 from mb_workflow.d_lib.models import Value
 
 if TYPE_CHECKING:
@@ -28,12 +28,12 @@ class StatusReport(Value[str]):
         legal = "".join(f"  {event.root}\n" for event in status.events.root)
         return StatusReport(f"{status.state.root}\n{legal}")
 
-
-def status_report(
-    chart: type[WorkflowChart], store: WorkspaceStatusStore, as_json: AsJson
-) -> Result[StatusReport, WorkspaceManagerError]:
-    match store.read():
-        case Ok(state):
-            return Ok(StatusReport.of(FlowStatus.of(chart, state), as_json))
-        case Err() as unread:
-            return unread
+    @staticmethod
+    def of_store(
+        chart: Chart, store: WorkspaceStatusStore, as_json: AsJson
+    ) -> Result[StatusReport, WorkspaceManagerError]:
+        match store.read():
+            case Ok(state):
+                return Ok(StatusReport.of(FlowStatus.of(chart, state), as_json))
+            case Err() as unread:
+                return unread

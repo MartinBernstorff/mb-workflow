@@ -22,6 +22,7 @@ from mb_workflow.b_core.c_secondary_ports.code_review import (
     UnreachableCodeReview,
 )
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, FakeRunLock
+from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore, UnreachableStatusStore
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracker, TrackedIssue
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     DisplayNameRefusingWorkspaceManager,
@@ -30,6 +31,7 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
 )
 from mb_workflow.b_core.d_domain_model.claim import Claim, ClaimHolder, Claims, HostName
 from mb_workflow.b_core.d_domain_model.config import ClaimSettings
+from mb_workflow.b_core.d_domain_model.flow import ReviewChart, StateName, StateNames
 from mb_workflow.b_core.d_domain_model.git import Ref
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName, LabelNames
 from mb_workflow.b_core.d_domain_model.outcome import Failed
@@ -44,6 +46,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     DisplayName,
     RepoId,
     WorkspaceStatus,
+    WorkspaceStatuses,
     Worktree,
     WorktreeName,
     WorktreePath,
@@ -56,6 +59,7 @@ if TYPE_CHECKING:
     from safe_result import Result
 
     from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge
+    from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
 
 
 class SilentNarrator(Narrator):
@@ -92,8 +96,40 @@ def here(tmp_path: Path) -> WorktreePath:
     return WorktreePath(tmp_path / "main")
 
 
-def standing_in(here: WorktreePath, *others: Worktree) -> FakeWorkspaceManager:
-    return FakeWorkspaceManager(Worktrees((Worktree.bare(RepoId.fake(), here), *others)), here)
+def fake_board() -> FakeStatusStore:
+    return FakeStatusStore(StateName.fake())
+
+
+def column_of(state: StateName) -> WorkspaceStatus:
+    return fake_board().status_for(state).unwrap()
+
+
+# The fake board names a column for every state, so the manager must hold every review column.
+def review_columns() -> WorkspaceStatuses:
+    return WorkspaceStatuses(
+        tuple(column_of(state) for state in StateNames.of_chart(ReviewChart).root)
+    )
+
+
+def standing_in(
+    here: WorktreePath, *others: Worktree, columns: WorkspaceStatuses | None = None
+) -> FakeWorkspaceManager:
+    return FakeWorkspaceManager(
+        Worktrees((Worktree.bare(RepoId.fake(), here), *others)),
+        here,
+        review_columns() if columns is None else columns,
+    )
+
+
+# A review worktree checks out a teammate's PR, so it links no ticket of mine.
+def in_review(here: WorktreePath, state: StateName = StateName("agent-reviewing")) -> Worktree:
+    return Worktree.fake().model_copy(
+        update={
+            "path": here.sibling(WorktreeName("stale")),
+            "status": column_of(state),
+            "issue": None,
+        }
+    )
 
 
 def create_review_directory(here: WorktreePath) -> WorktreePath:
@@ -106,13 +142,10 @@ def run_review_workspaces(
     review: CodeForge,
     manager: FakeWorkspaceManager,
     *,
-    status: WorkspaceStatus = WorkspaceStatus.fake(),
     claims: FakeClaimRegistry | None = None,
     prompt: ReviewPrompt | None = None,
 ) -> Outcome:
-    return ReviewWorkspacesRuns.attempted(
-        review, manager, status=status, claims=claims, prompt=prompt
-    ).unwrap()
+    return ReviewWorkspacesRuns.attempted(review, manager, claims=claims, prompt=prompt).unwrap()
 
 
 class ReviewWorkspacesRuns:
@@ -122,7 +155,7 @@ class ReviewWorkspacesRuns:
         manager: FakeWorkspaceManager,
         lock: FakeRunLock | None = None,
         *,
-        status: WorkspaceStatus = WorkspaceStatus.fake(),
+        board: WorkspaceStatusStore | None = None,
         claims: FakeClaimRegistry | None = None,
         prompt: ReviewPrompt | None = None,
     ) -> Result[Outcome, AlreadyRunningError | CodeReviewError | WorkspaceManagerError]:
@@ -135,7 +168,7 @@ class ReviewWorkspacesRuns:
             host=HostName.fake(),
             lock=FakeRunLock() if lock is None else lock,
             narrator=SilentNarrator(),
-            status=status,
+            board=fake_board() if board is None else board,
             since=MergedSince.fake(),
             prompt=prompt,
         )
@@ -154,13 +187,14 @@ def test_checks_the_pr_out_into_its_new_workspace(here: WorktreePath) -> None:
     assert review.checked_out(CheckoutDirectory(path.root)) == PrNumber.fake()
 
 
-def test_the_new_workspace_sits_in_the_review_status(here: WorktreePath) -> None:
+def test_the_new_workspace_starts_in_agent_review(here: WorktreePath) -> None:
     path = create_review_directory(here)
     manager = standing_in(here)
+    agent_reviewing = column_of(StateName("agent-reviewing"))
     _ = run_review_workspaces(FakeCodeReview(PullRequests.fake()), manager)
     created = manager.worktrees().unwrap().at(path)
     assert created is not None
-    assert created.status == WorkspaceStatus.fake()
+    assert created.status == agent_reviewing
 
 
 def test_the_new_workspace_is_named_after_the_pr_title(here: WorktreePath) -> None:
@@ -191,24 +225,58 @@ def test_without_a_prompt_nothing_is_typed(here: WorktreePath) -> None:
 def test_a_refused_display_name_is_not_a_failed_creation(here: WorktreePath) -> None:
     path = create_review_directory(here)
     manager = DisplayNameRefusingWorkspaceManager(
-        Worktrees((Worktree.bare(RepoId.fake(), here),)), here
+        Worktrees((Worktree.bare(RepoId.fake(), here),)), here, review_columns()
     )
     outcome = run_review_workspaces(FakeCodeReview(PullRequests.fake()), manager)
     assert outcome.created == (CreatedWorkspace(name=WorktreeName.fake(), path=path),)
     assert outcome.failed == ()
 
 
-def test_removes_a_review_workspace_whose_pr_no_longer_awaits_review(here: WorktreePath) -> None:
-    stale = Worktree.fake().model_copy(update={"path": here.sibling(WorktreeName("stale"))})
+@pytest.mark.parametrize("state", [StateName("agent-reviewing"), StateName("reviewing")])
+def test_removes_a_review_workspace_whose_pr_no_longer_awaits_review(
+    here: WorktreePath, state: StateName
+) -> None:
+    stale = in_review(here, state)
     manager = standing_in(here, stale)
     outcome = run_review_workspaces(FakeCodeReview(PullRequests(())), manager)
     assert outcome.removed == (stale.path,)
     assert manager.worktrees().unwrap().at(stale.path) is None
 
 
+def test_keeps_a_workspace_outside_the_review_columns(here: WorktreePath) -> None:
+    implementing = WorkspaceStatus("status-implementing")
+    elsewhere = in_review(here).model_copy(update={"status": implementing})
+    manager = standing_in(
+        here, elsewhere, columns=WorkspaceStatuses((*review_columns().root, implementing))
+    )
+    outcome = run_review_workspaces(FakeCodeReview(PullRequests(())), manager)
+    assert outcome.removed == ()
+    assert manager.worktrees().unwrap().at(elsewhere.path) == elsewhere
+
+
+def test_keeps_my_own_ticket_workspace_in_agent_review(here: WorktreePath) -> None:
+    mine = in_review(here).model_copy(update={"issue": IssueIdentifier.fake()})
+    manager = standing_in(here, mine)
+    outcome = run_review_workspaces(FakeCodeReview(PullRequests(())), manager)
+    assert outcome.removed == ()
+    assert manager.worktrees().unwrap().at(mine.path) == mine
+
+
+# The agent-reviewing column also holds my own work, so a worktree for my own PR that links no
+# ticket can sit in it.
+def test_keeps_the_workspace_of_my_own_pull_request_in_agent_review(here: WorktreePath) -> None:
+    mine = in_review(here)
+    review = FakeCodeReview(PullRequests(()), mine=(PrNumber.fake(),))
+    manager = standing_in(here, mine)
+    outcome = run_review_workspaces(review, manager)
+    assert outcome.removed == ()
+    assert manager.worktrees().unwrap().at(mine.path) == mine
+
+
 def test_releases_the_claim_of_a_workspace_it_removes(here: WorktreePath) -> None:
     name = WorktreeName.of_issue(IssueIdentifier.fake())
-    stale = Worktree.fake().model_copy(update={"path": here.sibling(name)})
+    merged = Worktree.fake().model_copy(update={"path": here.sibling(name)})
+    review = FakeCodeReview(PullRequests(()), merged=(MergedPullRequest.fake(),))
     claims = FakeClaimRegistry(
         {
             IssueIdentifier.fake(): Claims(
@@ -220,9 +288,7 @@ def test_releases_the_claim_of_a_workspace_it_removes(here: WorktreePath) -> Non
             )
         }
     )
-    _ = run_review_workspaces(
-        FakeCodeReview(PullRequests(())), standing_in(here, stale), claims=claims
-    )
+    _ = run_review_workspaces(review, standing_in(here, merged), claims=claims)
     assert claims.claims(IssueIdentifier.fake()).unwrap().holding(IssueStatusName.fake()) is None
 
 
@@ -242,18 +308,36 @@ def test_a_workspace_that_already_matches_is_left_unchanged(here: WorktreePath) 
 
 
 def test_a_workspace_that_cannot_be_created_is_reported_as_failed(here: WorktreePath) -> None:
+    agent_reviewing = column_of(StateName("agent-reviewing"))
+    without_agent_review = WorkspaceStatuses(
+        tuple(column for column in review_columns().root if column != agent_reviewing)
+    )
     outcome = run_review_workspaces(
-        FakeCodeReview(PullRequests.fake()),
-        standing_in(here),
-        status=WorkspaceStatus("no-such-column"),
+        FakeCodeReview(PullRequests.fake()), standing_in(here, columns=without_agent_review)
     )
     assert outcome.failed == (
         Failure(
             subject=FailureSubject.of_pr(PrNumber.fake()),
-            reason=FailureReason("The board has no column no-such-column."),
+            reason=FailureReason(f"The board has no column {agent_reviewing.root}."),
         ),
     )
     assert outcome.failed_any() == Failed(True)
+
+
+def test_an_unreachable_board_fails_the_run_and_leaves_workspaces_alone(
+    here: WorktreePath,
+) -> None:
+    _ = create_review_directory(here)
+    manager = standing_in(here, in_review(here))
+    before = manager.worktrees().unwrap()
+    reconciled = ReviewWorkspacesRuns.attempted(
+        FakeCodeReview(PullRequests.fake()),
+        manager,
+        board=UnreachableStatusStore(),
+    )
+    assert isinstance(reconciled, Err)
+    assert isinstance(reconciled.error, WorkspaceManagerError)
+    assert manager.worktrees().unwrap() == before
 
 
 def test_a_checkout_that_is_refused_is_reported_as_failed(here: WorktreePath) -> None:
@@ -268,8 +352,7 @@ def test_a_checkout_that_is_refused_is_reported_as_failed(here: WorktreePath) ->
 def test_an_unreachable_code_review_fails_the_run_and_leaves_workspaces_alone(
     here: WorktreePath,
 ) -> None:
-    stale = Worktree.fake().model_copy(update={"path": here.sibling(WorktreeName("stale"))})
-    manager = standing_in(here, stale)
+    manager = standing_in(here, in_review(here))
     before = manager.worktrees().unwrap()
     reconciled = ReviewWorkspacesRuns.attempted(UnreachableCodeReview(), manager)
     assert isinstance(reconciled, Err)

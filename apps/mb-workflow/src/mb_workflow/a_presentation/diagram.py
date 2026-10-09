@@ -1,16 +1,33 @@
 import logging
 import re
 import sys
+from enum import StrEnum
 from pathlib import Path
 
 import pydot
 from statemachine.contrib.diagram import DotGraphMachine, MermaidGraphMachine
 
 from mb_workflow.a_presentation.console import ExitCode
-from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import Chart, ReviewChart, WorkflowChart
 from mb_workflow.d_lib.models import Model, Value
 
 logger = logging.getLogger(__name__)
+
+
+class ChartName(StrEnum):
+    workflow = "workflow"
+    review = "review"
+
+    @staticmethod
+    def fake() -> ChartName:
+        return ChartName.workflow
+
+    def to_chart(self) -> Chart:
+        match self:
+            case ChartName.workflow:
+                return WorkflowChart
+            case ChartName.review:
+                return ReviewChart
 
 
 class MermaidDiagram(Value[str]):
@@ -56,12 +73,6 @@ class MermaidFormat(Model):
         return MermaidFormat()
 
 
-def format_of(destination: DiagramPath) -> MermaidFormat | ImageFormat:
-    if destination.root.suffix == ".md":
-        return MermaidFormat()
-    return ImageFormat.of(destination)
-
-
 class DotSource(Value[str]):
     @staticmethod
     def fake() -> DotSource:
@@ -79,44 +90,53 @@ class DotSource(Value[str]):
         return DotSource(source)
 
 
-def render_mermaid() -> MermaidDiagram:
-    return MermaidDiagram(MermaidGraphMachine(WorkflowChart).get_mermaid())
+class ChartDiagram:
+    @staticmethod
+    def render_mermaid(chart: Chart) -> MermaidDiagram:
+        return MermaidDiagram(MermaidGraphMachine(chart).get_mermaid())
 
+    @staticmethod
+    def render_dot(chart: Chart) -> DotSource:
+        return DotSource(DotGraphMachine(chart).get_graph().to_string()).with_stable_ids()
 
-def render_dot() -> DotSource:
-    return DotSource(DotGraphMachine(WorkflowChart).get_graph().to_string()).with_stable_ids()
+    @staticmethod
+    def write_image(chart: Chart, destination: DiagramPath, image_format: ImageFormat) -> None:
+        graphs = pydot.graph_from_dot_data(ChartDiagram.render_dot(chart).root)
+        if not graphs:
+            raise ValueError("The chart's DOT source could not be parsed.")
+        _ = graphs[0].write(str(destination.root), format=image_format.root)
 
+    @staticmethod
+    def write_mermaid(chart: Chart, destination: DiagramPath) -> None:
+        _ = destination.root.write_text(MermaidDocument.of(ChartDiagram.render_mermaid(chart)).root)
 
-def write_image(destination: DiagramPath, image_format: ImageFormat) -> None:
-    graphs = pydot.graph_from_dot_data(render_dot().root)
-    if not graphs:
-        raise ValueError("The chart's DOT source could not be parsed.")
-    _ = graphs[0].write(str(destination.root), format=image_format.root)
+    @staticmethod
+    def write_diagram(chart: Chart, destination: DiagramPath) -> None:
+        match ChartDiagram.format_of(destination):
+            case MermaidFormat():
+                ChartDiagram.write_mermaid(chart, destination)
+            case ImageFormat() as image_format:
+                ChartDiagram.write_image(chart, destination, image_format)
 
+    @staticmethod
+    def format_of(destination: DiagramPath) -> MermaidFormat | ImageFormat:
+        if destination.root.suffix == ".md":
+            return MermaidFormat()
+        return ImageFormat.of(destination)
 
-def write_mermaid(destination: DiagramPath) -> None:
-    _ = destination.root.write_text(MermaidDocument.of(render_mermaid()).root)
-
-
-def write_diagram(destination: DiagramPath) -> None:
-    match format_of(destination):
-        case MermaidFormat():
-            write_mermaid(destination)
-        case ImageFormat() as image_format:
-            write_image(destination, image_format)
-
-
-def diagram(destination: DiagramPath | None) -> ExitCode:
-    if destination is None:
-        _ = sys.stdout.write(render_mermaid().root)
+    @staticmethod
+    def draw_diagram(chart_name: ChartName, destination: DiagramPath | None) -> ExitCode:
+        chart = chart_name.to_chart()
+        if destination is None:
+            _ = sys.stdout.write(ChartDiagram.render_mermaid(chart).root)
+            return ExitCode(0)
+        try:
+            ChartDiagram.write_diagram(chart, destination)
+        except OSError as error:
+            logger.error("Could not write %s: %s", destination.root, error)
+            return ExitCode(1)
+        except ValueError as error:
+            logger.error("%s", error)
+            return ExitCode(1)
+        logger.info("Wrote %s", destination.root)
         return ExitCode(0)
-    try:
-        write_diagram(destination)
-    except OSError as error:
-        logger.error("Could not write %s: %s", destination.root, error)
-        return ExitCode(1)
-    except ValueError as error:
-        logger.error("%s", error)
-        return ExitCode(1)
-    logger.info("Wrote %s", destination.root)
-    return ExitCode(0)

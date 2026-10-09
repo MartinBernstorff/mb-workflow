@@ -63,7 +63,7 @@ tasks:
       outputStyle: "buffer-only-failure"
 
   diagram:
-    script: "mkdir -p docs && uv run mw flow diagram --quiet --output docs/flow.svg && uv run mw flow diagram --quiet --output docs/flow.md"
+    script: "mkdir -p docs && uv run mw flow diagram --quiet --output docs/flow.svg && uv run mw flow diagram --quiet --output docs/flow.md && uv run mw flow diagram --quiet --chart review --output docs/review-flow.svg && uv run mw flow diagram --quiet --chart review --output docs/review-flow.md"
     inputs:
       - "pyproject.toml"
       - "uv.lock"
@@ -72,6 +72,8 @@ tasks:
     outputs:
       - "docs/flow.svg"
       - "docs/flow.md"
+      - "docs/review-flow.svg"
+      - "docs/review-flow.md"
     options:
       runInCI: false
       outputStyle: "buffer-only-failure"

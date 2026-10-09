@@ -5,7 +5,7 @@ from pydantic import JsonValue, model_validator
 
 from mb_workflow.b_core.d_domain_model.git import Ref
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueTitle, Priority
-from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrTitle
+from mb_workflow.b_core.d_domain_model.pull_request import PrNumber, PrNumbers, PrTitle
 from mb_workflow.d_lib.models import Model, Value
 
 
@@ -182,6 +182,10 @@ class Worktree(Model):
             priority=WorkspacePriority.fake(),
         )
 
+    # A review worktree checks out a teammate's pull request and is linked to no ticket of mine.
+    def reviewed_pull_request(self) -> PrNumber | None:
+        return self.pull_request if self.issue is None else None
+
     def linked_issue(self) -> IssueIdentifier:
         if self.issue is None:
             raise UnlinkedWorktreeError(
@@ -224,6 +228,11 @@ class Worktrees(Value[tuple[Worktree, ...]]):
 
     def named(self, name: WorktreeName) -> Worktree | None:
         return next((worktree for worktree in self.root if worktree.path.name() == name), None)
+
+    def pull_requests(self) -> PrNumbers:
+        return PrNumbers(
+            tuple(pr for pr in (worktree.pull_request for worktree in self.root) if pr is not None)
+        )
 
     def without(self, path: WorktreePath) -> Worktrees:
         return Worktrees(

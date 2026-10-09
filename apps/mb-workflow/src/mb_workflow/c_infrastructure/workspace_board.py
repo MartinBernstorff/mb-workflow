@@ -6,7 +6,7 @@ from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
-from mb_workflow.b_core.d_domain_model.flow import StateName
+from mb_workflow.b_core.d_domain_model.flow import Charts, StateName, StateNames
 from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus
 from mb_workflow.c_infrastructure.orca import ColumnLabel, ErrorMessage, Orca
 from mb_workflow.d_lib.models import Model, Payload, Value
@@ -47,7 +47,7 @@ class StateColumns(Value[tuple[WorkspaceStateColumn, ...]]):
         return StateColumns((WorkspaceStateColumn.fake(),))
 
     @staticmethod
-    def of_chart() -> StateColumns:
+    def of_charts() -> StateColumns:
         return StateColumns(
             (
                 WorkspaceStateColumn(state=StateName("grill"), label=ColumnLabel("Grilling")),
@@ -55,6 +55,12 @@ class StateColumns(Value[tuple[WorkspaceStateColumn, ...]]):
                 WorkspaceStateColumn(state=StateName("todo"), label=ColumnLabel("Tomorrow")),
                 WorkspaceStateColumn(
                     state=StateName("implementing"), label=ColumnLabel("Implementing")
+                ),
+                WorkspaceStateColumn(
+                    state=StateName("agent-reviewing"), label=ColumnLabel("Agent reviewing")
+                ),
+                WorkspaceStateColumn(
+                    state=StateName("reviewing"), label=ColumnLabel("Me reviewing others")
                 ),
                 WorkspaceStateColumn(state=StateName("qa"), label=ColumnLabel("My QA")),
                 WorkspaceStateColumn(
@@ -110,7 +116,7 @@ class Columns(Value[tuple[Column, ...]]):
         return None
 
     def status_for(self, state: StateName) -> Result[WorkspaceStatus, BoardError]:
-        match StateColumns.of_chart().label_of(state):
+        match StateColumns.of_charts().label_of(state):
             case Ok(label):
                 pass
             case Err() as unmapped:
@@ -130,7 +136,7 @@ class Columns(Value[tuple[Column, ...]]):
         label = self.label_of(status)
         if label is None:
             return start
-        state = StateColumns.of_chart().state_of(label)
+        state = StateColumns.of_charts().state_of(label)
         return state if state is not None else start
 
 
@@ -139,17 +145,15 @@ class WorkspaceBoard(WorkspaceStatusStore):
         self,
         manager: WorkspaceManager,
         columns: Callable[[], Result[Columns, WorkspaceManagerError]],
-        start: StateName,
         locate_worktree: Callable[[], Result[Worktree, WorkspaceManagerError]],
     ) -> None:
         self._manager = manager
         self._read_columns = columns
-        self._start = start
         self._locate_worktree = locate_worktree
 
     @staticmethod
-    def of_orca(orca: Orca, start: StateName) -> WorkspaceBoard:
-        return WorkspaceBoard(orca, lambda: WorkspaceBoard.columns_of(orca), start, orca.current)
+    def of_orca(orca: Orca) -> WorkspaceBoard:
+        return WorkspaceBoard(orca, lambda: WorkspaceBoard.columns_of(orca), orca.current)
 
     @staticmethod
     def columns_of(orca: Orca) -> Result[Columns, WorkspaceManagerError]:
@@ -160,13 +164,14 @@ class WorkspaceBoard(WorkspaceStatusStore):
                 return failed
 
     def at(self, worktree: Worktree) -> WorkspaceBoard:
-        return WorkspaceBoard(self._manager, self._read_columns, self._start, lambda: Ok(worktree))
+        return WorkspaceBoard(self._manager, self._read_columns, lambda: Ok(worktree))
 
     # Read on first use, so a command that never touches the board never asks Orca for its columns.
     @cached_property
     def _columns(self) -> Result[Columns, WorkspaceManagerError]:
         return self._read_columns()
 
+    # A worktree in no column, or in one the board no longer defines, sits where its chart starts.
     @override
     def read(self) -> Result[StateName, WorkspaceManagerError]:
         match self._columns:
@@ -176,7 +181,8 @@ class WorkspaceBoard(WorkspaceStatusStore):
                 return unread
         match self._locate_worktree():
             case Ok(here):
-                return Ok(columns.state_of(here.status, self._start))
+                start = StateNames.initial_state(Charts.of_worktree(here))
+                return Ok(columns.state_of(here.status, start))
             case Err() as failed:
                 return failed
 

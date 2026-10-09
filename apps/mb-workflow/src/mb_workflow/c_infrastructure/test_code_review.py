@@ -21,6 +21,7 @@ from mb_workflow.b_core.d_domain_model.pull_request import (
     CheckoutDirectory,
     MergedSince,
     PrNumber,
+    PrNumbers,
     PrTitle,
     PullRequest,
     PullRequests,
@@ -104,6 +105,11 @@ def pending() -> tuple[PrNumber, ...]:
     return (PrNumber.fake(),)
 
 
+# The live stage opens its pull requests itself, so the pending one is the viewer's own there too.
+def authored() -> tuple[PrNumber, ...]:
+    return (PrNumber.fake(),)
+
+
 FLAGS = {
     "--approve": ReviewDecision.approve,
     "--request-changes": ReviewDecision.request_changes,
@@ -171,6 +177,14 @@ class ScriptedGhState:
                 return CommandOutput(f"{self.viewer.root}\n")
             case ("gh", "api", "--paginate", "--slurp", path):
                 return self.reviews_on(PrNumber(int(path.split("/")[-2])))
+            case _:
+                return self.respond_to_lookup(command, directory)
+
+    def respond_to_lookup(self, command: Command, directory: ExistingDirectory) -> CommandOutput:
+        match command.root:
+            case ("gh", "pr", "view", number, "--json", "author", "--jq", ".author.login"):
+                mine = PrNumber(int(number)) in authored()
+                return CommandOutput(f"{self.viewer.root if mine else 'teammate'}\n")
             case _:
                 return self.respond_to_write(command, directory)
 
@@ -499,7 +513,7 @@ def ledger(
         return ledger
     if kind == ReviewKind.github:
         return ScriptedGh(ExistingDirectory.fake(), ScriptedGhState())
-    return FakeCodeReview(requested(), merges(), pending())
+    return FakeCodeReview(requested(), merges(), pending(), authored())
 
 
 @pytest.fixture
@@ -652,6 +666,24 @@ def test_a_decision_that_needs_a_body_is_refused_without_one(
     Assert.that(ledger.submitted()).matches(())
 
 
+def test_a_pull_request_i_opened_counts_as_mine(review: CodeForge, stage: Stage) -> None:
+    mine = PrNumbers((stage.pending,))
+    Assert.that(review.authored_by_me(mine)).matches(Ok(mine))
+
+
+def test_a_teammate_s_pull_request_does_not_count_as_mine(
+    review: CodeForge, stage: Stage, kind: ReviewKind
+) -> None:
+    if kind == ReviewKind.github_live:
+        pytest.skip("The live stage holds only pull requests the viewer opened.")
+    Assert.that(review.authored_by_me(PrNumbers((stage.fresh,)))).matches(Ok(PrNumbers(())))
+
+
+def test_no_pull_requests_have_none_of_mine(review: CodeForge) -> None:
+    none = PrNumbers(())
+    Assert.that(review.authored_by_me(none)).matches(Ok(none))
+
+
 class BrokenGh(CommandRunner):
     def __init__(self, output: CommandOutput | None) -> None:
         self._output = output
@@ -683,6 +715,7 @@ def test_a_failing_gh_is_returned_as_a_code_review_error(tmp_path: Path) -> None
         github.merged_branches(MergedSince.fake()),
         github.checkout(PrNumber.fake(), CheckoutDirectory(tmp_path)),
         github.submit(PrNumber.fake(), remark()),
+        github.authored_by_me(PrNumbers.fake()),
     )
     for result in results:
         _ = Assert.that(result).is_err(CodeReviewError)

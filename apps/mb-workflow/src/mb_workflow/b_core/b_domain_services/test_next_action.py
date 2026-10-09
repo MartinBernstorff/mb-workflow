@@ -28,6 +28,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
         (StateName("to-ticket"), Skill("/to-ticket")),
         (StateName("todo"), Skill("/implement")),
         (StateName("implementing"), Skill("/implement")),
+        (StateName("agent-reviewing"), Skill("/review-mine")),
         (StateName("qa"), AwaitingHuman()),
         (StateName("review"), AwaitingHuman()),
         (StateName("merging"), Skill("/merge")),

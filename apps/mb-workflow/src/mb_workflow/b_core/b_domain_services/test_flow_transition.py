@@ -69,7 +69,7 @@ def transition_with_fake_flow_labels(
 
 
 def test_a_legal_event_writes_the_target_state_to_the_store() -> None:
-    store = FakeStatusStore(StateName("implementing"))
+    store = FakeStatusStore(StateName("agent-reviewing"))
     tracker = seeded_tracker(LabelNames(()))
     target = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
     Assert.that(target).matches(Ok(StateName("qa")))
@@ -77,8 +77,8 @@ def test_a_legal_event_writes_the_target_state_to_the_store() -> None:
 
 
 def test_a_legal_event_writes_the_relabelled_labels_to_the_ticket() -> None:
-    tracker = seeded_tracker(LabelNames((LabelName("implementing"), LabelName.fake())))
-    store = FakeStatusStore(StateName("implementing"))
+    tracker = seeded_tracker(LabelNames((LabelName("agent-reviewing"), LabelName.fake())))
+    store = FakeStatusStore(StateName("agent-reviewing"))
     _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False)).unwrap()
     Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(
         LabelNames((LabelName.fake(), LabelName("qa")))
@@ -110,13 +110,13 @@ def test_an_illegal_event_leaves_the_store_and_the_ticket_where_they_were() -> N
 
 
 def test_an_unreachable_board_leaves_the_ticket_where_it_was() -> None:
-    tracker = seeded_tracker(LabelNames((LabelName("implementing"),)))
+    tracker = seeded_tracker(LabelNames((LabelName("agent-reviewing"),)))
     refused = transition_with_fake_flow_labels(
         UnreachableStatusStore(), tracker, EventName("qa"), Force(False)
     )
     Assert.that(refused).matches(Err(WorkspaceManagerError("The workspace board is unreachable.")))
     Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(
-        LabelNames((LabelName("implementing"),))
+        LabelNames((LabelName("agent-reviewing"),))
     )
 
 
@@ -136,7 +136,7 @@ def test_forcing_writes_the_target_state_without_validating() -> None:
 
 def test_a_refused_ticket_write_leaves_the_board_where_it_was() -> None:
     wanted = FlowLabels.fake()
-    store = FakeStatusStore(StateName("implementing"))
+    store = FakeStatusStore(StateName("agent-reviewing"))
     # The ticket holds a label the tracker does not know, so the write refuses.
     tracker = FakeTicketTracker(
         wanted.labels,
@@ -147,7 +147,7 @@ def test_a_refused_ticket_write_leaves_the_board_where_it_was() -> None:
     refused = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
     error = Assert.that(refused.error).exists()
     Assert.that(str(error)).contains(LabelName.fake().root)
-    Assert.that(store.read().unwrap()).matches(StateName("implementing"))
+    Assert.that(store.read().unwrap()).matches(StateName("agent-reviewing"))
     Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().status).matches(
         IssueStatusName.fake()
     )
@@ -173,12 +173,12 @@ def test_a_status_the_tracker_lacks_leaves_the_ticket_and_the_board_where_they_w
 
 
 def test_missing_flow_labels_point_to_seed_labels_and_leave_the_board_alone() -> None:
-    store = FakeStatusStore(StateName("implementing"))
+    store = FakeStatusStore(StateName("agent-reviewing"))
     tracker = FakeTicketTracker(LabelNames.fake(), (TrackedIssue.fake(),))
     refused = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
     error = Assert.that(refused.error).is_instance(MissingFlowLabelsError)
     Assert.that(str(error)).contains("mw flow seed-labels")
-    Assert.that(store.read().unwrap()).matches(StateName("implementing"))
+    Assert.that(store.read().unwrap()).matches(StateName("agent-reviewing"))
 
 
 # The ticket carries no labels, so only the flow label a transition writes is left on it.
@@ -204,7 +204,7 @@ def test_a_transition_writes_the_flow_label_of_the_tickets_own_team() -> None:
     tracker = TeamTrackers.with_issue_in_team(
         ops, {TeamKey.fake(): labels, ops: labels}, LabelNames(())
     )
-    store = FakeStatusStore(StateName("implementing"))
+    store = FakeStatusStore(StateName("agent-reviewing"))
     _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False)).unwrap()
     qa = LabelName("qa")
     Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(
@@ -214,7 +214,7 @@ def test_a_transition_writes_the_flow_label_of_the_tickets_own_team() -> None:
 
 def test_a_transition_falls_back_to_workspace_flow_labels() -> None:
     tracker = TeamTrackers.with_issue_in_team(TeamKey("OPS"), {}, FlowLabels.fake().labels)
-    store = FakeStatusStore(StateName("implementing"))
+    store = FakeStatusStore(StateName("agent-reviewing"))
     _ = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False)).unwrap()
     qa = LabelName("qa")
     Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(
@@ -226,10 +226,10 @@ def test_another_teams_flow_labels_leave_the_ticket_and_the_board_alone() -> Non
     tracker = TeamTrackers.with_issue_in_team(
         TeamKey("OPS"), {TeamKey.fake(): FlowLabels.fake().labels}, LabelNames(())
     )
-    store = FakeStatusStore(StateName("implementing"))
+    store = FakeStatusStore(StateName("agent-reviewing"))
     refused = transition_with_fake_flow_labels(store, tracker, EventName("qa"), Force(False))
     _ = Assert.that(refused.error).is_instance(MissingFlowLabelsError)
-    Assert.that(store.read().unwrap()).matches(StateName("implementing"))
+    Assert.that(store.read().unwrap()).matches(StateName("agent-reviewing"))
     Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(LabelNames(()))
 
 

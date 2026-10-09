@@ -121,7 +121,8 @@ def test_the_nearest_configuration_file_wins(tmp_path: Path) -> None:
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
-        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
+        'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
     )
     nearest_file = tmp_path / "repo" / "src" / "mb-workflow.toml"
@@ -129,7 +130,8 @@ def test_the_nearest_configuration_file_wins(tmp_path: Path) -> None:
         '[issues]\ntracker = "todoist"\nproject_tag = "it-mb-workflow"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
-        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
+        'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
     )
 
@@ -148,7 +150,8 @@ def test_the_search_walks_up_when_the_working_directory_holds_no_file(tmp_path: 
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
-        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
+        'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
     )
 
@@ -165,14 +168,16 @@ def test_a_configuration_in_a_parent_is_not_merged_into_the_nearest_one(tmp_path
         '[issues]\ntracker = "todoist"\nproject_tag = "it-other-project"\n'
         '[workspace]\norca_project = "github:other/project"\nassignee = "other@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
-        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
+        'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
     )
     _ = (tmp_path / "repo" / "src" / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
-        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
+        'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
     )
 
@@ -447,7 +452,8 @@ def test_the_pool_limits_table_sets_the_limits(tmp_path: Path) -> None:
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
-        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
+        'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
         '[pool]\nview = "4efb86b38740"\n'
         f"[pool.limits]\ntotal = {total.root}\n[pool.limits.states]\nQA = {qa_limit.root}\n"
@@ -470,7 +476,8 @@ def test_a_limit_on_a_state_outside_the_chart_is_a_config_error(tmp_path: Path) 
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
-        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
+        'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
         '[pool]\nview = "4efb86b38740"\n'
         "[pool.limits.states]\nSpecced = 1\n"
@@ -490,7 +497,8 @@ def test_the_ticket_statuses_table_maps_each_flow_state_to_a_ticket_status(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
-        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
+        'qa = "In Progress"\nreview = "In Review"\n'
         f'merging = "{ready_for_release.root}"\nmerged = "Done"\n'
     )
     resolved = Configuration.resolved(
@@ -508,7 +516,8 @@ def test_a_ticket_statuses_table_with_a_gap_is_a_config_error_naming_the_state(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
-        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
+        'qa = "In Progress"\nreview = "In Review"\n'
         'merged = "Done"\n'
     )
     missing_merging = "lacks merging"
@@ -534,7 +543,8 @@ def test_an_override_file_sets_one_nested_key_and_keeps_its_siblings(tmp_path: P
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
-        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
+        'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
     )
     mine = Assignee("me@example.com")
@@ -560,7 +570,8 @@ def test_an_override_making_the_configuration_invalid_is_an_error_naming_both_fi
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
-        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
+        'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
     )
     override = OverrideFile(
@@ -579,7 +590,8 @@ def test_an_override_may_supply_a_setting_the_repository_file_lacks(tmp_path: Pa
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
-        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
+        'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
     )
     mine = Assignee("me@example.com")
@@ -599,7 +611,8 @@ def test_an_override_state_limit_in_another_casing_limits_the_chart_state(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
-        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
+        'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
         '[pool]\nview = "4efb86b38740"\n'
         "[pool.limits.states]\nQA = 2\n"

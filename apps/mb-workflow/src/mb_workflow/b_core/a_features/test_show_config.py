@@ -27,7 +27,8 @@ def with_repo_config(directory: WorkingDirectory) -> WorkingDirectory:
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
         '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
-        'implementing = "In Progress"\nqa = "In Progress"\nreview = "In Review"\n'
+        'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
+        'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
     )
     return directory
