@@ -9,9 +9,11 @@ from linear_python_client import (
     IssueUpdateRequest,
     LinearClient,
     LinearError,
+    LinearServerError,
 )
 from pydantic import AliasPath, Field, JsonValue
 from safe_result import Err, Ok, Result, safe_with
+from stamina import retry
 
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker, TicketTrackerError
 from mb_workflow.b_core.d_domain_model.issue import (
@@ -784,9 +786,10 @@ class ViewRead(Payload):
 
 class LinearCall:
     # Converts the client's exceptions at the edge, so a failed call comes back as a value.
+    # Linear's 5xx responses are usually transient, so those are retried with exponential backoff first.
     @staticmethod
     def answered[T](call: Callable[[], T]) -> Result[T, TicketTrackerError]:
-        match safe_with(LinearError)(call)():
+        match safe_with(LinearError)(retry(on=LinearServerError, attempts=3)(call))():
             case Ok(value):
                 return Ok(value)
             case Err(error):
