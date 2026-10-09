@@ -218,6 +218,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "python-statemachine", extra = ["diagrams"] },
     { name = "safe-result" },
+    { name = "stamina" },
     { name = "typer" },
 ]
 
@@ -241,6 +242,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.15.0" },
     { name = "python-statemachine", extras = ["diagrams"], specifier = ">=3.2.1" },
     { name = "safe-result", specifier = ">=4.0.3" },
+    { name = "stamina", specifier = ">=26.1.0" },
     { name = "typer", specifier = ">=0.27.2" },
 ]
 
@@ -580,6 +582,18 @@ wheels = [
 ]
 
 [[package]]
+name = "stamina"
+version = "26.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tenacity" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/80/bd/b2f71ae14368a066f103d182f25bbc6c3bf4aa695889f3ed3cba026d6f36/stamina-26.1.0.tar.gz", hash = "sha256:0214d05fdf5102c518194a4aac7520ce53cf660550ae3b940701aad88cf50c17", size = 568171, upload-time = "2026-04-13T17:44:31.012Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1d/f0/1ff90a1d1dd02de23feafdf9dffaecef3958348be5c192df56670ccb4f86/stamina-26.1.0-py3-none-any.whl", hash = "sha256:62e06829bec87c06d4cafde520b32a6097d1017c378a9eb63253c5bf5ebbbb88", size = 18508, upload-time = "2026-04-13T17:44:29.545Z" },
+]
+
+[[package]]
 name = "tach"
 version = "0.35.0"
 source = { registry = "https://pypi.org/simple" }
@@ -610,6 +624,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4b/0f/e1842c063d0ac7be804797fab569ac782ef8a9fa349092c71125bc628e4d/tach-0.35.0-cp37-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:e9275b65ff31e7ff9842b3bd7417a393115dbadd1fa8c3d953ae330cff7fbefb", size = 4565068, upload-time = "2026-05-12T12:49:06.024Z" },
     { url = "https://files.pythonhosted.org/packages/2e/e5/054784261781dbcb8ac663a5d09af6c7996f5bde5230282b4c062dcf1f1f/tach-0.35.0-cp37-abi3-win32.whl", hash = "sha256:72dd6553d9fdd1e72fbd8e5b71892a463e8cd70b3ff6377b4f682aab100937d3", size = 3378975, upload-time = "2026-05-12T12:49:00.79Z" },
     { url = "https://files.pythonhosted.org/packages/4b/1d/5dddf88fa9433bf4fcc76afad18e49d8e50e24f1f40c981c286edccd6c2d/tach-0.35.0-cp37-abi3-win_amd64.whl", hash = "sha256:746271a5313c348e00c1b85927260e3e1a75351d86b2da1746e85c5dd77051e6", size = 3671788, upload-time = "2026-05-12T12:48:59.619Z" },
+]
+
+[[package]]
+name = "tenacity"
+version = "9.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/9e/497c1c8ebe5a5b5d1d4a7511aea22c0bb1a97e3170d98abdef0e1b34265a/tenacity-9.2.1.tar.gz", hash = "sha256:a606b5c808d0cded4a359d5b9932d867ff2a6a6b64d37350260fd01bbdf83839", size = 58261, upload-time = "2026-10-07T12:13:01.633Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d6/26/1ff2b0721ac66a3ec5b1402b333110b352ab0a8724052ac279a7b82d40c4/tenacity-9.2.1-py3-none-any.whl", hash = "sha256:9e56f17539296baab7beabb08b92f6ee3d7be92d8be72d763360677c2ad6580e", size = 32310, upload-time = "2026-10-07T12:13:00.102Z" },
 ]
 
 [[package]]

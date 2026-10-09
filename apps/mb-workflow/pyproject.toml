@@ -13,6 +13,7 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "python-statemachine[diagrams]>=3.2.1",
     "safe-result>=4.0.3",
+    "stamina>=26.1.0",
     "typer>=0.27.2",
 ]
 
