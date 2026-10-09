@@ -7,7 +7,9 @@ stateDiagram-v2
     merged --> [*]
     grill --> grill : grill
     grill --> to_ticket : to-ticket
+    grill --> implementing : implement
     to_ticket --> todo : todo
+    to_ticket --> implementing : implement
     todo --> implementing : implement
     implementing --> grill : grill
     implementing --> to_ticket : to-ticket

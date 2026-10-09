@@ -60,7 +60,9 @@ def test_the_chart_holds_every_transition_the_work_can_take() -> None:
         {
             edge(GRILL, EventName("grill"), GRILL),
             edge(GRILL, EventName("to-ticket"), TO_TICKET),
+            edge(GRILL, EventName("implement"), IMPLEMENTING),
             edge(TO_TICKET, EventName("todo"), TODO),
+            edge(TO_TICKET, EventName("implement"), IMPLEMENTING),
             edge(TODO, EventName("implement"), IMPLEMENTING),
             edge(IMPLEMENTING, EventName("implement"), IMPLEMENTING),
             edge(IMPLEMENTING, EventName("agent-review"), AGENT_REVIEWING),
@@ -124,7 +126,8 @@ def test_no_event_is_legal_from_the_final_state() -> None:
 
 def test_a_status_pairs_a_state_with_the_events_legal_from_it() -> None:
     grill_status = FlowStatus(
-        state=GRILL, events=EventNames((EventName("grill"), EventName("to-ticket")))
+        state=GRILL,
+        events=EventNames((EventName("grill"), EventName("implement"), EventName("to-ticket"))),
     )
     Assert.that(FlowStatus.of(WorkflowChart, GRILL)).matches(grill_status)
 
@@ -188,7 +191,7 @@ def test_resolving_a_review_from_qa_returns_the_work_to_implementing() -> None:
 
 def test_an_illegal_event_names_the_current_state_and_the_events_legal_from_it() -> None:
     merge = EventName("merge")
-    refusal = rf"{merge.root} is not legal from {GRILL.root}\. Legal: grill, to-ticket\."
+    refusal = rf"{merge.root} is not legal from {GRILL.root}\. Legal: grill, implement, to-ticket\."
     refused = Edges.of_chart(WorkflowChart).target_from(GRILL, merge)
     error = Assert.that(refused.error).is_instance(FlowError)
     Assert.that(str(error)).matches_pattern(refusal)
