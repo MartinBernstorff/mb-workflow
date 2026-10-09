@@ -105,7 +105,6 @@ class WorkflowChart(StateChart[ChartModel]):
         name="to-ticket",
     )
     to_todo = Event(to_ticket.to(todo), id="todo", name="todo")
-    # Planning can end in implementing directly, without passing through todo.
     implement = Event(
         grill.to(implementing)
         | to_ticket.to(implementing)
