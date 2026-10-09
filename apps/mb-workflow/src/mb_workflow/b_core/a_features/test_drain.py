@@ -538,14 +538,13 @@ def test_a_pass_is_refused_while_another_holds_the_lock() -> None:
 
 
 def test_a_ticket_labelled_skip_limits_starts_past_the_total() -> None:
-    tracker = pool_of(
-        pooled(IssueIdentifier("MB-1"), Priority.urgent),
+    skipping = (
         pooled(IssueIdentifier("MB-2"), Priority.low, labels=skip_limits()),
         pooled(IssueIdentifier("MB-3"), Priority.low, labels=skip_limits()),
     )
+    tracker = pool_of(pooled(IssueIdentifier("MB-1"), Priority.urgent), *skipping)
     assert set(picked(draining(tracker, pool=pool_with_total(Limit(1))))) == {
-        IssueIdentifier("MB-2"),
-        IssueIdentifier("MB-3"),
+        ticket.issue.identifier for ticket in skipping
     }
 
 

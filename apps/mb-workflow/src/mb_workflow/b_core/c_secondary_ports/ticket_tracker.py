@@ -512,7 +512,7 @@ class FakeTicketTracker(TicketTracker):
     ) -> Result[None, TicketTrackerError]:
         match self._found(issue):
             case Ok(tracked):
-                self._issues[issue] = self._touched(
+                self._issues[issue] = self._stamped_with_next_update(
                     tracked.model_copy(
                         update={
                             "issue": tracked.issue.model_copy(update={"assigned": Assigned(True)}),
@@ -537,11 +537,11 @@ class FakeTicketTracker(TicketTracker):
         related = self._all_found((*update.blocks, *update.blocked_by))
         if isinstance(related, Err):
             return related
-        self._issues[issue] = self._touched(updated.value)
+        self._issues[issue] = self._stamped_with_next_update(updated.value)
         for blocked in update.blocks:
             other = self._issues[blocked]
-            self._issues[blocked] = other.model_copy(
-                update={"blocked_by": (*other.blocked_by, issue)}
+            self._issues[blocked] = self._stamped_with_next_update(
+                other.model_copy(update={"blocked_by": (*other.blocked_by, issue)})
             )
         return Ok(None)
 
@@ -558,11 +558,11 @@ class FakeTicketTracker(TicketTracker):
         related = self._all_found((*new.blocked_by, *new.blocks))
         if isinstance(related, Err):
             return related
-        self._issues[identifier] = self._touched(created.value)
+        self._issues[identifier] = self._stamped_with_next_update(created.value)
         for blocked in new.blocks:
             other = self._issues[blocked]
-            self._issues[blocked] = other.model_copy(
-                update={"blocked_by": (*other.blocked_by, identifier)}
+            self._issues[blocked] = self._stamped_with_next_update(
+                other.model_copy(update={"blocked_by": (*other.blocked_by, identifier)})
             )
         return Ok(
             CreatedIssue(
@@ -618,14 +618,14 @@ class FakeTicketTracker(TicketTracker):
         )
 
     def _relabel(self, tracked: TrackedIssue, labels: LabelNames) -> None:
-        self._issues[tracked.issue.identifier] = self._touched(
+        self._issues[tracked.issue.identifier] = self._stamped_with_next_update(
             tracked.model_copy(
                 update={"issue": tracked.issue.model_copy(update={"labels": labels})}
             )
         )
 
     # Every write stamps the ticket a moment after the last, as Linear's updatedAt does.
-    def _touched(self, tracked: TrackedIssue) -> TrackedIssue:
+    def _stamped_with_next_update(self, tracked: TrackedIssue) -> TrackedIssue:
         self._clock = self._clock.later()
         return tracked.model_copy(update={"updated_at": self._clock})
 

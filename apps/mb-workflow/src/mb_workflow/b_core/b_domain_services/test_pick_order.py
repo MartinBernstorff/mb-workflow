@@ -83,16 +83,14 @@ def test_a_ticket_without_a_priority_comes_last() -> None:
 
 
 def test_the_most_recently_updated_of_equal_priority_comes_first() -> None:
-    oldest = UpdatedAt.fake()
-    middle = oldest.later()
-    newest = middle.later()
-    Assert.that(
-        picked(
-            ticket(IssueIdentifier("MB-1"), Priority.high, updated_at=oldest),
-            ticket(IssueIdentifier("MB-2"), Priority.high, updated_at=newest),
-            ticket(IssueIdentifier("MB-3"), Priority.high, updated_at=middle),
-        )
-    ).matches((IssueIdentifier("MB-2"), IssueIdentifier("MB-3"), IssueIdentifier("MB-1")))
+    oldest = ticket(IssueIdentifier("MB-1"), Priority.high, updated_at=UpdatedAt.fake())
+    middle = ticket(IssueIdentifier("MB-2"), Priority.high, updated_at=UpdatedAt.fake().later())
+    newest = ticket(
+        IssueIdentifier("MB-3"), Priority.high, updated_at=UpdatedAt.fake().later().later()
+    )
+    Assert.that(picked(oldest, newest, middle)).matches(
+        (newest.issue.identifier, middle.issue.identifier, oldest.issue.identifier)
+    )
 
 
 class TicketDraw(Model):
