@@ -79,7 +79,6 @@ from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
 from mb_workflow.c_infrastructure.linear_claims import LinearClaims
 from mb_workflow.c_infrastructure.orca import Orca
 from mb_workflow.c_infrastructure.project_override import override_of_origin
-from mb_workflow.c_infrastructure.random_tie_break import RandomTieBreak
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
 from mb_workflow.c_infrastructure.signal_stop import PollSeconds, SignalStop
 from mb_workflow.c_infrastructure.workspace_board import WorkspaceBoard
@@ -313,7 +312,6 @@ def drain(
         manager=manager,
         board=workspace_board(manager),
         lock=FlockRunLock(LockPath.of_project(lock, settings.workspace.orca_project)),
-        tie_break=RandomTieBreak(),
         workspace=settings.workspace,
         claim_settings=settings.claims,
         flow_labels=flow_labels_of_chart(),
@@ -361,7 +359,6 @@ def drain_watch(
             manager=manager,
             board=workspace_board(manager),
             lock=FlockRunLock(LockPath.of_project(lock, project)),
-            tie_break=RandomTieBreak(),
             flow_labels=flow_labels_of_chart(),
             settings=ConfiguredDrainSettings(directory, name),
             stop=stop,

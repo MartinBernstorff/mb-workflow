@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from enum import IntEnum, StrEnum
 from typing import TYPE_CHECKING
 
@@ -495,6 +495,15 @@ class CreatedOn(Value[date]):
     @staticmethod
     def fake() -> CreatedOn:
         return CreatedOn(date(2026, 9, 1))
+
+
+class UpdatedAt(Value[datetime]):
+    @staticmethod
+    def fake() -> UpdatedAt:
+        return UpdatedAt(datetime(2026, 9, 1, 12, tzinfo=UTC))
+
+    def later(self) -> UpdatedAt:
+        return UpdatedAt(self.root + timedelta(seconds=1))
 
 
 class CreatedAfter(Value[date]):

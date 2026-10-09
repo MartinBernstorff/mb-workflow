@@ -28,6 +28,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "actionlint-py>=1.7.12.24",
+    "hypothesis>=6.168.5",
     "lefthook>=2.1.12",
     "mb-assertions",
     "pyrefly>=1.2.0",

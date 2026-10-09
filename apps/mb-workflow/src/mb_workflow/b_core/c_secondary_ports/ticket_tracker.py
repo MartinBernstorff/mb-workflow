@@ -45,6 +45,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     TeamKey,
     TeamName,
     TicketCount,
+    UpdatedAt,
 )
 from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, ViewSlug
 from mb_workflow.d_lib.logging import Activity
@@ -165,6 +166,7 @@ class TrackedIssue(Model):
     milestone: MilestoneName | None
     creator: Creator
     created_on: CreatedOn
+    updated_at: UpdatedAt
     priority: Priority
     estimate: Estimate | None
     blocked_by: tuple[IssueIdentifier, ...]
@@ -182,6 +184,7 @@ class TrackedIssue(Model):
             milestone=MilestoneName.fake(),
             creator=Creator.fake(),
             created_on=CreatedOn.fake(),
+            updated_at=UpdatedAt.fake(),
             priority=Priority.medium,
             estimate=None,
             blocked_by=(),
@@ -207,6 +210,9 @@ class FakeTicketTracker(TicketTracker):
     ) -> None:
         self._labels = labels
         self._issues = {tracked.issue.identifier: tracked for tracked in issues}
+        self._clock = UpdatedAt(
+            max((tracked.updated_at.root for tracked in issues), default=UpdatedAt.fake().root)
+        )
         self._projects = projects
         self._statuses = statuses
         self._viewer = viewer
@@ -393,7 +399,11 @@ class FakeTicketTracker(TicketTracker):
                 return blockers
             if not blockers.value:
                 unblocked.append(
-                    PoolTicket(issue=self._read(found.value), priority=found.value.priority)
+                    PoolTicket(
+                        issue=self._read(found.value),
+                        priority=found.value.priority,
+                        updated_at=found.value.updated_at,
+                    )
                 )
         return Ok(PoolTickets(tuple(unblocked)))
 
@@ -502,11 +512,13 @@ class FakeTicketTracker(TicketTracker):
     ) -> Result[None, TicketTrackerError]:
         match self._found(issue):
             case Ok(tracked):
-                self._issues[issue] = tracked.model_copy(
-                    update={
-                        "issue": tracked.issue.model_copy(update={"assigned": Assigned(True)}),
-                        "assignee": assignee,
-                    }
+                self._issues[issue] = self._stamped_with_next_update(
+                    tracked.model_copy(
+                        update={
+                            "issue": tracked.issue.model_copy(update={"assigned": Assigned(True)}),
+                            "assignee": assignee,
+                        }
+                    )
                 )
                 return Ok(None)
             case Err() as failed:
@@ -525,11 +537,11 @@ class FakeTicketTracker(TicketTracker):
         related = self._all_found((*update.blocks, *update.blocked_by))
         if isinstance(related, Err):
             return related
-        self._issues[issue] = updated.value
+        self._issues[issue] = self._stamped_with_next_update(updated.value)
         for blocked in update.blocks:
             other = self._issues[blocked]
-            self._issues[blocked] = other.model_copy(
-                update={"blocked_by": (*other.blocked_by, issue)}
+            self._issues[blocked] = self._stamped_with_next_update(
+                other.model_copy(update={"blocked_by": (*other.blocked_by, issue)})
             )
         return Ok(None)
 
@@ -546,11 +558,11 @@ class FakeTicketTracker(TicketTracker):
         related = self._all_found((*new.blocked_by, *new.blocks))
         if isinstance(related, Err):
             return related
-        self._issues[identifier] = created.value
+        self._issues[identifier] = self._stamped_with_next_update(created.value)
         for blocked in new.blocks:
             other = self._issues[blocked]
-            self._issues[blocked] = other.model_copy(
-                update={"blocked_by": (*other.blocked_by, identifier)}
+            self._issues[blocked] = self._stamped_with_next_update(
+                other.model_copy(update={"blocked_by": (*other.blocked_by, identifier)})
             )
         return Ok(
             CreatedIssue(
@@ -606,9 +618,16 @@ class FakeTicketTracker(TicketTracker):
         )
 
     def _relabel(self, tracked: TrackedIssue, labels: LabelNames) -> None:
-        self._issues[tracked.issue.identifier] = tracked.model_copy(
-            update={"issue": tracked.issue.model_copy(update={"labels": labels})}
+        self._issues[tracked.issue.identifier] = self._stamped_with_next_update(
+            tracked.model_copy(
+                update={"issue": tracked.issue.model_copy(update={"labels": labels})}
+            )
         )
+
+    # Every write stamps the ticket a moment after the last, as Linear's updatedAt does.
+    def _stamped_with_next_update(self, tracked: TrackedIssue) -> TrackedIssue:
+        self._clock = self._clock.later()
+        return tracked.model_copy(update={"updated_at": self._clock})
 
     def _updated(
         self, tracked: TrackedIssue, update: IssueUpdate
@@ -691,6 +710,7 @@ class FakeTicketTracker(TicketTracker):
                 milestone=milestone.value,
                 creator=Creator(self._viewer.root),
                 created_on=CreatedOn.fake(),
+                updated_at=self._clock,
                 priority=Priority.no_priority if new.priority is None else new.priority,
                 estimate=new.estimate,
                 blocked_by=new.blocked_by,
