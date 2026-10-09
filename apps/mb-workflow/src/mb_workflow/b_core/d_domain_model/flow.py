@@ -106,7 +106,9 @@ class WorkflowChart(StateChart[ChartModel]):
     )
     to_todo = Event(to_ticket.to(todo), id="todo", name="todo")
     implement = Event(
-        todo.to(implementing)
+        grill.to(implementing)
+        | to_ticket.to(implementing)
+        | todo.to(implementing)
         | implementing.to.itself()
         | agent_reviewing.to(implementing)
         | qa.to(implementing),
