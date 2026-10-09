@@ -11,6 +11,7 @@ from mb_workflow.b_core.d_domain_model.flow import StateName, UnknownStateError
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
+    Estimate,
     Issue,
     IssueIdentifier,
     IssueStatus,
@@ -79,6 +80,15 @@ def test_editing_a_ticket_sets_the_priority() -> None:
         tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
     ).unwrap()
     assert tracker.read_issue_detail(IssueIdentifier.fake()).unwrap().priority == urgent
+
+
+def test_editing_a_ticket_sets_the_estimate() -> None:
+    tracker = tracking()
+    edit = TicketEdit.nothing().model_copy(update={"estimate": Estimate.fake()})
+    _ = TicketEditor.apply_edit(
+        tracker, IssueIdentifier.fake(), edit, FlowLabels.fake(), TicketStatuses.fake()
+    ).unwrap()
+    assert tracker.read_issue_detail(IssueIdentifier.fake()).unwrap().estimate == Estimate.fake()
 
 
 def test_editing_an_unknown_ticket_fails() -> None:

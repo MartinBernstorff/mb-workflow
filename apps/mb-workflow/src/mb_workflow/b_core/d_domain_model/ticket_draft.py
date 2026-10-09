@@ -4,6 +4,7 @@ from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
+    Estimate,
     IssueDescription,
     IssueIdentifier,
     IssueTitle,
@@ -45,6 +46,7 @@ class TicketDraft(Model):
     project: ProjectName | None
     milestone: MilestoneName | None
     priority: Priority | None
+    estimate: Estimate | None
     blocks: tuple[IssueIdentifier, ...]
     blocked_by: tuple[IssueIdentifier, ...]
 
@@ -59,6 +61,7 @@ class TicketDraft(Model):
             project=None,
             milestone=None,
             priority=None,
+            estimate=None,
             blocks=(),
             blocked_by=(),
         )
@@ -93,6 +96,7 @@ class TicketDraft(Model):
                 status=statuses.of(start),
                 milestone=milestone.unwrap(),
                 priority=self.priority,
+                estimate=self.estimate,
                 blocks=self.blocks,
                 blocked_by=self.blocked_by,
             )

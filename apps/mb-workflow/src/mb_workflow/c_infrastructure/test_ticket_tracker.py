@@ -39,6 +39,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     CreatedIssue,
     CreatedOn,
     Creator,
+    Estimate,
     GroupedLabels,
     Issue,
     IssueDescription,
@@ -136,6 +137,7 @@ class SeededIssue(Model):
             assignee=None,
             milestone=None,
             priority=self.priority,
+            estimate=None,
             parent=relationships.parent,
             sub_tickets=relationships.sub_tickets,
             blocks=relationships.blocks,
@@ -617,6 +619,7 @@ def reset(client: LinearClient, backlog: Backlog) -> None:
                     "projectId": project.root if project is not None else None,
                     "projectMilestoneId": None,
                     "priority": planted.priority.value,
+                    "estimate": None,
                 },
             },
         )
@@ -655,6 +658,7 @@ def tracker(kind: TrackerKind, backlog: Backlog, request: pytest.FixtureRequest)
                 creator=backlog.creator,
                 created_on=planted.created_on,
                 priority=planted.priority,
+                estimate=None,
                 blocked_by=tuple(backlog.identifier(blocker) for blocker in planted.blocked_by),
                 parent=backlog.identifier(planted.parent) if planted.parent is not None else None,
                 related=tuple(backlog.identifier(related) for related in planted.related),
@@ -1528,6 +1532,16 @@ def test_an_update_can_clear_the_priority(tracker: TicketTracker, backlog: Backl
     )
 
 
+def test_an_update_sets_the_estimate(tracker: TicketTracker, backlog: Backlog) -> None:
+    tracker.update_issue(
+        backlog.identifier(Seed.newest),
+        IssueUpdate.nothing().model_copy(update={"estimate": Estimate.fake()}),
+    ).unwrap()
+    Assert.that(
+        tracker.read_issue_detail(backlog.identifier(Seed.newest)).unwrap().estimate
+    ).matches(Estimate.fake())
+
+
 def test_an_unknown_milestone_is_refused(tracker: TicketTracker, backlog: Backlog) -> None:
     unknown = Milestone(project=ProjectName.fake(), name=MilestoneName("No such milestone"))
     refused = tracker.update_issue(
@@ -1589,6 +1603,7 @@ def new_issue(title: IssueTitle) -> NewIssue:
         status=IssueStatusName.fake(),
         milestone=None,
         priority=None,
+        estimate=None,
         blocks=(),
         blocked_by=(),
     )
@@ -1607,6 +1622,7 @@ def test_a_created_issue_reads_back_as_it_was_given(
             "status": IssueStatusName("in progress"),
             "milestone": Milestone.fake(),
             "priority": Priority.high,
+            "estimate": Estimate.fake(),
         }
     )
     identifier = creating(new).unwrap().identifier
@@ -1625,6 +1641,7 @@ def test_a_created_issue_reads_back_as_it_was_given(
             assignee=backlog.assignee,
             milestone=MilestoneName.fake(),
             priority=Priority.high,
+            estimate=Estimate.fake(),
             parent=None,
             sub_tickets=frozenset(),
             blocks=frozenset(),
