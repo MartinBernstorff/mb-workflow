@@ -317,6 +317,7 @@ def drain(
         flow_labels=flow_labels_of_chart(),
         statuses=settings.ticket_statuses,
         pool=pool,
+        found_labels=None,
         request=request,
     )
     match attempted:

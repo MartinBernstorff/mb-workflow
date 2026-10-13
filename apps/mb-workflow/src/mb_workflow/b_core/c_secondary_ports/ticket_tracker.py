@@ -2,6 +2,7 @@ import logging
 from itertools import count
 from typing import TYPE_CHECKING, Protocol, override
 
+from pydantic import NonNegativeInt
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.d_domain_model.claim import Released
@@ -49,7 +50,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
 )
 from mb_workflow.b_core.d_domain_model.pool import PoolTicket, PoolTickets, ViewSlug
 from mb_workflow.d_lib.logging import Activity
-from mb_workflow.d_lib.models import Model
+from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
@@ -151,11 +152,18 @@ class LabelCheck:
             listed = tracker.workspace_labels()
         match listed:
             case Ok(known):
-                if known.matching(label) is None:
-                    return Err(missing)
-                return Ok(None)
+                return LabelCheck.require_known(known, label, missing)
             case Err() as failed:
                 return failed
+
+    # Checks against labels already listed, so several checks can share one listing.
+    @staticmethod
+    def require_known[E: Exception](
+        known: LabelNames, label: LabelName, missing: E
+    ) -> Result[None, E]:
+        if known.matching(label) is None:
+            return Err(missing)
+        return Ok(None)
 
 
 class TrackedIssue(Model):
@@ -194,6 +202,12 @@ class TrackedIssue(Model):
         )
 
 
+class ReadCount(Value[NonNegativeInt]):
+    @staticmethod
+    def fake() -> ReadCount:
+        return ReadCount(1)
+
+
 class FakeTicketTracker(TicketTracker):
     def __init__(
         self,
@@ -224,10 +238,15 @@ class FakeTicketTracker(TicketTracker):
             key: FakeTicketTracker._uncolored(labels) for key, labels in (team_groups or {}).items()
         }
         self._teams = teams
+        self._label_reads = 0
+
+    def label_reads(self) -> ReadCount:
+        return ReadCount(self._label_reads)
 
     # Linear lists every label, a team's own ones included.
     @override
     def workspace_labels(self) -> Result[LabelNames, TicketTrackerError]:
+        self._label_reads += 1
         return Ok(
             LabelNames(
                 (

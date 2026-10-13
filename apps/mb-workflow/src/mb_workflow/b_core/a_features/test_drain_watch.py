@@ -28,6 +28,7 @@ from mb_workflow.b_core.c_secondary_ports.run_lock import FakeRunLock
 from mb_workflow.b_core.c_secondary_ports.stop_signal import FakeStopSignal, Stopped, WaitCount
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
+    ReadCount,
     TicketTrackerError,
 )
 from mb_workflow.b_core.d_domain_model.config import InvalidConfigError, PoolSettings
@@ -215,6 +216,25 @@ def test_an_unknown_label_ends_the_watch() -> None:
     assert isinstance(ended, Err)
     assert isinstance(ended.error, UnknownLabelError)
     assert stop.waits() == WaitCount(0)
+
+
+# Passes that start nothing, since starting a ticket checks its claim label again.
+def test_a_watch_lists_the_labels_only_on_its_first_pass() -> None:
+    tracker = pool_of()
+    assert watching(tracker, FakeStopSignal(WaitCount(3))) == Ok(None)
+    assert tracker.label_reads() == ReadCount(1)
+
+
+def test_a_label_renamed_in_the_config_is_checked_on_the_next_pass() -> None:
+    missing = LabelName("skip-limits-renamed")
+    renamed = PoolSettings.fake().model_copy(update={"skip_limits_label": missing})
+    stop = FakeStopSignal(WaitCount(3))
+    ended = watching(
+        standard_pool(), stop, settings=SequencedSettings(PoolSettings.fake(), renamed)
+    )
+    assert isinstance(ended, Err)
+    assert missing.root in str(ended.error)
+    assert stop.waits() == WaitCount(1)
 
 
 def test_a_config_without_a_pool_ends_the_watch() -> None:
