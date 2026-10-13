@@ -138,12 +138,12 @@ class Claiming:
     def require_claim_label(
         tracker: TicketTracker, label: LabelName
     ) -> Result[None, TicketTrackerError | UnknownClaimLabelError]:
-        return LabelCheck.require_label(
-            tracker,
-            label,
-            UnknownClaimLabelError(
-                f"No label is named {label.root}. Create the label or change claims.label."
-            ),
+        return LabelCheck.require_label(tracker, label, Claiming.unknown_claim_label(label))
+
+    @staticmethod
+    def unknown_claim_label(label: LabelName) -> UnknownClaimLabelError:
+        return UnknownClaimLabelError(
+            f"No label is named {label.root}. Create the label or change claims.label."
         )
 
     @staticmethod

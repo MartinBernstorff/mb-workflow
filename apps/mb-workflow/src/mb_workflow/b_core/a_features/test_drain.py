@@ -23,6 +23,7 @@ from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, F
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
+    ReadCount,
     TicketTrackerError,
     TrackedIssue,
 )
@@ -289,6 +290,7 @@ class DrainRuns:
             flow_labels=FlowLabels.fake(),
             statuses=TicketStatuses.fake(),
             pool=pool or PoolSettings.fake(),
+            found_labels=None,
             request=request or DrainRequest.fake(),
         )
 
@@ -777,6 +779,13 @@ def test_the_outcome_names_each_skipped_ticket_and_why() -> None:
     assert tuple((skip.ticket.issue.identifier, skip.refusal) for skip in outcome.skipped) == (
         (IssueIdentifier("MB-1"), Refusal("label refactor is at its limit of 1")),
     )
+
+
+# A pass that starts nothing, since starting a ticket checks its claim label again.
+def test_a_pass_lists_the_workspace_labels_once() -> None:
+    tracker = pool_of(labels=labels_with_refactor())
+    _ = draining(tracker, pool=pool_capping_refactors_at(Limit(1)))
+    assert tracker.label_reads() == ReadCount(1)
 
 
 def test_a_limited_label_the_tracker_lacks_refuses_the_pass() -> None:

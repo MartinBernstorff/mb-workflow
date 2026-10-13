@@ -10,10 +10,10 @@ from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimLostError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import LabelCheck
 from mb_workflow.b_core.d_domain_model.claim import HostName, Released, TakeOver
 from mb_workflow.b_core.d_domain_model.flow import FlowError
+from mb_workflow.b_core.d_domain_model.issue import LabelName, LabelNames
 from mb_workflow.b_core.d_domain_model.pool import (
     Limit,
     Occupancy,
-    PoolLimits,
     PoolTicket,
     PoolTickets,
     Refusal,
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
         WorkspaceSettings,
     )
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
-    from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, LabelName
+    from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
     from mb_workflow.b_core.d_domain_model.pool import Slot
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
@@ -186,17 +186,36 @@ class DrainOutcome(Model):
         )
 
 
+# The labels a pool's config names, each of which must exist before a pass claims anything.
+class PoolLabels(Model):
+    claim: LabelName
+    limited: LabelNames
+    skip_limits: LabelName
+
+    @staticmethod
+    def fake() -> PoolLabels:
+        return PoolLabels(
+            claim=LabelName("claimed"),
+            limited=LabelNames.fake(),
+            skip_limits=LabelName("skip-limits"),
+        )
+
+    @staticmethod
+    def of(claim_settings: ClaimSettings, pool: PoolSettings) -> PoolLabels:
+        return PoolLabels(
+            claim=claim_settings.label,
+            limited=pool.limits.limited_labels(),
+            skip_limits=pool.skip_limits_label,
+        )
+
+
 class Drain:
     # Checked before claiming, so a misspelt limit never lets a pass run uncapped.
     @staticmethod
     def require_limited_labels(
-        tracker: TicketTracker, limits: PoolLimits
-    ) -> Result[None, TicketTrackerError | UnknownLabelError]:
-        with Activity("Checking that the limited labels exist").logged(logger):
-            known = tracker.workspace_labels()
-        if isinstance(known, Err):
-            return known
-        unknown = known.value.unmatched(limits.limited_labels())
+        known: LabelNames, limited: LabelNames
+    ) -> Result[None, UnknownLabelError]:
+        unknown = known.unmatched(limited)
         if unknown.root:
             listed = ", ".join(label.root for label in unknown.root)
             return Err(
@@ -208,43 +227,55 @@ class Drain:
 
     @staticmethod
     def require_skip_limits_label(
-        tracker: TicketTracker, label: LabelName
-    ) -> Result[None, TicketTrackerError | UnknownLabelError]:
-        return LabelCheck.require_label(
-            tracker,
+        known: LabelNames, label: LabelName
+    ) -> Result[None, UnknownLabelError]:
+        return LabelCheck.require_known(
+            known,
             label,
             UnknownLabelError(
                 f"No label is named {label.root}. Create the label or change [pool] skip_limits_label."
             ),
         )
 
+    # Lists the workspace's labels once and checks every pool label against that listing.
     @staticmethod
     def require_pool_labels(
-        tracker: TicketTracker, claim_settings: ClaimSettings, pool: PoolSettings
+        tracker: TicketTracker, labels: PoolLabels
     ) -> Result[None, TicketTrackerError | UnknownClaimLabelError | UnknownLabelError]:
-        checked = Claiming.require_claim_label(tracker, claim_settings.label)
+        with Activity("Checking that the pool's labels exist").logged(logger):
+            listed = tracker.workspace_labels()
+        if isinstance(listed, Err):
+            return listed
+        known = listed.value
+        checked = LabelCheck.require_known(
+            known, labels.claim, Claiming.unknown_claim_label(labels.claim)
+        )
         if isinstance(checked, Err):
             return checked
-        checked = Drain.require_limited_labels(tracker, pool.limits)
+        checked = Drain.require_limited_labels(known, labels.limited)
         if isinstance(checked, Err):
             return checked
-        return Drain.require_skip_limits_label(tracker, pool.skip_limits_label)
+        return Drain.require_skip_limits_label(known, labels.skip_limits)
 
     # The view's tickets with their flow states, and the slots the tickets in progress fill.
     # The labels are checked first, so a misspelt limit never lets a pass run uncapped.
+    # Labels an earlier pass found are not listed again, so a watch lists them only when they change.
     @staticmethod
     def read_pool(
         tracker: TicketTracker,
         claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
         pool: PoolSettings,
+        found_labels: PoolLabels | None,
     ) -> Result[
         tuple[PoolTickets, Occupancy],
         TicketTrackerError | UnknownClaimLabelError | UnknownLabelError | FlowError,
     ]:
-        checked = Drain.require_pool_labels(tracker, claim_settings, pool)
-        if isinstance(checked, Err):
-            return checked
+        labels = PoolLabels.of(claim_settings, pool)
+        if labels != found_labels:
+            checked = Drain.require_pool_labels(tracker, labels)
+            if isinstance(checked, Err):
+                return checked
         with Activity(f"Listing the tickets in view {pool.view.root}").logged(logger):
             found = tracker.unblocked_view_tickets(pool.view)
         if isinstance(found, Err):
@@ -275,6 +306,7 @@ class Drain:
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
         pool: PoolSettings,
+        found_labels: PoolLabels | None,
         request: DrainRequest,
     ) -> Result[
         DrainOutcome,
@@ -300,6 +332,7 @@ class Drain:
                         flow_labels=flow_labels,
                         statuses=statuses,
                         pool=pool,
+                        found_labels=found_labels,
                         request=request,
                     )
             case Err() as refused:
@@ -317,6 +350,7 @@ class Drain:
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
         pool: PoolSettings,
+        found_labels: PoolLabels | None,
         request: DrainRequest,
     ) -> Result[
         DrainOutcome,
@@ -329,7 +363,7 @@ class Drain:
         | WorkspaceManagerError,
     ]:
         with Activity("Draining the pool").logged(logger):
-            read = Drain.read_pool(tracker, claim_settings, flow_labels, pool)
+            read = Drain.read_pool(tracker, claim_settings, flow_labels, pool, found_labels)
             if isinstance(read, Err):
                 return read
             listed, occupancy = read.value
