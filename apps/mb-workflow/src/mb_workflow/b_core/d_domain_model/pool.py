@@ -49,6 +49,17 @@ class SkipsLimits(Value[bool]):
         return SkipsLimits(False)
 
 
+# The label that lets a ticket past the pool's limits, and the state it starts a ticket without a flow
+# state in.
+class SkipLimits(Model):
+    label: LabelName
+    state: StateName
+
+    @staticmethod
+    def fake() -> SkipLimits:
+        return SkipLimits(label=LabelName("skip-limits"), state=StateName("grill"))
+
+
 class PoolTicket(Model):
     issue: Issue
     priority: Priority
@@ -81,12 +92,31 @@ class PoolTicket(Model):
     def flow_state(self, flow_labels: FlowLabels) -> Result[StateName | None, FlowError]:
         return flow_labels.state_of(WorkflowChart, self.issue.grouped)
 
-    def slot(self, flow_labels: FlowLabels) -> Result[Slot | None, FlowError]:
-        return Slot.of(self.issue, flow_labels)
+    # A ticket that skips the limits without a flow state starts in the skip-limits state.
+    def starting_state(
+        self, flow_labels: FlowLabels, skip_limits: SkipLimits
+    ) -> Result[StateName | None, FlowError]:
+        match self.flow_state(flow_labels):
+            case Ok(None) if self.skips_limits(skip_limits.label).root:
+                return Ok(skip_limits.state)
+            case found:
+                return found
 
-    def ready(self, claim_label: LabelName, flow_labels: FlowLabels) -> Ready:
+    def slot(
+        self, flow_labels: FlowLabels, skip_limits: SkipLimits
+    ) -> Result[Slot | None, FlowError]:
+        match self.starting_state(flow_labels, skip_limits):
+            case Ok(state):
+                return Ok(None if state is None else Slot(state=state, labels=self.issue.labels))
+            case Err() as unresolved:
+                return unresolved
+
+    def ready(
+        self, claim_label: LabelName, flow_labels: FlowLabels, skip_limits: SkipLimits
+    ) -> Ready:
         return Ready(
-            self.flow_state(flow_labels).unwrap_or(None) in PoolTicket.ready_states().root
+            self.starting_state(flow_labels, skip_limits).unwrap_or(None)
+            in PoolTicket.ready_states().root
             and self.issue.labels.matching(claim_label) is None
         )
 
@@ -99,9 +129,15 @@ class PoolTickets(Value[tuple[PoolTicket, ...]]):
     def fake() -> PoolTickets:
         return PoolTickets((PoolTicket.fake(),))
 
-    def ready(self, claim_label: LabelName, flow_labels: FlowLabels) -> PoolTickets:
+    def ready(
+        self, claim_label: LabelName, flow_labels: FlowLabels, skip_limits: SkipLimits
+    ) -> PoolTickets:
         return PoolTickets(
-            tuple(ticket for ticket in self.root if ticket.ready(claim_label, flow_labels).root)
+            tuple(
+                ticket
+                for ticket in self.root
+                if ticket.ready(claim_label, flow_labels, skip_limits).root
+            )
         )
 
     # A ticket whose flow labels name no single state stops the pass, so it is never passed over unnoticed.

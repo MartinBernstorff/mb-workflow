@@ -123,6 +123,20 @@ def test_a_configured_pool_reports_its_skip_limits_label() -> None:
     )
 
 
+def test_a_configured_pool_reports_its_skip_limits_state() -> None:
+    config = Configuration.fake().model_copy(
+        update={
+            "settings": Settings(
+                issues=LinearTracker.fake(),
+                workspace=WorkspaceSettings.fake(),
+                pool=PoolSettings.fake(),
+                ticket_statuses=TicketStatuses.fake(),
+            )
+        }
+    )
+    Assert.that(ConfigReport.of(config).root).contains("pool skip-limits state: grill (default)")
+
+
 def test_lists_the_override_file_it_read() -> None:
     config = Configuration.fake().model_copy(update={"override": OverrideFile.fake()})
     Assert.that(ConfigReport.of(config).root).contains(

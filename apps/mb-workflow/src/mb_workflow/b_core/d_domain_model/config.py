@@ -3,7 +3,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field, ValidationError, model_validator
+from pydantic import Field, ValidationError, field_validator, model_validator
 from safe_result import Err, Ok, Result, safe_with
 
 from mb_workflow.b_core.d_domain_model.config_override import (
@@ -14,8 +14,9 @@ from mb_workflow.b_core.d_domain_model.config_override import (
     SettingSources,
     SettingsTable,
 )
+from mb_workflow.b_core.d_domain_model.flow import AcceptedStates, StateName
 from mb_workflow.b_core.d_domain_model.issue import Assignee, LabelName, ProjectName, TeamKey
-from mb_workflow.b_core.d_domain_model.pool import PoolLimits, ViewSlug
+from mb_workflow.b_core.d_domain_model.pool import PoolLimits, PoolTicket, SkipLimits, ViewSlug
 from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDefaults
 from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
@@ -110,10 +111,30 @@ class PoolSettings(Model):
     view: ViewSlug
     limits: PoolLimits = PoolLimits()
     skip_limits_label: LabelName = LabelName("skip-limits")
+    # The state a ticket labelled to skip the limits starts in when it has no flow state.
+    skip_limits_state: StateName = StateName("grill")
 
     @staticmethod
     def fake() -> PoolSettings:
         return PoolSettings(view=ViewSlug.fake(), limits=PoolLimits.fake())
+
+    @field_validator("skip_limits_state")
+    @classmethod
+    def name_a_ready_state(cls, state: StateName) -> StateName:
+        ready = AcceptedStates(
+            tuple(
+                StateName(name)
+                for name in sorted(state.root for state in PoolTicket.ready_states().root)
+            )
+        )
+        match ready.named_ignoring_case(state):
+            case Ok(known):
+                return known
+            case Err(error):
+                raise ValueError(str(error))
+
+    def skip_limits(self) -> SkipLimits:
+        return SkipLimits(label=self.skip_limits_label, state=self.skip_limits_state)
 
 
 type TrackerSettings = Annotated[LinearTracker | TodoistTracker, Field(discriminator="tracker")]

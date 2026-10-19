@@ -21,6 +21,7 @@ from mb_workflow.b_core.d_domain_model.pool import (
     PoolTicket,
     Ready,
     Refusal,
+    SkipLimits,
     Slot,
 )
 
@@ -40,16 +41,16 @@ def ticket(flow: LabelName, *others: LabelName) -> PoolTicket:
 
 @pytest.mark.parametrize("state", ["grill", "to-ticket", "todo", "implementing", "merging", "TODO"])
 def test_an_unclaimed_ticket_in_a_workable_state_is_ready(state: str) -> None:
-    Assert.that(ticket(LabelName(state)).ready(LabelName("claimed"), FlowLabels.fake())).matches(
-        Ready(True)
-    )
+    Assert.that(
+        ticket(LabelName(state)).ready(LabelName("claimed"), FlowLabels.fake(), SkipLimits.fake())
+    ).matches(Ready(True))
 
 
 @pytest.mark.parametrize("state", ["qa", "review", "merged"])
 def test_a_ticket_in_any_other_state_is_not_ready(state: str) -> None:
-    Assert.that(ticket(LabelName(state)).ready(LabelName("claimed"), FlowLabels.fake())).matches(
-        Ready(False)
-    )
+    Assert.that(
+        ticket(LabelName(state)).ready(LabelName("claimed"), FlowLabels.fake(), SkipLimits.fake())
+    ).matches(Ready(False))
 
 
 def test_a_ticket_without_a_flow_label_is_not_ready() -> None:
@@ -57,17 +58,52 @@ def test_a_ticket_without_a_flow_label_is_not_ready() -> None:
         update={"labels": LabelNames(()), "grouped": GroupedLabels(())}
     )
     ticket = PoolTicket.fake().model_copy(update={"issue": unlabelled})
-    Assert.that(ticket.ready(LabelName("claimed"), FlowLabels.fake())).matches(Ready(False))
+    Assert.that(ticket.ready(LabelName("claimed"), FlowLabels.fake(), SkipLimits.fake())).matches(
+        Ready(False)
+    )
+
+
+def test_a_ticket_skipping_the_limits_without_a_flow_label_is_ready() -> None:
+    skipping = PoolTicket.fake().issue.model_copy(
+        update={"labels": LabelNames((SkipLimits.fake().label,)), "grouped": GroupedLabels(())}
+    )
+    ticket = PoolTicket.fake().model_copy(update={"issue": skipping})
+    Assert.that(ticket.ready(LabelName("claimed"), FlowLabels.fake(), SkipLimits.fake())).matches(
+        Ready(True)
+    )
+
+
+def test_a_ticket_skipping_the_limits_without_a_flow_label_starts_in_the_skip_limits_state() -> (
+    None
+):
+    skipping = PoolTicket.fake().issue.model_copy(
+        update={"labels": LabelNames((SkipLimits.fake().label,)), "grouped": GroupedLabels(())}
+    )
+    ticket = PoolTicket.fake().model_copy(update={"issue": skipping})
+    Assert.that(ticket.starting_state(FlowLabels.fake(), SkipLimits.fake())).matches(
+        Ok(SkipLimits.fake().state)
+    )
+
+
+def test_a_ticket_skipping_the_limits_starts_in_its_own_flow_state() -> None:
+    skipping = ticket(LabelName("todo"), SkipLimits.fake().label)
+    Assert.that(skipping.starting_state(FlowLabels.fake(), SkipLimits.fake())).matches(
+        Ok(StateName("todo"))
+    )
 
 
 def test_a_ticket_carrying_the_claim_label_is_not_ready() -> None:
     claimed = ticket(LabelName("todo"), LabelName("Claimed"))
-    Assert.that(claimed.ready(LabelName("claimed"), FlowLabels.fake())).matches(Ready(False))
+    Assert.that(claimed.ready(LabelName("claimed"), FlowLabels.fake(), SkipLimits.fake())).matches(
+        Ready(False)
+    )
 
 
 def test_other_labels_leave_a_ticket_ready() -> None:
     labelled = ticket(LabelName("todo"), LabelName("Backend"))
-    Assert.that(labelled.ready(LabelName("claimed"), FlowLabels.fake())).matches(Ready(True))
+    Assert.that(labelled.ready(LabelName("claimed"), FlowLabels.fake(), SkipLimits.fake())).matches(
+        Ready(True)
+    )
 
 
 def test_the_defaults_cap_the_total_at_four_and_grill_at_one() -> None:

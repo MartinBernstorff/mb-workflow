@@ -422,6 +422,23 @@ def test_a_configured_skip_limits_label_is_read() -> None:
     Assert.that(settings.required_pool().skip_limits_label).matches(expedite)
 
 
+def test_a_configured_skip_limits_state_is_spelled_as_the_chart() -> None:
+    settings = settings_with_fake_workspace(
+        issues={"tracker": "linear"},
+        pool={"view": "4efb86b38740", "skip_limits_state": "TODO"},
+    )
+    Assert.that(settings.required_pool().skip_limits_state).matches(StateName("todo"))
+
+
+@pytest.mark.parametrize("state", ["qa", "merged", "nowhere"])
+def test_a_skip_limits_state_no_agent_works_is_refused(state: str) -> None:
+    with pytest.raises(ValueError, match="skip_limits_state"):
+        _ = settings_with_fake_workspace(
+            issues={"tracker": "linear"},
+            pool={"view": "4efb86b38740", "skip_limits_state": state},
+        )
+
+
 def test_a_pool_outside_linear_is_refused() -> None:
     pool_table = "pool"
     with pytest.raises(ValueError, match=pool_table):

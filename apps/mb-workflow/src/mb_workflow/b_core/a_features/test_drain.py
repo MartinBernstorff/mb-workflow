@@ -109,17 +109,22 @@ def in_progress(
     )
 
 
-def statuses_in_flight(*closing: IssueStatus) -> IssueStatuses:
+def statuses_in_flight(*others: IssueStatus) -> IssueStatuses:
     return IssueStatuses(
-        (IssueStatus(name=IssueStatusName("In Progress"), type=StatusType.started), *closing)
+        (IssueStatus(name=IssueStatusName("In Progress"), type=StatusType.started), *others)
     )
+
+
+# The status the default skip-limits state, grill, puts a ticket in.
+def maturing() -> IssueStatus:
+    return IssueStatus(name=IssueStatusName("Maturing"), type=StatusType.unstarted)
 
 
 def pool_of(
     *tickets: TrackedIssue,
     labels: LabelNames | None = None,
     elsewhere: tuple[TrackedIssue, ...] = (),
-    closing: tuple[IssueStatus, ...] = (),
+    statuses: tuple[IssueStatus, ...] = (),
     kind: type[FakeTicketTracker] = FakeTicketTracker,
 ) -> FakeTicketTracker:
     return kind(
@@ -127,7 +132,7 @@ def pool_of(
         if labels is None
         else labels,
         (*tickets, *elsewhere),
-        statuses=statuses_in_flight(*closing),
+        statuses=statuses_in_flight(*statuses),
         views={PoolSettings.fake().view: tuple(ticket.issue.identifier for ticket in tickets)},
         groups={FlowLabels.fake().group: FlowLabels.fake().labels},
     )
@@ -368,7 +373,7 @@ def test_labelled_tickets_that_are_closed_do_not_count(closing: IssueStatus) -> 
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("qa"), closing.name),),
-        closing=(closing,),
+        statuses=(closing,),
     )
     assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-1"),)
 
@@ -558,6 +563,31 @@ def test_a_ticket_labelled_skip_limits_starts_in_a_full_state() -> None:
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("grill")),),
     )
     assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
+
+
+def test_a_ticket_labelled_skip_limits_without_a_flow_state_starts_in_the_skip_limits_state() -> (
+    None
+):
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-2"), Priority.low, state=None, labels=skip_limits()),
+        statuses=(maturing(),),
+    )
+    assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
+    assert (
+        tracker.read_issue(IssueIdentifier("MB-2"))
+        .unwrap()
+        .labels.matching(LabelName(PoolSettings.fake().skip_limits_state.root))
+        is not None
+    )
+
+
+def test_a_ticket_labelled_skip_limits_without_a_flow_state_fills_a_slot() -> None:
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-1"), Priority.high),
+        pooled(IssueIdentifier("MB-2"), Priority.low, state=None, labels=skip_limits()),
+        statuses=(maturing(),),
+    )
+    assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-2"),)
 
 
 def test_tickets_labelled_skip_limits_count_toward_the_limits_of_the_rest() -> None:

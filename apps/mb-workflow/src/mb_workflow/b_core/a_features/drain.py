@@ -17,6 +17,7 @@ from mb_workflow.b_core.d_domain_model.pool import (
     PoolTicket,
     PoolTickets,
     Refusal,
+    SkipLimits,
 )
 from mb_workflow.b_core.d_domain_model.workspace import Activate, Submit, TimeoutMs
 from mb_workflow.d_lib.logging import Activity
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
         PoolSettings,
         WorkspaceSettings,
     )
+    from mb_workflow.b_core.d_domain_model.flow import StateName
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
     from mb_workflow.b_core.d_domain_model.pool import Slot
@@ -65,7 +67,8 @@ class DrainRequest(Model):
             host=HostName.fake(),
         )
 
-    def start_request(self, ticket: IssueIdentifier) -> StartRequest:
+    # The state is given only for a ticket without a flow state, which starts in it.
+    def start_request(self, ticket: IssueIdentifier, state: StateName | None) -> StartRequest:
         return StartRequest(
             ticket=ticket,
             submit=Submit(True),
@@ -73,7 +76,7 @@ class DrainRequest(Model):
             host=self.host,
             take_over=TakeOver(False),
             activate=Activate(False),
-            state=None,
+            state=state,
         )
 
 
@@ -101,16 +104,20 @@ class Unready(Model):
         return Unready(ticket=PoolTicket.fake(), reason=UnreadyReason.fake())
 
     @staticmethod
-    def of(ticket: PoolTicket, claim_label: LabelName, flow_labels: FlowLabels) -> Unready:
-        return Unready(ticket=ticket, reason=Unready.reason_of(ticket, claim_label, flow_labels))
+    def of(
+        ticket: PoolTicket, claim_label: LabelName, flow_labels: FlowLabels, skip_limits: SkipLimits
+    ) -> Unready:
+        return Unready(
+            ticket=ticket, reason=Unready.reason_of(ticket, claim_label, flow_labels, skip_limits)
+        )
 
     @staticmethod
     def reason_of(
-        ticket: PoolTicket, claim_label: LabelName, flow_labels: FlowLabels
+        ticket: PoolTicket, claim_label: LabelName, flow_labels: FlowLabels, skip_limits: SkipLimits
     ) -> UnreadyReason:
         if ticket.issue.labels.matching(claim_label) is not None:
             return UnreadyReason("it is already claimed")
-        match ticket.flow_state(flow_labels):
+        match ticket.starting_state(flow_labels, skip_limits):
             case Err(error):
                 return UnreadyReason(str(error))
             case Ok(state):
@@ -367,13 +374,14 @@ class Drain:
             if isinstance(read, Err):
                 return read
             listed, occupancy = read.value
+            skip_limits = pool.skip_limits()
             unready = tuple(
-                Unready.of(ticket, claim_settings.label, flow_labels)
+                Unready.of(ticket, claim_settings.label, flow_labels, skip_limits)
                 for ticket in listed.root
-                if not ticket.ready(claim_settings.label, flow_labels).root
+                if not ticket.ready(claim_settings.label, flow_labels, skip_limits).root
             )
             ready = PickOrder.ordered(
-                listed.ready(claim_settings.label, flow_labels), pool.skip_limits_label
+                listed.ready(claim_settings.label, flow_labels, skip_limits), pool.skip_limits_label
             )
             picked: list[PoolTicket] = []
             skipped: list[Skip] = []
@@ -388,7 +396,7 @@ class Drain:
                         total=pool.limits.total, left=PoolTickets(ready.root[position:])
                     )
                     break
-                found = ticket.slot(flow_labels)
+                found = ticket.slot(flow_labels, skip_limits)
                 if isinstance(found, Err):
                     return found
                 slot = found.value
@@ -464,6 +472,7 @@ class Drain:
         ticket_summary = (
             f"{ticket.issue.identifier.root} ({ticket.priority.name}, {slot.state.root})"
         )
+        unlabelled = ticket.flow_state(flow_labels).unwrap_or(None) is None
         with Activity(f"Taking {ticket_summary}").logged(logger):
             attempted = Drain.try_start_ticket(
                 tracker=tracker,
@@ -474,7 +483,9 @@ class Drain:
                 claim_settings=claim_settings,
                 flow_labels=flow_labels,
                 statuses=statuses,
-                request=request.start_request(ticket.issue.identifier),
+                request=request.start_request(
+                    ticket.issue.identifier, slot.state if unlabelled else None
+                ),
             )
         if isinstance(attempted, Err) or attempted.value is not None:
             return attempted
