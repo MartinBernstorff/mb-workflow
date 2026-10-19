@@ -75,6 +75,10 @@ class ConfigReport(Value[str]):
                     ("pool", "skip_limits_label"),
                     f"pool skip-limits label: {settings.pool.skip_limits_label.root}",
                 ),
+                (
+                    ("pool", "skip_limits_state"),
+                    f"pool skip-limits state: {settings.pool.skip_limits_state.root}",
+                ),
             )
         )
         attributed = (

@@ -29,6 +29,7 @@ class ConfigTemplate(Value[str]):
                     "# [pool]",
                     '# view = "<linear-view-slug>"',
                     '# skip_limits_label = "skip-limits"',
+                    '# skip_limits_state = "grill"',
                     "",
                     "# [pool.limits]",
                     f"# total = {limits.total.root}",
