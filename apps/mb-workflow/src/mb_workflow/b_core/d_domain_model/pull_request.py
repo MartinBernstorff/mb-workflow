@@ -106,3 +106,28 @@ class ReviewRequest(Model):
 
     def complete(self) -> Complete:
         return Complete(not self.decision.body_required().root or len(self.body.root) > 0)
+
+
+class AgentWritten(Value[bool]):
+    @staticmethod
+    def fake() -> AgentWritten:
+        return AgentWritten(False)
+
+
+class CommentBody(Value[str]):
+    @staticmethod
+    def fake() -> CommentBody:
+        return CommentBody("Needs a guard for the empty case.")
+
+    # An agent marks the draft comments it writes with 🤖, so they never reach the author unread.
+    def agent_written(self) -> AgentWritten:
+        return AgentWritten("🤖" in self.root)
+
+
+class CommentBodies(Value[tuple[CommentBody, ...]]):
+    @staticmethod
+    def fake() -> CommentBodies:
+        return CommentBodies((CommentBody.fake(),))
+
+    def without_agent_written(self) -> CommentBodies:
+        return CommentBodies(tuple(body for body in self.root if not body.agent_written().root))

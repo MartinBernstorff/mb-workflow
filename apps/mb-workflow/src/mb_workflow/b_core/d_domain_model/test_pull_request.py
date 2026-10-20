@@ -3,6 +3,8 @@ from assertions import Assert
 from mb_workflow.b_core.d_domain_model.clock import Today
 from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames
 from mb_workflow.b_core.d_domain_model.pull_request import (
+    CommentBodies,
+    CommentBody,
     Complete,
     Lookback,
     MergedSince,
@@ -46,3 +48,16 @@ def test_collects_the_branch_of_each_pr() -> None:
 
 def test_the_window_starts_the_lookback_before_today() -> None:
     Assert.that(MergedSince.of(Lookback.fake(), Today.fake())).matches(MergedSince.fake())
+
+
+def test_a_comment_marked_with_a_robot_is_agent_written() -> None:
+    Assert.that(CommentBody("🤖 Consider a guard here.").agent_written().root).is_true()
+
+
+def test_an_unmarked_comment_is_not_agent_written() -> None:
+    Assert.that(CommentBody.fake().agent_written().root).is_false()
+
+
+def test_drops_the_agent_written_comments() -> None:
+    comments = CommentBodies((CommentBody("🤖 Consider a guard here."), CommentBody.fake()))
+    Assert.that(comments.without_agent_written()).matches(CommentBodies.fake())

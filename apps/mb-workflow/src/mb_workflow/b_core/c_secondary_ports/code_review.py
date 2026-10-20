@@ -6,6 +6,7 @@ from safe_result import Err, Ok, Result
 from mb_workflow.b_core.d_domain_model.git import BranchNames
 from mb_workflow.b_core.d_domain_model.pull_request import (
     CheckoutDirectory,
+    CommentBodies,
     MergedSince,
     PrNumber,
     PrNumbers,
@@ -27,6 +28,7 @@ class CodeForge(Protocol):
 
     def checkout(self, pr: PrNumber, into: CheckoutDirectory) -> Result[None, CodeReviewError]: ...
 
+    # Completes my draft review if there is one, dropping its agent-written comments first.
     def submit(self, pr: PrNumber, request: ReviewRequest) -> Result[None, CodeReviewError]: ...
 
     # Those of the given pull requests that I opened myself.
@@ -68,15 +70,29 @@ class Drafted(Value[bool]):
         return Drafted(False)
 
 
+# My review on a pull request, started on GitHub but not yet submitted.
+class DraftReview(Model):
+    pr: PrNumber
+    comments: CommentBodies
+
+    @staticmethod
+    def fake() -> DraftReview:
+        return DraftReview(pr=PrNumber.fake(), comments=CommentBodies.fake())
+
+
 class SubmittedReview(Model):
     pr: PrNumber
     request: ReviewRequest
     drafted: Drafted
+    comments: CommentBodies
 
     @staticmethod
     def fake() -> SubmittedReview:
         return SubmittedReview(
-            pr=PrNumber.fake(), request=ReviewRequest.fake(), drafted=Drafted.fake()
+            pr=PrNumber.fake(),
+            request=ReviewRequest.fake(),
+            drafted=Drafted.fake(),
+            comments=CommentBodies(()),
         )
 
 
@@ -85,12 +101,12 @@ class FakeCodeReview(CodeForge):
         self,
         requested: PullRequests,
         merged: tuple[MergedPullRequest, ...] = (),
-        pending: tuple[PrNumber, ...] = (),
+        pending: tuple[DraftReview, ...] = (),
         mine: tuple[PrNumber, ...] = (),
     ) -> None:
         self._requested = requested
         self._merged = merged
-        self._pending = set(pending)
+        self._pending = {draft.pr: draft.comments for draft in pending}
         self._mine = mine
         self._submitted: list[SubmittedReview] = []
         self._checkouts: dict[CheckoutDirectory, PrNumber] = {}
@@ -125,8 +141,10 @@ class FakeCodeReview(CodeForge):
         match CodeReviewRefusal.check_complete(request):
             case Ok():
                 drafted = Drafted(pr in self._pending)
-                self._pending.discard(pr)
-                self._submitted.append(SubmittedReview(pr=pr, request=request, drafted=drafted))
+                comments = self._pending.pop(pr, CommentBodies(())).without_agent_written()
+                self._submitted.append(
+                    SubmittedReview(pr=pr, request=request, drafted=drafted, comments=comments)
+                )
                 return Ok(None)
             case Err() as refused:
                 return refused

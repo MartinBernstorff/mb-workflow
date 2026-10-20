@@ -15,6 +15,7 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
 )
 from mb_workflow.b_core.d_domain_model.flow import StateName
 from mb_workflow.b_core.d_domain_model.pull_request import (
+    CommentBodies,
     PrNumber,
     PullRequests,
     ReviewBody,
@@ -100,7 +101,12 @@ def test_submits_the_decision_on_the_linked_pull_request() -> None:
     )
     assert finalized == Ok(None)
     assert review.submitted() == (
-        SubmittedReview(pr=PrNumber.fake(), request=ReviewRequest.fake(), drafted=Drafted(False)),
+        SubmittedReview(
+            pr=PrNumber.fake(),
+            request=ReviewRequest.fake(),
+            drafted=Drafted(False),
+            comments=CommentBodies(()),
+        ),
     )
 
 
