@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
     "python-statemachine[diagrams]>=3.2.1",
+    "pyyaml>=6.0.3",
     "safe-result>=4.0.3",
     "stamina>=26.1.0",
     "typer>=0.27.2",
@@ -37,6 +38,7 @@ dev = [
     "pytest-xdist>=3.8.0",
     "ruff>=0.16.6",
     "tach>=0.35.0",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [tool.uv.sources]

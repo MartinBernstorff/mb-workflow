@@ -24,6 +24,7 @@ from mb_workflow.b_core.d_domain_model.clock import IntervalSeconds, Today
 from mb_workflow.b_core.d_domain_model.config import ConfigFileName, WorkingDirectory
 from mb_workflow.b_core.d_domain_model.flow import EventName, StateName
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, TeamName
+from mb_workflow.b_core.d_domain_model.pool import ViewReference, ViewSlug
 from mb_workflow.b_core.d_domain_model.pull_request import (
     Lookback,
     MergedSince,
@@ -39,6 +40,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     WorktreeName,
 )
 from mb_workflow.c_infrastructure.flock import LockName
+from mb_workflow.c_infrastructure.note_folder import FolderPath
 from mb_workflow.d_lib.logging import LogLevel
 
 if TYPE_CHECKING:
@@ -50,6 +52,8 @@ app.add_typer(config_app, name="config")
 app.add_typer(dev_app, name="dev")
 flow_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
 app.add_typer(flow_app, name="flow")
+obsidian_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
+app.add_typer(obsidian_app, name="obsidian")
 review_app = typer.Typer(no_args_is_help=True, cls=AlphabeticalGroup)
 app.add_typer(review_app, name="review")
 app.add_typer(review_app, name="r", hidden=True)
@@ -241,6 +245,30 @@ def workspace_teardown(
     request = TeardownRequest(worktree=None if worktree is None else WorktreeName(worktree))
     raise typer.Exit(
         code=commands.teardown(request, WorkingDirectory(Path.cwd()), ConfigFileName.default()).root
+    )
+
+
+@obsidian_app.command("sync")
+def obsidian_sync(
+    *,
+    view: str = typer.Option(
+        ..., "--view", help="Linear view to sync, as its URL or slug, e.g. 4efb86b38740."
+    ),
+    folder: Path = typer.Option(
+        ..., "--folder", help="Folder in the Obsidian vault that holds one note per issue."
+    ),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """Sync a Linear view's issues with a folder of notes, once. The later edit of a note or its issue wins.
+
+    A note takes its issue's title, status, labels, assignee, priority and description; the rest of
+    its frontmatter mirrors Linear. Notes of issues that left the view move to _archive.
+    """
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
+    raise typer.Exit(
+        code=commands.obsidian_sync(
+            ViewSlug.of_reference(ViewReference(view)), FolderPath(folder.expanduser())
+        ).root
     )
 
 

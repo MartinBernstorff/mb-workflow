@@ -516,6 +516,31 @@ class CreatedAfter(Value[date]):
         return CreatedAfter(today.root - timedelta(days=window.root))
 
 
+# An issue as Linear held it at one moment, with what a copy kept elsewhere needs to stay in step.
+class IssueSnapshot(Model):
+    detail: IssueDetail
+    updated_at: UpdatedAt
+    url: IssueUrl
+
+    @staticmethod
+    def fake() -> IssueSnapshot:
+        return IssueSnapshot(
+            detail=IssueDetail.fake(), updated_at=UpdatedAt.fake(), url=IssueUrl.fake()
+        )
+
+    def identifier(self) -> IssueIdentifier:
+        return self.detail.issue.identifier
+
+
+class IssueSnapshots(Value[tuple[IssueSnapshot, ...]]):
+    @staticmethod
+    def fake() -> IssueSnapshots:
+        return IssueSnapshots((IssueSnapshot.fake(),))
+
+    def identifiers(self) -> frozenset[IssueIdentifier]:
+        return frozenset(snapshot.identifier() for snapshot in self.root)
+
+
 class Matches(Value[bool]):
     @staticmethod
     def fake() -> Matches:

@@ -23,6 +23,8 @@ from mb_workflow.b_core.d_domain_model.pool import (
     Refusal,
     SkipLimits,
     Slot,
+    ViewReference,
+    ViewSlug,
 )
 
 
@@ -295,3 +297,16 @@ def test_a_started_ticket_joins_the_occupancy() -> None:
     started = in_state(StateName("todo"))
     occupancy = occupied(held).with_slot(started)
     Assert.that(occupancy).matches(occupied(held, started))
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "https://linear.app/acme/view/my-view-4efb86b38740",
+        "https://linear.app/acme/view/my-view-4efb86b38740/",
+        "https://linear.app/acme/view/my-view-4efb86b38740?layout=list",
+        "4efb86b38740",
+    ],
+)
+def test_a_view_is_named_by_its_url_or_its_slug(reference: str) -> None:
+    Assert.that(ViewSlug.of_reference(ViewReference(reference))).matches(ViewSlug.fake())

@@ -24,6 +24,8 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueFilter,
     IssueIdentifier,
     Issues,
+    IssueSnapshot,
+    IssueSnapshots,
     IssueStatus,
     IssueStatuses,
     IssueStatusName,
@@ -103,6 +105,12 @@ class TicketTracker(Protocol):
     def list_issues(self, wanted: IssueFilter) -> Result[Issues, TicketTrackerError]: ...
 
     def unblocked_view_tickets(self, view: ViewSlug) -> Result[PoolTickets, TicketTrackerError]: ...
+
+    def view_snapshots(self, view: ViewSlug) -> Result[IssueSnapshots, TicketTrackerError]: ...
+
+    def read_snapshot(
+        self, issue: IssueIdentifier
+    ) -> Result[IssueSnapshot, TicketTrackerError]: ...
 
     def labelled_issues(
         self, label: LabelName, excluding: StatusTypes
@@ -425,6 +433,38 @@ class FakeTicketTracker(TicketTracker):
                     )
                 )
         return Ok(PoolTickets(tuple(unblocked)))
+
+    @override
+    def view_snapshots(self, view: ViewSlug) -> Result[IssueSnapshots, TicketTrackerError]:
+        listed = self._views.get(view)
+        if listed is None:
+            return Err(TicketTrackerError(f"No view has the slug {view.root}."))
+        snapshots: list[IssueSnapshot] = []
+        for identifier in listed:
+            snapshot = self.read_snapshot(identifier)
+            if isinstance(snapshot, Err):
+                return snapshot
+            snapshots.append(snapshot.value)
+        return Ok(IssueSnapshots(tuple(snapshots)))
+
+    @override
+    def read_snapshot(self, issue: IssueIdentifier) -> Result[IssueSnapshot, TicketTrackerError]:
+        found = self._found(issue)
+        if isinstance(found, Err):
+            return found
+        detail = self.read_issue_detail(issue)
+        if isinstance(detail, Err):
+            return detail
+        return Ok(
+            IssueSnapshot(
+                detail=detail.value,
+                updated_at=found.value.updated_at,
+                url=IssueUrl(f"https://linear.app/fake/issue/{issue.root}"),
+            )
+        )
+
+    def set_view(self, view: ViewSlug, issues: tuple[IssueIdentifier, ...]) -> None:
+        self._views[view] = issues
 
     @override
     def labelled_issues(
