@@ -11,6 +11,7 @@ from safe_result import Err, Ok
 from mb_workflow.b_core.c_secondary_ports.code_review import (
     CodeReviewError,
     Drafted,
+    DraftReview,
     FakeCodeReview,
     MergedOn,
     MergedPullRequest,
@@ -19,6 +20,8 @@ from mb_workflow.b_core.c_secondary_ports.code_review import (
 from mb_workflow.b_core.d_domain_model.git import BranchName
 from mb_workflow.b_core.d_domain_model.pull_request import (
     CheckoutDirectory,
+    CommentBodies,
+    CommentBody,
     MergedSince,
     PrNumber,
     PrNumbers,
@@ -30,6 +33,8 @@ from mb_workflow.b_core.d_domain_model.pull_request import (
     ReviewRequest,
 )
 from mb_workflow.c_infrastructure.github import (
+    CommentId,
+    DraftComments,
     GitHub,
     ReviewAuthor,
     ReviewId,
@@ -101,8 +106,16 @@ def merges() -> tuple[MergedPullRequest, ...]:
     )
 
 
-def pending() -> tuple[PrNumber, ...]:
-    return (PrNumber.fake(),)
+def kept_comments() -> CommentBodies:
+    return CommentBodies((CommentBody.fake(),))
+
+
+def drafted_comments() -> CommentBodies:
+    return CommentBodies((CommentBody("🤖 Consider a guard here."), *kept_comments().root))
+
+
+def pending() -> tuple[DraftReview, ...]:
+    return (DraftReview(pr=PrNumber.fake(), comments=drafted_comments()),)
 
 
 # The live stage opens its pull requests itself, so the pending one is the viewer's own there too.
@@ -160,7 +173,12 @@ class ScriptedGh(CommandRunner):
 class ScriptedGhState:
     def __init__(self) -> None:
         self.viewer = UserLogin.fake()
-        self.pending = {pr: ReviewId(5000 + pr.root) for pr in pending()}
+        self.pending = {draft.pr: ReviewId(5000 + draft.pr.root) for draft in pending()}
+        self.comments = {
+            CommentId(9000 + index): (self.pending[draft.pr], body)
+            for draft in pending()
+            for index, body in enumerate(draft.comments.root)
+        }
         self.submitted: list[SubmittedReview] = []
         self.checkouts: dict[Path, PrNumber] = {}
 
@@ -175,13 +193,15 @@ class ScriptedGhState:
                 return as_json(tuple(m.pull_request for m in merges() if m.merged_on.root >= since))
             case ("gh", "api", "user", "--jq", ".login"):
                 return CommandOutput(f"{self.viewer.root}\n")
-            case ("gh", "api", "--paginate", "--slurp", path):
+            case ("gh", "api", "--paginate", "--slurp", path) if path.endswith("/reviews"):
                 return self.reviews_on(PrNumber(int(path.split("/")[-2])))
             case _:
                 return self.respond_to_lookup(command, directory)
 
     def respond_to_lookup(self, command: Command, directory: ExistingDirectory) -> CommandOutput:
         match command.root:
+            case ("gh", "api", "--paginate", "--slurp", path) if path.endswith("/comments"):
+                return self.comments_on(ReviewId(int(path.split("/")[-2])))
             case ("gh", "pr", "view", number, "--json", "author", "--jq", ".author.login"):
                 mine = PrNumber(int(number)) in authored()
                 return CommandOutput(f"{self.viewer.root if mine else 'teammate'}\n")
@@ -200,13 +220,19 @@ class ScriptedGhState:
                         decision=FLAGS[flag], body=ReviewBody(body[-1] if len(body) > 0 else "")
                     ),
                     Drafted(False),
+                    CommentBodies(()),
                 )
+                return CommandOutput("")
+            case ("gh", "api", "--method", "DELETE", path, "--silent"):
+                if self.comments.pop(CommentId(int(path.split("/")[-1])), None) is None:
+                    pytest.fail(f"No draft comment at {path}")
                 return CommandOutput("")
             case ("gh", "api", "--method", "POST", path, "--silent", "-f", event, *body):
                 *_, number, _, review, _ = path.split("/")
                 pr = PrNumber(int(number))
                 if self.pending.pop(pr, None) != ReviewId(int(review)):
                     pytest.fail(f"No pending review {review} on #{number}")
+                comments = self.bodies_of(ReviewId(int(review)))
                 text = body[-1].removeprefix("body=") if len(body) > 0 else ""
                 self.record_submission(
                     pr,
@@ -214,6 +240,7 @@ class ScriptedGhState:
                         decision=EVENTS[event.removeprefix("event=")], body=ReviewBody(text)
                     ),
                     Drafted(True),
+                    comments,
                 )
                 return CommandOutput("")
             case _:
@@ -229,8 +256,28 @@ class ScriptedGhState:
         ]
         return CommandOutput(json.dumps([others, mine]))
 
-    def record_submission(self, pr: PrNumber, request: ReviewRequest, drafted: Drafted) -> None:
-        self.submitted.append(SubmittedReview(pr=pr, request=request, drafted=drafted))
+    def bodies_of(self, review: ReviewId) -> CommentBodies:
+        return CommentBodies(tuple(body for on, body in self.comments.values() if on == review))
+
+    def comments_on(self, review: ReviewId) -> CommandOutput:
+        return CommandOutput(
+            json.dumps(
+                [
+                    [
+                        {"id": comment.root, "body": body.root}
+                        for comment, (on, body) in self.comments.items()
+                        if on == review
+                    ]
+                ]
+            )
+        )
+
+    def record_submission(
+        self, pr: PrNumber, request: ReviewRequest, drafted: Drafted, comments: CommentBodies
+    ) -> None:
+        self.submitted.append(
+            SubmittedReview(pr=pr, request=request, drafted=drafted, comments=comments)
+        )
 
 
 class RepositorySlug(Value[str]):
@@ -384,6 +431,33 @@ class LiveGitHub:
             for pr in (self._stage.pending, self._stage.fresh)
             for review in self.reviews_on(pr).root
         )
+        changed = self._clone.run(
+            Command(
+                (
+                    "gh",
+                    "pr",
+                    "view",
+                    str(self._stage.pending.root),
+                    "--json",
+                    "files",
+                    "--jq",
+                    ".files[0].path",
+                )
+            )
+        ).root.strip()
+        # gh groups `comments[]` fields into objects only when every field is typed (-F).
+        comments = tuple(
+            field
+            for body in drafted_comments().root
+            for field in (
+                "-F",
+                f"comments[][path]={changed}",
+                "-F",
+                "comments[][line]=1",
+                "-F",
+                f"comments[][body]={body.root}",
+            )
+        )
         drafted = self._clone.run(
             Command(
                 (
@@ -392,6 +466,7 @@ class LiveGitHub:
                     "--method",
                     "POST",
                     f"repos/{{owner}}/{{repo}}/pulls/{self._stage.pending.root}/reviews",
+                    *comments,
                     "--jq",
                     ".id",
                 )
@@ -408,10 +483,27 @@ class LiveGitHub:
                 pr=pr,
                 request=review.request(),
                 drafted=Drafted(review.id == self._drafted),
+                comments=self.comments_of(pr, review.id),
             )
             for pr in (self._stage.pending, self._stage.fresh)
             for review in self.reviews_on(pr).submitted_after(self._seen).root
         )
+
+    def comments_of(self, pr: PrNumber, review: ReviewId) -> CommentBodies:
+        listed = DraftComments.parse(
+            self._clone.run(
+                Command(
+                    (
+                        "gh",
+                        "api",
+                        "--paginate",
+                        "--slurp",
+                        f"repos/{{owner}}/{{repo}}/pulls/{pr.root}/reviews/{review.root}/comments",
+                    )
+                )
+            )
+        )
+        return CommentBodies(tuple(comment.body for comment in listed.root))
 
     def checked_out(self, into: CheckoutDirectory) -> PrNumber | None:
         viewed = Shell(ExistingDirectory(into.root)).run(
@@ -435,13 +527,17 @@ class LiveRepository(Model):
         return Shell(self.clone)
 
 
+# Each branch adds a file of its own, so a review can comment on its diff and the branches never conflict.
 def open_pull_request(clone: Shell, branch: BranchName) -> PrNumber:
     listed = ListedPullRequests.on_branch(clone, branch).root
     if len(listed) > 0:
         return listed[0].number
+    changed = f"{branch.root.replace('/', '-')}.md"
+    _ = clone.run(Command(("git", "switch", "--quiet", "--create", branch.root, "origin/main")))
+    _ = (clone.cwd().root / changed).write_text(f"{branch.root}\n")
     for step in (
-        ("git", "switch", "--quiet", "--create", branch.root, "origin/main"),
-        ("git", "commit", "--quiet", "--allow-empty", "--message", f"contract: {branch.root}"),
+        ("git", "add", changed),
+        ("git", "commit", "--quiet", "--message", f"contract: {branch.root}"),
         ("git", "push", "--quiet", "--set-upstream", "origin", branch.root),
         ("gh", "pr", "create", "--head", branch.root, "--title", branch.root, "--body", ""),
         ("git", "switch", "--quiet", "main"),
@@ -475,7 +571,7 @@ def live_repository(tmp_path_factory: pytest.TempPathFactory) -> LiveRepository:
         )
     clone = Shell(ExistingDirectory(here.cwd().root / "clone"))
     stage = Stage(
-        pending=open_pull_request(clone, BranchName("contract/pending")),
+        pending=open_pull_request(clone, BranchName("contract/commented")),
         fresh=open_pull_request(clone, BranchName("contract/fresh")),
         merged=BranchName("contract/merged"),
         merged_on=merged_pull_request(clone, BranchName("contract/merged")),
@@ -608,8 +704,19 @@ def test_submitting_completes_my_pending_review(
 ) -> None:
     Assert.that(review.submit(stage.pending, remark())).matches(Ok(None))
     Assert.that(ledger.submitted()).matches(
-        (SubmittedReview(pr=stage.pending, request=remark(), drafted=Drafted(True)),)
+        (
+            SubmittedReview(
+                pr=stage.pending, request=remark(), drafted=Drafted(True), comments=kept_comments()
+            ),
+        )
     )
+
+
+def test_submitting_drops_the_agent_written_draft_comments(
+    review: CodeForge, ledger: ReviewLedger, stage: Stage
+) -> None:
+    Assert.that(review.submit(stage.pending, remark())).matches(Ok(None))
+    Assert.that([submitted.comments for submitted in ledger.submitted()]).matches([kept_comments()])
 
 
 def test_a_pending_review_is_completed_only_once(
@@ -627,7 +734,11 @@ def test_submitting_without_a_pending_review_opens_a_new_one(
 ) -> None:
     Assert.that(review.submit(stage.fresh, remark())).matches(Ok(None))
     Assert.that(ledger.submitted()).matches(
-        (SubmittedReview(pr=stage.fresh, request=remark(), drafted=Drafted(False)),)
+        (
+            SubmittedReview(
+                pr=stage.fresh, request=remark(), drafted=Drafted(False), comments=CommentBodies(())
+            ),
+        )
     )
 
 
@@ -638,7 +749,11 @@ def test_an_approval_may_go_without_a_body(
     bare = ReviewRequest(decision=ReviewDecision.approve, body=ReviewBody(""))
     Assert.that(review.submit(stage.fresh, bare)).matches(Ok(None))
     Assert.that(ledger.submitted()).matches(
-        (SubmittedReview(pr=stage.fresh, request=bare, drafted=Drafted(False)),)
+        (
+            SubmittedReview(
+                pr=stage.fresh, request=bare, drafted=Drafted(False), comments=CommentBodies(())
+            ),
+        )
     )
 
 
@@ -651,7 +766,14 @@ def test_requesting_changes_carries_its_body(
     )
     Assert.that(review.submit(stage.fresh, rejection)).matches(Ok(None))
     Assert.that(ledger.submitted()).matches(
-        (SubmittedReview(pr=stage.fresh, request=rejection, drafted=Drafted(False)),)
+        (
+            SubmittedReview(
+                pr=stage.fresh,
+                request=rejection,
+                drafted=Drafted(False),
+                comments=CommentBodies(()),
+            ),
+        )
     )
 
 

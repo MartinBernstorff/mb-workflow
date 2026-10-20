@@ -2,6 +2,7 @@ from assertions import Assert
 
 from mb_workflow.b_core.d_domain_model.git import BranchName
 from mb_workflow.b_core.d_domain_model.pull_request import (
+    CommentBody,
     MergedSince,
     PrNumber,
     PrTitle,
@@ -12,6 +13,10 @@ from mb_workflow.b_core.d_domain_model.pull_request import (
     ReviewRequest,
 )
 from mb_workflow.c_infrastructure.github import (
+    CommentId,
+    DraftComment,
+    DraftComments,
+    GhCommands,
     PullRequestPayloads,
     Review,
     ReviewAuthor,
@@ -20,8 +25,6 @@ from mb_workflow.c_infrastructure.github import (
     ReviewState,
     SearchQuery,
     UserLogin,
-    pending_submission,
-    review_command,
 )
 from mb_workflow.c_infrastructure.shell import CommandOutput
 
@@ -94,7 +97,7 @@ def test_submits_a_pending_review_with_its_body() -> None:
         "body=Looks good to me.",
     )
     Assert.that(
-        pending_submission(PrNumber.fake(), ReviewId.fake(), ReviewRequest.fake()).root
+        GhCommands.pending_submission(PrNumber.fake(), ReviewId.fake(), ReviewRequest.fake()).root
     ).matches(command)
 
 
@@ -110,7 +113,34 @@ def test_submits_a_pending_review_without_a_body() -> None:
         "-f",
         "event=COMMENT",
     )
-    Assert.that(pending_submission(PrNumber.fake(), ReviewId.fake(), request).root).matches(command)
+    Assert.that(
+        GhCommands.pending_submission(PrNumber.fake(), ReviewId.fake(), request).root
+    ).matches(command)
+
+
+def test_parses_slurped_draft_comment_pages() -> None:
+    output = CommandOutput(
+        '[[{"id":9012,"body":"Needs a guard for the empty case.","path":"a.py"}]]'
+    )
+    Assert.that(DraftComments.parse(output)).matches(DraftComments.fake())
+
+
+def test_picks_out_the_agent_written_draft_comments() -> None:
+    agent_written = DraftComment(id=CommentId(1), body=CommentBody("🤖 Consider a guard."))
+    comments = DraftComments((DraftComment.fake(), agent_written))
+    Assert.that(comments.agent_written()).matches(DraftComments((agent_written,)))
+
+
+def test_deletes_a_draft_comment() -> None:
+    command = (
+        "gh",
+        "api",
+        "--method",
+        "DELETE",
+        "repos/{owner}/{repo}/pulls/comments/9012",
+        "--silent",
+    )
+    Assert.that(GhCommands.comment_deletion(CommentId.fake()).root).matches(command)
 
 
 def test_reads_the_viewer_login() -> None:
@@ -119,13 +149,13 @@ def test_reads_the_viewer_login() -> None:
 
 def test_approval_carries_its_comment() -> None:
     command = ("gh", "pr", "review", "1234", "--approve", "--body", "Looks good to me.")
-    Assert.that(review_command(PrNumber.fake(), ReviewRequest.fake()).root).matches(command)
+    Assert.that(GhCommands.review(PrNumber.fake(), ReviewRequest.fake()).root).matches(command)
 
 
 def test_an_empty_comment_is_left_off_the_command() -> None:
     request = ReviewRequest(decision=ReviewDecision.approve, body=ReviewBody(""))
     command = ("gh", "pr", "review", "1234", "--approve")
-    Assert.that(review_command(PrNumber.fake(), request).root).matches(command)
+    Assert.that(GhCommands.review(PrNumber.fake(), request).root).matches(command)
 
 
 def test_the_window_searches_for_prs_merged_since_then() -> None:

@@ -14,6 +14,7 @@ from mb_workflow.b_core.c_secondary_ports.code_review import (
 from mb_workflow.b_core.d_domain_model.git import BranchName, BranchNames
 from mb_workflow.b_core.d_domain_model.pull_request import (
     CheckoutDirectory,
+    CommentBody,
     MergedSince,
     PrNumber,
     PrNumbers,
@@ -171,27 +172,77 @@ class Reviews(Value[tuple[Review, ...]]):
         return mine[-1] if len(mine) > 0 else None
 
 
-def review_command(pr: PrNumber, request: ReviewRequest) -> Command:
-    review = ("gh", "pr", "review", str(pr.root), ReviewFlag.of(request.decision).root)
-    if len(request.body.root) == 0:
-        return Command(review)
-    return Command((*review, "--body", request.body.root))
+class CommentId(Value[int]):
+    @staticmethod
+    def fake() -> CommentId:
+        return CommentId(9012)
 
 
-def pending_submission(pr: PrNumber, pending: ReviewId, request: ReviewRequest) -> Command:
-    submit = (
-        "gh",
-        "api",
-        "--method",
-        "POST",
-        f"repos/{{owner}}/{{repo}}/pulls/{pr.root}/reviews/{pending.root}/events",
-        "--silent",
-        "-f",
-        f"event={ReviewEvent.of(request.decision).root}",
-    )
-    if len(request.body.root) == 0:
-        return Command(submit)
-    return Command((*submit, "-f", f"body={request.body.root}"))
+class DraftComment(Payload):
+    id: CommentId
+    body: CommentBody
+
+    @staticmethod
+    def fake() -> DraftComment:
+        return DraftComment(id=CommentId.fake(), body=CommentBody.fake())
+
+
+class DraftCommentPages(Value[tuple[tuple[DraftComment, ...], ...]]):
+    @staticmethod
+    def fake() -> DraftCommentPages:
+        return DraftCommentPages(((DraftComment.fake(),),))
+
+
+class DraftComments(Value[tuple[DraftComment, ...]]):
+    @staticmethod
+    def fake() -> DraftComments:
+        return DraftComments((DraftComment.fake(),))
+
+    @staticmethod
+    def parse(output: CommandOutput) -> DraftComments:
+        pages = DraftCommentPages.model_validate_json(output.root)
+        return DraftComments(tuple(chain.from_iterable(pages.root)))
+
+    def agent_written(self) -> DraftComments:
+        return DraftComments(tuple(c for c in self.root if c.body.agent_written().root))
+
+
+class GhCommands:
+    @staticmethod
+    def review(pr: PrNumber, request: ReviewRequest) -> Command:
+        review = ("gh", "pr", "review", str(pr.root), ReviewFlag.of(request.decision).root)
+        if len(request.body.root) == 0:
+            return Command(review)
+        return Command((*review, "--body", request.body.root))
+
+    @staticmethod
+    def pending_submission(pr: PrNumber, pending: ReviewId, request: ReviewRequest) -> Command:
+        submit = (
+            "gh",
+            "api",
+            "--method",
+            "POST",
+            f"repos/{{owner}}/{{repo}}/pulls/{pr.root}/reviews/{pending.root}/events",
+            "--silent",
+            "-f",
+            f"event={ReviewEvent.of(request.decision).root}",
+        )
+        if len(request.body.root) == 0:
+            return Command(submit)
+        return Command((*submit, "-f", f"body={request.body.root}"))
+
+    @staticmethod
+    def comment_deletion(comment: CommentId) -> Command:
+        return Command(
+            (
+                "gh",
+                "api",
+                "--method",
+                "DELETE",
+                f"repos/{{owner}}/{{repo}}/pulls/comments/{comment.root}",
+                "--silent",
+            )
+        )
 
 
 class GitHubFailure:
@@ -327,6 +378,21 @@ class GitHub(CodeForge):
             )
         )
 
+    def draft_comments(self, pr: PrNumber, pending: ReviewId) -> DraftComments:
+        return DraftComments.parse(
+            self._shell.run(
+                Command(
+                    (
+                        "gh",
+                        "api",
+                        "--paginate",
+                        "--slurp",
+                        f"repos/{{owner}}/{{repo}}/pulls/{pr.root}/reviews/{pending.root}/comments",
+                    )
+                )
+            )
+        )
+
     @override
     def submit(self, pr: PrNumber, request: ReviewRequest) -> Result[None, CodeReviewError]:
         match CodeReviewRefusal.check_complete(request):
@@ -339,7 +405,10 @@ class GitHub(CodeForge):
     def _submit(self, pr: PrNumber, request: ReviewRequest) -> None:
         pending = self.reviews(pr).pending_by(self.viewer())
         if pending is None:
-            _ = self._shell.run(review_command(pr, request))
+            _ = self._shell.run(GhCommands.review(pr, request))
             return
+        for comment in self.draft_comments(pr, pending).agent_written().root:
+            logger.info("Deleting agent-written comment %s.", comment.id.root)
+            _ = self._shell.run(GhCommands.comment_deletion(comment.id))
         logger.info("Submitting pending review %s.", pending.root)
-        _ = self._shell.run(pending_submission(pr, pending, request))
+        _ = self._shell.run(GhCommands.pending_submission(pr, pending, request))
