@@ -7,10 +7,16 @@ from assertions import Assert
 from linear_python_client import LinearClient
 from safe_result import Err, Ok
 
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, TeamKey
+from mb_workflow.b_core.d_domain_model.issue import (
+    IssueIdentifier,
+    IssueUrl,
+    TeamKey,
+    UpdatedAt,
+)
 from mb_workflow.c_infrastructure.linear import (
     CreationLookup,
     IssueDetailRead,
+    IssueSnapshotRead,
     LinearApiKey,
     LinearCall,
     TeamId,
@@ -93,3 +99,22 @@ def test_a_call_that_keeps_hitting_server_errors_gives_up_after_three_attempts()
     client = server.client()
     answered = LinearCall.answered(lambda: client.execute("query { viewer { id } }"))
     Assert.that((isinstance(answered, Err), server.requests)).matches((True, 3))
+
+
+def test_an_issue_snapshot_reads_its_update_time_and_url() -> None:
+    snapshot = IssueSnapshotRead.model_validate(
+        {
+            "issue": {
+                "identifier": IssueIdentifier.fake().root,
+                "title": "Add widget",
+                "url": IssueUrl.fake().root,
+                "updatedAt": "2026-09-01T12:00:00.000Z",
+                "state": {"name": "Todo"},
+                "priority": 0,
+                "children": {"nodes": []},
+                "relations": {"nodes": []},
+                "inverseRelations": {"nodes": []},
+            }
+        }
+    ).issue.snapshot()
+    Assert.that((snapshot.updated_at, snapshot.url)).matches((UpdatedAt.fake(), IssueUrl.fake()))

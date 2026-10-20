@@ -31,6 +31,8 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueDetail,
     IssueIdentifier,
     Issues,
+    IssueSnapshot,
+    IssueSnapshots,
     IssueStatusName,
     IssueTitle,
     IssueUpdate,
@@ -725,6 +727,57 @@ class IssueDetailPayload(IssuePayload):
         )
 
 
+class IssueSnapshotPayload(IssueDetailPayload):
+    updated_at: UpdatedAt
+    url: IssueUrl
+
+    @override
+    @staticmethod
+    def fake() -> IssueSnapshotPayload:
+        return IssueSnapshotPayload(
+            identifier=IssueIdentifier.fake(),
+            status=IssueStatusName.fake(),
+            project=ProjectPayload.fake(),
+            labels=(LabelPayload.fake(),),
+            title=IssueTitle.fake(),
+            description=IssueDescription.fake(),
+            priority=Priority.medium,
+            children=(IssueIdentifierRecord.fake(),),
+            relations=(Relation.fake(),),
+            inverse_relations=(InverseRelation.fake(),),
+            updated_at=UpdatedAt.fake(),
+            url=IssueUrl.fake(),
+        )
+
+    def snapshot(self) -> IssueSnapshot:
+        return IssueSnapshot(detail=self.detail(), updated_at=self.updated_at, url=self.url)
+
+
+class IssueSnapshotRead(Payload):
+    issue: IssueSnapshotPayload
+
+    @staticmethod
+    def fake() -> IssueSnapshotRead:
+        return IssueSnapshotRead(issue=IssueSnapshotPayload.fake())
+
+
+class IssueSnapshotPage(Payload):
+    nodes: tuple[IssueSnapshotPayload, ...]
+    page_info: PageInfo
+
+    @staticmethod
+    def fake() -> IssueSnapshotPage:
+        return IssueSnapshotPage(nodes=(IssueSnapshotPayload.fake(),), page_info=PageInfo.fake())
+
+
+class ViewSnapshotsRead(Payload):
+    issues: IssueSnapshotPage = Field(validation_alias=AliasPath("customView", "issues"))
+
+    @staticmethod
+    def fake() -> ViewSnapshotsRead:
+        return ViewSnapshotsRead(issues=IssueSnapshotPage.fake())
+
+
 # A field left unset stays as it is, while one set to None is emptied.
 class IssueChanges(Payload):
     title: IssueTitle | None = None
@@ -1187,6 +1240,86 @@ class Linear(TicketTracker):
             cursor = page.page_info.next_cursor()
             if cursor is None:
                 return Ok(PoolTickets(tuple(found)))
+
+    # Linear caps a query's complexity, which every nested connection multiplies, so pages stay small.
+    @override
+    def view_snapshots(self, view: ViewSlug) -> Result[IssueSnapshots, TicketTrackerError]:
+        found: list[IssueSnapshot] = []
+        cursor: PageCursor | None = None
+        while True:
+            read = LinearCall.answered(
+                lambda after=cursor: self._client.execute(
+                    """
+                    query($view: String!, $after: String) {
+                      customView(id: $view) {
+                        issues(first: 25, after: $after) {
+                          nodes {
+                            identifier
+                            title
+                            description
+                            url
+                            updatedAt
+                            state { name }
+                            project { name }
+                            labels(first: 50) { nodes { name parent { name } } }
+                            assignee { email }
+                            projectMilestone { name }
+                            priority
+                            estimate
+                            parent { identifier }
+                            children(first: 50) { nodes { identifier } }
+                            relations(first: 50) { nodes { type relatedIssue { identifier } } }
+                            inverseRelations(first: 50) { nodes { type issue { identifier } } }
+                          }
+                          pageInfo { hasNextPage endCursor }
+                        }
+                      }
+                    }
+                    """,
+                    {"view": view.root, "after": after.root if after is not None else None},
+                )
+            )
+            if isinstance(read, Err):
+                return read
+            page = ViewSnapshotsRead.model_validate(read.value).issues
+            found.extend(node.snapshot() for node in page.nodes)
+            cursor = page.page_info.next_cursor()
+            if cursor is None:
+                return Ok(IssueSnapshots(tuple(found)))
+
+    @override
+    def read_snapshot(self, issue: IssueIdentifier) -> Result[IssueSnapshot, TicketTrackerError]:
+        match LinearCall.answered(
+            lambda: self._client.execute(
+                """
+                query($id: String!) {
+                  issue(id: $id) {
+                    identifier
+                    title
+                    description
+                    url
+                    updatedAt
+                    state { name }
+                    project { name }
+                    labels(first: 50) { nodes { name parent { name } } }
+                    assignee { email }
+                    projectMilestone { name }
+                    priority
+                    estimate
+                    parent { identifier }
+                    children(first: 50) { nodes { identifier } }
+                    relations(first: 50) { nodes { type relatedIssue { identifier } } }
+                    inverseRelations(first: 50) { nodes { type issue { identifier } } }
+                  }
+                }
+                """,
+                {"id": issue.root},
+            )
+        ):
+            case Ok(data):
+                return Ok(IssueSnapshotRead.model_validate(data).issue.snapshot())
+            case Err() as failed:
+                return failed
 
     @override
     def read_issue(self, issue: IssueIdentifier) -> Result[Issue, TicketTrackerError]:

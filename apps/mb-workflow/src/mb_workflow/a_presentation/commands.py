@@ -39,11 +39,13 @@ from mb_workflow.b_core.a_features.start import (
     StartRequest,
     TicketStart,
 )
+from mb_workflow.b_core.a_features.sync_vault import SyncOutcome, VaultSync
 from mb_workflow.b_core.a_features.teardown import Teardown, TeardownRequest
 from mb_workflow.b_core.a_features.transition import WorktreeTransition
 from mb_workflow.b_core.a_features.unclaim import TicketUnclaiming
 from mb_workflow.b_core.a_features.view_ticket import TicketViewing
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
+from mb_workflow.b_core.c_secondary_ports.note_vault import NoteVaultError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
@@ -77,6 +79,7 @@ from mb_workflow.c_infrastructure.lazy_linear import LazyLinear, LazyLinearClaim
 from mb_workflow.c_infrastructure.ledger_file import FileLedgerStore
 from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
 from mb_workflow.c_infrastructure.linear_claims import LinearClaims
+from mb_workflow.c_infrastructure.note_folder import FolderPath, NoteFolder
 from mb_workflow.c_infrastructure.orca import Orca
 from mb_workflow.c_infrastructure.project_override import override_of_origin
 from mb_workflow.c_infrastructure.shell import ExistingDirectory, Shell
@@ -90,6 +93,7 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_transition import Force
     from mb_workflow.b_core.d_domain_model.claim import HostName
     from mb_workflow.b_core.d_domain_model.issue import CreatedAfter, IssueIdentifier, TeamName
+    from mb_workflow.b_core.d_domain_model.pool import ViewSlug
     from mb_workflow.b_core.d_domain_model.pull_request import MergedSince, ReviewRequest
     from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDraft
     from mb_workflow.b_core.d_domain_model.ticket_edit import TicketEdit
@@ -107,6 +111,7 @@ FAILURES = (
     InvalidOverrideError,
     MissingConfigError,
     MissingFlowLabelsError,
+    NoteVaultError,
     OSError,
     PromptUndeliveredError,
     RepositorySlugError,
@@ -541,3 +546,19 @@ def flow_seed_labels(team: TeamName, force: Force) -> ExitCode:
             ", ".join(label.root for label in recolored),
         )
     return ExitCode(0)
+
+
+@guarded
+def obsidian_sync(view: ViewSlug, folder: FolderPath) -> ExitCode:
+    report = VaultSync.sync_view(linear(), NoteFolder(folder), view).unwrap()
+    for sync in report.root:
+        if sync.failure is not None:
+            logger.error("%s failed to sync. %s", sync.issue.root, sync.failure.root)
+        elif sync.outcome != SyncOutcome.unchanged:
+            logger.info("%s %s.", sync.outcome.value.capitalize(), sync.issue.root)
+    counts = {
+        outcome: sum(1 for sync in report.root if sync.outcome == outcome)
+        for outcome in SyncOutcome
+    }
+    logger.info(", ".join(f"{count} {outcome.value}" for outcome, count in counts.items()))
+    return ExitCode.of(report.failed())

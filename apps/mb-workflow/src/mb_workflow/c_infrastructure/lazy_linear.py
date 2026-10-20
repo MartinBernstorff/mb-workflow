@@ -20,6 +20,8 @@ if TYPE_CHECKING:
         IssueFilter,
         IssueIdentifier,
         Issues,
+        IssueSnapshot,
+        IssueSnapshots,
         IssueUpdate,
         LabelGroupName,
         LabelName,
@@ -154,6 +156,14 @@ class LazyLinear(TicketTracker):
     @override
     def unblocked_view_tickets(self, view: ViewSlug) -> Result[PoolTickets, TicketTrackerError]:
         return self._called(lambda tracker: tracker.unblocked_view_tickets(view))
+
+    @override
+    def view_snapshots(self, view: ViewSlug) -> Result[IssueSnapshots, TicketTrackerError]:
+        return self._called(lambda tracker: tracker.view_snapshots(view))
+
+    @override
+    def read_snapshot(self, issue: IssueIdentifier) -> Result[IssueSnapshot, TicketTrackerError]:
+        return self._called(lambda tracker: tracker.read_snapshot(issue))
 
     @override
     def labelled_issues(

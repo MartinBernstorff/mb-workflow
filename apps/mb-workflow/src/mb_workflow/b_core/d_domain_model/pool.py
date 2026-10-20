@@ -36,6 +36,18 @@ class ViewSlug(Value[str]):
     def fake() -> ViewSlug:
         return ViewSlug("4efb86b38740")
 
+    # A view's URL ends in its name and slug, e.g. https://linear.app/acme/view/my-view-4efb86b38740.
+    @staticmethod
+    def of_reference(reference: ViewReference) -> ViewSlug:
+        last_segment = reference.root.split("?")[0].rstrip("/").split("/")[-1]
+        return ViewSlug(last_segment.split("-")[-1])
+
+
+class ViewReference(Value[str]):
+    @staticmethod
+    def fake() -> ViewReference:
+        return ViewReference("https://linear.app/acme/view/my-view-4efb86b38740")
+
 
 class Ready(Value[bool]):
     @staticmethod
