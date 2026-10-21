@@ -207,9 +207,15 @@ class VaultSync:
             return VaultSync._failed(issue, updated.error)
         match self._tracker.read_snapshot(issue):
             case Ok(fresh):
-                return self._pulled(fresh, stored, SyncOutcome.pushed)
+                pass
             case Err(error):
                 return VaultSync._failed(issue, error)
+        # A note named by an older sync, without a title, is renamed from the issue.
+        if stored.title is None:
+            return self._pulled(fresh, stored, SyncOutcome.pushed)
+        # The note is left as written, since Linear reformats what it is sent, and rewriting the note
+        # with Linear's version would change it under the cursor while it is being edited.
+        return self._recorded(fresh, NoteHash.of(stored.title, stored.text), SyncOutcome.pushed)
 
     # Writes the note only when the issue renders differently from it, and records both as in step.
     # A note whose title alone differs is renamed, not rewritten.
@@ -223,12 +229,14 @@ class VaultSync:
             written = self._vault.write(issue, title, rendered)
             if isinstance(written, Err):
                 return written
+        return self._recorded(snapshot, NoteHash.of(title, rendered), outcome)
+
+    def _recorded(
+        self, snapshot: IssueSnapshot, note_hash: NoteHash, outcome: SyncOutcome
+    ) -> Result[NoteSync, NoteVaultError]:
+        issue = snapshot.identifier()
         self._state = self._state.with_record(
-            SyncRecord(
-                issue=issue,
-                issue_updated_at=snapshot.updated_at,
-                note_hash=NoteHash.of(title, rendered),
-            )
+            SyncRecord(issue=issue, issue_updated_at=snapshot.updated_at, note_hash=note_hash)
         )
         return Ok(NoteSync(issue=issue, outcome=outcome))
 

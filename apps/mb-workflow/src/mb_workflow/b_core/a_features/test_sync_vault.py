@@ -216,6 +216,24 @@ def test_a_note_pushed_and_left_alone_is_unchanged_on_the_next_run() -> None:
     Assert.that(report.outcome_of(IssueIdentifier.fake())).matches(SyncOutcome.unchanged)
 
 
+def test_a_pushed_note_that_the_issue_renders_differently_is_left_as_written() -> None:
+    tracker = tracking(TrackedIssue.fake())
+    note = in_step(tracker, IssueIdentifier.fake())
+    typed = retitled(note, IssueTitle("Renamed"), later()).model_copy(
+        update={"text": NoteText(f"{note.text.root}\n\n")}
+    )
+    vault = FakeNoteVault(
+        {IssueIdentifier.fake(): typed},
+        state=recorded(IssueIdentifier.fake(), note, UpdatedAt.fake()),
+    )
+    report = synced(tracker, vault)
+    Assert.that(report.outcome_of(IssueIdentifier.fake())).matches(SyncOutcome.pushed)
+    Assert.that(note_of(vault, IssueIdentifier.fake()).text).matches(typed.text)
+    Assert.that(synced(tracker, vault).outcome_of(IssueIdentifier.fake())).matches(
+        SyncOutcome.unchanged
+    )
+
+
 def test_when_both_changed_a_note_edited_later_wins() -> None:
     tracker = tracking(TrackedIssue.fake())
     title = IssueTitle("Edited after the issue")
