@@ -262,7 +262,7 @@ def obsidian_sync(
     """Sync a Linear view's issues with a folder of notes, once. The later edit of a note or its issue wins.
 
     A note takes its issue's title, status, labels, assignee, priority and description; the rest of
-    its frontmatter mirrors Linear. Notes of issues that left the view move to _archive.
+    its frontmatter mirrors Linear. Notes of issues that left the view are deleted.
     """
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(

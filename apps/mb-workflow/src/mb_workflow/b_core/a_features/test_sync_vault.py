@@ -322,19 +322,18 @@ def test_a_note_that_failed_to_push_is_tried_again_on_the_next_run() -> None:
     Assert.that(vault.read(IssueIdentifier.fake()).unwrap()).matches(unknown)
 
 
-def test_the_note_of_an_issue_that_left_the_view_is_archived() -> None:
+def test_the_note_of_an_issue_that_left_the_view_is_deleted() -> None:
     gone = IssueIdentifier("E-2")
     tracker = tracking(TrackedIssue.fake(), other_issue(gone))
     vault = FakeNoteVault()
     _ = synced(tracker, vault)
     tracker.set_view(ViewSlug.fake(), (IssueIdentifier.fake(),))
     report = synced(tracker, vault)
-    Assert.that(report.outcome_of(gone)).matches(SyncOutcome.archived)
-    Assert.that(vault.archived()).matches(frozenset({gone}))
+    Assert.that(report.outcome_of(gone)).matches(SyncOutcome.deleted)
     Assert.that(vault.listed().unwrap()).matches(frozenset({IssueIdentifier.fake()}))
 
 
-def test_a_note_edited_before_its_issue_left_the_view_is_pushed_then_archived() -> None:
+def test_a_note_edited_before_its_issue_left_the_view_is_pushed_then_deleted() -> None:
     gone = IssueIdentifier("E-2")
     tracker = tracking(TrackedIssue.fake(), other_issue(gone))
     title = IssueTitle("Edited before leaving")
@@ -346,7 +345,7 @@ def test_a_note_edited_before_its_issue_left_the_view_is_pushed_then_archived() 
     report = synced(tracker, vault)
     Assert.that(report.outcome_of(gone)).matches(SyncOutcome.pushed)
     Assert.that(tracker.read_issue_detail(gone).unwrap().title).matches(title)
-    Assert.that(vault.archived()).matches(frozenset({gone}))
+    Assert.that(vault.read(gone).unwrap()).matches(None)
 
 
 def test_a_note_that_fails_to_push_as_its_issue_leaves_the_view_stays_in_place() -> None:
@@ -363,36 +362,7 @@ def test_a_note_that_fails_to_push_as_its_issue_leaves_the_view_stays_in_place()
     tracker.set_view(ViewSlug.fake(), (IssueIdentifier.fake(),))
     report = synced(tracker, vault)
     Assert.that(report.outcome_of(gone)).matches(SyncOutcome.failed)
-    Assert.that(vault.archived()).matches(frozenset())
     Assert.that(vault.read(gone).unwrap()).matches(unknown)
-
-
-def test_an_archived_note_returns_with_its_issue_and_keeps_its_edits() -> None:
-    tracker = tracking(TrackedIssue.fake())
-    title = IssueTitle("Edited while archived")
-    note = in_step(tracker, IssueIdentifier.fake())
-    vault = FakeNoteVault(
-        archived={IssueIdentifier.fake(): retitled(note, title, later())},
-        state=recorded(IssueIdentifier.fake(), note, UpdatedAt.fake()),
-    )
-    report = synced(tracker, vault)
-    Assert.that(report.outcome_of(IssueIdentifier.fake())).matches(SyncOutcome.pushed)
-    Assert.that(vault.archived()).matches(frozenset())
-    Assert.that(tracker.read_issue_detail(IssueIdentifier.fake()).unwrap().title).matches(title)
-
-
-def test_an_archived_note_returns_updated_when_its_issue_changed_while_away() -> None:
-    tracker = tracking(TrackedIssue.fake())
-    stale = retitled(in_step(tracker, IssueIdentifier.fake()), IssueTitle("Old title"), earlier())
-    vault = FakeNoteVault(
-        archived={IssueIdentifier.fake(): stale},
-        state=recorded(IssueIdentifier.fake(), stale, an_hour_before(UpdatedAt.fake())),
-    )
-    report = synced(tracker, vault)
-    Assert.that(report.outcome_of(IssueIdentifier.fake())).matches(SyncOutcome.pulled)
-    Assert.that(note_of(vault, IssueIdentifier.fake()).title).matches(
-        in_step(tracker, IssueIdentifier.fake()).title
-    )
 
 
 def test_a_deleted_note_is_recreated() -> None:

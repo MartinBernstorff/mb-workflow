@@ -46,12 +46,6 @@ class StoredNote(Model):
         )
 
 
-class Restored(Value[bool]):
-    @staticmethod
-    def fake() -> Restored:
-        return Restored(True)
-
-
 class NoteHash(Value[str]):
     @staticmethod
     def fake() -> NoteHash:
@@ -95,8 +89,8 @@ class SyncState(Value[tuple[SyncRecord, ...]]):
         return SyncState((*kept, record))
 
 
-# A folder of notes named by title and issue identifier, with an archive for issues that left the view, and
-# the state of the last sync kept beside the notes.
+# A folder of notes named by title and issue identifier, with the state of the last sync kept beside
+# the notes.
 class NoteVault(Protocol):
     def listed(self) -> Result[frozenset[IssueIdentifier], NoteVaultError]: ...
 
@@ -107,10 +101,7 @@ class NoteVault(Protocol):
         self, issue: IssueIdentifier, title: NoteTitle, text: NoteText
     ) -> Result[None, NoteVaultError]: ...
 
-    def archive(self, issue: IssueIdentifier) -> Result[None, NoteVaultError]: ...
-
-    # Moves an archived note back, keeping its modification time; a note never archived stays absent.
-    def restore(self, issue: IssueIdentifier) -> Result[Restored, NoteVaultError]: ...
+    def delete(self, issue: IssueIdentifier) -> Result[None, NoteVaultError]: ...
 
     # A vault never synced has an empty state.
     def read_state(self) -> Result[SyncState, NoteVaultError]: ...
@@ -128,18 +119,13 @@ class FakeNoteVault(NoteVault):
     def __init__(
         self,
         notes: dict[IssueIdentifier, StoredNote] | None = None,
-        archived: dict[IssueIdentifier, StoredNote] | None = None,
         state: SyncState | None = None,
         now: ModifiedAt | None = None,
     ) -> None:
         self._notes = dict(notes or {})
-        self._archived = dict(archived or {})
         self._state = state or SyncState.empty()
         self._now = now or ModifiedAt.fake()
         self._writes = 0
-
-    def archived(self) -> frozenset[IssueIdentifier]:
-        return frozenset(self._archived)
 
     def writes(self) -> NoteWrites:
         return NoteWrites(self._writes)
@@ -165,19 +151,9 @@ class FakeNoteVault(NoteVault):
         return Ok(None)
 
     @override
-    def archive(self, issue: IssueIdentifier) -> Result[None, NoteVaultError]:
-        held = self._notes.pop(issue, None)
-        if held is not None:
-            self._archived[issue] = held
+    def delete(self, issue: IssueIdentifier) -> Result[None, NoteVaultError]:
+        _ = self._notes.pop(issue, None)
         return Ok(None)
-
-    @override
-    def restore(self, issue: IssueIdentifier) -> Result[Restored, NoteVaultError]:
-        held = self._archived.pop(issue, None)
-        if held is None:
-            return Ok(Restored(False))
-        self._notes[issue] = held
-        return Ok(Restored(True))
 
     @override
     def read_state(self) -> Result[SyncState, NoteVaultError]:
