@@ -10,7 +10,6 @@ from mb_workflow.b_core.c_secondary_ports.note_vault import (
     ModifiedAt,
     NoteVault,
     NoteVaultError,
-    Restored,
     StoredNote,
     SyncState,
 )
@@ -90,7 +89,6 @@ class NamedNote(Model):
 class NoteFolder(NoteVault):
     def __init__(self, folder: FolderPath) -> None:
         self._folder = folder
-        self._archive = FolderPath(folder.root / "_archive")
 
     @override
     def listed(self) -> Result[frozenset[IssueIdentifier], NoteVaultError]:
@@ -141,26 +139,18 @@ class NoteFolder(NoteVault):
         return self._written(target, FileText(text.root))
 
     @override
-    def archive(self, issue: IssueIdentifier) -> Result[None, NoteVaultError]:
+    def delete(self, issue: IssueIdentifier) -> Result[None, NoteVaultError]:
         found = self._found(self._folder, issue)
         if isinstance(found, Err):
             return found
         if found.value is None:
             return Ok(None)
-        return self._moved(found.value.path, found.value.name.in_folder(self._archive))
-
-    @override
-    def restore(self, issue: IssueIdentifier) -> Result[Restored, NoteVaultError]:
-        found = self._found(self._archive, issue)
-        if isinstance(found, Err):
-            return found
-        if found.value is None:
-            return Ok(Restored(False))
-        match self._moved(found.value.path, found.value.name.in_folder(self._folder)):
+        path = found.value.path.root
+        match safe_with(OSError)(path.unlink)():
             case Ok():
-                return Ok(Restored(True))
-            case Err() as failed:
-                return failed
+                return Ok(None)
+            case Err(error):
+                return Err(NoteVaultError(f"Cannot delete {path}. {error}"))
 
     @override
     def read_state(self) -> Result[SyncState, NoteVaultError]:
@@ -198,7 +188,6 @@ class NoteFolder(NoteVault):
             case Err(error):
                 return Err(NoteVaultError(f"Cannot write {path}. {error}"))
 
-    # A rename keeps the modification time, so a restored note is compared as it was left.
     def _moved(self, source: NotePath, target: NotePath) -> Result[None, NoteVaultError]:
         def moving() -> None:
             target.root.parent.mkdir(parents=True, exist_ok=True)

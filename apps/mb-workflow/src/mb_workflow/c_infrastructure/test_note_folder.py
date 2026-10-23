@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 from assertions import Assert
 
-from mb_workflow.b_core.c_secondary_ports.note_vault import Restored, StoredNote, SyncState
+from mb_workflow.b_core.c_secondary_ports.note_vault import StoredNote, SyncState
 from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 from mb_workflow.b_core.d_domain_model.issue_note import NoteText, NoteTitle
 from mb_workflow.c_infrastructure.note_folder import FolderPath, NoteFolder
@@ -72,21 +72,15 @@ def test_only_notes_named_with_an_identifier_are_listed(tmp_path: Path) -> None:
     Assert.that(folder.listed().unwrap()).matches(frozenset({IssueIdentifier.fake()}))
 
 
-def test_an_archived_note_is_restored_with_its_name_and_modification_time(
-    tmp_path: Path,
-) -> None:
+def test_a_deleted_note_leaves_no_file(tmp_path: Path) -> None:
     folder = NoteFolder(FolderPath(tmp_path))
     folder.write(IssueIdentifier.fake(), NoteTitle.fake(), NoteText.fake()).unwrap()
-    written = stored(folder)
-    folder.archive(IssueIdentifier.fake()).unwrap()
-    Assert.that(folder.listed().unwrap()).matches(frozenset())
-    Assert.that(folder.restore(IssueIdentifier.fake()).unwrap()).matches(Restored(True))
-    Assert.that(stored(folder)).matches(written)
+    folder.delete(IssueIdentifier.fake()).unwrap()
+    Assert.that(tuple(tmp_path.rglob("*.md"))).matches(())
 
 
-def test_restoring_a_note_never_archived_restores_nothing(tmp_path: Path) -> None:
-    folder = NoteFolder(FolderPath(tmp_path))
-    Assert.that(folder.restore(IssueIdentifier.fake()).unwrap()).matches(Restored(False))
+def test_deleting_a_missing_note_does_nothing(tmp_path: Path) -> None:
+    NoteFolder(FolderPath(tmp_path)).delete(IssueIdentifier.fake()).unwrap()
 
 
 def test_a_written_state_reads_back(tmp_path: Path) -> None:

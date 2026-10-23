@@ -30,7 +30,7 @@ class SyncOutcome(StrEnum):
     pulled = "pulled"
     pushed = "pushed"
     unchanged = "unchanged"
-    archived = "archived"
+    deleted = "deleted"
     failed = "failed"
 
 
@@ -115,7 +115,7 @@ class VaultSync:
 
     # A failure confined to one issue is reported for that issue, so the others still sync.
     def _synced(self, snapshot: IssueSnapshot) -> Result[NoteSync, NoteVaultError]:
-        stored = self._stored(snapshot.identifier())
+        stored = self._vault.read(snapshot.identifier())
         if isinstance(stored, Err):
             return stored
         if stored.value is None:
@@ -151,8 +151,9 @@ class VaultSync:
             return Direction.pull
         return Direction.none
 
-    # A note edited before its issue left the view is pushed before it is archived, so the edit
-    # reaches Linear. If the push fails, the note stays in place to be fixed.
+    # A note edited before its issue left the view is pushed before it is deleted, so the edit
+    # reaches Linear. If the push fails, the note stays in place to be fixed. Should the issue
+    # return, its note is created again from Linear.
     def _departed(self, issue: IssueIdentifier) -> Result[tuple[NoteSync, ...], NoteVaultError]:
         stored = self._vault.read(issue)
         if isinstance(stored, Err):
@@ -174,20 +175,10 @@ class VaultSync:
                 if sync.value.outcome == SyncOutcome.failed:
                     return Ok((sync.value,))
                 pushed = (sync.value,)
-        archived = self._vault.archive(issue)
-        if isinstance(archived, Err):
-            return archived
-        return Ok((*pushed, NoteSync(issue=issue, outcome=SyncOutcome.archived)))
-
-    # A note archived while its issue was out of the view comes back when the issue returns.
-    def _stored(self, issue: IssueIdentifier) -> Result[StoredNote | None, NoteVaultError]:
-        stored = self._vault.read(issue)
-        if isinstance(stored, Err) or stored.value is not None:
-            return stored
-        restored = self._vault.restore(issue)
-        if isinstance(restored, Err):
-            return restored
-        return self._vault.read(issue) if restored.value.root else Ok(None)
+        deleted = self._vault.delete(issue)
+        if isinstance(deleted, Err):
+            return deleted
+        return Ok((*pushed, NoteSync(issue=issue, outcome=SyncOutcome.deleted)))
 
     def _pushed(
         self, snapshot: IssueSnapshot, stored: StoredNote
