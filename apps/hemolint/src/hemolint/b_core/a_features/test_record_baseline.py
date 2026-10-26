@@ -10,6 +10,7 @@ from hemolint.b_core.d_domain_model.baseline import (
     Baseline,
     BaselineChange,
     BaselineFile,
+    BaselineMatching,
     Count,
     Violation,
 )
@@ -48,6 +49,7 @@ def test_each_reported_violation_is_recorded_under_its_source_line() -> None:
         WorkingDirectory.fake(),
         SourceFile.lines_holding(SourceText(f"x = 1\n    {code.root}\n")),
         store,
+        matching=BaselineMatching.by_fingerprint,
     ).unwrap()
     assert store.baseline == Baseline.of((known,))
 
@@ -59,6 +61,7 @@ def test_recording_reports_what_it_added() -> None:
         WorkingDirectory.fake(),
         SourceFile.lines_holding(SourceText(f"{code.root}\n")),
         FakeBaselineStore(),
+        matching=BaselineMatching.by_fingerprint,
     ).unwrap()
     one_added = BaselineChange(added=Count(1), removed=Count(0))
     assert change == one_added
@@ -72,6 +75,7 @@ def test_a_violation_that_moved_to_another_line_still_matches() -> None:
         WorkingDirectory.fake(),
         SourceFile.lines_holding(SourceText(f"\n{code.root}\n")),
         store,
+        matching=BaselineMatching.by_fingerprint,
     ).unwrap()
     assert store.baseline == Baseline.of((known,))
 
@@ -84,6 +88,7 @@ def test_an_extra_copy_of_a_known_violation_is_recorded_as_new() -> None:
         WorkingDirectory.fake(),
         SourceFile.lines_holding(SourceText(f"{code.root}\n{code.root}\n")),
         store,
+        matching=BaselineMatching.by_fingerprint,
     ).unwrap()
     assert store.baseline == Baseline.of((known, known))
 
@@ -96,6 +101,7 @@ def test_a_fixed_violation_is_removed() -> None:
         WorkingDirectory.fake(),
         SourceFile.lines_holding(SourceText("")),
         store,
+        matching=BaselineMatching.by_fingerprint,
     ).unwrap()
     assert store.baseline == Baseline.of(())
 
@@ -109,6 +115,7 @@ def test_unparsable_output_writes_nothing() -> None:
         WorkingDirectory.fake(),
         SourceFile.lines_holding(SourceText(f"{code.root}\n")),
         store,
+        matching=BaselineMatching.by_fingerprint,
     )
     assert isinstance(result, Err)
     assert isinstance(result.error, UnparsableOutputError)
@@ -129,6 +136,7 @@ def test_a_global_violation_is_recorded_under_the_global_source_without_reading_
         WorkingDirectory.fake(),
         FakeSourceLines({}),
         store,
+        matching=BaselineMatching.by_fingerprint,
     ).unwrap()
     recorded = Violation(
         file=BaselineFile(
@@ -153,5 +161,19 @@ def test_another_linters_violation_is_kept() -> None:
         WorkingDirectory.fake(),
         SourceFile.lines_holding(SourceText(f"{code.root}\n")),
         store,
+        matching=BaselineMatching.by_fingerprint,
     ).unwrap()
     assert store.baseline == Baseline.of((pyrefly, known))
+
+
+def test_recording_by_count_records_the_violation_without_its_fingerprint() -> None:
+    store = FakeBaselineStore()
+    _ = BaselineRecording.record(
+        on_line_1,
+        LinterFormat.fixit,
+        WorkingDirectory.fake(),
+        SourceFile.lines_holding(SourceText(f"{code.root}\n")),
+        store,
+        matching=BaselineMatching.by_count,
+    ).unwrap()
+    assert store.baseline == Baseline.of((Violation(file=known.file, fingerprint=None),))

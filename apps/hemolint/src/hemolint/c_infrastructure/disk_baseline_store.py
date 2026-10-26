@@ -21,28 +21,37 @@ from hemolint.b_core.d_domain_model.violation import (
 )
 from hemolint.d_lib.models import Value
 
-_COUNTS = TypeAdapter(dict[str, int])
+_COUNTS = TypeAdapter(int | dict[str, int])
 
 
-# One baseline file: each fingerprint with its count, sorted, so merges rarely conflict.
+# One baseline file: a bare count when counted, else each fingerprint with its count, sorted,
+# so merges rarely conflict.
 class BaselineFileText(Value[str]):
     @staticmethod
     def fake() -> BaselineFileText:
         return BaselineFileText.of(Counter({Fingerprint.fake(): 1}))
 
+    # A file holds counted or fingerprinted violations, never both.
     @staticmethod
-    def of(counts: Counter[Fingerprint]) -> BaselineFileText:
+    def of(counts: Counter[Fingerprint | None]) -> BaselineFileText:
+        if None in counts:
+            return BaselineFileText(f"{counts[None]}\n")
         ordered = {
             fingerprint.root: counts[fingerprint]
-            for fingerprint in sorted(counts, key=lambda f: f.root)
+            for fingerprint in sorted(
+                (fingerprint for fingerprint in counts if fingerprint is not None),
+                key=lambda f: f.root,
+            )
         }
         return BaselineFileText(json.dumps(ordered, indent=2, ensure_ascii=False) + "\n")
 
-    def decode(self) -> Result[Counter[Fingerprint], ValueError]:
+    def decode(self) -> Result[Counter[Fingerprint | None], ValueError]:
         try:
-            counts = _COUNTS.validate_json(self.root)
+            counts = _COUNTS.validate_json(self.root, strict=True)
         except ValidationError as error:
             return Err(error)
+        if isinstance(counts, int):
+            return Ok(Counter({None: counts}))
         return Ok(Counter({Fingerprint(code): count for code, count in counts.items()}))
 
 
@@ -104,7 +113,7 @@ class DiskBaselineStore(BaselineStore):
     @override
     def write(self, linter: LinterName, baseline: Baseline) -> Result[None, BaselineStoreError]:
         root = self._directory.root
-        by_file: defaultdict[BaselineFile, Counter[Fingerprint]] = defaultdict(Counter)
+        by_file: defaultdict[BaselineFile, Counter[Fingerprint | None]] = defaultdict(Counter)
         for violation in baseline.root:
             by_file[violation.file][violation.fingerprint] += 1
         wanted = {

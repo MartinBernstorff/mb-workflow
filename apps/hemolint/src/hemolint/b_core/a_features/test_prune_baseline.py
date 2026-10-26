@@ -3,7 +3,7 @@ from pathlib import Path
 from hemolint.b_core.a_features.prune_baseline import BaselinePruning
 from hemolint.b_core.c_secondary_ports.baseline_store import FakeBaselineStore
 from hemolint.b_core.c_secondary_ports.source_lines import FakeSourceLines
-from hemolint.b_core.d_domain_model.baseline import Baseline, BaselineFile, Violation
+from hemolint.b_core.d_domain_model.baseline import Baseline, BaselineFile, Count, Violation
 from hemolint.b_core.d_domain_model.linter_format import LinterFormat
 from hemolint.b_core.d_domain_model.linter_output import LinterOutput
 from hemolint.b_core.d_domain_model.violation import (
@@ -67,3 +67,31 @@ def test_another_linters_violation_is_kept() -> None:
         LinterOutput(""), LinterFormat.fixit, WorkingDirectory.fake(), lines, store
     ).unwrap()
     assert store.baseline == kept
+
+
+def test_a_counted_file_is_lowered_to_the_violations_found() -> None:
+    counted = Violation(file=known.file, fingerprint=None)
+    store = FakeBaselineStore(Baseline.of((counted, counted)))
+    _ = BaselinePruning.prune(
+        LinterOutput(f"{reported_line}\n"),
+        LinterFormat.fixit,
+        WorkingDirectory.fake(),
+        lines,
+        store,
+    ).unwrap()
+    assert store.baseline == Baseline.of((counted,))
+
+
+def test_a_counted_file_is_never_raised() -> None:
+    counted = Violation(file=known.file, fingerprint=None)
+    store = FakeBaselineStore(Baseline.of((counted,)))
+    drift = BaselinePruning.prune(
+        LinterOutput(f"{reported_line}\n{reported_line}\n"),
+        LinterFormat.fixit,
+        WorkingDirectory.fake(),
+        lines,
+        store,
+    ).unwrap()
+    one = Count(1)
+    assert drift.new_count() == one
+    assert store.baseline == Baseline.of((counted,))

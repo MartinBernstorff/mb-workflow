@@ -230,3 +230,61 @@ def test_a_tach_error_exits_two_and_writes_nothing(workdir: Path) -> None:
     )
     assert result.returncode == unparsable
     assert not (workdir / ".hemolint").exists()
+
+
+renamed = "if y == None:"
+
+
+class CountedBaseline:
+    # Records the violation in workdir by count, then renames the symbol on its line.
+    @staticmethod
+    def record_then_rename(workdir: Path) -> None:
+        _ = HemolintProcess.run_in(
+            workdir,
+            ["check", "--format", "fixit", "--baseline", "--baseline-by", "count"],
+            violation,
+        )
+        _ = (workdir / source).write_text(f"x = 1\n{renamed}\n{renamed}\n")
+
+
+def test_recording_by_count_writes_the_count(workdir: Path) -> None:
+    one = 1
+    _ = HemolintProcess.run_in(
+        workdir, ["check", "--format", "fixit", "--baseline", "--baseline-by", "count"], violation
+    )
+    written = workdir / ".hemolint" / f"fixit-{rule}" / f"{source}.json"
+    assert json.loads(written.read_text()) == one
+
+
+def test_a_counted_violation_on_an_edited_line_exits_zero(workdir: Path) -> None:
+    success = 0
+    CountedBaseline.record_then_rename(workdir)
+    result = HemolintProcess.run_in(workdir, ["check", "--format", "fixit"], violation)
+    assert result.returncode == success
+
+
+def test_a_grown_count_exits_one_and_prints_every_violation_in_the_file(workdir: Path) -> None:
+    failure = 1
+    another = f"{source}@3:0 {rule}: Use `is`.\n"
+    header = f"{source}: fixit-{rule} 2 found, baseline holds 1"
+    CountedBaseline.record_then_rename(workdir)
+    result = HemolintProcess.run_in(workdir, ["check", "--format", "fixit"], violation + another)
+    assert result.returncode == failure
+    assert result.stdout.startswith(f"{header}\n{violation}{another}")
+
+
+def test_a_shrunk_count_exits_one_with_its_header(workdir: Path) -> None:
+    failure = 1
+    header = f"{source}: fixit-{rule} 0 found, baseline holds 1\n"
+    CountedBaseline.record_then_rename(workdir)
+    result = HemolintProcess.run_in(workdir, ["check", "--format", "fixit"], "")
+    assert result.returncode == failure
+    assert result.stdout.startswith(header)
+
+
+def test_baseline_by_without_baseline_is_a_usage_error(workdir: Path) -> None:
+    usage_error = 2
+    result = HemolintProcess.run_in(
+        workdir, ["check", "--format", "fixit", "--baseline-by", "count"], ""
+    )
+    assert result.returncode == usage_error
