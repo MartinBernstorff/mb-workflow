@@ -10,6 +10,7 @@ from hemolint.b_core.d_domain_model.baseline import (
     Baseline,
     BaselineChange,
     BaselineFile,
+    BaselineMatching,
     Count,
     Violation,
 )
@@ -155,3 +156,16 @@ def test_another_linters_violation_is_kept() -> None:
         store,
     ).unwrap()
     assert store.baseline == Baseline.of((pyrefly, known))
+
+
+def test_recording_by_count_records_the_violation_without_its_fingerprint() -> None:
+    store = FakeBaselineStore()
+    _ = BaselineRecording.record(
+        on_line_1,
+        LinterFormat.fixit,
+        WorkingDirectory.fake(),
+        SourceFile.lines_holding(SourceText(f"{code.root}\n")),
+        store,
+        matching=BaselineMatching.by_count,
+    ).unwrap()
+    assert store.baseline == Baseline.of((Violation.counted(known.file),))

@@ -4,7 +4,7 @@ from pathlib import Path
 import typer
 
 from hemolint.a_presentation.commands import Commands
-from hemolint.b_core.d_domain_model.baseline import BaselineDirectory
+from hemolint.b_core.d_domain_model.baseline import BaselineDirectory, BaselineMatching
 
 # Typer reads the annotation at runtime to build the --format choices.
 from hemolint.b_core.d_domain_model.linter_format import LinterFormat  # noqa: TC001
@@ -31,6 +31,12 @@ def check(
     prune: bool = typer.Option(
         False, "--prune", help="Remove fixed violations from the baseline instead of failing."
     ),
+    baseline_by: BaselineMatching | None = typer.Option(
+        None,
+        "--baseline-by",
+        help="With --baseline, record each violation by fingerprint, or only count them per "
+        "source file. Defaults to fingerprint.",
+    ),
     directory: Path = typer.Option(
         Path(".hemolint"), "--dir", help="Directory that holds the baseline."
     ),
@@ -39,17 +45,18 @@ def check(
     if prune and baseline:
         _ = sys.stderr.write("--prune and --baseline cannot be used together.\n")
         raise typer.Exit(code=2)
+    if baseline_by is not None and not baseline:
+        _ = sys.stderr.write("--baseline-by only applies with --baseline.\n")
+        raise typer.Exit(code=2)
     working = WorkingDirectory.current()
+    output = LinterOutput(sys.stdin.read())
+    store = BaselineDirectory(working.root / directory)
     if baseline:
-        command = Commands.record_baseline
+        code = Commands.record_baseline(
+            output, linter_format, working, store, baseline_by or BaselineMatching.by_fingerprint
+        )
     elif prune:
-        command = Commands.prune_baseline
+        code = Commands.prune_baseline(output, linter_format, working, store)
     else:
-        command = Commands.check_baseline
-    code = command(
-        LinterOutput(sys.stdin.read()),
-        linter_format,
-        working,
-        BaselineDirectory(working.root / directory),
-    )
+        code = Commands.check_baseline(output, linter_format, working, store)
     raise typer.Exit(code=code.root)

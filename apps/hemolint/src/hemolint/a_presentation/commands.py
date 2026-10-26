@@ -6,13 +6,14 @@ from safe_result import Err, Ok
 from hemolint.b_core.a_features.check_baseline import BaselineCheck
 from hemolint.b_core.a_features.prune_baseline import BaselinePruning
 from hemolint.b_core.a_features.record_baseline import BaselineRecording
+from hemolint.b_core.d_domain_model.drift import CountDrift
 from hemolint.b_core.d_domain_model.linter_output import UnparsableOutputError
 from hemolint.c_infrastructure.disk_baseline_store import DiskBaselineStore
 from hemolint.c_infrastructure.disk_source_lines import DiskSourceLines
 from hemolint.d_lib.models import Value
 
 if TYPE_CHECKING:
-    from hemolint.b_core.d_domain_model.baseline import BaselineDirectory
+    from hemolint.b_core.d_domain_model.baseline import BaselineDirectory, BaselineMatching
     from hemolint.b_core.d_domain_model.drift import Drift
     from hemolint.b_core.d_domain_model.linter_format import LinterFormat
     from hemolint.b_core.d_domain_model.linter_output import LinterOutput
@@ -25,7 +26,30 @@ class ExitCode(Value[int]):
         return ExitCode(0)
 
 
-# New violations as the linter reported them, then fixed ones per baseline file, then a summary.
+# A counted baseline file whose count drifted, then, if it grew, every violation found in it,
+# since which of them are new is unknown.
+class CountDriftReport(Value[tuple[str, ...]]):
+    @staticmethod
+    def fake() -> CountDriftReport:
+        return CountDriftReport.of(CountDrift.fake())
+
+    @staticmethod
+    def of(drift: CountDrift) -> CountDriftReport:
+        file = drift.file
+        header = (
+            f"{file.source.root}: {file.linter.root}-{file.rule.root} "
+            f"{len(drift.found)} found, baseline holds {drift.baseline.root}"
+        )
+        found = (
+            (violation.reported_as.root for violation in drift.found)
+            if drift.new_count().root
+            else ()
+        )
+        return CountDriftReport((header, *found))
+
+
+# New violations as the linter reported them, then counted baseline files that drifted, then
+# fixed ones per baseline file, then a summary.
 class DriftReport(Value[str]):
     @staticmethod
     def fake() -> DriftReport:
@@ -34,16 +58,19 @@ class DriftReport(Value[str]):
     @staticmethod
     def of(drift: Drift) -> DriftReport:
         lines = [violation.reported_as.root for violation in drift.new]
+        for counted in drift.counted:
+            lines.extend(CountDriftReport.of(counted).root)
         fixed = drift.fixed_per_file()
         lines.extend(
             f"{file.source.root}: {file.linter.root}-{file.rule.root} ×{count.root} fixed"  # noqa: RUF001
             for file, count in fixed.items()
         )
-        if fixed:
+        all_fixed = drift.all_fixed()
+        if all_fixed.root:
             lines.append(
                 "Run `hemolint check --prune` to remove fixed violations from the baseline."
             )
-        lines.append(f"{len(drift.new)} new and {len(drift.fixed.root)} fixed violations.")
+        lines.append(f"{drift.new_count().root} new and {len(all_fixed.root)} fixed violations.")
         return DriftReport("".join(f"{line}\n" for line in lines))
 
 
@@ -56,9 +83,12 @@ class PruneReport(Value[str]):
     @staticmethod
     def of(drift: Drift) -> PruneReport:
         lines = [violation.reported_as.root for violation in drift.new]
+        for counted in drift.counted:
+            if counted.new_count().root:
+                lines.extend(CountDriftReport.of(counted).root)
         lines.append(
-            f"{len(drift.new)} new violations. "
-            f"Removed {len(drift.fixed.root)} fixed violations from the baseline."
+            f"{drift.new_count().root} new violations. "
+            f"Removed {len(drift.all_fixed().root)} fixed violations from the baseline."
         )
         return PruneReport("".join(f"{line}\n" for line in lines))
 
@@ -70,6 +100,7 @@ class Commands:
         linter_format: LinterFormat,
         working: WorkingDirectory,
         baseline: BaselineDirectory,
+        matching: BaselineMatching,
     ) -> ExitCode:
         match BaselineRecording.record(
             output,
@@ -77,6 +108,7 @@ class Commands:
             working,
             DiskSourceLines(working),
             DiskBaselineStore(baseline),
+            matching=matching,
         ):
             case Ok(change):
                 _ = sys.stdout.write(
@@ -122,7 +154,7 @@ class Commands:
         ):
             case Ok(drift):
                 _ = sys.stdout.write(PruneReport.of(drift).root)
-                return ExitCode(1) if drift.new else ExitCode(0)
+                return ExitCode(1) if drift.new_count().root else ExitCode(0)
             case Err(error):
                 return Commands._report_error(error)
 

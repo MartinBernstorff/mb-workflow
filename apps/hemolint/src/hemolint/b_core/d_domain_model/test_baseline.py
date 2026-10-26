@@ -2,10 +2,11 @@ from hemolint.b_core.d_domain_model.baseline import (
     Baseline,
     BaselineChange,
     BaselineFile,
+    BaselineMatching,
     Count,
     Violation,
 )
-from hemolint.b_core.d_domain_model.violation import Fingerprint, RuleName
+from hemolint.b_core.d_domain_model.violation import Fingerprint, RuleName, SourcePath
 
 
 class Violations:
@@ -55,3 +56,14 @@ def test_removing_a_baseline_removes_one_copy_per_copy_it_holds() -> None:
     known = Violations.with_fingerprint(Fingerprint("a == None"))
     remaining = Baseline.of((known, known)).without(Baseline.of((known,)))
     assert remaining == Baseline.of((known,))
+
+
+def test_matching_by_count_drops_the_fingerprint() -> None:
+    violation = Violations.with_fingerprint(Fingerprint("a == None"))
+    assert violation.matched_by(BaselineMatching.by_count).is_counted()
+
+
+def test_matching_by_count_keeps_the_fingerprint_of_a_global_violation() -> None:
+    global_file = BaselineFile.fake().model_copy(update={"source": SourcePath.global_diagnostics()})
+    violation = Violation(file=global_file, fingerprint=Fingerprint.fake())
+    assert violation.matched_by(BaselineMatching.by_count) == violation

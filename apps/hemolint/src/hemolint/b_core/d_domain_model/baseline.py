@@ -1,4 +1,5 @@
 from collections import Counter
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -34,13 +35,37 @@ class BaselineFile(Model):
         )
 
 
+# How a recorded baseline matches the violations found later.
+class BaselineMatching(StrEnum):
+    # Each violation by its fingerprint, so an edit to its line makes it new.
+    by_fingerprint = "fingerprint"
+    # Only how many violations of a rule a source file holds, so edits within the file never drift.
+    by_count = "count"
+
+
+# A counted violation has no fingerprint: it matches any violation of its rule in its source file.
 class Violation(Model):
     file: BaselineFile
-    fingerprint: Fingerprint
+    fingerprint: Fingerprint | None
 
     @staticmethod
     def fake() -> Violation:
         return Violation(file=BaselineFile.fake(), fingerprint=Fingerprint.fake())
+
+    @staticmethod
+    def counted(file: BaselineFile) -> Violation:
+        return Violation(file=file, fingerprint=None)
+
+    def is_counted(self) -> bool:
+        return self.fingerprint is None
+
+    # Global diagnostics keep their fingerprints, since they come from the linter, not a line.
+    def matched_by(self, matching: BaselineMatching) -> Violation:
+        if matching == BaselineMatching.by_fingerprint or (
+            self.file.source == SourcePath.global_diagnostics()
+        ):
+            return self
+        return Violation.counted(self.file)
 
 
 # A violation in the current linter output, with the line the linter reported it on.
@@ -84,7 +109,7 @@ class Baseline(Value[tuple[Violation, ...]]):
                         violation.file.source.root,
                         violation.file.linter.root,
                         violation.file.rule.root,
-                        violation.fingerprint.root,
+                        "" if violation.fingerprint is None else violation.fingerprint.root,
                     ),
                 )
             )

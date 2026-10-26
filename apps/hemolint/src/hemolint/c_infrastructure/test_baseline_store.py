@@ -141,3 +141,30 @@ def test_a_baseline_file_outside_a_rule_directory_is_an_error(tmp_path: Path) ->
     directory.mkdir()
     _ = (directory / "a.py.json").write_text("{}")
     assert DiskBaselineStore(BaselineDirectory(directory)).read(linter).is_err()
+
+
+def test_a_counted_baseline_reads_back(store: BaselineStore) -> None:
+    counted = Violation.counted(nested)
+    mixed = Baseline.of((counted, counted, other))
+    _ = store.write(linter, mixed).unwrap()
+    assert store.read(linter).unwrap() == mixed
+
+
+def test_the_disk_baseline_keeps_a_counted_file_as_a_bare_count(tmp_path: Path) -> None:
+    directory = tmp_path / ".hemolint"
+    counted = Violation.counted(nested)
+    _ = (
+        DiskBaselineStore(BaselineDirectory(directory))
+        .write(linter, Baseline.of((counted, counted)))
+        .unwrap()
+    )
+    written = directory / f"{linter.root}-{rule.root}" / "src" / "a.py.json"
+    two = 2
+    assert json.loads(written.read_text()) == two
+
+
+def test_a_baseline_file_holding_no_count_is_an_error(tmp_path: Path) -> None:
+    directory = tmp_path / ".hemolint"
+    (directory / f"{linter.root}-{rule.root}").mkdir(parents=True)
+    _ = (directory / f"{linter.root}-{rule.root}" / "a.py.json").write_text("true")
+    assert DiskBaselineStore(BaselineDirectory(directory)).read(linter).is_err()

@@ -5,7 +5,7 @@ from hemolint.b_core.d_domain_model.baseline import (
     FoundViolation,
     Violation,
 )
-from hemolint.b_core.d_domain_model.drift import Drift
+from hemolint.b_core.d_domain_model.drift import CountDrift, Drift
 from hemolint.b_core.d_domain_model.violation import Fingerprint, LinterLine, RuleName
 
 known = Violation(file=BaselineFile.fake(), fingerprint=Fingerprint("a == None"))
@@ -52,3 +52,31 @@ def test_fixed_violations_count_per_baseline_file() -> None:
     drift = Drift.between(Baseline.of((known, other, elsewhere)), ())
     two, one = Count(2), Count(1)
     assert drift.fixed_per_file() == {BaselineFile.fake(): two, other_rule: one}
+
+
+counted = Violation(file=BaselineFile.fake(), fingerprint=None)
+
+
+def test_a_counted_file_matches_violations_on_any_line() -> None:
+    drift = Drift.between(Baseline.of((counted,)), (Found.reported_as(other, LinterLine.fake()),))
+    assert not drift.exists()
+
+
+def test_a_counted_file_with_more_violations_holds_every_one_found() -> None:
+    found = (
+        Found.reported_as(known, LinterLine("src/app.py@1:0 Rule: a.")),
+        Found.reported_as(other, LinterLine("src/app.py@2:0 Rule: b.")),
+    )
+    drift = Drift.between(Baseline.of((counted,)), found)
+    one = Count(1)
+    assert drift.counted == (CountDrift(file=BaselineFile.fake(), found=found, baseline=one),)
+    assert drift.new_count() == one
+
+
+def test_a_counted_file_with_fewer_violations_has_the_difference_all_fixed() -> None:
+    drift = Drift.between(
+        Baseline.of((counted, counted, counted)), (Found.reported_as(known, LinterLine.fake()),)
+    )
+    none = Count(0)
+    assert drift.all_fixed() == Baseline.of((counted, counted))
+    assert drift.new_count() == none

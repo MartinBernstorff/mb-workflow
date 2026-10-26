@@ -24,6 +24,14 @@ fixit lint | uv run hemolint check --format fixit --prune
 
 It still exits 1 on new violations, but never adds them to the baseline, so a pre-commit hook can run it to shrink the baseline as violations are fixed. The baseline files of deleted source files are removed with their violations.
 
+By default each violation is recorded by its fingerprint, the text of its source line, so editing that line, e.g. renaming a symbol on it, makes the violation new. Record only how many violations of each rule a source file holds instead:
+
+```sh
+fixit lint | uv run hemolint check --format fixit --baseline --baseline-by count
+```
+
+A violation then matches any violation of its rule in its source file, so fixing one and adding another in the same file goes unnoticed. When a file holds more violations than its count, hemolint cannot tell which are new, so it prints the file's count and every violation of the rule in it. `check` and `--prune` read each baseline file as it was recorded, so they take no `--baseline-by`. Tach's global diagnostics keep their fingerprints, since they come from tach, not a source line.
+
 Ruff's JSON output works in all three modes. Its absolute paths are recorded relative to the current directory:
 
 ```sh
@@ -46,6 +54,6 @@ tach check --output json | uv run hemolint check --format tach
 
 Each diagnostic kind, e.g. `UndeclaredDependency`, is a rule. Diagnostics for the whole project rather than a line are kept in `<linter>-<rule>/_global.json`, fingerprinted by their details. Configuration diagnostics, skipped files and tach errors such as a circular dependency exit 2, since tach could not check everything.
 
-The baseline lives in `.hemolint/`, one directory per rule and one JSON file per source file in it, at `<linter>-<rule>/<source path>.json`. Several linters can share it: each run reads and writes only the files of its own linter.
+The baseline lives in `.hemolint/`, one directory per rule and one JSON file per source file in it, at `<linter>-<rule>/<source path>.json`, holding either each fingerprint with its count or a bare count. Several linters can share it: each run reads and writes only the files of its own linter.
 
 All checks run through moon from the repository root: `moon ci`.

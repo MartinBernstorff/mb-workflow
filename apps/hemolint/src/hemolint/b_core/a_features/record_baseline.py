@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 from safe_result import Err, Ok, Result
 
 from hemolint.b_core.a_features.find_violations import ViolationFinder
-from hemolint.b_core.d_domain_model.baseline import Baseline
+from hemolint.b_core.d_domain_model.baseline import Baseline, BaselineMatching
 
 if TYPE_CHECKING:
     from hemolint.b_core.c_secondary_ports.baseline_store import (
@@ -30,6 +30,8 @@ class BaselineRecording:
         directory: WorkingDirectory,
         lines: SourceLines,
         store: BaselineStore,
+        *,
+        matching: BaselineMatching = BaselineMatching.by_fingerprint,
     ) -> Result[
         BaselineChange,
         UnparsableOutputError
@@ -40,7 +42,7 @@ class BaselineRecording:
         found = ViolationFinder.find(output, linter_format, directory, lines)
         if isinstance(found, Err):
             return found
-        current = Baseline.of(reported.violation for reported in found.value)
+        current = Baseline.of(reported.violation.matched_by(matching) for reported in found.value)
         previous = store.read(linter_format.linter_name())
         if isinstance(previous, Err):
             return previous

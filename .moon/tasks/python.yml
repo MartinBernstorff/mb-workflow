@@ -66,9 +66,9 @@ tasks:
       cache: false
       runInCI: false
 
-  # Records every current violation, including new ones, in the baseline.
+  # Records every current violation, including new ones, in the baseline, as a count per source file.
   fixit-baseline:
-    script: "uv run --project $workspaceRoot/packages/lint-rules fixit lint src | uv run --project $workspaceRoot/apps/hemolint hemolint check --format fixit --baseline"
+    script: "uv run --project $workspaceRoot/packages/lint-rules fixit lint src | uv run --project $workspaceRoot/apps/hemolint hemolint check --format fixit --baseline --baseline-by count"
     options:
       cache: false
       runInCI: false
