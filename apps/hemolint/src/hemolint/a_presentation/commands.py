@@ -41,7 +41,9 @@ class CountDriftReport(Value[tuple[str, ...]]):
             f"{len(drift.found)} found, baseline holds {drift.baseline.root}"
         )
         found = (
-            (violation.reported_as.root for violation in drift.found) if drift.new().root else ()
+            (violation.reported_as.root for violation in drift.found)
+            if drift.new_count().root
+            else ()
         )
         return CountDriftReport((header, *found))
 
@@ -63,13 +65,12 @@ class DriftReport(Value[str]):
             f"{file.source.root}: {file.linter.root}-{file.rule.root} ×{count.root} fixed"  # noqa: RUF001
             for file, count in fixed.items()
         )
-        if drift.removable().root:
+        all_fixed = drift.all_fixed()
+        if all_fixed.root:
             lines.append(
                 "Run `hemolint check --prune` to remove fixed violations from the baseline."
             )
-        lines.append(
-            f"{drift.new_count().root} new and {len(drift.removable().root)} fixed violations."
-        )
+        lines.append(f"{drift.new_count().root} new and {len(all_fixed.root)} fixed violations.")
         return DriftReport("".join(f"{line}\n" for line in lines))
 
 
@@ -83,11 +84,11 @@ class PruneReport(Value[str]):
     def of(drift: Drift) -> PruneReport:
         lines = [violation.reported_as.root for violation in drift.new]
         for counted in drift.counted:
-            if counted.new().root:
+            if counted.new_count().root:
                 lines.extend(CountDriftReport.of(counted).root)
         lines.append(
             f"{drift.new_count().root} new violations. "
-            f"Removed {len(drift.removable().root)} fixed violations from the baseline."
+            f"Removed {len(drift.all_fixed().root)} fixed violations from the baseline."
         )
         return PruneReport("".join(f"{line}\n" for line in lines))
 

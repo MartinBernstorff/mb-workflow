@@ -43,9 +43,9 @@ class BaselinePruning:
         if isinstance(baseline, Err):
             return baseline
         drift = Drift.between(baseline.value, found.value)
-        removable = drift.removable()
-        if removable.root:
-            written = store.write(linter_format.linter_name(), baseline.value.without(removable))
+        fixed = drift.all_fixed()
+        if fixed.root:
+            written = store.write(linter_format.linter_name(), baseline.value.without(fixed))
             if isinstance(written, Err):
                 return written
         return Ok(drift)

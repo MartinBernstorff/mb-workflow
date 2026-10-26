@@ -31,7 +31,7 @@ class BaselineRecording:
         lines: SourceLines,
         store: BaselineStore,
         *,
-        matching: BaselineMatching,
+        matching: BaselineMatching = BaselineMatching.by_fingerprint,
     ) -> Result[
         BaselineChange,
         UnparsableOutputError

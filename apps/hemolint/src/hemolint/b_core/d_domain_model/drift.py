@@ -26,10 +26,10 @@ class CountDrift(Model):
             file=BaselineFile.fake(), found=(FoundViolation.fake(),), baseline=Count(0)
         )
 
-    def new(self) -> Count:
+    def new_count(self) -> Count:
         return Count(max(len(self.found) - self.baseline.root, 0))
 
-    def fixed(self) -> Count:
+    def fixed_count(self) -> Count:
         return Count(max(self.baseline.root - len(self.found), 0))
 
 
@@ -72,14 +72,14 @@ class Drift(Model):
         return bool(self.new or self.fixed.root or self.counted)
 
     def new_count(self) -> Count:
-        return Count(len(self.new) + sum(drift.new().root for drift in self.counted))
+        return Count(len(self.new) + sum(drift.new_count().root for drift in self.counted))
 
     # Every fixed violation, counted ones as copies without a fingerprint.
-    def removable(self) -> Baseline:
+    def all_fixed(self) -> Baseline:
         counted = (
-            Violation(file=drift.file, fingerprint=None)
+            Violation.counted(drift.file)
             for drift in self.counted
-            for _ in range(drift.fixed().root)
+            for _ in range(drift.fixed_count().root)
         )
         return Baseline.of((*self.fixed.root, *counted))
 

@@ -73,10 +73,10 @@ def test_a_counted_file_with_more_violations_holds_every_one_found() -> None:
     assert drift.new_count() == one
 
 
-def test_a_counted_file_with_fewer_violations_has_the_difference_removable() -> None:
+def test_a_counted_file_with_fewer_violations_has_the_difference_all_fixed() -> None:
     drift = Drift.between(
         Baseline.of((counted, counted, counted)), (Found.reported_as(known, LinterLine.fake()),)
     )
     none = Count(0)
-    assert drift.removable() == Baseline.of((counted, counted))
+    assert drift.all_fixed() == Baseline.of((counted, counted))
     assert drift.new_count() == none

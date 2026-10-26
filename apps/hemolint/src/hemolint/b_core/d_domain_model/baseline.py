@@ -52,6 +52,10 @@ class Violation(Model):
     def fake() -> Violation:
         return Violation(file=BaselineFile.fake(), fingerprint=Fingerprint.fake())
 
+    @staticmethod
+    def counted(file: BaselineFile) -> Violation:
+        return Violation(file=file, fingerprint=None)
+
     def is_counted(self) -> bool:
         return self.fingerprint is None
 
@@ -61,7 +65,7 @@ class Violation(Model):
             self.file.source == SourcePath.global_diagnostics()
         ):
             return self
-        return Violation(file=self.file, fingerprint=None)
+        return Violation.counted(self.file)
 
 
 # A violation in the current linter output, with the line the linter reported it on.

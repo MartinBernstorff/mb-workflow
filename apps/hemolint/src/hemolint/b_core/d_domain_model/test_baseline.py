@@ -65,5 +65,5 @@ def test_matching_by_count_drops_the_fingerprint() -> None:
 
 def test_matching_by_count_keeps_the_fingerprint_of_a_global_violation() -> None:
     global_file = BaselineFile.fake().model_copy(update={"source": SourcePath.global_diagnostics()})
-    violation = Violation(file=global_file, fingerprint=Fingerprint('{"dependency":"b"}'))
+    violation = Violation(file=global_file, fingerprint=Fingerprint.fake())
     assert violation.matched_by(BaselineMatching.by_count) == violation

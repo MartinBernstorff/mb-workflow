@@ -70,7 +70,7 @@ def test_another_linters_violation_is_kept() -> None:
 
 
 def test_a_counted_file_is_lowered_to_the_violations_found() -> None:
-    counted = Violation(file=known.file, fingerprint=None)
+    counted = Violation.counted(known.file)
     store = FakeBaselineStore(Baseline.of((counted, counted)))
     _ = BaselinePruning.prune(
         LinterOutput(f"{reported_line}\n"),
@@ -83,7 +83,7 @@ def test_a_counted_file_is_lowered_to_the_violations_found() -> None:
 
 
 def test_a_counted_file_is_never_raised() -> None:
-    counted = Violation(file=known.file, fingerprint=None)
+    counted = Violation.counted(known.file)
     store = FakeBaselineStore(Baseline.of((counted,)))
     drift = BaselinePruning.prune(
         LinterOutput(f"{reported_line}\n{reported_line}\n"),

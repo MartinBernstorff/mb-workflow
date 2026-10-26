@@ -144,7 +144,7 @@ def test_a_baseline_file_outside_a_rule_directory_is_an_error(tmp_path: Path) ->
 
 
 def test_a_counted_baseline_reads_back(store: BaselineStore) -> None:
-    counted = Violation(file=nested, fingerprint=None)
+    counted = Violation.counted(nested)
     mixed = Baseline.of((counted, counted, other))
     _ = store.write(linter, mixed).unwrap()
     assert store.read(linter).unwrap() == mixed
@@ -152,7 +152,7 @@ def test_a_counted_baseline_reads_back(store: BaselineStore) -> None:
 
 def test_the_disk_baseline_keeps_a_counted_file_as_a_bare_count(tmp_path: Path) -> None:
     directory = tmp_path / ".hemolint"
-    counted = Violation(file=nested, fingerprint=None)
+    counted = Violation.counted(nested)
     _ = (
         DiskBaselineStore(BaselineDirectory(directory))
         .write(linter, Baseline.of((counted, counted)))
