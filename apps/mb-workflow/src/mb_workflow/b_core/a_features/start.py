@@ -7,7 +7,7 @@ from safe_result import Err, Ok, Result
 from mb_workflow.b_core.b_domain_services.flow_transition import OpeningEntry
 from mb_workflow.b_core.b_domain_services.next_action import TicketState
 from mb_workflow.b_core.b_domain_services.take_ticket import TicketTaking
-from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimRequest
+from mb_workflow.b_core.c_secondary_ports.claims import ClaimRequest
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
     WorkspaceNaming,
@@ -15,10 +15,10 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, HostName, TakeOver
 from mb_workflow.b_core.d_domain_model.flow import (
     AcceptedStates,
+    AgentWork,
     AwaitingHuman,
     Finished,
     FlowError,
-    Skill,
     StateName,
     WorkflowChart,
     WorkState,
@@ -42,18 +42,14 @@ from mb_workflow.d_lib.saga import Saga, SagaStep
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
-    from mb_workflow.b_core.c_secondary_ports.claims import (
-        ClaimRefusedError,
-        ClaimRegistry,
-        UnknownClaimLabelError,
-    )
+    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRefusedError, ClaimRegistry
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
         TicketTracker,
         TicketTrackerError,
     )
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
-    from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
+    from mb_workflow.b_core.d_domain_model.config import FlowSettings, WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.issue import Issue
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
@@ -63,6 +59,11 @@ logger = logging.getLogger(__name__)
 
 
 class PromptUndeliveredError(Exception):
+    pass
+
+
+# Split out so a drain can move on when a ticket got a worktree after it was listed.
+class WorktreeExistsError(WorkspaceManagerError):
     pass
 
 
@@ -124,18 +125,22 @@ class WorktreeStep(SagaStep[WorkspaceManagerError]):
 
 class StartRequest(Model):
     ticket: IssueIdentifier
+    # Typed with the ticket after it; the agent reads the flow's state descriptions to pick its work.
+    prompt: TerminalText
     submit: Submit
     idle_timeout: TimeoutMs
     host: HostName
     take_over: TakeOver
     activate: Activate
-    # The state to put a ticket without a flow label in; None leaves the flow label to decide.
+    # The state to put a ticket without a flow label in; None leaves it to the flow label, or to the
+    # unlabelled state when the ticket has none.
     state: StateName | None
 
     @staticmethod
     def fake() -> StartRequest:
         return StartRequest(
             ticket=IssueIdentifier.fake(),
+            prompt=TerminalText("/work"),
             submit=Submit.fake(),
             idle_timeout=TimeoutMs.fake(),
             host=HostName.fake(),
@@ -144,12 +149,14 @@ class StartRequest(Model):
             state=None,
         )
 
-    def prompt_for(self, action: Skill | AwaitingHuman) -> TerminalText | None:
+    def prompt_for(self, action: AgentWork | AwaitingHuman) -> TerminalText | None:
         if isinstance(action, AwaitingHuman):
             return None
-        return TerminalText(f"{action.root} {self.ticket.root}")
+        return TerminalText(f"{self.prompt.root} {self.ticket.root}")
 
-    def state_given(self, labelled_state: StateName | None) -> Result[StateName, FlowError]:
+    def state_given(
+        self, labelled_state: StateName | None, unlabelled: StateName
+    ) -> Result[StateName, FlowError]:
         if labelled_state is not None:
             if self.state is not None:
                 return Err(
@@ -159,16 +166,9 @@ class StartRequest(Model):
                     )
                 )
             return Ok(labelled_state)
-        startable = TicketStart.startable_states()
         if self.state is None:
-            listed = ", ".join(state.root for state in startable.root)
-            return Err(
-                FlowError(
-                    f"{self.ticket.root} carries no flow label, so it is not in the flow."
-                    f" Pass --state with one of {listed}."
-                )
-            )
-        return startable.named_ignoring_case(self.state)
+            return Ok(unlabelled)
+        return TicketStart.startable_states().named_ignoring_case(self.state)
 
 
 class TicketStart:
@@ -180,25 +180,28 @@ class TicketStart:
         claims: ClaimRegistry,
         board: WorkspaceStatusStore,
         workspace: WorkspaceSettings,
-        claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
+        flow: FlowSettings,
         request: StartRequest,
     ) -> Result[
         None,
         FlowError
         | TicketTrackerError
-        | UnknownClaimLabelError
         | ClaimRefusedError
         | MissingFlowLabelsError
         | WorkspaceManagerError,
     ]:
+        # Checked before touching anything, so a ticket never gets a second worktree.
+        unopened = TicketStart.require_no_worktree(manager, request.ticket)
+        if isinstance(unopened, Err):
+            return unopened
         with Activity(f"Reading {request.ticket.root}").logged(logger):
             read = tracker.read_issue_detail(request.ticket)
         if isinstance(read, Err):
             return read
         detail = read.value
-        planned = TicketStart.planned_start(request, flow_labels, detail.issue)
+        planned = TicketStart.planned_start(request, flow_labels, flow, detail.issue)
         if isinstance(planned, Err):
             return planned
         labelled_state, state, prompt = planned.value
@@ -214,10 +217,6 @@ class TicketStart:
         if isinstance(entering, Err):
             return entering
         entry = entering.value
-        checked = Claiming.require_claim_label(tracker, claim_settings.label)
-        if isinstance(checked, Err):
-            return checked
-
         name = WorktreeName.of_issue(request.ticket)
         worktree_step = WorktreeStep(
             manager,
@@ -234,7 +233,6 @@ class TicketStart:
             claims=claims,
             tracker=tracker,
             workspace=workspace,
-            claim_settings=claim_settings,
             request=ClaimRequest(
                 ticket=request.ticket,
                 status=entry.status,
@@ -243,17 +241,33 @@ class TicketStart:
             ),
             previous=detail.assignee,
         )
-        if isinstance(taking_steps, Err):
-            return taking_steps
         return TicketStart.take_into_worktree(
             manager=manager,
-            taking_steps=(*entry.steps, *taking_steps.value),
+            taking_steps=(*entry.steps, *taking_steps),
             worktree_step=worktree_step,
             display_name=DisplayName.of_issue(detail.title),
             priority=WorkspacePriority.of_ticket(detail.priority),
             prompt=prompt,
             request=request,
         )
+
+    @staticmethod
+    def require_no_worktree(
+        manager: WorkspaceManager, ticket: IssueIdentifier
+    ) -> Result[None, WorkspaceManagerError]:
+        with Activity(f"Checking that no worktree is linked to {ticket.root}").logged(logger):
+            listed = manager.worktrees()
+        if isinstance(listed, Err):
+            return listed
+        linked = listed.value.linked_to(ticket)
+        if linked is not None:
+            return Err(
+                WorktreeExistsError(
+                    f"{ticket.root} already has worktree {linked.path.root}. Work it there, or"
+                    " remove it with `mw workspace teardown` before starting the ticket again."
+                )
+            )
+        return Ok(None)
 
     # Takes the ticket, opens its worktree, and types the prompt, if any, into it.
     @staticmethod
@@ -296,12 +310,12 @@ class TicketStart:
     # work.
     @staticmethod
     def planned_start(
-        request: StartRequest, flow_labels: FlowLabels, issue: Issue
+        request: StartRequest, flow_labels: FlowLabels, flow: FlowSettings, issue: Issue
     ) -> Result[tuple[StateName | None, StateName, TerminalText | None], FlowError]:
         labelled = flow_labels.state_of(WorkflowChart, issue.grouped)
         if isinstance(labelled, Err):
             return labelled
-        given = request.state_given(labelled.value)
+        given = request.state_given(labelled.value, flow.unlabelled_state)
         if isinstance(given, Err):
             return given
         action = TicketStart.action_in(request.ticket, given.value)
@@ -322,7 +336,7 @@ class TicketStart:
     @staticmethod
     def action_in(
         ticket: IssueIdentifier, state: StateName
-    ) -> Result[Skill | AwaitingHuman, FlowError]:
+    ) -> Result[AgentWork | AwaitingHuman, FlowError]:
         found = TicketState.next_action(WorkflowChart, state)
         if isinstance(found, Err):
             return found
@@ -336,9 +350,7 @@ class TicketStart:
                 state.root,
             )
         else:
-            logger.info(
-                "%s is in %s, so the next step is %s.", ticket.root, state.root, action.root
-            )
+            logger.info("%s is in %s, which an agent works.", ticket.root, state.root)
         return Ok(action)
 
     @staticmethod

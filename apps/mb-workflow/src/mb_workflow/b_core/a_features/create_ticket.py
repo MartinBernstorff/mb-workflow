@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 from safe_result import Err, Result
 
 from mb_workflow.b_core.b_domain_services.flow_label_check import FlowLabelCheck
-from mb_workflow.b_core.d_domain_model.flow import StateNames, WorkflowChart
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
@@ -11,6 +10,7 @@ if TYPE_CHECKING:
         TicketTracker,
         TicketTrackerError,
     )
+    from mb_workflow.b_core.d_domain_model.flow import UnknownStateError
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabelOptionError, FlowLabels
     from mb_workflow.b_core.d_domain_model.issue import CreatedIssue
     from mb_workflow.b_core.d_domain_model.ticket_draft import (
@@ -32,14 +32,21 @@ class TicketCreation:
         statuses: TicketStatuses,
     ) -> Result[
         CreatedIssue,
-        TicketDraftError | FlowLabelOptionError | TicketTrackerError | MissingFlowLabelsError,
+        TicketDraftError
+        | FlowLabelOptionError
+        | UnknownStateError
+        | TicketTrackerError
+        | MissingFlowLabelsError,
     ]:
         viewer = tracker.viewer()
         if isinstance(viewer, Err):
             return viewer
+        start = draft.start_state()
+        if isinstance(start, Err):
+            return start
         drafted = draft.new_issue(
             defaults=defaults,
-            start=StateNames.initial_state(WorkflowChart),
+            start=start.value,
             flow_labels=flow_labels,
             statuses=statuses,
             viewer=viewer.value,
@@ -48,7 +55,7 @@ class TicketCreation:
             return drafted
         new = drafted.value
         # A team taken from the project is unknown until Linear creates the issue, so only the workspace counts then.
-        checked = FlowLabelCheck.require(tracker, flow_labels, new.team)
+        checked = FlowLabelCheck.require(tracker, flow_labels, new.team, start.value)
         if isinstance(checked, Err):
             return checked
         # Linear relates the issues only once it exists, so an unknown one must be caught beforehand.

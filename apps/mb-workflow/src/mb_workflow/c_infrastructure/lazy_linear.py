@@ -166,10 +166,10 @@ class LazyLinear(TicketTracker):
         return self._called(lambda tracker: tracker.read_snapshot(issue))
 
     @override
-    def labelled_issues(
-        self, label: LabelName, excluding: StatusTypes
+    def issues_among(
+        self, issues: tuple[IssueIdentifier, ...], excluding: StatusTypes
     ) -> Result[Issues, TicketTrackerError]:
-        return self._called(lambda tracker: tracker.labelled_issues(label, excluding))
+        return self._called(lambda tracker: tracker.issues_among(issues, excluding))
 
     @override
     def read_issue(self, issue: IssueIdentifier) -> Result[Issue, TicketTrackerError]:

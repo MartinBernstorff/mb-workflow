@@ -29,8 +29,9 @@ def test_reports_the_file_it_came_from_and_every_resolved_setting() -> None:
         "status store: orca (repo)\n"
         "orca project: github:flowbasedk/flowbase (repo)\n"
         "assignee: mab@flowbase.io (repo)\n"
-        "claim label: claimed (repo)\n"
+        "unlabelled state: triage (repo)\n"
         "ticket statuses:\n"
+        "  triage: Triage (repo)\n"
         "  grill: Maturing (repo)\n"
         "  to-ticket: Maturing (repo)\n"
         "  todo: Todo (repo)\n"
@@ -121,20 +122,6 @@ def test_a_configured_pool_reports_its_skip_limits_label() -> None:
     Assert.that(ConfigReport.of(config).root).contains(
         "pool skip-limits label: skip-limits (default)"
     )
-
-
-def test_a_configured_pool_reports_its_skip_limits_state() -> None:
-    config = Configuration.fake().model_copy(
-        update={
-            "settings": Settings(
-                issues=LinearTracker.fake(),
-                workspace=WorkspaceSettings.fake(),
-                pool=PoolSettings.fake(),
-                ticket_statuses=TicketStatuses.fake(),
-            )
-        }
-    )
-    Assert.that(ConfigReport.of(config).root).contains("pool skip-limits state: grill (default)")
 
 
 def test_lists_the_override_file_it_read() -> None:

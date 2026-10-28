@@ -42,10 +42,10 @@ def test_an_override_file_yields_its_settings(tmp_path: Path) -> None:
 def test_the_credentials_table_is_not_a_setting(tmp_path: Path) -> None:
     path = OverridePath(tmp_path / "repo.toml")
     _ = path.root.write_text(
-        f'[linear]\napi_key = "{LinearApiKey.fake().root}"\n[claims]\nlabel = "mine"\n'
+        f'[linear]\napi_key = "{LinearApiKey.fake().root}"\n[workspace]\nassignee = "me@example.com"\n'
     )
 
-    table = SettingsTable({"claims": {"label": "mine"}})
+    table = SettingsTable({"workspace": {"assignee": "me@example.com"}})
     Assert.that(override_at(path)).matches(Ok(OverrideFile(path=path, table=table)))
 
 

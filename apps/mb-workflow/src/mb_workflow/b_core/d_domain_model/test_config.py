@@ -5,7 +5,6 @@ import pytest
 from assertions import Assert
 
 from mb_workflow.b_core.d_domain_model.config import (
-    ClaimSettings,
     ConfigFileName,
     ConfigPath,
     Configuration,
@@ -41,7 +40,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
 from mb_workflow.b_core.d_domain_model.pool import Limit, PoolLimits, ViewSlug
 from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDefaults
 from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
-from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
+from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector, TerminalText
 
 if TYPE_CHECKING:
     from pydantic import JsonValue
@@ -120,7 +119,7 @@ def test_the_nearest_configuration_file_wins(tmp_path: Path) -> None:
     _ = (tmp_path / "repo" / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
-        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        '[ticket_statuses]\ntriage = "Triage"\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
         'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
@@ -129,7 +128,7 @@ def test_the_nearest_configuration_file_wins(tmp_path: Path) -> None:
     _ = nearest_file.write_text(
         '[issues]\ntracker = "todoist"\nproject_tag = "it-mb-workflow"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
-        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        '[ticket_statuses]\ntriage = "Triage"\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
         'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
@@ -149,7 +148,7 @@ def test_the_search_walks_up_when_the_working_directory_holds_no_file(tmp_path: 
     _ = parent_file.write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
-        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        '[ticket_statuses]\ntriage = "Triage"\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
         'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
@@ -167,7 +166,7 @@ def test_a_configuration_in_a_parent_is_not_merged_into_the_nearest_one(tmp_path
     _ = (tmp_path / "repo" / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "todoist"\nproject_tag = "it-other-project"\n'
         '[workspace]\norca_project = "github:other/project"\nassignee = "other@flowbase.io"\n'
-        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        '[ticket_statuses]\ntriage = "Triage"\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
         'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
@@ -175,7 +174,7 @@ def test_a_configuration_in_a_parent_is_not_merged_into_the_nearest_one(tmp_path
     _ = (tmp_path / "repo" / "src" / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
-        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        '[ticket_statuses]\ntriage = "Triage"\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
         'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
@@ -393,24 +392,24 @@ def test_a_workspace_table_without_an_orca_project_is_refused() -> None:
         )
 
 
-def test_claims_are_labelled_workspace_unless_configured() -> None:
-    workspace_label = LabelName("workspace")
-    settings = settings_with_fake_workspace(issues={"tracker": "linear"})
-    Assert.that(settings.claims).matches(ClaimSettings(label=workspace_label))
-
-
-def test_a_configured_claim_label_is_read() -> None:
-    claimed = LabelName("claimed")
-    settings = settings_with_fake_workspace(
-        issues={"tracker": "linear"}, claims={"label": claimed.root}
-    )
-    Assert.that(settings.claims.label).matches(claimed)
-
-
 def test_a_configured_pool_names_its_view() -> None:
     view = ViewSlug("4efb86b38740")
     settings = settings_with_fake_workspace(issues={"tracker": "linear"}, pool={"view": view.root})
     Assert.that(settings.pool).matches(PoolSettings(view=view))
+
+
+def test_a_configured_pool_prompt_is_read() -> None:
+    settings = settings_with_fake_workspace(
+        issues={"tracker": "linear"}, pool={"view": ViewSlug.fake().root, "prompt": "/work"}
+    )
+    Assert.that(settings.required_pool().prompt).matches(TerminalText("/work"))
+
+
+def test_a_pool_has_no_prompt_unless_configured() -> None:
+    settings = settings_with_fake_workspace(
+        issues={"tracker": "linear"}, pool={"view": ViewSlug.fake().root}
+    )
+    Assert.that(settings.required_pool().prompt).matches(None)
 
 
 def test_a_configured_skip_limits_label_is_read() -> None:
@@ -422,20 +421,23 @@ def test_a_configured_skip_limits_label_is_read() -> None:
     Assert.that(settings.required_pool().skip_limits_label).matches(expedite)
 
 
-def test_a_configured_skip_limits_state_is_spelled_as_the_chart() -> None:
+def test_the_unlabelled_state_defaults_to_triage() -> None:
+    settings = settings_with_fake_workspace(issues={"tracker": "linear"})
+    Assert.that(settings.flow.unlabelled_state).matches(StateName("triage"))
+
+
+def test_a_configured_unlabelled_state_is_spelled_as_the_chart() -> None:
     settings = settings_with_fake_workspace(
-        issues={"tracker": "linear"},
-        pool={"view": "4efb86b38740", "skip_limits_state": "TODO"},
+        issues={"tracker": "linear"}, flow={"unlabelled_state": "TODO"}
     )
-    Assert.that(settings.required_pool().skip_limits_state).matches(StateName("todo"))
+    Assert.that(settings.flow.unlabelled_state).matches(StateName("todo"))
 
 
 @pytest.mark.parametrize("state", ["qa", "merged", "nowhere"])
-def test_a_skip_limits_state_no_agent_works_is_refused(state: str) -> None:
-    with pytest.raises(ValueError, match="skip_limits_state"):
+def test_an_unlabelled_state_no_agent_works_is_refused(state: str) -> None:
+    with pytest.raises(ValueError, match="unlabelled_state"):
         _ = settings_with_fake_workspace(
-            issues={"tracker": "linear"},
-            pool={"view": "4efb86b38740", "skip_limits_state": state},
+            issues={"tracker": "linear"}, flow={"unlabelled_state": state}
         )
 
 
@@ -468,7 +470,7 @@ def test_the_pool_limits_table_sets_the_limits(tmp_path: Path) -> None:
     _ = (tmp_path / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
-        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        '[ticket_statuses]\ntriage = "Triage"\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
         'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
@@ -492,7 +494,7 @@ def test_a_limit_on_a_state_outside_the_chart_is_a_config_error(tmp_path: Path) 
     _ = (tmp_path / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
-        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        '[ticket_statuses]\ntriage = "Triage"\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
         'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
@@ -513,7 +515,7 @@ def test_the_ticket_statuses_table_maps_each_flow_state_to_a_ticket_status(
     _ = (tmp_path / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
-        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        '[ticket_statuses]\ntriage = "Triage"\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
         'qa = "In Progress"\nreview = "In Review"\n'
         f'merging = "{ready_for_release.root}"\nmerged = "Done"\n'
@@ -532,7 +534,7 @@ def test_a_ticket_statuses_table_with_a_gap_is_a_config_error_naming_the_state(
     _ = (tmp_path / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
-        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        '[ticket_statuses]\ntriage = "Triage"\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
         'qa = "In Progress"\nreview = "In Review"\n'
         'merged = "Done"\n'
@@ -559,7 +561,7 @@ def test_an_override_file_sets_one_nested_key_and_keeps_its_siblings(tmp_path: P
     _ = (tmp_path / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
-        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        '[ticket_statuses]\ntriage = "Triage"\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
         'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
@@ -586,7 +588,7 @@ def test_an_override_making_the_configuration_invalid_is_an_error_naming_both_fi
     _ = repo_file.write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
-        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        '[ticket_statuses]\ntriage = "Triage"\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
         'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
@@ -606,7 +608,7 @@ def test_an_override_may_supply_a_setting_the_repository_file_lacks(tmp_path: Pa
     _ = (tmp_path / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\n'
-        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        '[ticket_statuses]\ntriage = "Triage"\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
         'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
@@ -627,7 +629,7 @@ def test_an_override_state_limit_in_another_casing_limits_the_chart_state(
     _ = (tmp_path / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
-        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        '[ticket_statuses]\ntriage = "Triage"\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
         'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'

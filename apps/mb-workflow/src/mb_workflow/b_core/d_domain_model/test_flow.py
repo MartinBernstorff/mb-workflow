@@ -5,6 +5,8 @@ from statemachine.exceptions import TransitionNotAllowed
 
 from mb_workflow.b_core.d_domain_model.flow import (
     AcceptedStates,
+    Chart,
+    DescribedStates,
     Edge,
     Edges,
     EventName,
@@ -12,6 +14,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
     FlowError,
     FlowStatus,
     ReviewChart,
+    StateDescriptions,
     StateName,
     StateNames,
     UnknownStateError,
@@ -20,6 +23,7 @@ from mb_workflow.b_core.d_domain_model.flow import (
     WorkState,
 )
 
+TRIAGE = StateName("triage")
 GRILL = StateName("grill")
 TO_TICKET = StateName("to-ticket")
 TODO = StateName("todo")
@@ -40,7 +44,18 @@ def test_the_chart_holds_every_state_the_work_passes_through() -> None:
     Assert.that(StateNames.of_chart(WorkflowChart)).matches(
         StateNames(
             frozenset(
-                {GRILL, TO_TICKET, TODO, IMPLEMENTING, AGENT_REVIEWING, QA, REVIEW, MERGING, MERGED}
+                {
+                    TRIAGE,
+                    GRILL,
+                    TO_TICKET,
+                    TODO,
+                    IMPLEMENTING,
+                    AGENT_REVIEWING,
+                    QA,
+                    REVIEW,
+                    MERGING,
+                    MERGED,
+                }
             )
         )
     )
@@ -51,13 +66,17 @@ def test_every_state_names_what_happens_in_it() -> None:
         _ = Assert.that(state).is_instance(WorkState)
 
 
-def test_work_enters_the_chart_at_grilling() -> None:
-    Assert.that(StateNames.initial_state(WorkflowChart)).matches(GRILL)
+def test_work_enters_the_chart_at_triage() -> None:
+    Assert.that(StateNames.initial_state(WorkflowChart)).matches(TRIAGE)
 
 
 def test_the_chart_holds_every_transition_the_work_can_take() -> None:
     every_transition = frozenset(
         {
+            edge(TRIAGE, EventName("grill"), GRILL),
+            edge(TRIAGE, EventName("to-ticket"), TO_TICKET),
+            edge(TRIAGE, EventName("todo"), TODO),
+            edge(TRIAGE, EventName("implement"), IMPLEMENTING),
             edge(GRILL, EventName("grill"), GRILL),
             edge(GRILL, EventName("to-ticket"), TO_TICKET),
             edge(GRILL, EventName("implement"), IMPLEMENTING),
@@ -124,12 +143,38 @@ def test_no_event_is_legal_from_the_final_state() -> None:
     Assert.that(EventNames.of_state(WorkflowChart, MERGED)).matches(EventNames(()))
 
 
-def test_a_status_pairs_a_state_with_the_events_legal_from_it() -> None:
-    grill_status = FlowStatus(
-        state=GRILL,
-        events=EventNames((EventName("grill"), EventName("implement"), EventName("to-ticket"))),
+def test_a_status_pairs_a_state_with_the_events_legal_from_it_and_where_they_lead() -> None:
+    status = FlowStatus.of(WorkflowChart, GRILL)
+    legal = (
+        (EventName("grill"), GRILL),
+        (EventName("implement"), IMPLEMENTING),
+        (EventName("to-ticket"), TO_TICKET),
     )
-    Assert.that(FlowStatus.of(WorkflowChart, GRILL)).matches(grill_status)
+    Assert.that(tuple((option.event, option.target) for option in status.events)).matches(legal)
+
+
+def test_a_status_describes_its_state_and_every_state_its_events_lead_to() -> None:
+    status = FlowStatus.of(WorkflowChart, GRILL)
+    Assert.that(status.description).matches(StateDescriptions.of_state(WorkflowChart, GRILL))
+    Assert.that(tuple(option.description for option in status.events)).matches(
+        tuple(StateDescriptions.of_state(WorkflowChart, option.target) for option in status.events)
+    )
+
+
+@pytest.mark.parametrize("chart", [WorkflowChart, ReviewChart])
+def test_every_state_carries_a_description(chart: Chart) -> None:
+    undescribed = tuple(
+        state
+        for state in StateNames.of_chart(chart).root
+        if StateDescriptions.of_state(chart, state) is None
+    )
+    Assert.that(undescribed).matches(())
+
+
+def test_a_state_outside_the_chart_has_no_description_and_no_events() -> None:
+    outside = StateName("Marinating")
+    status = FlowStatus(state=outside, description=None, events=())
+    Assert.that(FlowStatus.of(WorkflowChart, outside)).matches(status)
 
 
 def test_the_chart_names_every_event_it_holds() -> None:
@@ -162,7 +207,7 @@ def test_implementing_again_keeps_the_work_in_implementing() -> None:
     ).matches(Ok(IMPLEMENTING))
 
 
-def test_only_todo_opens_in_the_delivery_state_running_the_same_skill() -> None:
+def test_only_todo_opens_in_a_delivery_state() -> None:
     opened = {
         state: WorkspaceOpening.state_opened_in(WorkflowChart, state)
         for state in StateNames.of_chart(WorkflowChart).root
@@ -288,3 +333,8 @@ def test_reviewing_is_where_the_review_chart_ends() -> None:
 # Every workflow state needs a ticket status; reviewing has no ticket, so it stays out.
 def test_reviewing_is_no_state_of_the_workflow_chart() -> None:
     Assert.that(REVIEWING in StateNames.of_chart(WorkflowChart).root).matches(False)
+
+
+def test_the_described_states_follow_the_chart_order() -> None:
+    listed = tuple(held.state for held in DescribedStates.of_chart(WorkflowChart).root)
+    Assert.that(listed).matches(AcceptedStates.of_chart(WorkflowChart).root)

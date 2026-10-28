@@ -26,7 +26,7 @@ def with_repo_config(directory: WorkingDirectory) -> WorkingDirectory:
     _ = (directory.root / "mb-workflow.toml").write_text(
         '[issues]\ntracker = "linear"\n'
         '[workspace]\norca_project = "github:flowbasedk/flowbase"\nassignee = "mab@flowbase.io"\n'
-        '[ticket_statuses]\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
+        '[ticket_statuses]\ntriage = "Triage"\ngrill = "Maturing"\nto-ticket = "Maturing"\ntodo = "Todo"\n'
         'implementing = "In Progress"\nagent-reviewing = "In Progress"\n'
         'qa = "In Progress"\nreview = "In Review"\n'
         'merging = "Ready For Release"\nmerged = "Done"\n'
@@ -58,7 +58,6 @@ def test_the_report_names_both_files_and_where_each_setting_came_from(tmp_path: 
     ]
     assert "assignee: me@example.com (override)" in lines
     assert "orca project: github:flowbasedk/flowbase (repo)" in lines
-    assert "claim label: workspace (default)" in lines
 
 
 def test_the_report_notes_a_missing_override_file(tmp_path: Path) -> None:

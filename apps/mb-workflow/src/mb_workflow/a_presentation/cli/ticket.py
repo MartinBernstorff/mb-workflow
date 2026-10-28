@@ -81,6 +81,14 @@ def ticket_create(
     blocked_by: list[str] = typer.Option(
         [], "--blocked-by", help="Mark the ticket as blocked by an issue."
     ),
+    state: str | None = typer.Option(
+        None,
+        "--state",
+        "-s",
+        help="Start in a flow state instead of the chart's first, ignoring case: "
+        + ", ".join(state.root for state in AcceptedStates.of_chart(WorkflowChart).root)
+        + ".",
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
@@ -96,6 +104,7 @@ def ticket_create(
         estimate=Estimate.from_nullable(estimate),
         blocks=tuple(map(IssueIdentifier, blocks)),
         blocked_by=tuple(map(IssueIdentifier, blocked_by)),
+        state=StateName.from_nullable(state),
     )
     raise typer.Exit(
         code=commands.ticket_create(
@@ -209,10 +218,6 @@ def unclaim(
     ticket: str = typer.Argument(..., help="Ticket whose stuck claim to release, e.g. MB-36."),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    """Delete every claim on the ticket, whichever worktree or host placed it, and its claim label."""
+    """Delete every claim on the ticket, whichever worktree or host placed it."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
-    raise typer.Exit(
-        code=commands.ticket_unclaim(
-            IssueIdentifier(ticket), WorkingDirectory(Path.cwd()), ConfigFileName.default()
-        ).root
-    )
+    raise typer.Exit(code=commands.ticket_unclaim(IssueIdentifier(ticket)).root)

@@ -112,8 +112,9 @@ class TicketTracker(Protocol):
         self, issue: IssueIdentifier
     ) -> Result[IssueSnapshot, TicketTrackerError]: ...
 
-    def labelled_issues(
-        self, label: LabelName, excluding: StatusTypes
+    # The given issues that still exist, leaving out those whose status is of an excluded type.
+    def issues_among(
+        self, issues: tuple[IssueIdentifier, ...], excluding: StatusTypes
     ) -> Result[Issues, TicketTrackerError]: ...
 
     def read_issue(self, issue: IssueIdentifier) -> Result[Issue, TicketTrackerError]: ...
@@ -467,19 +468,20 @@ class FakeTicketTracker(TicketTracker):
         self._views[view] = issues
 
     @override
-    def labelled_issues(
-        self, label: LabelName, excluding: StatusTypes
+    def issues_among(
+        self, issues: tuple[IssueIdentifier, ...], excluding: StatusTypes
     ) -> Result[Issues, TicketTrackerError]:
-        labelled: list[Issue] = []
+        wanted = {issue.root.casefold() for issue in issues}
+        found: list[Issue] = []
         for tracked in self._issues.values():
-            if tracked.issue.labels.matching(label) is None:
+            if tracked.issue.identifier.root.casefold() not in wanted:
                 continue
             status = self._status_named(tracked.issue.status)
             if isinstance(status, Err):
                 return status
             if not excluding.has(status.value.type).root:
-                labelled.append(self._read(tracked))
-        return Ok(Issues(tuple(labelled)))
+                found.append(self._read(tracked))
+        return Ok(Issues(tuple(found)))
 
     @override
     def read_issue(self, issue: IssueIdentifier) -> Result[Issue, TicketTrackerError]:

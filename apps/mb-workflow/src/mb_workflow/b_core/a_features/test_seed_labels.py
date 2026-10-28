@@ -131,8 +131,8 @@ def test_seeding_again_creates_nothing() -> None:
 def test_seeding_adds_only_the_labels_the_team_group_lacks() -> None:
     wanted = FlowLabels.fake()
     tracker = SeedingTrackers.empty()
-    grill = LabelNames((LabelName("grill"),))
-    tracker.create_group_labels(wanted.group, wanted.colored(grill), TeamKey.fake()).unwrap()
+    held = LabelNames(wanted.labels.root[:1])
+    tracker.create_group_labels(wanted.group, wanted.colored(held), TeamKey.fake()).unwrap()
     _ = FlowLabelSeeding.seed_flow_labels(tracker, wanted, TeamName.fake(), Force(False)).unwrap()
     assert (
         tracker.group_labels(wanted.group, TeamKey.fake()).unwrap().label_names() == wanted.labels

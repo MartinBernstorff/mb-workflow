@@ -28,10 +28,8 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.code_review import CodeForge, CodeReviewError
     from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, RunLock
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
-    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTracker
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
     from mb_workflow.b_core.d_domain_model.claim import HostName
-    from mb_workflow.b_core.d_domain_model.config import ClaimSettings
     from mb_workflow.b_core.d_domain_model.pull_request import (
         MergedSince,
         PullRequest,
@@ -144,8 +142,6 @@ class ReviewWorkspaces:
         review: CodeForge,
         manager: WorkspaceManager,
         claims: ClaimRegistry,
-        tracker: TicketTracker,
-        claim_settings: ClaimSettings,
         host: HostName,
         lock: RunLock,
         narrator: Narrator,
@@ -168,8 +164,6 @@ class ReviewWorkspaces:
                 review=review,
                 manager=manager,
                 claims=claims,
-                tracker=tracker,
-                claim_settings=claim_settings,
                 host=host,
                 narrator=narrator,
                 columns=columns,
@@ -183,8 +177,6 @@ class ReviewWorkspaces:
         review: CodeForge,
         manager: WorkspaceManager,
         claims: ClaimRegistry,
-        tracker: TicketTracker,
-        claim_settings: ClaimSettings,
         host: HostName,
         narrator: Narrator,
         columns: ReviewColumns,
@@ -227,8 +219,6 @@ class ReviewWorkspaces:
             match Teardown.release_and_remove(
                 manager=manager,
                 claims=claims,
-                tracker=tracker,
-                claim_settings=claim_settings,
                 worktree=worktree,
                 host=host,
             ):

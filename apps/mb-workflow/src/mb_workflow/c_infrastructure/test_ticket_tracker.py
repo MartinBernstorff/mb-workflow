@@ -47,6 +47,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     IssueDetail,
     IssueFilter,
     IssueIdentifier,
+    Issues,
     IssueStatus,
     IssueStatuses,
     IssueStatusName,
@@ -1182,44 +1183,44 @@ def test_reading_an_unknown_view_is_refused(tracker: TicketTracker) -> None:
     _ = Assert.that(tracker.unblocked_view_tickets(ViewSlug("000000000000"))).is_err(Exception)
 
 
-def labelled_seeds(
-    tracker: TicketTracker, backlog: Backlog, label: LabelName, excluding: StatusTypes
+def seeds_among(
+    tracker: TicketTracker,
+    backlog: Backlog,
+    issues: tuple[IssueIdentifier, ...],
+    excluding: StatusTypes,
 ) -> set[Seed]:
-    listed = tracker.labelled_issues(label, excluding).unwrap().identifiers()
+    listed = tracker.issues_among(issues, excluding).unwrap().identifiers()
     return {seed for seed in Seed if backlog.identifier(seed) in listed}
 
 
-def test_the_issues_carrying_a_label_are_listed(tracker: TicketTracker, backlog: Backlog) -> None:
-    tracker.add_label(backlog.identifier(Seed.recent), LabelName("d-grill")).unwrap()
-    Assert.that(labelled_seeds(tracker, backlog, LabelName("d-grill"), StatusTypes(()))).matches(
-        {
-            Seed.recent,
-            Seed.done,
-        }
+def test_the_issues_asked_for_are_listed(tracker: TicketTracker, backlog: Backlog) -> None:
+    asked = (backlog.identifier(Seed.recent), backlog.identifier(Seed.done))
+    Assert.that(seeds_among(tracker, backlog, asked, StatusTypes(()))).matches(
+        {Seed.recent, Seed.done}
     )
 
 
-def test_labelled_issues_of_an_excluded_status_type_are_left_out(
+def test_issues_of_an_excluded_status_type_are_left_out(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    for seed in (Seed.recent, Seed.old):
-        tracker.add_label(backlog.identifier(seed), LabelName("d-grill")).unwrap()
     tracker.update_issue(
         backlog.identifier(Seed.old),
         IssueUpdate.nothing().model_copy(update={"status": IssueStatusName("Canceled")}),
     ).unwrap()
+    asked = (backlog.identifier(Seed.recent), backlog.identifier(Seed.old))
     excluding = StatusTypes((StatusType.completed, StatusType.canceled))
-    Assert.that(labelled_seeds(tracker, backlog, LabelName("d-grill"), excluding)).matches(
-        {Seed.recent}
-    )
+    Assert.that(seeds_among(tracker, backlog, asked, excluding)).matches({Seed.recent})
 
 
-def test_a_labelled_issue_is_found_whatever_the_label_case(
+def test_an_issue_is_found_whatever_the_identifier_case(
     tracker: TicketTracker, backlog: Backlog
 ) -> None:
-    Assert.that(labelled_seeds(tracker, backlog, LabelName("D-Grill"), StatusTypes(()))).matches(
-        {Seed.done}
-    )
+    asked = (IssueIdentifier(backlog.identifier(Seed.recent).root.lower()),)
+    Assert.that(seeds_among(tracker, backlog, asked, StatusTypes(()))).matches({Seed.recent})
+
+
+def test_asking_for_no_issues_lists_none(tracker: TicketTracker) -> None:
+    Assert.that(tracker.issues_among((), StatusTypes(())).unwrap()).matches(Issues(()))
 
 
 def test_reads_an_issue_back_as_it_was_given(tracker: TicketTracker, backlog: Backlog) -> None:

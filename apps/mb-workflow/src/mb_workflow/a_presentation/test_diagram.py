@@ -24,7 +24,7 @@ def test_renders_a_mermaid_state_diagram() -> None:
 
 def test_the_diagram_shows_where_work_enters_and_ends() -> None:
     Assert.that(ChartDiagram.render_mermaid(WorkflowChart).root).contains(
-        "    [*] --> grill\n    merged --> [*]\n"
+        "    [*] --> triage\n    merged --> [*]\n"
     )
 
 

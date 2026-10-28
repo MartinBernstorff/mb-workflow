@@ -2,6 +2,13 @@ from typing import TYPE_CHECKING
 
 from safe_result import Err, Ok, Result
 
+from mb_workflow.b_core.d_domain_model.flow import (
+    AcceptedStates,
+    StateName,
+    StateNames,
+    UnknownStateError,
+    WorkflowChart,
+)
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
     Estimate,
@@ -19,7 +26,6 @@ from mb_workflow.b_core.d_domain_model.issue import (
 from mb_workflow.d_lib.models import Model
 
 if TYPE_CHECKING:
-    from mb_workflow.b_core.d_domain_model.flow import StateName
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabelOptionError, FlowLabels
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
 
@@ -49,6 +55,7 @@ class TicketDraft(Model):
     estimate: Estimate | None
     blocks: tuple[IssueIdentifier, ...]
     blocked_by: tuple[IssueIdentifier, ...]
+    state: StateName | None
 
     @staticmethod
     def fake() -> TicketDraft:
@@ -64,10 +71,17 @@ class TicketDraft(Model):
             estimate=None,
             blocks=(),
             blocked_by=(),
+            state=None,
         )
 
     def related(self) -> tuple[IssueIdentifier, ...]:
         return (*self.blocks, *self.blocked_by)
+
+    # A ticket starts in the chart's first state unless one is given, which is named ignoring case.
+    def start_state(self) -> Result[StateName, UnknownStateError]:
+        if self.state is None:
+            return Ok(StateNames.initial_state(WorkflowChart))
+        return AcceptedStates.of_chart(WorkflowChart).named_ignoring_case(self.state)
 
     def new_issue(
         self,

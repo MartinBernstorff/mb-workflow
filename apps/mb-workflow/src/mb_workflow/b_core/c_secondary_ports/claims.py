@@ -1,14 +1,9 @@
 import logging
 from itertools import count
-from typing import Protocol, override
+from typing import TYPE_CHECKING, Protocol, override
 
 from safe_result import Err, Ok, Result
 
-from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
-    LabelCheck,
-    TicketTracker,
-    TicketTrackerError,
-)
 from mb_workflow.b_core.d_domain_model.claim import (
     Claim,
     ClaimHolder,
@@ -17,9 +12,12 @@ from mb_workflow.b_core.d_domain_model.claim import (
     Posted,
     TakeOver,
 )
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName, LabelName
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName
 from mb_workflow.d_lib.logging import Activity
 from mb_workflow.d_lib.models import Model
+
+if TYPE_CHECKING:
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +28,6 @@ class ClaimRefusedError(Exception):
 
 # Split out so a drain can move on when another host wins, yet stop on any other refusal.
 class ClaimLostError(ClaimRefusedError):
-    pass
-
-
-# The configured claim label does not exist, so no claim can succeed until the config changes.
-class UnknownClaimLabelError(ClaimRefusedError):
     pass
 
 
@@ -133,36 +126,6 @@ class Claiming:
             f" on {holder.holder.host.root}. Pass --force to take the claim over."
         )
 
-    # Checked before claiming, so a doomed claim never withdraws another holder's claim.
-    @staticmethod
-    def require_claim_label(
-        tracker: TicketTracker, label: LabelName
-    ) -> Result[None, TicketTrackerError | UnknownClaimLabelError]:
-        return LabelCheck.require_label(tracker, label, Claiming.unknown_claim_label(label))
-
-    @staticmethod
-    def unknown_claim_label(label: LabelName) -> UnknownClaimLabelError:
-        return UnknownClaimLabelError(
-            f"No label is named {label.root}. Create the label or change claims.label."
-        )
-
-    @staticmethod
-    def label_claim(
-        tracker: TicketTracker, request: LabelledClaim
-    ) -> Result[None, ClaimRefusedError]:
-        with Activity(f"Labelling {request.ticket.root} as {request.label.root}").logged(logger):
-            labelled = tracker.add_label(request.ticket, request.label)
-        match labelled:
-            case Ok():
-                return Ok(None)
-            case Err(error):
-                return Err(
-                    ClaimRefusedError(
-                        f"Could not label {request.ticket.root} as {request.label.root}."
-                        f" Create the label or change claims.label. {error}"
-                    )
-                )
-
     @staticmethod
     def withdraw_holders_claims(
         registry: ClaimRegistry, ticket: IssueIdentifier, holder: ClaimHolder
@@ -180,38 +143,10 @@ class Claiming:
 
     @staticmethod
     def release_claim(
-        registry: ClaimRegistry, tracker: TicketTracker, request: LabelledClaim
+        registry: ClaimRegistry, ticket: IssueIdentifier, holder: ClaimHolder
     ) -> Result[None, TicketTrackerError]:
-        with Activity(f"Releasing the claim on {request.ticket.root}").logged(logger):
-            withdrawn = Claiming.withdraw_holders_claims(registry, request.ticket, request.holder)
-            if isinstance(withdrawn, Err):
-                return withdrawn
-            left = registry.claims(request.ticket)
-            if isinstance(left, Err):
-                return left
-            if left.value.root:
-                return Ok(None)
-            removed = tracker.remove_label(request.ticket, request.label)
-            if isinstance(removed, Err):
-                logger.warning(
-                    "Could not remove the %s label from %s: %s",
-                    request.label.root,
-                    request.ticket.root,
-                    removed.error,
-                )
-            return Ok(None)
-
-
-class LabelledClaim(Model):
-    ticket: IssueIdentifier
-    holder: ClaimHolder
-    label: LabelName
-
-    @staticmethod
-    def fake() -> LabelledClaim:
-        return LabelledClaim(
-            ticket=IssueIdentifier.fake(), holder=ClaimHolder.fake(), label=LabelName("claimed")
-        )
+        with Activity(f"Releasing the claim on {ticket.root}").logged(logger):
+            return Claiming.withdraw_holders_claims(registry, ticket, holder)
 
 
 class FakeClaimRegistry(ClaimRegistry):

@@ -3,7 +3,7 @@ import re
 from typing import TYPE_CHECKING, override
 
 import pytest
-from safe_result import Err, Result
+from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
 from mb_workflow.b_core.a_features.drain import (
@@ -17,7 +17,6 @@ from mb_workflow.b_core.a_features.drain import (
 from mb_workflow.b_core.c_secondary_ports.claims import (
     ClaimRefusedError,
     FakeClaimRegistry,
-    UnknownClaimLabelError,
 )
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, FakeRunLock
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
@@ -32,7 +31,12 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     WorkspaceManagerError,
 )
 from mb_workflow.b_core.d_domain_model.claim import ClaimHolder, ClaimId, HostName
-from mb_workflow.b_core.d_domain_model.config import ClaimSettings, PoolSettings, WorkspaceSettings
+from mb_workflow.b_core.d_domain_model.config import (
+    FlowSettings,
+    InvalidConfigError,
+    PoolSettings,
+    WorkspaceSettings,
+)
 from mb_workflow.b_core.d_domain_model.flow import FlowError, StateName, StateNames, WorkflowChart
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import (
@@ -62,6 +66,7 @@ from mb_workflow.b_core.d_domain_model.workspace import (
     TerminalText,
     WorkspaceStatus,
     WorkspaceStatuses,
+    Worktree,
     WorktreeName,
     WorktreePath,
     Worktrees,
@@ -104,7 +109,7 @@ def in_progress(
         identifier,
         Priority.medium,
         state=state,
-        labels=LabelNames((LabelName("claimed"), *labels.root)),
+        labels=labels,
         status=status,
     )
 
@@ -115,9 +120,13 @@ def statuses_in_flight(*others: IssueStatus) -> IssueStatuses:
     )
 
 
-# The status the default skip-limits state, grill, puts a ticket in.
+# The status grill puts a ticket in.
 def maturing() -> IssueStatus:
     return IssueStatus(name=IssueStatusName("Maturing"), type=StatusType.unstarted)
+
+
+def triaging() -> IssueStatus:
+    return IssueStatus(name=IssueStatusName("Triage"), type=StatusType.unstarted)
 
 
 def pool_of(
@@ -128,7 +137,7 @@ def pool_of(
     kind: type[FakeTicketTracker] = FakeTicketTracker,
 ) -> FakeTicketTracker:
     return kind(
-        LabelNames((LabelName("claimed"), skip_limits().root[0], *FlowLabels.fake().labels.root))
+        LabelNames((skip_limits().root[0], *FlowLabels.fake().labels.root))
         if labels is None
         else labels,
         (*tickets, *elsewhere),
@@ -155,7 +164,6 @@ def pool_capping_refactors_at(limit: Limit) -> PoolSettings:
 def labels_with_refactor() -> LabelNames:
     return LabelNames(
         (
-            LabelName("claimed"),
             LabelName("Refactor"),
             *skip_limits().root,
             *FlowLabels.fake().labels.root,
@@ -186,14 +194,38 @@ def fake_board() -> FakeStatusStore:
     return FakeStatusStore(StateName.fake())
 
 
-def fake_manager(project: ProjectSelector = ProjectSelector.fake()) -> FakeWorkspaceManager:
-    statuses = WorkspaceStatuses(
+def fake_board_statuses() -> WorkspaceStatuses:
+    return WorkspaceStatuses(
         tuple(
             fake_board().status_for(state).unwrap()
             for state in StateNames.of_chart(WorkflowChart).root
         )
     )
-    return FakeWorkspaceManager(Worktrees.fake(), WorktreePath.fake(), statuses, project=project)
+
+
+def fake_manager(project: ProjectSelector = ProjectSelector.fake()) -> FakeWorkspaceManager:
+    return FakeWorkspaceManager(
+        Worktrees.fake(), WorktreePath.fake(), fake_board_statuses(), project=project
+    )
+
+
+# A manager holding a worktree for each ticket, besides the one the pass runs from.
+def working_on(*tickets: IssueIdentifier) -> FakeWorkspaceManager:
+    manager = fake_manager()
+    opened = tuple(
+        Worktree.fake().model_copy(
+            update={
+                "path": WorktreePath.fake().sibling(WorktreeName.of_issue(ticket)),
+                "issue": ticket,
+            }
+        )
+        for ticket in tickets
+    )
+    return FakeWorkspaceManager(
+        Worktrees((*manager.worktrees().unwrap().root, *opened)),
+        WorktreePath.fake(),
+        fake_board_statuses(),
+    )
 
 
 def holder_of(ticket: IssueIdentifier) -> ClaimHolder:
@@ -236,10 +268,11 @@ def draining(
     manager: FakeWorkspaceManager | None = None,
     claims: FakeClaimRegistry | None = None,
     pool: PoolSettings | None = None,
+    flow: FlowSettings | None = None,
     request: DrainRequest | None = None,
 ) -> DrainOutcome:
     return DrainRuns.attempted(
-        tracker, manager=manager, claims=claims, pool=pool, request=request
+        tracker, manager=manager, claims=claims, pool=pool, flow=flow, request=request
     ).unwrap()
 
 
@@ -249,18 +282,19 @@ def draining_or_refused(
     manager: FakeWorkspaceManager | None = None,
     claims: FakeClaimRegistry | None = None,
     pool: PoolSettings | None = None,
+    request: DrainRequest | None = None,
 ) -> Result[
     DrainOutcome,
     AlreadyRunningError
     | FlowError
     | TicketTrackerError
-    | UnknownClaimLabelError
     | ClaimRefusedError
     | UnknownLabelError
     | MissingFlowLabelsError
-    | WorkspaceManagerError,
+    | WorkspaceManagerError
+    | InvalidConfigError,
 ]:
-    return DrainRuns.attempted(tracker, manager=manager, claims=claims, pool=pool)
+    return DrainRuns.attempted(tracker, manager=manager, claims=claims, pool=pool, request=request)
 
 
 class DrainRuns:
@@ -272,17 +306,18 @@ class DrainRuns:
         claims: FakeClaimRegistry | None = None,
         lock: FakeRunLock | None = None,
         pool: PoolSettings | None = None,
+        flow: FlowSettings | None = None,
         request: DrainRequest | None = None,
     ) -> Result[
         DrainOutcome,
         AlreadyRunningError
         | FlowError
         | TicketTrackerError
-        | UnknownClaimLabelError
         | ClaimRefusedError
         | UnknownLabelError
         | MissingFlowLabelsError
-        | WorkspaceManagerError,
+        | WorkspaceManagerError
+        | InvalidConfigError,
     ]:
         return Drain.drain_pool(
             tracker=tracker,
@@ -291,10 +326,10 @@ class DrainRuns:
             board=fake_board(),
             lock=lock or FakeRunLock(),
             workspace=WorkspaceSettings.fake(),
-            claim_settings=ClaimSettings(label=LabelName("claimed")),
             flow_labels=FlowLabels.fake(),
             statuses=TicketStatuses.fake(),
             pool=pool or PoolSettings.fake(),
+            flow=flow or FlowSettings.fake(),
             found_labels=None,
             request=request or DrainRequest.fake(),
         )
@@ -309,7 +344,7 @@ def test_starts_the_top_ready_ticket_and_submits_its_prompt() -> None:
     assert picked(outcome) == (IssueIdentifier("MB-2"),)
     assert holders(claims, IssueIdentifier("MB-2")) == (holder_of(IssueIdentifier("MB-2")),)
     assert opened_issues(manager) == (IssueIdentifier("MB-2"),)
-    assert manager.submitted_texts() == (TerminalText("/implement MB-2"),)
+    assert manager.submitted_texts() == (TerminalText("/work MB-2"),)
 
 
 def test_a_drained_todo_ticket_opens_in_the_implementing_column() -> None:
@@ -349,7 +384,7 @@ def test_the_pass_stops_once_the_total_is_reached() -> None:
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
-def test_labelled_tickets_in_progress_count_toward_the_total() -> None:
+def test_tickets_with_a_worktree_count_toward_the_total() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
         pooled(IssueIdentifier("MB-2"), Priority.high),
@@ -359,7 +394,14 @@ def test_labelled_tickets_in_progress_count_toward_the_total() -> None:
             in_progress(IssueIdentifier("MB-12"), StateName("review")),
         ),
     )
-    assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
+    assert picked(
+        draining(
+            tracker,
+            manager=working_on(
+                IssueIdentifier("MB-10"), IssueIdentifier("MB-11"), IssueIdentifier("MB-12")
+            ),
+        )
+    ) == (IssueIdentifier("MB-2"),)
 
 
 @pytest.mark.parametrize(
@@ -369,16 +411,20 @@ def test_labelled_tickets_in_progress_count_toward_the_total() -> None:
         IssueStatus(name=IssueStatusName("Won't do"), type=StatusType.canceled),
     ],
 )
-def test_labelled_tickets_that_are_closed_do_not_count(closing: IssueStatus) -> None:
+def test_tickets_with_a_worktree_that_are_closed_do_not_count(closing: IssueStatus) -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("qa"), closing.name),),
         statuses=(closing,),
     )
-    assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-1"),)
+    assert picked(
+        draining(
+            tracker, manager=working_on(IssueIdentifier("MB-10")), pool=pool_with_total(Limit(1))
+        )
+    ) == (IssueIdentifier("MB-1"),)
 
 
-def test_unlabelled_tickets_do_not_count() -> None:
+def test_tickets_without_a_worktree_do_not_count() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
         elsewhere=(pooled(IssueIdentifier("MB-10"), Priority.low, state=StateName("qa")),),
@@ -392,7 +438,9 @@ def test_a_ticket_whose_state_is_full_is_skipped_for_the_next() -> None:
         pooled(IssueIdentifier("MB-2"), Priority.high, state=StateName("grill")),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("grill")),),
     )
-    assert picked(draining(tracker)) == (IssueIdentifier("MB-1"),)
+    assert picked(draining(tracker, manager=working_on(IssueIdentifier("MB-10")))) == (
+        IssueIdentifier("MB-1"),
+    )
 
 
 def test_a_ticket_started_in_the_pass_fills_its_state() -> None:
@@ -403,27 +451,65 @@ def test_a_ticket_started_in_the_pass_fills_its_state() -> None:
     assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
 
 
-def test_a_claimed_ticket_without_a_flow_label_does_not_count_toward_the_limits() -> None:
+def test_a_ticket_with_a_worktree_but_no_flow_label_does_not_count_toward_the_limits() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-2"), Priority.high, state=StateName("grill")),
-        elsewhere=(
-            pooled(
-                IssueIdentifier("MB-10"),
-                Priority.medium,
-                state=None,
-                labels=LabelNames((LabelName("claimed"),)),
-            ),
-        ),
+        elsewhere=(pooled(IssueIdentifier("MB-10"), Priority.medium, state=None),),
     )
-    assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-2"),)
+    outcome = draining(
+        tracker, manager=working_on(IssueIdentifier("MB-10")), pool=pool_with_total(Limit(1))
+    )
+    assert picked(outcome) == (IssueIdentifier("MB-2"),)
 
 
-def test_a_ticket_carrying_the_claim_label_is_passed_over() -> None:
-    tracker = pool_of(
-        pooled(IssueIdentifier("MB-1"), Priority.low),
-        pooled(IssueIdentifier("MB-2"), Priority.high, labels=LabelNames((LabelName("claimed"),))),
+def test_a_ticket_that_already_has_a_worktree_is_passed_over() -> None:
+    manager = working_on(IssueIdentifier("MB-2"))
+    outcome = draining(standard_pool(), manager=manager)
+    assert picked(outcome) == (IssueIdentifier("MB-1"),)
+    assert tuple(
+        worktree.path
+        for worktree in manager.worktrees().unwrap().root
+        if worktree.issue == IssueIdentifier("MB-2")
+    ) == (WorktreePath.fake().sibling(WorktreeName("MB-2")),)
+
+
+def test_a_worktree_linked_in_another_case_still_passes_the_ticket_over() -> None:
+    manager = working_on(IssueIdentifier("mb-2"))
+    assert picked(draining(standard_pool(), manager=manager)) == (IssueIdentifier("MB-1"),)
+
+
+# Opens a worktree for the ticket just before the pass starts it, as another process might.
+class RacedManager(FakeWorkspaceManager):
+    def __init__(self, contested: IssueIdentifier) -> None:
+        super().__init__(Worktrees.fake(), WorktreePath.fake(), fake_board_statuses())
+        self._contested = contested
+        self._listings = 0
+
+    @override
+    def worktrees(self) -> Result[Worktrees, WorkspaceManagerError]:
+        self._listings += 1
+        listed = super().worktrees()
+        if self._listings == 1:
+            return listed
+        raced = Worktree.fake().model_copy(
+            update={
+                "path": WorktreePath.fake().sibling(WorktreeName("raced")),
+                "issue": self._contested,
+            }
+        )
+        return Ok(Worktrees((*listed.unwrap().root, raced)))
+
+
+def test_a_ticket_that_gets_a_worktree_mid_pass_is_lost_not_opened_twice() -> None:
+    manager = RacedManager(IssueIdentifier("MB-2"))
+    claims = FakeClaimRegistry()
+    outcome = draining(
+        standard_pool(), manager=manager, claims=claims, pool=pool_with_total(Limit(1))
     )
-    assert picked(draining(tracker)) == (IssueIdentifier("MB-1"),)
+    assert tuple((lost.ticket.issue.identifier, lost.reason) for lost in outcome.lost) == (
+        (IssueIdentifier("MB-2"), LossReason("it already has a worktree")),
+    )
+    assert holders(claims, IssueIdentifier("MB-2")) == ()
 
 
 def test_a_ticket_another_host_wins_is_passed_over_for_the_next() -> None:
@@ -491,18 +577,8 @@ def test_a_start_that_fails_tries_no_other_ticket() -> None:
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
-def test_a_claim_label_the_tracker_lacks_refuses_the_pass() -> None:
-    tracker = pool_of(pooled(IssueIdentifier("MB-1"), Priority.low), labels=LabelNames(()))
-    claims = FakeClaimRegistry()
-    refused = draining_or_refused(tracker, claims=claims)
-    assert isinstance(refused, Err)
-    assert isinstance(refused.error, UnknownClaimLabelError)
-    assert "claimed" in str(refused.error)
-    assert holders(claims, IssueIdentifier("MB-1")) == ()
-
-
 def test_a_dry_run_lists_the_tickets_the_limits_allow_and_starts_nothing() -> None:
-    manager = fake_manager()
+    manager = working_on(IssueIdentifier("MB-10"), IssueIdentifier("MB-11"))
     claims = FakeClaimRegistry()
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
@@ -518,7 +594,10 @@ def test_a_dry_run_lists_the_tickets_the_limits_allow_and_starts_nothing() -> No
     dry = DrainRequest.fake().model_copy(update={"dry_run": DryRun(True)})
     outcome = draining(tracker, manager=manager, claims=claims, request=dry)
     assert picked(outcome) == (IssueIdentifier("MB-4"), IssueIdentifier("MB-1"))
-    assert manager.worktrees().unwrap() == Worktrees.fake()
+    assert (
+        manager.worktrees().unwrap()
+        == working_on(IssueIdentifier("MB-10"), IssueIdentifier("MB-11")).worktrees().unwrap()
+    )
     assert holders(claims, IssueIdentifier("MB-4")) == ()
 
 
@@ -533,6 +612,42 @@ def test_a_pool_with_no_ready_ticket_starts_nothing() -> None:
     assert outcome.skipped == ()
     assert outcome.full is None
     assert manager.worktrees().unwrap() == Worktrees.fake()
+
+
+def unprompted() -> DrainRequest:
+    return DrainRequest.fake().model_copy(update={"prompt": None})
+
+
+def test_a_pass_given_no_prompt_submits_the_configured_one() -> None:
+    manager = fake_manager()
+    configured = PoolSettings.fake().model_copy(update={"prompt": TerminalText("/triage")})
+    _ = draining(standard_pool(), manager=manager, pool=configured, request=unprompted())
+    assert manager.submitted_texts() == (
+        TerminalText("/triage MB-2"),
+        TerminalText("/triage MB-1"),
+    )
+
+
+def test_a_given_prompt_wins_over_the_configured_one() -> None:
+    manager = fake_manager()
+    configured = PoolSettings.fake().model_copy(update={"prompt": TerminalText("/triage")})
+    _ = draining(standard_pool(), manager=manager, pool=configured)
+    assert manager.submitted_texts() == (TerminalText("/work MB-2"), TerminalText("/work MB-1"))
+
+
+def test_a_pass_with_no_prompt_anywhere_is_refused_before_claiming() -> None:
+    claims = FakeClaimRegistry()
+    refused = draining_or_refused(standard_pool(), claims=claims, request=unprompted())
+    assert isinstance(refused.error, InvalidConfigError)
+    assert holders(claims, IssueIdentifier("MB-2")) == ()
+
+
+def test_a_dry_run_needs_no_prompt() -> None:
+    dry = unprompted().model_copy(update={"dry_run": DryRun(True)})
+    assert picked(draining(standard_pool(), request=dry)) == (
+        IssueIdentifier("MB-2"),
+        IssueIdentifier("MB-1"),
+    )
 
 
 def test_a_pass_is_refused_while_another_holds_the_lock() -> None:
@@ -562,21 +677,33 @@ def test_a_ticket_labelled_skip_limits_starts_in_a_full_state() -> None:
         ),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("grill")),),
     )
-    assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
-
-
-def test_a_ticket_labelled_skip_limits_without_a_flow_state_starts_in_the_skip_limits_state() -> (
-    None
-):
-    tracker = pool_of(
-        pooled(IssueIdentifier("MB-2"), Priority.low, state=None, labels=skip_limits()),
-        statuses=(maturing(),),
+    assert picked(draining(tracker, manager=working_on(IssueIdentifier("MB-10")))) == (
+        IssueIdentifier("MB-2"),
     )
+
+
+def test_a_ticket_without_a_flow_state_starts_in_the_unlabelled_state() -> None:
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-2"), Priority.low, state=None), statuses=(triaging(),)
+    )
+    unlabelled = FlowSettings.fake().unlabelled_state
     assert picked(draining(tracker)) == (IssueIdentifier("MB-2"),)
     assert (
         tracker.read_issue(IssueIdentifier("MB-2"))
         .unwrap()
-        .labels.matching(LabelName(PoolSettings.fake().skip_limits_state.root))
+        .labels.matching(LabelName(unlabelled.root))
+        is not None
+    )
+
+
+def test_the_unlabelled_state_can_be_overridden() -> None:
+    tracker = pool_of(
+        pooled(IssueIdentifier("MB-2"), Priority.low, state=None), statuses=(maturing(),)
+    )
+    grill = StateName("grill")
+    _ = draining(tracker, flow=FlowSettings(unlabelled_state=grill))
+    assert (
+        tracker.read_issue(IssueIdentifier("MB-2")).unwrap().labels.matching(LabelName(grill.root))
         is not None
     )
 
@@ -585,7 +712,7 @@ def test_a_ticket_labelled_skip_limits_without_a_flow_state_fills_a_slot() -> No
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.high),
         pooled(IssueIdentifier("MB-2"), Priority.low, state=None, labels=skip_limits()),
-        statuses=(maturing(),),
+        statuses=(triaging(),),
     )
     assert picked(draining(tracker, pool=pool_with_total(Limit(1)))) == (IssueIdentifier("MB-2"),)
 
@@ -637,13 +764,13 @@ def test_an_urgent_ticket_keeps_to_the_limits() -> None:
         pooled(IssueIdentifier("MB-2"), Priority.urgent, state=StateName("grill")),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("grill")),),
     )
-    assert picked(draining(tracker)) == ()
+    assert picked(draining(tracker, manager=working_on(IssueIdentifier("MB-10")))) == ()
 
 
 def test_a_skip_limits_label_the_tracker_lacks_refuses_the_pass() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
-        labels=LabelNames((LabelName("claimed"), *FlowLabels.fake().labels.root)),
+        labels=FlowLabels.fake().labels,
     )
     claims = FakeClaimRegistry()
     refused = draining_or_refused(tracker, claims=claims)
@@ -662,20 +789,17 @@ def drain_logged(
 
 def test_the_outcome_says_why_a_ticket_in_the_view_is_not_ready() -> None:
     tracker = pool_of(
-        pooled(IssueIdentifier("MB-2"), Priority.high, labels=LabelNames((LabelName("claimed"),))),
+        pooled(IssueIdentifier("MB-2"), Priority.high),
         pooled(IssueIdentifier("MB-3"), Priority.high, state=StateName("qa")),
-        pooled(IssueIdentifier("MB-4"), Priority.high, state=None),
     )
-    claimed = UnreadyReason("it is already claimed")
+    opened = UnreadyReason("it already has a worktree")
     unworked = UnreadyReason("no agent works tickets in qa")
-    stateless = UnreadyReason("it has no flow state")
-    outcome = draining(tracker)
+    outcome = draining(tracker, manager=working_on(IssueIdentifier("MB-2")))
     assert tuple(
         (unready.ticket.issue.identifier, unready.reason) for unready in outcome.unready
     ) == (
-        (IssueIdentifier("MB-2"), claimed),
+        (IssueIdentifier("MB-2"), opened),
         (IssueIdentifier("MB-3"), unworked),
-        (IssueIdentifier("MB-4"), stateless),
     )
 
 
@@ -691,7 +815,7 @@ def test_a_ticket_in_the_view_with_two_flow_labels_refuses_the_pass() -> None:
     assert holders(claims, IssueIdentifier("MB-1")) == ()
 
 
-def test_a_claimed_ticket_with_two_flow_labels_refuses_the_pass() -> None:
+def test_a_ticket_with_a_worktree_and_two_flow_labels_refuses_the_pass() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
         elsewhere=(
@@ -703,7 +827,9 @@ def test_a_claimed_ticket_with_two_flow_labels_refuses_the_pass() -> None:
         ),
     )
     claims = FakeClaimRegistry()
-    refused = draining_or_refused(tracker, claims=claims)
+    refused = draining_or_refused(
+        tracker, manager=working_on(IssueIdentifier("MB-10")), claims=claims
+    )
     assert isinstance(refused, Err)
     assert re.search("grill, qa", str(refused.error))
     assert holders(claims, IssueIdentifier("MB-1")) == ()
@@ -733,11 +859,12 @@ def test_the_log_names_each_ticket_started(caplog: pytest.LogCaptureFixture) -> 
     [
         "Draining the pool",
         f"Listing the tickets in view {PoolSettings.fake().view.root}",
-        "Listing the tickets labelled claimed",
+        "Listing the worktrees",
+        "Reading the tickets the worktrees are linked to",
+        "Checking that no worktree is linked to MB-2",
         "Taking MB-2 (high, todo)",
         "Reading MB-2",
         f"Claiming MB-2 for worktree MB-2 on {DrainRequest.fake().host.root}",
-        "Labelling MB-2 as claimed",
         f"Assigning MB-2 to {WorkspaceSettings.fake().assignee.root}",
         "Creating worktree MB-2",
     ],
@@ -759,7 +886,7 @@ def test_the_outcome_names_each_ticket_whose_skip_limits_label_overrode_the_limi
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("grill")),),
     )
     refusal = Refusal("grill is at its limit of 1")
-    outcome = draining(tracker)
+    outcome = draining(tracker, manager=working_on(IssueIdentifier("MB-10")))
     assert tuple(
         (override.ticket.issue.identifier, override.refusal) for override in outcome.overridden
     ) == ((IssueIdentifier("MB-2"), refusal),)
@@ -781,9 +908,13 @@ def test_a_ticket_whose_label_is_full_is_skipped_for_the_next() -> None:
         labels=labels_with_refactor(),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("review"), labels=refactors()),),
     )
-    assert picked(draining(tracker, pool=pool_capping_refactors_at(Limit(1)))) == (
-        IssueIdentifier("MB-1"),
-    )
+    assert picked(
+        draining(
+            tracker,
+            manager=working_on(IssueIdentifier("MB-10")),
+            pool=pool_capping_refactors_at(Limit(1)),
+        )
+    ) == (IssueIdentifier("MB-1"),)
 
 
 def test_a_ticket_started_in_the_pass_fills_its_label() -> None:
@@ -811,7 +942,6 @@ def test_the_outcome_names_each_skipped_ticket_and_why() -> None:
     )
 
 
-# A pass that starts nothing, since starting a ticket checks its claim label again.
 def test_a_pass_lists_the_workspace_labels_once() -> None:
     tracker = pool_of(labels=labels_with_refactor())
     _ = draining(tracker, pool=pool_capping_refactors_at(Limit(1)))
@@ -838,7 +968,11 @@ def test_a_ticket_labelled_skip_limits_starts_past_its_label_limit() -> None:
         labels=labels_with_refactor(),
         elsewhere=(in_progress(IssueIdentifier("MB-10"), StateName("review"), labels=refactors()),),
     )
-    outcome = draining(tracker, pool=pool_capping_refactors_at(Limit(1)))
+    outcome = draining(
+        tracker,
+        manager=working_on(IssueIdentifier("MB-10")),
+        pool=pool_capping_refactors_at(Limit(1)),
+    )
     assert picked(outcome) == (IssueIdentifier("MB-2"),)
     assert outcome.skipped == ()
 

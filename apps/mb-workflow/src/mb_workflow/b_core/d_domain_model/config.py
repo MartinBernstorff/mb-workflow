@@ -16,10 +16,10 @@ from mb_workflow.b_core.d_domain_model.config_override import (
 )
 from mb_workflow.b_core.d_domain_model.flow import AcceptedStates, StateName
 from mb_workflow.b_core.d_domain_model.issue import Assignee, LabelName, ProjectName, TeamKey
-from mb_workflow.b_core.d_domain_model.pool import PoolLimits, PoolTicket, SkipLimits, ViewSlug
+from mb_workflow.b_core.d_domain_model.pool import PoolLimits, PoolTicket, ViewSlug
 from mb_workflow.b_core.d_domain_model.ticket_draft import TicketDefaults
 from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
-from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector
+from mb_workflow.b_core.d_domain_model.workspace import ProjectSelector, TerminalText
 from mb_workflow.d_lib.models import Model, Value
 
 
@@ -99,26 +99,41 @@ class WorkspaceSettings(Model):
         return WorkspaceSettings(orca_project=ProjectSelector.fake(), assignee=Assignee.fake())
 
 
-class ClaimSettings(Model):
-    label: LabelName = LabelName("workspace")
-
-    @staticmethod
-    def fake() -> ClaimSettings:
-        return ClaimSettings(label=LabelName("claimed"))
-
-
 class PoolSettings(Model):
     view: ViewSlug
     limits: PoolLimits = PoolLimits()
     skip_limits_label: LabelName = LabelName("skip-limits")
-    # The state a ticket labelled to skip the limits starts in when it has no flow state.
-    skip_limits_state: StateName = StateName("grill")
+    # Typed into every ticket drain starts, followed by the ticket, unless drain is given one.
+    prompt: TerminalText | None = None
 
     @staticmethod
     def fake() -> PoolSettings:
         return PoolSettings(view=ViewSlug.fake(), limits=PoolLimits.fake())
 
-    @field_validator("skip_limits_state")
+    # A prompt given to drain wins over the configured one.
+    def prompt_for(self, given: TerminalText | None) -> Result[TerminalText, InvalidConfigError]:
+        if given is not None:
+            return Ok(given)
+        if self.prompt is None:
+            return Err(
+                InvalidConfigError(
+                    'Pass drain a prompt, or set [pool] prompt = "<prompt>" to type into every'
+                    " started ticket."
+                )
+            )
+        return Ok(self.prompt)
+
+
+class FlowSettings(Model):
+    # The state a ticket without a flow state starts in. An agent works it, so it can move the
+    # ticket to the state that fits.
+    unlabelled_state: StateName = StateName("triage")
+
+    @staticmethod
+    def fake() -> FlowSettings:
+        return FlowSettings()
+
+    @field_validator("unlabelled_state")
     @classmethod
     def name_a_ready_state(cls, state: StateName) -> StateName:
         ready = AcceptedStates(
@@ -133,9 +148,6 @@ class PoolSettings(Model):
             case Err(error):
                 raise ValueError(str(error))
 
-    def skip_limits(self) -> SkipLimits:
-        return SkipLimits(label=self.skip_limits_label, state=self.skip_limits_state)
-
 
 type TrackerSettings = Annotated[LinearTracker | TodoistTracker, Field(discriminator="tracker")]
 type StatusSettings = OrcaStatus
@@ -145,8 +157,8 @@ class Settings(Model):
     issues: TrackerSettings
     status: StatusSettings = OrcaStatus()
     workspace: WorkspaceSettings
-    claims: ClaimSettings = ClaimSettings()
     pool: PoolSettings | None = None
+    flow: FlowSettings = FlowSettings()
     ticket_statuses: TicketStatuses
 
     @staticmethod
@@ -155,8 +167,8 @@ class Settings(Model):
             issues=TodoistTracker.fake(),
             status=OrcaStatus.fake(),
             workspace=WorkspaceSettings.fake(),
-            claims=ClaimSettings.fake(),
             pool=None,
+            flow=FlowSettings.fake(),
             ticket_statuses=TicketStatuses.fake(),
         )
 

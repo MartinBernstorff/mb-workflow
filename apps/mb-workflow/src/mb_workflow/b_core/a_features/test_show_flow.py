@@ -8,7 +8,7 @@ from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     FakeWorkspaceManager,
     WorkspaceManagerError,
 )
-from mb_workflow.b_core.d_domain_model.flow import StateName
+from mb_workflow.b_core.d_domain_model.flow import FlowStatus, ReviewChart, StateName, WorkflowChart
 from mb_workflow.b_core.d_domain_model.workspace import Worktree, Worktrees
 
 
@@ -24,12 +24,12 @@ def test_a_review_worktree_lists_the_events_of_the_review_chart() -> None:
     agent_reviewing = StateName("agent-reviewing")
     review = Worktree.fake().model_copy(update={"issue": None})
     Assert.that(shown(review, agent_reviewing)).matches(
-        Ok(StatusReport("agent-reviewing\n  reviewed\n"))
+        Ok(StatusReport.of(FlowStatus.of(ReviewChart, agent_reviewing), AsJson(False)))
     )
 
 
 def test_a_worktree_for_my_own_ticket_lists_the_events_of_the_workflow_chart() -> None:
     agent_reviewing = StateName("agent-reviewing")
     Assert.that(shown(Worktree.fake(), agent_reviewing)).matches(
-        Ok(StatusReport("agent-reviewing\n  grill\n  implement\n  qa\n  to-ticket\n"))
+        Ok(StatusReport.of(FlowStatus.of(WorkflowChart, agent_reviewing), AsJson(False)))
     )

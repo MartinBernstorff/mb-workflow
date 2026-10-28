@@ -132,6 +132,11 @@ def comment(
 def workspace_start(
     *,
     ticket: str = typer.Argument(..., help="Ticket to start, e.g. MB-33."),
+    prompt: str = typer.Argument(
+        ...,
+        help="Prompt to type into the agent, followed by the ticket. The agent picks its work"
+        " from the state descriptions `mw flow show` prints.",
+    ),
     submit: bool = typer.Option(
         False, "--submit", help="Submit the prompt instead of leaving it typed."
     ),
@@ -142,7 +147,8 @@ def workspace_start(
     state: str | None = typer.Option(
         None,
         "--state",
-        help="Flow state to put a ticket without a flow label in, ignoring case: "
+        help="Flow state to put a ticket without a flow label in, instead of \\[flow] unlabelled_state,"
+        " ignoring case: "
         + ", ".join(state.root for state in TicketStart.startable_states().root)
         + ".",
     ),
@@ -151,6 +157,7 @@ def workspace_start(
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = StartRequest(
         ticket=IssueIdentifier(ticket),
+        prompt=TerminalText(prompt),
         submit=Submit(submit),
         idle_timeout=TimeoutMs(idle_timeout_ms),
         host=HostName.of_machine(),
@@ -191,6 +198,12 @@ def link(
 @workspace_app.command("drain")
 def workspace_drain(
     *,
+    prompt: str | None = typer.Argument(
+        None,
+        help="Prompt to submit to the agent of each started ticket, followed by the ticket."
+        " Defaults to \\[pool] prompt. The agent picks its work from the state descriptions"
+        " `mw flow show` prints.",
+    ),
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
@@ -213,6 +226,7 @@ def workspace_drain(
         raise typer.BadParameter("--dry-run cannot be combined with --watch.")
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = DrainRequest(
+        prompt=None if prompt is None else TerminalText(prompt),
         dry_run=DryRun(dry_run),
         idle_timeout=TimeoutMs(idle_timeout_ms),
         host=HostName.of_machine(),
@@ -240,12 +254,10 @@ def workspace_teardown(
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
-    """Delete every claim on the worktree's ticket and its claim label, then remove the worktree."""
+    """Delete every claim on the worktree's ticket, then remove the worktree."""
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     request = TeardownRequest(worktree=None if worktree is None else WorktreeName(worktree))
-    raise typer.Exit(
-        code=commands.teardown(request, WorkingDirectory(Path.cwd()), ConfigFileName.default()).root
-    )
+    raise typer.Exit(code=commands.teardown(request).root)
 
 
 @obsidian_app.command("sync")
@@ -321,6 +333,16 @@ def flow_show(
 ) -> None:
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
     raise typer.Exit(code=commands.flow_show(AsJson(as_json)).root)
+
+
+@flow_app.command("states")
+def flow_states(
+    as_json: bool = typer.Option(False, "--json"),
+    quiet: bool = typer.Option(False, "--quiet", "-q"),
+) -> None:
+    """List every state of the flow with its description, so an agent can pick where a ticket belongs."""
+    LogLevel(logging.WARNING if quiet else logging.INFO).configure()
+    raise typer.Exit(code=commands.flow_states(AsJson(as_json)).root)
 
 
 @flow_app.command("seed-labels")
