@@ -99,7 +99,7 @@ class FlowTransition:
         statuses: TicketStatuses,
         state: StateName,
     ) -> Result[None, TicketTrackerError | MissingFlowLabelsError]:
-        checked = FlowLabelCheck.require_for_issue(tracker, wanted, issue)
+        checked = FlowLabelCheck.require_for_issue(tracker, wanted, issue, state)
         if isinstance(checked, Err):
             return checked
         return FlowTransition.put_in_state_unchecked(tracker, issue, wanted, statuses, state)
@@ -193,7 +193,7 @@ class OpeningEntry:
             return Ok(
                 OpeningEntry(state=opened, status=issue.status, column=column.value, steps=())
             )
-        checked = FlowLabelCheck.require_for_issue(tracker, flow_labels, issue.identifier)
+        checked = FlowLabelCheck.require_for_issue(tracker, flow_labels, issue.identifier, opened)
         if isinstance(checked, Err):
             return checked
         entering = FlowStateStep(
