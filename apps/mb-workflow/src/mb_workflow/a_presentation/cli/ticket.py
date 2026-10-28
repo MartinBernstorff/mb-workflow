@@ -81,6 +81,14 @@ def ticket_create(
     blocked_by: list[str] = typer.Option(
         [], "--blocked-by", help="Mark the ticket as blocked by an issue."
     ),
+    state: str | None = typer.Option(
+        None,
+        "--state",
+        "-s",
+        help="Start in a flow state instead of the chart's first, ignoring case: "
+        + ", ".join(state.root for state in AcceptedStates.of_chart(WorkflowChart).root)
+        + ".",
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     LogLevel(logging.WARNING if quiet else logging.INFO).configure()
@@ -96,6 +104,7 @@ def ticket_create(
         estimate=Estimate.from_nullable(estimate),
         blocks=tuple(map(IssueIdentifier, blocks)),
         blocked_by=tuple(map(IssueIdentifier, blocked_by)),
+        state=StateName.from_nullable(state),
     )
     raise typer.Exit(
         code=commands.ticket_create(

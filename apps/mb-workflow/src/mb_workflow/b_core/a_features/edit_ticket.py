@@ -37,7 +37,9 @@ class TicketEditor:
         if isinstance(checked, Err):
             return checked
         if checked.value.state is not None:
-            labelled = FlowLabelCheck.require_for_issue(tracker, flow_labels, issue)
+            labelled = FlowLabelCheck.require_for_issue(
+                tracker, flow_labels, issue, checked.value.state
+            )
             if isinstance(labelled, Err):
                 return labelled
         for related in checked.value.related_issues():

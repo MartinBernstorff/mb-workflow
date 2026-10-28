@@ -6,6 +6,7 @@ from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
     FakeTicketTracker,
     TrackedIssue,
 )
+from mb_workflow.b_core.d_domain_model.flow import StateName, UnknownStateError
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import (
     Assignee,
@@ -69,6 +70,38 @@ def test_a_created_ticket_starts_in_the_first_flow_state() -> None:
         LabelNames((LabelName("grill"),)),
         IssueStatusName("Maturing"),
     )
+
+
+def test_a_created_ticket_starts_in_the_given_state_spelled_as_the_chart() -> None:
+    tracker = tracking()
+    draft = TicketDraft.fake().model_copy(update={"state": StateName("TODO")})
+    issue = tracker.read_issue(created(tracker, draft)).unwrap()
+    assert (issue.labels, issue.status) == (
+        LabelNames((LabelName("todo"),)),
+        IssueStatusName("Todo"),
+    )
+
+
+def test_a_given_state_needs_only_its_own_flow_label() -> None:
+    tracker = tracking(groups=LabelNames((LabelName("todo"),)))
+    draft = TicketDraft.fake().model_copy(update={"state": StateName("todo")})
+    issue = tracker.read_issue(created(tracker, draft)).unwrap()
+    assert issue.labels == LabelNames((LabelName("todo"),))
+
+
+def test_an_unknown_state_creates_no_ticket() -> None:
+    tracker = tracking()
+    draft = TicketDraft.fake().model_copy(update={"state": StateName("nowhere")})
+    refused = TicketCreation.create_ticket(
+        tracker=tracker,
+        draft=draft,
+        defaults=TicketDefaults.fake(),
+        flow_labels=FlowLabels.fake(),
+        statuses=TicketStatuses.fake(),
+    )
+    assert isinstance(refused, Err)
+    assert isinstance(refused.error, UnknownStateError)
+    assert tracker.labelled_issues(LabelName("grill"), StatusTypes(())).unwrap().root == ()
 
 
 def test_a_created_ticket_is_related_to_the_issues_it_blocks_and_is_blocked_by() -> None:
