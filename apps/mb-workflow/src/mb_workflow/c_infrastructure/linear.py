@@ -1157,12 +1157,14 @@ class Linear(TicketTracker):
         )
 
     @override
-    def labelled_issues(
-        self, label: LabelName, excluding: StatusTypes
+    def issues_among(
+        self, issues: tuple[IssueIdentifier, ...], excluding: StatusTypes
     ) -> Result[Issues, TicketTrackerError]:
+        if not issues:
+            return Ok(Issues(()))
         return self._issues_matching(
             {
-                "labels": {"some": {"name": {"eqIgnoreCase": label.root}}},
+                "id": {"in": [issue.root for issue in issues]},
                 "state": {"type": {"nin": [status_type.value for status_type in excluding.root]}},
             }
         )

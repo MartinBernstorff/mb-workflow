@@ -76,8 +76,9 @@ class ConfigReport(Value[str]):
                     f"pool skip-limits label: {settings.pool.skip_limits_label.root}",
                 ),
                 (
-                    ("pool", "skip_limits_state"),
-                    f"pool skip-limits state: {settings.pool.skip_limits_state.root}",
+                    ("pool", "prompt"),
+                    "pool prompt: "
+                    + ("none" if settings.pool.prompt is None else settings.pool.prompt.root),
                 ),
             )
         )
@@ -89,8 +90,11 @@ class ConfigReport(Value[str]):
                 f"orca project: {settings.workspace.orca_project.root}",
             ),
             (("workspace", "assignee"), f"assignee: {settings.workspace.assignee.root}"),
-            (("claims", "label"), f"claim label: {settings.claims.label.root}"),
             *pool,
+            (
+                ("flow", "unlabelled_state"),
+                f"unlabelled state: {settings.flow.unlabelled_state.root}",
+            ),
         )
         statuses = tuple(
             (("ticket_statuses", state.root), f"  {state.root}: {status.root}")

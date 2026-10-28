@@ -1,4 +1,4 @@
-from mb_workflow.b_core.d_domain_model.config import ClaimSettings, OrcaStatus
+from mb_workflow.b_core.d_domain_model.config import FlowSettings, OrcaStatus
 from mb_workflow.b_core.d_domain_model.flow import WorkflowChart
 from mb_workflow.b_core.d_domain_model.pool import PoolLimits
 from mb_workflow.d_lib.models import Value
@@ -29,7 +29,7 @@ class ConfigTemplate(Value[str]):
                     "# [pool]",
                     '# view = "<linear-view-slug>"',
                     '# skip_limits_label = "skip-limits"',
-                    '# skip_limits_state = "grill"',
+                    '# prompt = "/work"',
                     "",
                     "# [pool.limits]",
                     f"# total = {limits.total.root}",
@@ -40,8 +40,8 @@ class ConfigTemplate(Value[str]):
                     "# [pool.limits.labels]",
                     "# refactor = 1",
                     "",
-                    "# [claims]",
-                    f'# label = "{ClaimSettings().label.root}"',
+                    "# [flow]",
+                    f'# unlabelled_state = "{FlowSettings().unlabelled_state.root}"',
                     "",
                     "# [status]",
                     f'# store = "{OrcaStatus().store.value}"',

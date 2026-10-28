@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING
 from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.a_features.autolabel import DryRun, UnknownLabelError
-from mb_workflow.b_core.a_features.start import StartRequest, TicketStart
+from mb_workflow.b_core.a_features.start import StartRequest, TicketStart, WorktreeExistsError
 from mb_workflow.b_core.b_domain_services.pick_order import PickOrder
-from mb_workflow.b_core.c_secondary_ports.claims import Claiming, ClaimLostError
+from mb_workflow.b_core.c_secondary_ports.claims import ClaimLostError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import LabelCheck
 from mb_workflow.b_core.d_domain_model.claim import HostName, Released, TakeOver
 from mb_workflow.b_core.d_domain_model.flow import FlowError
@@ -17,19 +17,19 @@ from mb_workflow.b_core.d_domain_model.pool import (
     PoolTicket,
     PoolTickets,
     Refusal,
-    SkipLimits,
 )
-from mb_workflow.b_core.d_domain_model.workspace import Activate, Submit, TimeoutMs
+from mb_workflow.b_core.d_domain_model.workspace import (
+    Activate,
+    Submit,
+    TerminalText,
+    TimeoutMs,
+)
 from mb_workflow.d_lib.logging import Activity
 from mb_workflow.d_lib.models import Model, Value
 
 if TYPE_CHECKING:
     from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
-    from mb_workflow.b_core.c_secondary_ports.claims import (
-        ClaimRefusedError,
-        ClaimRegistry,
-        UnknownClaimLabelError,
-    )
+    from mb_workflow.b_core.c_secondary_ports.claims import ClaimRefusedError, ClaimRegistry
     from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, RunLock
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
@@ -41,7 +41,8 @@ if TYPE_CHECKING:
         WorkspaceManagerError,
     )
     from mb_workflow.b_core.d_domain_model.config import (
-        ClaimSettings,
+        FlowSettings,
+        InvalidConfigError,
         PoolSettings,
         WorkspaceSettings,
     )
@@ -50,11 +51,15 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
     from mb_workflow.b_core.d_domain_model.pool import Slot
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
+    from mb_workflow.b_core.d_domain_model.workspace import Worktrees
 
 logger = logging.getLogger(__name__)
 
 
 class DrainRequest(Model):
+    # Typed into every started ticket's workspace, followed by the ticket. None leaves it to
+    # [pool] prompt.
+    prompt: TerminalText | None
     dry_run: DryRun
     idle_timeout: TimeoutMs
     host: HostName
@@ -62,15 +67,19 @@ class DrainRequest(Model):
     @staticmethod
     def fake() -> DrainRequest:
         return DrainRequest(
+            prompt=TerminalText("/work"),
             dry_run=DryRun(False),
             idle_timeout=TimeoutMs.fake(),
             host=HostName.fake(),
         )
 
     # The state is given only for a ticket without a flow state, which starts in it.
-    def start_request(self, ticket: IssueIdentifier, state: StateName | None) -> StartRequest:
+    def start_request(
+        self, ticket: IssueIdentifier, state: StateName | None, prompt: TerminalText
+    ) -> StartRequest:
         return StartRequest(
             ticket=ticket,
+            prompt=prompt,
             submit=Submit(True),
             idle_timeout=self.idle_timeout,
             host=self.host,
@@ -92,7 +101,7 @@ class Skip(Model):
 class UnreadyReason(Value[str]):
     @staticmethod
     def fake() -> UnreadyReason:
-        return UnreadyReason("it is already claimed")
+        return UnreadyReason("it already has a worktree")
 
 
 class Unready(Model):
@@ -105,24 +114,22 @@ class Unready(Model):
 
     @staticmethod
     def of(
-        ticket: PoolTicket, claim_label: LabelName, flow_labels: FlowLabels, skip_limits: SkipLimits
+        ticket: PoolTicket, worktrees: Worktrees, flow_labels: FlowLabels, unlabelled: StateName
     ) -> Unready:
         return Unready(
-            ticket=ticket, reason=Unready.reason_of(ticket, claim_label, flow_labels, skip_limits)
+            ticket=ticket, reason=Unready.reason_of(ticket, worktrees, flow_labels, unlabelled)
         )
 
     @staticmethod
     def reason_of(
-        ticket: PoolTicket, claim_label: LabelName, flow_labels: FlowLabels, skip_limits: SkipLimits
+        ticket: PoolTicket, worktrees: Worktrees, flow_labels: FlowLabels, unlabelled: StateName
     ) -> UnreadyReason:
-        if ticket.issue.labels.matching(claim_label) is not None:
-            return UnreadyReason("it is already claimed")
-        match ticket.starting_state(flow_labels, skip_limits):
+        if worktrees.linked_to(ticket.issue.identifier) is not None:
+            return UnreadyReason("it already has a worktree")
+        match ticket.starting_state(flow_labels, unlabelled):
             case Err(error):
                 return UnreadyReason(str(error))
             case Ok(state):
-                if state is None:
-                    return UnreadyReason("it has no flow state")
                 return UnreadyReason(f"no agent works tickets in {state.root}")
 
 
@@ -195,22 +202,19 @@ class DrainOutcome(Model):
 
 # The labels a pool's config names, each of which must exist before a pass claims anything.
 class PoolLabels(Model):
-    claim: LabelName
     limited: LabelNames
     skip_limits: LabelName
 
     @staticmethod
     def fake() -> PoolLabels:
         return PoolLabels(
-            claim=LabelName("claimed"),
             limited=LabelNames.fake(),
             skip_limits=LabelName("skip-limits"),
         )
 
     @staticmethod
-    def of(claim_settings: ClaimSettings, pool: PoolSettings) -> PoolLabels:
+    def of(pool: PoolSettings) -> PoolLabels:
         return PoolLabels(
-            claim=claim_settings.label,
             limited=pool.limits.limited_labels(),
             skip_limits=pool.skip_limits_label,
         )
@@ -248,37 +252,33 @@ class Drain:
     @staticmethod
     def require_pool_labels(
         tracker: TicketTracker, labels: PoolLabels
-    ) -> Result[None, TicketTrackerError | UnknownClaimLabelError | UnknownLabelError]:
+    ) -> Result[None, TicketTrackerError | UnknownLabelError]:
         with Activity("Checking that the pool's labels exist").logged(logger):
             listed = tracker.workspace_labels()
         if isinstance(listed, Err):
             return listed
         known = listed.value
-        checked = LabelCheck.require_known(
-            known, labels.claim, Claiming.unknown_claim_label(labels.claim)
-        )
-        if isinstance(checked, Err):
-            return checked
         checked = Drain.require_limited_labels(known, labels.limited)
         if isinstance(checked, Err):
             return checked
         return Drain.require_skip_limits_label(known, labels.skip_limits)
 
-    # The view's tickets with their flow states, and the slots the tickets in progress fill.
+    # The view's tickets with their flow states, the worktrees, and the slots the tickets in
+    # progress fill.
     # The labels are checked first, so a misspelt limit never lets a pass run uncapped.
     # Labels an earlier pass found are not listed again, so a watch lists them only when they change.
     @staticmethod
     def read_pool(
         tracker: TicketTracker,
-        claim_settings: ClaimSettings,
+        manager: WorkspaceManager,
         flow_labels: FlowLabels,
         pool: PoolSettings,
         found_labels: PoolLabels | None,
     ) -> Result[
-        tuple[PoolTickets, Occupancy],
-        TicketTrackerError | UnknownClaimLabelError | UnknownLabelError | FlowError,
+        tuple[PoolTickets, Worktrees, Occupancy],
+        TicketTrackerError | UnknownLabelError | FlowError | WorkspaceManagerError,
     ]:
-        labels = PoolLabels.of(claim_settings, pool)
+        labels = PoolLabels.of(pool)
         if labels != found_labels:
             checked = Drain.require_pool_labels(tracker, labels)
             if isinstance(checked, Err):
@@ -290,13 +290,31 @@ class Drain:
         listed = found.value.with_flow_states_resolved(flow_labels)
         if isinstance(listed, Err):
             return listed
-        with Activity(f"Listing the tickets labelled {claim_settings.label.root}").logged(logger):
-            in_progress = tracker.labelled_issues(claim_settings.label, Released.types())
+        match Drain.read_in_progress(tracker, manager, flow_labels):
+            case Ok(in_progress):
+                worktrees, occupancy = in_progress
+                return Ok((listed.value, worktrees, occupancy))
+            case Err() as failed:
+                return failed
+
+    # A ticket is in progress while a worktree is linked to it and it is not done.
+    @staticmethod
+    def read_in_progress(
+        tracker: TicketTracker, manager: WorkspaceManager, flow_labels: FlowLabels
+    ) -> Result[
+        tuple[Worktrees, Occupancy], TicketTrackerError | FlowError | WorkspaceManagerError
+    ]:
+        with Activity("Listing the worktrees").logged(logger):
+            worktrees = manager.worktrees()
+        if isinstance(worktrees, Err):
+            return worktrees
+        with Activity("Reading the tickets the worktrees are linked to").logged(logger):
+            in_progress = tracker.issues_among(worktrees.value.linked_issues(), Released.types())
         if isinstance(in_progress, Err):
             return in_progress
         match Occupancy.of(in_progress.value, flow_labels):
             case Ok(occupancy):
-                return Ok((listed.value, occupancy))
+                return Ok((worktrees.value, occupancy))
             case Err() as failed:
                 return failed
 
@@ -309,10 +327,10 @@ class Drain:
         board: WorkspaceStatusStore,
         lock: RunLock,
         workspace: WorkspaceSettings,
-        claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
         pool: PoolSettings,
+        flow: FlowSettings,
         found_labels: PoolLabels | None,
         request: DrainRequest,
     ) -> Result[
@@ -320,11 +338,11 @@ class Drain:
         AlreadyRunningError
         | FlowError
         | TicketTrackerError
-        | UnknownClaimLabelError
         | ClaimRefusedError
         | UnknownLabelError
         | MissingFlowLabelsError
-        | WorkspaceManagerError,
+        | WorkspaceManagerError
+        | InvalidConfigError,
     ]:
         match lock.acquire():
             case Ok(held):
@@ -335,10 +353,10 @@ class Drain:
                         manager=manager,
                         board=board,
                         workspace=workspace,
-                        claim_settings=claim_settings,
                         flow_labels=flow_labels,
                         statuses=statuses,
                         pool=pool,
+                        flow=flow,
                         found_labels=found_labels,
                         request=request,
                     )
@@ -353,35 +371,35 @@ class Drain:
         manager: WorkspaceManager,
         board: WorkspaceStatusStore,
         workspace: WorkspaceSettings,
-        claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
         pool: PoolSettings,
+        flow: FlowSettings,
         found_labels: PoolLabels | None,
         request: DrainRequest,
     ) -> Result[
         DrainOutcome,
         FlowError
         | TicketTrackerError
-        | UnknownClaimLabelError
         | ClaimRefusedError
         | UnknownLabelError
         | MissingFlowLabelsError
-        | WorkspaceManagerError,
+        | WorkspaceManagerError
+        | InvalidConfigError,
     ]:
         with Activity("Draining the pool").logged(logger):
-            read = Drain.read_pool(tracker, claim_settings, flow_labels, pool, found_labels)
+            read = Drain.read_pool(tracker, manager, flow_labels, pool, found_labels)
             if isinstance(read, Err):
                 return read
-            listed, occupancy = read.value
-            skip_limits = pool.skip_limits()
+            listed, worktrees, occupancy = read.value
+            unlabelled = flow.unlabelled_state
             unready = tuple(
-                Unready.of(ticket, claim_settings.label, flow_labels, skip_limits)
+                Unready.of(ticket, worktrees, flow_labels, unlabelled)
                 for ticket in listed.root
-                if not ticket.ready(claim_settings.label, flow_labels, skip_limits).root
+                if not ticket.ready(worktrees, flow_labels, unlabelled).root
             )
             ready = PickOrder.ordered(
-                listed.ready(claim_settings.label, flow_labels, skip_limits), pool.skip_limits_label
+                listed.ready(worktrees, flow_labels, unlabelled), pool.skip_limits_label
             )
             picked: list[PoolTicket] = []
             skipped: list[Skip] = []
@@ -396,13 +414,10 @@ class Drain:
                         total=pool.limits.total, left=PoolTickets(ready.root[position:])
                     )
                     break
-                found = ticket.slot(flow_labels, skip_limits)
+                found = ticket.slot(flow_labels, unlabelled)
                 if isinstance(found, Err):
                     return found
                 slot = found.value
-                if slot is None:
-                    skipped.append(Skip(ticket=ticket, refusal=Refusal("it has no flow state")))
-                    continue
                 refusal = pool.limits.refusal(occupancy, slot)
                 if refusal is not None:
                     if not skips_limits:
@@ -412,16 +427,20 @@ class Drain:
                 if request.dry_run.root:
                     picked.append(ticket)
                 else:
+                    prompt = pool.prompt_for(request.prompt)
+                    if isinstance(prompt, Err):
+                        return prompt
                     attempted = Drain.take_ticket(
                         tracker=tracker,
                         claims=claims,
                         manager=manager,
                         board=board,
                         workspace=workspace,
-                        claim_settings=claim_settings,
                         flow_labels=flow_labels,
                         statuses=statuses,
+                        flow=flow,
                         skip_limits_label=pool.skip_limits_label,
+                        prompt=prompt.value,
                         ticket=ticket,
                         slot=slot,
                         request=request,
@@ -454,20 +473,17 @@ class Drain:
         manager: WorkspaceManager,
         board: WorkspaceStatusStore,
         workspace: WorkspaceSettings,
-        claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
+        flow: FlowSettings,
         skip_limits_label: LabelName,
+        prompt: TerminalText,
         ticket: PoolTicket,
         slot: Slot,
         request: DrainRequest,
     ) -> Result[
         LossReason | None,
-        TicketTrackerError
-        | UnknownClaimLabelError
-        | ClaimRefusedError
-        | MissingFlowLabelsError
-        | WorkspaceManagerError,
+        TicketTrackerError | ClaimRefusedError | MissingFlowLabelsError | WorkspaceManagerError,
     ]:
         ticket_summary = (
             f"{ticket.issue.identifier.root} ({ticket.priority.name}, {slot.state.root})"
@@ -480,11 +496,11 @@ class Drain:
                 manager=manager,
                 board=board,
                 workspace=workspace,
-                claim_settings=claim_settings,
                 flow_labels=flow_labels,
                 statuses=statuses,
+                flow=flow,
                 request=request.start_request(
-                    ticket.issue.identifier, slot.state if unlabelled else None
+                    ticket.issue.identifier, slot.state if unlabelled else None, prompt
                 ),
             )
         if isinstance(attempted, Err) or attempted.value is not None:
@@ -513,17 +529,13 @@ class Drain:
         manager: WorkspaceManager,
         board: WorkspaceStatusStore,
         workspace: WorkspaceSettings,
-        claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
+        flow: FlowSettings,
         request: StartRequest,
     ) -> Result[
         LossReason | None,
-        TicketTrackerError
-        | UnknownClaimLabelError
-        | ClaimRefusedError
-        | MissingFlowLabelsError
-        | WorkspaceManagerError,
+        TicketTrackerError | ClaimRefusedError | MissingFlowLabelsError | WorkspaceManagerError,
     ]:
         started = TicketStart.start_ticket(
             manager=manager,
@@ -531,9 +543,9 @@ class Drain:
             claims=claims,
             board=board,
             workspace=workspace,
-            claim_settings=claim_settings,
             flow_labels=flow_labels,
             statuses=statuses,
+            flow=flow,
             request=request,
         )
         match started:
@@ -542,6 +554,9 @@ class Drain:
             case Err(error):
                 if isinstance(error, ClaimLostError):
                     return Ok(LossReason("another host holds it"))
+                # The ticket had no worktree when listed, so one was opened for it since.
+                if isinstance(error, WorktreeExistsError):
+                    return Ok(LossReason("it already has a worktree"))
                 # The ticket was ready when listed, so a flow refusal here means its labels changed since.
                 if isinstance(error, FlowError):
                     return Ok(LossReason(str(error)))

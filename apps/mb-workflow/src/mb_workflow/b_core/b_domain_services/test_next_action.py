@@ -4,11 +4,11 @@ from safe_result import Ok
 
 from mb_workflow.b_core.b_domain_services.next_action import TicketState
 from mb_workflow.b_core.d_domain_model.flow import (
+    AgentWork,
     AwaitingHuman,
     Finished,
     FlowError,
     NextAction,
-    Skill,
     StateName,
     WorkflowChart,
 )
@@ -24,14 +24,14 @@ from mb_workflow.b_core.d_domain_model.issue import (
 @pytest.mark.parametrize(
     ("state", "action"),
     [
-        (StateName("grill"), Skill("/grill")),
-        (StateName("to-ticket"), Skill("/to-ticket")),
-        (StateName("todo"), Skill("/implement")),
-        (StateName("implementing"), Skill("/implement")),
-        (StateName("agent-reviewing"), Skill("/review-mine")),
+        (StateName("grill"), AgentWork()),
+        (StateName("to-ticket"), AgentWork()),
+        (StateName("todo"), AgentWork()),
+        (StateName("implementing"), AgentWork()),
+        (StateName("agent-reviewing"), AgentWork()),
         (StateName("qa"), AwaitingHuman()),
         (StateName("review"), AwaitingHuman()),
-        (StateName("merging"), Skill("/merge")),
+        (StateName("merging"), AgentWork()),
         (StateName("merged"), Finished()),
     ],
 )

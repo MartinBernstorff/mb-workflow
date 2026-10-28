@@ -39,6 +39,7 @@ def test_every_state_of_the_chart_gets_a_label_in_chart_order() -> None:
         tuple(
             LabelName(state)
             for state in (
+                "triage",
                 "grill",
                 "to-ticket",
                 "todo",
@@ -56,8 +57,8 @@ def test_every_state_of_the_chart_gets_a_label_in_chart_order() -> None:
     ).matches(labels_in_chart_order)
 
 
-def test_the_chart_marks_grill_to_ticket_and_todo_as_entry_labels() -> None:
-    entry = LabelNames((GRILL, LabelName("to-ticket"), LabelName("todo")))
+def test_the_chart_marks_triage_grill_to_ticket_and_todo_as_entry_labels() -> None:
+    entry = LabelNames((LabelName("triage"), GRILL, LabelName("to-ticket"), LabelName("todo")))
     Assert.that(FlowLabels.fake().entry).matches(entry)
 
 

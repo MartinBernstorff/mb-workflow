@@ -23,17 +23,15 @@ from mb_workflow.b_core.c_secondary_ports.code_review import (
 )
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError, FakeRunLock
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore, UnreachableStatusStore
-from mb_workflow.b_core.c_secondary_ports.ticket_tracker import FakeTicketTracker, TrackedIssue
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import (
     DisplayNameRefusingWorkspaceManager,
     FakeWorkspaceManager,
     WorkspaceManagerError,
 )
 from mb_workflow.b_core.d_domain_model.claim import Claim, ClaimHolder, Claims, HostName
-from mb_workflow.b_core.d_domain_model.config import ClaimSettings
 from mb_workflow.b_core.d_domain_model.flow import ReviewChart, StateName, StateNames
 from mb_workflow.b_core.d_domain_model.git import Ref
-from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName, LabelNames
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier, IssueStatusName
 from mb_workflow.b_core.d_domain_model.outcome import Failed
 from mb_workflow.b_core.d_domain_model.pull_request import (
     CheckoutDirectory,
@@ -163,8 +161,6 @@ class ReviewWorkspacesRuns:
             review=review,
             manager=manager,
             claims=FakeClaimRegistry() if claims is None else claims,
-            tracker=FakeTicketTracker(LabelNames.fake(), (TrackedIssue.fake(),)),
-            claim_settings=ClaimSettings(),
             host=HostName.fake(),
             lock=FakeRunLock() if lock is None else lock,
             narrator=SilentNarrator(),

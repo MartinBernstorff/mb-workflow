@@ -5,7 +5,7 @@ import pytest
 from safe_result import Err, Ok
 
 from mb_workflow.b_core.a_features.autolabel import UnknownLabelError
-from mb_workflow.b_core.a_features.drain import Changed, DrainOutcome
+from mb_workflow.b_core.a_features.drain import Changed, DrainOutcome, DrainRequest
 from mb_workflow.b_core.a_features.drain_watch import (
     DrainNarrator,
     DrainSettings,
@@ -22,6 +22,7 @@ from mb_workflow.b_core.a_features.test_drain import (
     pool_with_total,
     pooled,
     standard_pool,
+    working_on,
 )
 from mb_workflow.b_core.c_secondary_ports.claims import FakeClaimRegistry
 from mb_workflow.b_core.c_secondary_ports.run_lock import FakeRunLock
@@ -40,7 +41,6 @@ from mb_workflow.b_core.d_domain_model.pool import Limit, PoolTickets
 if TYPE_CHECKING:
     from safe_result import Result
 
-    from mb_workflow.b_core.c_secondary_ports.claims import UnknownClaimLabelError
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import FakeWorkspaceManager
     from mb_workflow.b_core.d_domain_model.pool import ViewSlug
 
@@ -108,7 +108,7 @@ def watching(
     lock: FakeRunLock | None = None,
     settings: DrainSettingsSource | None = None,
     narrator: RecordingNarrator | None = None,
-) -> Result[None, UnknownClaimLabelError | UnknownLabelError]:
+) -> Result[None, UnknownLabelError | InvalidConfigError]:
     return DrainWatch.watch_pool(
         tracker=tracker,
         claims=FakeClaimRegistry(),
@@ -201,7 +201,8 @@ def test_a_pass_refused_over_conflicting_flow_labels_is_retried_on_the_next_pass
     narrator = RecordingNarrator()
     passes = WaitCount(2)
     stop = FakeStopSignal(passes)
-    assert watching(tracker, stop, narrator=narrator) == Ok(None)
+    manager = working_on(IssueIdentifier("MB-10"))
+    assert watching(tracker, stop, manager=manager, narrator=narrator) == Ok(None)
     assert narrator.passes == []
     assert stop.waits() == passes
 
@@ -209,7 +210,7 @@ def test_a_pass_refused_over_conflicting_flow_labels_is_retried_on_the_next_pass
 def test_an_unknown_label_ends_the_watch() -> None:
     tracker = pool_of(
         pooled(IssueIdentifier("MB-1"), Priority.low),
-        labels=LabelNames((LabelName("claimed"), *FlowLabels.fake().labels.root)),
+        labels=FlowLabels.fake().labels,
     )
     stop = FakeStopSignal(WaitCount(3))
     ended = watching(tracker, stop)
@@ -218,7 +219,6 @@ def test_an_unknown_label_ends_the_watch() -> None:
     assert stop.waits() == WaitCount(0)
 
 
-# Passes that start nothing, since starting a ticket checks its claim label again.
 def test_a_watch_lists_the_labels_only_on_its_first_pass() -> None:
     tracker = pool_of()
     assert watching(tracker, FakeStopSignal(WaitCount(3))) == Ok(None)
@@ -235,6 +235,34 @@ def test_a_label_renamed_in_the_config_is_checked_on_the_next_pass() -> None:
     assert isinstance(ended, Err)
     assert missing.root in str(ended.error)
     assert stop.waits() == WaitCount(1)
+
+
+# Serves a pool with no prompt, while the watch is given none either.
+class UnpromptedSettings(DrainSettingsSource):
+    @override
+    def current(self) -> DrainSettings:
+        return DrainSettings.fake()
+
+
+def test_a_watch_with_no_prompt_anywhere_ends_when_it_would_start_a_ticket() -> None:
+    stop = FakeStopSignal(WaitCount(3))
+    ended = DrainWatch.watch_pool(
+        tracker=standard_pool(),
+        claims=FakeClaimRegistry(),
+        manager=fake_manager(),
+        board=fake_board(),
+        lock=FakeRunLock(),
+        flow_labels=FlowLabels.fake(),
+        settings=UnpromptedSettings(),
+        stop=stop,
+        narrator=RecordingNarrator(),
+        request=WatchRequest.fake().model_copy(
+            update={"drain": DrainRequest.fake().model_copy(update={"prompt": None})}
+        ),
+    )
+    assert isinstance(ended, Err)
+    assert isinstance(ended.error, InvalidConfigError)
+    assert stop.waits() == WaitCount(0)
 
 
 def test_a_config_without_a_pool_ends_the_watch() -> None:

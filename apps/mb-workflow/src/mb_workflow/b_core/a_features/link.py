@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from mb_workflow.b_core.c_secondary_ports.claims import (
         ClaimRefusedError,
         ClaimRegistry,
-        UnknownClaimLabelError,
     )
     from mb_workflow.b_core.c_secondary_ports.status import WorkspaceStatusStore
     from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
@@ -32,7 +31,7 @@ if TYPE_CHECKING:
         TicketTrackerError,
     )
     from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManager
-    from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
+    from mb_workflow.b_core.d_domain_model.config import WorkspaceSettings
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
     from mb_workflow.b_core.d_domain_model.ticket_statuses import TicketStatuses
     from mb_workflow.b_core.d_domain_model.workspace import WorkspaceStatus, Worktree
@@ -119,7 +118,6 @@ class TicketLinking:
         claims: ClaimRegistry,
         board: WorkspaceStatusStore,
         workspace: WorkspaceSettings,
-        claim_settings: ClaimSettings,
         flow_labels: FlowLabels,
         statuses: TicketStatuses,
         request: LinkRequest,
@@ -127,7 +125,6 @@ class TicketLinking:
         None,
         FlowError
         | TicketTrackerError
-        | UnknownClaimLabelError
         | ClaimRefusedError
         | MissingFlowLabelsError
         | WorkspaceManagerError,
@@ -164,7 +161,6 @@ class TicketLinking:
             claims=claims,
             tracker=tracker,
             workspace=workspace,
-            claim_settings=claim_settings,
             request=ClaimRequest(
                 ticket=request.ticket,
                 status=entry.status,
@@ -175,13 +171,11 @@ class TicketLinking:
             ),
             previous=detail.assignee,
         )
-        if isinstance(taking_steps, Err):
-            return taking_steps
 
         # Linking comes last, as Orca cannot unlink a worktree to revert it.
         steps = (
             *entry.steps,
-            *taking_steps.value,
+            *taking_steps,
             StatusStep(manager, here, entry.column),
             LinkStep(manager, here, request.ticket),
         )

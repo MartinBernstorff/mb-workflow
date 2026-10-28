@@ -13,6 +13,7 @@ class TicketStatuses(Value[dict[StateName, IssueStatusName]]):
             {
                 StateName(state): IssueStatusName(status)
                 for state, status in (
+                    ("triage", "Triage"),
                     ("grill", "Maturing"),
                     ("to-ticket", "Maturing"),
                     ("todo", "Todo"),

@@ -5,11 +5,10 @@ from safe_result import Err, Ok, Result
 
 from mb_workflow.b_core.a_features.autolabel import UnknownLabelError
 from mb_workflow.b_core.a_features.drain import Drain, DrainRequest, PoolLabels
-from mb_workflow.b_core.c_secondary_ports.claims import UnknownClaimLabelError
 from mb_workflow.b_core.c_secondary_ports.run_lock import AlreadyRunningError
 from mb_workflow.b_core.d_domain_model.clock import IntervalSeconds
 from mb_workflow.b_core.d_domain_model.config import (
-    ClaimSettings,
+    FlowSettings,
     InvalidConfigError,
     MissingConfigError,
     PoolSettings,
@@ -34,21 +33,21 @@ logger = logging.getLogger(__name__)
 
 class DrainSettings(Model):
     workspace: WorkspaceSettings
-    claims: ClaimSettings
     pool: PoolSettings
+    flow: FlowSettings
     statuses: TicketStatuses
 
     @staticmethod
     def fake() -> DrainSettings:
         return DrainSettings(
             workspace=WorkspaceSettings.fake(),
-            claims=ClaimSettings.fake(),
             pool=PoolSettings.fake(),
+            flow=FlowSettings.fake(),
             statuses=TicketStatuses.fake(),
         )
 
     def pool_labels(self) -> PoolLabels:
-        return PoolLabels.of(self.claims, self.pool)
+        return PoolLabels.of(self.pool)
 
 
 # Read once per pass, so a config edit applies from the next pass.
@@ -88,7 +87,7 @@ class DrainWatch:
         stop: StopSignal,
         narrator: DrainNarrator,
         request: WatchRequest,
-    ) -> Result[None, UnknownClaimLabelError | UnknownLabelError]:
+    ) -> Result[None, UnknownLabelError | InvalidConfigError]:
         previous: DrainOutcome | None = None
         # Labels a finished pass found, which the next pass need not list again while the config names the same ones.
         found_labels: PoolLabels | None = None
@@ -102,10 +101,10 @@ class DrainWatch:
                     board=board,
                     lock=lock,
                     workspace=current.workspace,
-                    claim_settings=current.claims,
                     flow_labels=flow_labels,
                     statuses=current.statuses,
                     pool=current.pool,
+                    flow=current.flow,
                     found_labels=found_labels,
                     request=request.drain,
                 )
@@ -121,8 +120,8 @@ class DrainWatch:
                         found_labels = current.pool_labels()
                     case Err(AlreadyRunningError() as refusal):
                         logger.info("Skipped this pass: %s.", refusal)
-                    # Retrying cannot fix a missing label either; only an edit to the tracker's labels can.
-                    case Err(UnknownClaimLabelError() | UnknownLabelError() as unfixable):
+                    # Retrying cannot fix a missing label or prompt; only an edit to the tracker or config can.
+                    case Err(UnknownLabelError() | InvalidConfigError() as unfixable):
                         return Err(unfixable)
                     case Err(error):
                         DrainWatch.log_failed_pass(request, error)

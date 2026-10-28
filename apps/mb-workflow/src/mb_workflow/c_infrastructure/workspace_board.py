@@ -50,6 +50,7 @@ class StateColumns(Value[tuple[WorkspaceStateColumn, ...]]):
     def of_charts() -> StateColumns:
         return StateColumns(
             (
+                WorkspaceStateColumn(state=StateName("triage"), label=ColumnLabel("Triage")),
                 WorkspaceStateColumn(state=StateName("grill"), label=ColumnLabel("Grilling")),
                 WorkspaceStateColumn(state=StateName("to-ticket"), label=ColumnLabel("Speccing")),
                 WorkspaceStateColumn(state=StateName("todo"), label=ColumnLabel("Tomorrow")),

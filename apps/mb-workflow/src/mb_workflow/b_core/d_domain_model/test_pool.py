@@ -8,6 +8,7 @@ from mb_workflow.b_core.d_domain_model.issue import (
     GroupedLabel,
     GroupedLabels,
     Issue,
+    IssueIdentifier,
     Issues,
     LabelGroupName,
     LabelName,
@@ -21,11 +22,13 @@ from mb_workflow.b_core.d_domain_model.pool import (
     PoolTicket,
     Ready,
     Refusal,
-    SkipLimits,
     Slot,
     ViewReference,
     ViewSlug,
 )
+from mb_workflow.b_core.d_domain_model.workspace import Worktree, Worktrees
+
+TRIAGE = StateName("triage")
 
 
 def in_flow(*labels: LabelName) -> GroupedLabels:
@@ -42,70 +45,50 @@ def ticket(flow: LabelName, *others: LabelName) -> PoolTicket:
 
 
 @pytest.mark.parametrize("state", ["grill", "to-ticket", "todo", "implementing", "merging", "TODO"])
-def test_an_unclaimed_ticket_in_a_workable_state_is_ready(state: str) -> None:
-    Assert.that(
-        ticket(LabelName(state)).ready(LabelName("claimed"), FlowLabels.fake(), SkipLimits.fake())
-    ).matches(Ready(True))
-
-
-@pytest.mark.parametrize("state", ["qa", "review", "merged"])
-def test_a_ticket_in_any_other_state_is_not_ready(state: str) -> None:
-    Assert.that(
-        ticket(LabelName(state)).ready(LabelName("claimed"), FlowLabels.fake(), SkipLimits.fake())
-    ).matches(Ready(False))
-
-
-def test_a_ticket_without_a_flow_label_is_not_ready() -> None:
-    unlabelled = PoolTicket.fake().issue.model_copy(
-        update={"labels": LabelNames(()), "grouped": GroupedLabels(())}
-    )
-    ticket = PoolTicket.fake().model_copy(update={"issue": unlabelled})
-    Assert.that(ticket.ready(LabelName("claimed"), FlowLabels.fake(), SkipLimits.fake())).matches(
-        Ready(False)
-    )
-
-
-def test_a_ticket_skipping_the_limits_without_a_flow_label_is_ready() -> None:
-    skipping = PoolTicket.fake().issue.model_copy(
-        update={"labels": LabelNames((SkipLimits.fake().label,)), "grouped": GroupedLabels(())}
-    )
-    ticket = PoolTicket.fake().model_copy(update={"issue": skipping})
-    Assert.that(ticket.ready(LabelName("claimed"), FlowLabels.fake(), SkipLimits.fake())).matches(
+def test_a_ticket_without_a_worktree_in_a_workable_state_is_ready(state: str) -> None:
+    Assert.that(ticket(LabelName(state)).ready(Worktrees(()), FlowLabels.fake(), TRIAGE)).matches(
         Ready(True)
     )
 
 
-def test_a_ticket_skipping_the_limits_without_a_flow_label_starts_in_the_skip_limits_state() -> (
-    None
-):
-    skipping = PoolTicket.fake().issue.model_copy(
-        update={"labels": LabelNames((SkipLimits.fake().label,)), "grouped": GroupedLabels(())}
-    )
-    ticket = PoolTicket.fake().model_copy(update={"issue": skipping})
-    Assert.that(ticket.starting_state(FlowLabels.fake(), SkipLimits.fake())).matches(
-        Ok(SkipLimits.fake().state)
-    )
-
-
-def test_a_ticket_skipping_the_limits_starts_in_its_own_flow_state() -> None:
-    skipping = ticket(LabelName("todo"), SkipLimits.fake().label)
-    Assert.that(skipping.starting_state(FlowLabels.fake(), SkipLimits.fake())).matches(
-        Ok(StateName("todo"))
-    )
-
-
-def test_a_ticket_carrying_the_claim_label_is_not_ready() -> None:
-    claimed = ticket(LabelName("todo"), LabelName("Claimed"))
-    Assert.that(claimed.ready(LabelName("claimed"), FlowLabels.fake(), SkipLimits.fake())).matches(
+@pytest.mark.parametrize("state", ["qa", "review", "merged"])
+def test_a_ticket_in_any_other_state_is_not_ready(state: str) -> None:
+    Assert.that(ticket(LabelName(state)).ready(Worktrees(()), FlowLabels.fake(), TRIAGE)).matches(
         Ready(False)
+    )
+
+
+def test_a_ticket_without_a_flow_label_is_ready_in_the_unlabelled_state() -> None:
+    unlabelled = PoolTicket.fake().issue.model_copy(
+        update={"labels": LabelNames(()), "grouped": GroupedLabels(())}
+    )
+    ticket = PoolTicket.fake().model_copy(update={"issue": unlabelled})
+    Assert.that(ticket.ready(Worktrees(()), FlowLabels.fake(), TRIAGE)).matches(Ready(True))
+    Assert.that(ticket.starting_state(FlowLabels.fake(), TRIAGE)).matches(Ok(TRIAGE))
+
+
+def test_a_ticket_with_a_flow_label_starts_in_its_own_flow_state() -> None:
+    labelled = ticket(LabelName("todo"))
+    Assert.that(labelled.starting_state(FlowLabels.fake(), TRIAGE)).matches(Ok(StateName("todo")))
+
+
+def test_a_ticket_with_a_worktree_is_not_ready() -> None:
+    opened = Worktrees((Worktree.fake(),))
+    Assert.that(ticket(LabelName("todo")).ready(opened, FlowLabels.fake(), TRIAGE)).matches(
+        Ready(False)
+    )
+
+
+def test_a_worktree_linked_to_another_ticket_leaves_a_ticket_ready() -> None:
+    elsewhere = Worktrees((Worktree.fake().model_copy(update={"issue": IssueIdentifier("E-1")}),))
+    Assert.that(ticket(LabelName("todo")).ready(elsewhere, FlowLabels.fake(), TRIAGE)).matches(
+        Ready(True)
     )
 
 
 def test_other_labels_leave_a_ticket_ready() -> None:
     labelled = ticket(LabelName("todo"), LabelName("Backend"))
-    Assert.that(labelled.ready(LabelName("claimed"), FlowLabels.fake(), SkipLimits.fake())).matches(
-        Ready(True)
-    )
+    Assert.that(labelled.ready(Worktrees(()), FlowLabels.fake(), TRIAGE)).matches(Ready(True))
 
 
 def test_the_defaults_cap_the_total_at_four_and_grill_at_one() -> None:
@@ -143,7 +126,7 @@ def test_a_state_limit_beside_the_total_points_to_the_states_table() -> None:
 
 
 def test_a_state_outside_the_chart_is_refused_listing_the_chart_states() -> None:
-    lists_chart_states = r"No flow state is named Specced\. Use one of grill, to-ticket,"
+    lists_chart_states = r"No flow state is named Specced\. Use one of triage, grill, to-ticket,"
     with pytest.raises(ValueError, match=lists_chart_states):
         _ = PoolLimits.model_validate({"states": {"Specced": 1}})
 

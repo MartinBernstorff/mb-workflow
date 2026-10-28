@@ -45,12 +45,12 @@ from mb_workflow.b_core.a_features.transition import WorktreeTransition
 from mb_workflow.b_core.a_features.unclaim import TicketUnclaiming
 from mb_workflow.b_core.a_features.view_ticket import TicketViewing
 from mb_workflow.b_core.b_domain_services.flow_label_check import MissingFlowLabelsError
+from mb_workflow.b_core.b_domain_services.flow_report import StatesReport
 from mb_workflow.b_core.c_secondary_ports.note_vault import NoteVaultError
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 from mb_workflow.b_core.c_secondary_ports.workspace_manager import WorkspaceManagerError
 from mb_workflow.b_core.d_domain_model.cache import CacheDirectory
 from mb_workflow.b_core.d_domain_model.config import (
-    ClaimSettings,
     ConfigExistsError,
     ConfigFileName,
     Configuration,
@@ -63,7 +63,7 @@ from mb_workflow.b_core.d_domain_model.config_override import (
     ProjectOverride,
 )
 from mb_workflow.b_core.d_domain_model.config_template import ConfigTemplate
-from mb_workflow.b_core.d_domain_model.flow import EventName, WorkflowChart
+from mb_workflow.b_core.d_domain_model.flow import DescribedStates, EventName, WorkflowChart
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels, LabelRenames
 from mb_workflow.b_core.d_domain_model.issue import LabelGroupName
 from mb_workflow.b_core.d_domain_model.workspace import UnlinkedWorktreeError
@@ -75,7 +75,7 @@ from mb_workflow.c_infrastructure.credentials import (
 from mb_workflow.c_infrastructure.dev_environment import DevEnvironment
 from mb_workflow.c_infrastructure.flock import FlockRunLock, LockName, LockPath
 from mb_workflow.c_infrastructure.github import GitHub
-from mb_workflow.c_infrastructure.lazy_linear import LazyLinear, LazyLinearClaims
+from mb_workflow.c_infrastructure.lazy_linear import LazyLinearClaims
 from mb_workflow.c_infrastructure.ledger_file import FileLedgerStore
 from mb_workflow.c_infrastructure.linear import Linear, LinearApiKey
 from mb_workflow.c_infrastructure.linear_claims import LinearClaims
@@ -189,13 +189,6 @@ def review_workspaces(
     host: HostName,
     prompt: ReviewPrompt | None,
 ) -> ExitCode:
-    # Review-workspaces predates the config file, so a repo without one still has its worktrees reconciled.
-    try:
-        claim_settings = resolved_configuration(
-            WorkingDirectory(Path.cwd()), ConfigFileName.default()
-        ).settings.claims
-    except MissingConfigError:
-        claim_settings = ClaimSettings()
     shell = here()
     match GitHub.connected(shell):
         case Ok(github):
@@ -208,8 +201,6 @@ def review_workspaces(
         review=github,
         manager=manager,
         claims=LazyLinearClaims(linear_key),
-        tracker=LazyLinear(linear_key),
-        claim_settings=claim_settings,
         host=host,
         lock=FlockRunLock(LockPath.of(lock)),
         narrator=LoggingNarrator(),
@@ -266,9 +257,9 @@ def ticket_start(
         claims=LinearClaims.connected(key),
         board=workspace_board(manager),
         workspace=settings.workspace,
-        claim_settings=settings.claims,
         flow_labels=flow_labels_of_chart(),
         statuses=settings.ticket_statuses,
+        flow=settings.flow,
         request=request,
     ):
         case Ok():
@@ -291,7 +282,6 @@ def ticket_link(
         claims=LinearClaims.connected(key),
         board=workspace_board(manager),
         workspace=settings.workspace,
-        claim_settings=settings.claims,
         flow_labels=flow_labels_of_chart(),
         statuses=settings.ticket_statuses,
         request=request,
@@ -318,10 +308,10 @@ def drain(
         board=workspace_board(manager),
         lock=FlockRunLock(LockPath.of_project(lock, settings.workspace.orca_project)),
         workspace=settings.workspace,
-        claim_settings=settings.claims,
         flow_labels=flow_labels_of_chart(),
         statuses=settings.ticket_statuses,
         pool=pool,
+        flow=settings.flow,
         found_labels=None,
         request=request,
     )
@@ -344,8 +334,8 @@ class ConfiguredDrainSettings(DrainSettingsSource):
         settings = resolved_configuration(self._directory, self._name).settings
         return DrainSettings(
             workspace=settings.workspace,
-            claims=settings.claims,
             pool=settings.required_pool(),
+            flow=settings.flow,
             statuses=settings.ticket_statuses,
         )
 
@@ -380,28 +370,19 @@ def drain_watch(
 
 
 @guarded
-def teardown(
-    request: TeardownRequest, directory: WorkingDirectory, name: ConfigFileName
-) -> ExitCode:
+def teardown(request: TeardownRequest) -> ExitCode:
     Teardown.teardown_worktree(
         manager=connected_orca(),
         claims=LazyLinearClaims(linear_key),
-        tracker=LazyLinear(linear_key),
-        claim_settings=resolved_configuration(directory, name).settings.claims,
         request=request,
     ).unwrap()
     return ExitCode(0)
 
 
 @guarded
-def ticket_unclaim(
-    ticket: IssueIdentifier, directory: WorkingDirectory, name: ConfigFileName
-) -> ExitCode:
+def ticket_unclaim(ticket: IssueIdentifier) -> ExitCode:
     TicketUnclaiming.unclaim_ticket(
-        registry=LinearClaims.connected(unwrapped_linear_key()),
-        tracker=linear(),
-        claim_settings=resolved_configuration(directory, name).settings.claims,
-        ticket=ticket,
+        registry=LinearClaims.connected(unwrapped_linear_key()), ticket=ticket
     ).unwrap()
     return ExitCode(0)
 
@@ -473,6 +454,11 @@ def flow_show(as_json: AsJson) -> ExitCode:
         case Err(error):
             logger.error("%s", error)
             return ExitCode(1)
+
+
+def flow_states(as_json: AsJson) -> ExitCode:
+    write(Output(StatesReport.of(DescribedStates.of_chart(WorkflowChart), as_json).root))
+    return ExitCode(0)
 
 
 @guarded

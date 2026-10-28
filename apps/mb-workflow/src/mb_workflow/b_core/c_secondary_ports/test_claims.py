@@ -1,4 +1,4 @@
-from typing import override
+from typing import TYPE_CHECKING, override
 
 from assertions import Assert
 from safe_result import Ok, Result
@@ -6,15 +6,8 @@ from safe_result import Ok, Result
 from mb_workflow.b_core.c_secondary_ports.claims import (
     Claiming,
     ClaimLostError,
-    ClaimRefusedError,
     ClaimRequest,
     FakeClaimRegistry,
-    LabelledClaim,
-)
-from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
-    FakeTicketTracker,
-    TicketTrackerError,
-    TrackedIssue,
 )
 from mb_workflow.b_core.d_domain_model.claim import (
     Claim,
@@ -25,22 +18,10 @@ from mb_workflow.b_core.d_domain_model.claim import (
     Posted,
     TakeOver,
 )
-from mb_workflow.b_core.d_domain_model.issue import (
-    Issue,
-    IssueIdentifier,
-    LabelName,
-    LabelNames,
-)
+from mb_workflow.b_core.d_domain_model.issue import IssueIdentifier
 
-
-def tracker_with_the_claimed_label() -> FakeTicketTracker:
-    issue = Issue.fake().model_copy(
-        update={"labels": LabelNames((*Issue.fake().labels.root, LabelName("claimed")))}
-    )
-    return FakeTicketTracker(
-        LabelNames((*LabelNames.fake().root, LabelName("claimed"))),
-        (TrackedIssue.fake().model_copy(update={"issue": issue}),),
-    )
+if TYPE_CHECKING:
+    from mb_workflow.b_core.c_secondary_ports.ticket_tracker import TicketTrackerError
 
 
 def rival() -> ClaimHolder:
@@ -66,58 +47,14 @@ def claim_holders(registry: FakeClaimRegistry) -> tuple[ClaimHolder, ...]:
 
 def test_releasing_withdraws_the_holders_claim() -> None:
     registry = registry_held_by(ClaimHolder.fake())
-    Claiming.release_claim(
-        registry, tracker_with_the_claimed_label(), LabelledClaim.fake()
-    ).unwrap()
+    Claiming.release_claim(registry, IssueIdentifier.fake(), ClaimHolder.fake()).unwrap()
     Assert.that(registry.claims(IssueIdentifier.fake()).unwrap()).matches(Claims(()))
 
 
-def test_releasing_the_last_claim_removes_the_label() -> None:
-    tracker = tracker_with_the_claimed_label()
-    labelled = LabelledClaim.fake().model_copy(update={"label": LabelName("claimed")})
-    Claiming.release_claim(registry_held_by(ClaimHolder.fake()), tracker, labelled).unwrap()
-    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(
-        Issue.fake().labels
-    )
-
-
-def test_releasing_leaves_another_holders_claim_and_its_label() -> None:
-    registry = registry_held_by(rival())
-    tracker = tracker_with_the_claimed_label()
-    Claiming.release_claim(registry, tracker, LabelledClaim.fake()).unwrap()
-    Assert.that(claim_holders(registry)).matches((rival(),))
-    Assert.that(
-        tracker.read_issue(IssueIdentifier.fake()).unwrap().labels.has(LabelName("claimed")).root
-    ).is_true()
-
-
-def test_releasing_keeps_the_label_while_another_claim_remains() -> None:
+def test_releasing_leaves_another_holders_claim() -> None:
     registry = registry_held_by(ClaimHolder.fake(), rival())
-    tracker = tracker_with_the_claimed_label()
-    Claiming.release_claim(registry, tracker, LabelledClaim.fake()).unwrap()
+    Claiming.release_claim(registry, IssueIdentifier.fake(), ClaimHolder.fake()).unwrap()
     Assert.that(claim_holders(registry)).matches((rival(),))
-    Assert.that(
-        tracker.read_issue(IssueIdentifier.fake()).unwrap().labels.has(LabelName("claimed")).root
-    ).is_true()
-
-
-def test_labelling_a_claim_adds_the_label() -> None:
-    tracker = FakeTicketTracker(
-        LabelNames((*LabelNames.fake().root, LabelName("claimed"))), (TrackedIssue.fake(),)
-    )
-    _ = Claiming.label_claim(tracker, LabelledClaim.fake())
-    Assert.that(
-        tracker.read_issue(IssueIdentifier.fake()).unwrap().labels.has(LabelName("claimed")).root
-    ).is_true()
-
-
-def test_a_label_the_tracker_lacks_refuses_the_claim() -> None:
-    tracker = FakeTicketTracker(LabelNames.fake(), (TrackedIssue.fake(),))
-    labelled = Claiming.label_claim(tracker, LabelledClaim.fake())
-    _ = Assert.that(labelled.error).is_instance(ClaimRefusedError)
-    Assert.that(tracker.read_issue(IssueIdentifier.fake()).unwrap().labels).matches(
-        TrackedIssue.fake().issue.labels
-    )
 
 
 def test_claiming_a_ticket_another_holder_holds_is_refused_as_lost() -> None:

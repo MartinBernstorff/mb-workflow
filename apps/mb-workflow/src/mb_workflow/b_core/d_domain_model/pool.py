@@ -5,7 +5,7 @@ from safe_result import Err, Ok
 
 from mb_workflow.b_core.d_domain_model.flow import (
     AcceptedStates,
-    Skill,
+    AgentWork,
     StateName,
     StateNames,
     WorkflowChart,
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
     from mb_workflow.b_core.d_domain_model.flow import FlowError
     from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
+    from mb_workflow.b_core.d_domain_model.workspace import Worktrees
 
 
 class ViewSlug(Value[str]):
@@ -61,17 +62,6 @@ class SkipsLimits(Value[bool]):
         return SkipsLimits(False)
 
 
-# The label that lets a ticket past the pool's limits, and the state it starts a ticket without a flow
-# state in.
-class SkipLimits(Model):
-    label: LabelName
-    state: StateName
-
-    @staticmethod
-    def fake() -> SkipLimits:
-        return SkipLimits(label=LabelName("skip-limits"), state=StateName("grill"))
-
-
 class PoolTicket(Model):
     issue: Issue
     priority: Priority
@@ -90,46 +80,43 @@ class PoolTicket(Model):
             updated_at=UpdatedAt.fake(),
         )
 
-    # A ticket is ready when its state names a skill an agent can run.
+    # A ticket is ready when an agent works tickets in its state.
     @staticmethod
     def ready_states() -> StateNames:
         return StateNames(
             frozenset(
                 StateName(state.name)
                 for state in WorkflowChart.states
-                if isinstance(state, WorkState) and isinstance(state.action, Skill)
+                if isinstance(state, WorkState) and isinstance(state.action, AgentWork)
             )
         )
 
     def flow_state(self, flow_labels: FlowLabels) -> Result[StateName | None, FlowError]:
         return flow_labels.state_of(WorkflowChart, self.issue.grouped)
 
-    # A ticket that skips the limits without a flow state starts in the skip-limits state.
+    # A ticket without a flow state starts in the unlabelled state, where an agent places it.
     def starting_state(
-        self, flow_labels: FlowLabels, skip_limits: SkipLimits
-    ) -> Result[StateName | None, FlowError]:
+        self, flow_labels: FlowLabels, unlabelled: StateName
+    ) -> Result[StateName, FlowError]:
         match self.flow_state(flow_labels):
-            case Ok(None) if self.skips_limits(skip_limits.label).root:
-                return Ok(skip_limits.state)
-            case found:
-                return found
-
-    def slot(
-        self, flow_labels: FlowLabels, skip_limits: SkipLimits
-    ) -> Result[Slot | None, FlowError]:
-        match self.starting_state(flow_labels, skip_limits):
             case Ok(state):
-                return Ok(None if state is None else Slot(state=state, labels=self.issue.labels))
+                return Ok(unlabelled if state is None else state)
             case Err() as unresolved:
                 return unresolved
 
-    def ready(
-        self, claim_label: LabelName, flow_labels: FlowLabels, skip_limits: SkipLimits
-    ) -> Ready:
+    def slot(self, flow_labels: FlowLabels, unlabelled: StateName) -> Result[Slot, FlowError]:
+        match self.starting_state(flow_labels, unlabelled):
+            case Ok(state):
+                return Ok(Slot(state=state, labels=self.issue.labels))
+            case Err() as unresolved:
+                return unresolved
+
+    # A ticket that already has a worktree is in progress, so it never gets a second one.
+    def ready(self, worktrees: Worktrees, flow_labels: FlowLabels, unlabelled: StateName) -> Ready:
         return Ready(
-            self.starting_state(flow_labels, skip_limits).unwrap_or(None)
+            self.starting_state(flow_labels, unlabelled).unwrap_or(None)
             in PoolTicket.ready_states().root
-            and self.issue.labels.matching(claim_label) is None
+            and worktrees.linked_to(self.issue.identifier) is None
         )
 
     def skips_limits(self, skip_limits_label: LabelName) -> SkipsLimits:
@@ -142,13 +129,13 @@ class PoolTickets(Value[tuple[PoolTicket, ...]]):
         return PoolTickets((PoolTicket.fake(),))
 
     def ready(
-        self, claim_label: LabelName, flow_labels: FlowLabels, skip_limits: SkipLimits
+        self, worktrees: Worktrees, flow_labels: FlowLabels, unlabelled: StateName
     ) -> PoolTickets:
         return PoolTickets(
             tuple(
                 ticket
                 for ticket in self.root
-                if ticket.ready(claim_label, flow_labels, skip_limits).root
+                if ticket.ready(worktrees, flow_labels, unlabelled).root
             )
         )
 

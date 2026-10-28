@@ -8,7 +8,6 @@ from mb_workflow.b_core.a_features.link import AlreadyLinkedError, LinkRequest, 
 from mb_workflow.b_core.c_secondary_ports.claims import (
     ClaimRefusedError,
     FakeClaimRegistry,
-    UnknownClaimLabelError,
 )
 from mb_workflow.b_core.c_secondary_ports.status import FakeStatusStore
 from mb_workflow.b_core.c_secondary_ports.ticket_tracker import (
@@ -30,7 +29,7 @@ from mb_workflow.b_core.d_domain_model.claim import (
     HostName,
     TakeOver,
 )
-from mb_workflow.b_core.d_domain_model.config import ClaimSettings, WorkspaceSettings
+from mb_workflow.b_core.d_domain_model.config import WorkspaceSettings
 from mb_workflow.b_core.d_domain_model.flow import FlowError, StateName, StateNames, WorkflowChart
 from mb_workflow.b_core.d_domain_model.flow_labels import FlowLabels
 from mb_workflow.b_core.d_domain_model.issue import (
@@ -80,7 +79,7 @@ def tracking(
         }
     )
     return FakeTicketTracker(
-        LabelNames((*LabelNames.fake().root, LabelName("claimed"), *FlowLabels.fake().labels.root)),
+        LabelNames((*LabelNames.fake().root, *FlowLabels.fake().labels.root)),
         (TrackedIssue.fake().model_copy(update={"issue": issue, "assignee": assignee}),),
         statuses=mapped_statuses(),
         groups={FlowLabels.fake().group: FlowLabels.fake().labels},
@@ -121,7 +120,6 @@ def linking(
     None,
     FlowError
     | TicketTrackerError
-    | UnknownClaimLabelError
     | ClaimRefusedError
     | MissingFlowLabelsError
     | WorkspaceManagerError,
@@ -132,7 +130,6 @@ def linking(
         claims=claims,
         board=fake_board(),
         workspace=workspace or WorkspaceSettings.fake(),
-        claim_settings=ClaimSettings.fake(),
         flow_labels=FlowLabels.fake(),
         statuses=TicketStatuses.fake(),
         request=request,
@@ -213,15 +210,6 @@ def test_claims_the_ticket_under_the_tickets_name() -> None:
         managing(here_linked_to(None)), tracking(StateName.fake()), claims, LinkRequest.fake()
     ) == Ok(None)
     assert holders(claims, IssueIdentifier.fake()) == (our_holder(),)
-
-
-def test_the_linked_ticket_carries_the_claim_label() -> None:
-    tracker = tracking(StateName.fake())
-    assert linking(
-        managing(here_linked_to(None)), tracker, FakeClaimRegistry(), LinkRequest.fake()
-    ) == Ok(None)
-    labels = tracker.read_issue(IssueIdentifier.fake()).unwrap().labels
-    assert labels.has(ClaimSettings.fake().label).root
 
 
 def test_assigns_the_ticket_to_the_configured_assignee() -> None:
@@ -312,14 +300,12 @@ def refusing_to_link() -> LinkRefusingWorkspaceManager:
     )
 
 
-def test_a_refused_link_leaves_neither_claim_nor_claim_label() -> None:
+def test_a_refused_link_leaves_no_claim() -> None:
     tracker = tracking(StateName.fake())
     claims = FakeClaimRegistry()
     failed = linking(refusing_to_link(), tracker, claims, LinkRequest.fake())
     assert isinstance(failed.error, WorkspaceManagerError)
     assert claims.claims(IssueIdentifier.fake()).unwrap() == Claims(())
-    labels = tracker.read_issue(IssueIdentifier.fake()).unwrap().labels
-    assert not labels.has(ClaimSettings.fake().label).root
 
 
 def test_a_refused_link_moves_a_todo_ticket_back_to_todo() -> None:
