@@ -85,6 +85,7 @@ def test_the_chart_holds_every_transition_the_work_can_take() -> None:
             edge(TODO, EventName("implement"), IMPLEMENTING),
             edge(IMPLEMENTING, EventName("implement"), IMPLEMENTING),
             edge(IMPLEMENTING, EventName("agent-review"), AGENT_REVIEWING),
+            edge(IMPLEMENTING, EventName("qa"), QA),
             edge(AGENT_REVIEWING, EventName("qa"), QA),
             edge(AGENT_REVIEWING, EventName("implement"), IMPLEMENTING),
             edge(AGENT_REVIEWING, EventName("grill"), GRILL),
@@ -216,10 +217,10 @@ def test_only_todo_opens_in_a_delivery_state() -> None:
     Assert.that(moved).matches({TODO: IMPLEMENTING})
 
 
-def test_implementing_cannot_skip_the_agent_review_on_its_way_to_qa() -> None:
-    refused = Edges.of_chart(WorkflowChart).target_from(IMPLEMENTING, EventName("qa"))
-    error = Assert.that(refused.error).is_instance(FlowError)
-    Assert.that(str(error)).matches_pattern(r"qa is not legal from implementing\.")
+def test_implementing_can_go_straight_to_qa() -> None:
+    Assert.that(Edges.of_chart(WorkflowChart).target_from(IMPLEMENTING, EventName("qa"))).matches(
+        Ok(QA)
+    )
 
 
 def test_a_blocking_finding_in_the_agent_review_returns_the_work_to_implementing() -> None:
