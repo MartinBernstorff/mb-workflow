@@ -214,7 +214,11 @@ class WorkflowChart(StateChart[ChartModel]):
         name="implement",
     )
     agent_review = Event(implementing.to(agent_reviewing), id="agent-review", name="agent-review")
-    to_qa = Event(agent_reviewing.to(qa) | review.to(qa) | merging.to(qa), id="qa", name="qa")
+    to_qa = Event(
+        implementing.to(qa) | agent_reviewing.to(qa) | review.to(qa) | merging.to(qa),
+        id="qa",
+        name="qa",
+    )
     ready = Event(qa.to(review), id="ready", name="ready")
     merge = Event(qa.to(merging) | review.to(merging), id="merge", name="merge")
     to_merged = Event(review.to(merged) | merging.to(merged), id="merged", name="merged")
