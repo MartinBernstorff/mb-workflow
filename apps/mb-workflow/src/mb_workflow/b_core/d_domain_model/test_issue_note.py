@@ -26,7 +26,7 @@ from mb_workflow.d_lib.models import Value
 class Fragment(Value[str]):
     @staticmethod
     def fake() -> Fragment:
-        return Fragment("priority: medium")
+        return Fragment("priority: 3. medium")
 
 
 def edited(text: NoteText, held: Fragment, replacement: Fragment) -> NoteText:
@@ -169,6 +169,23 @@ def test_an_edit_to_a_field_linear_owns_changes_nothing() -> None:
         IssueNote.rendered(IssueSnapshot.fake()),
         Fragment("url: https://"),
         Fragment("url: http://"),
+    )
+    Assert.that(update_of(text)).matches(IssueUpdate.nothing())
+
+
+def test_a_priority_renders_with_linears_number() -> None:
+    Assert.that(IssueNote.rendered(IssueSnapshot.fake()).root).contains(Fragment.fake().root)
+
+
+def test_no_priority_renders_last_in_order() -> None:
+    detail = IssueDetail.fake().model_copy(update={"priority": Priority.no_priority})
+    snapshot = IssueSnapshot.fake().model_copy(update={"detail": detail})
+    Assert.that(IssueNote.rendered(snapshot).root).contains("priority: 99. none")
+
+
+def test_a_priority_without_its_number_reads_as_that_priority() -> None:
+    text = edited(
+        IssueNote.rendered(IssueSnapshot.fake()), Fragment.fake(), Fragment("priority: medium")
     )
     Assert.that(update_of(text)).matches(IssueUpdate.nothing())
 
