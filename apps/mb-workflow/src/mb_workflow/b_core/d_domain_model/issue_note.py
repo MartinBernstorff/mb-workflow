@@ -49,12 +49,14 @@ class NoteTitle(Value[str]):
         return None if self == NoteTitle.of(title) else IssueTitle(self.root)
 
 
+# Numbered as in Linear, with no priority last, so that sorting the notes by priority puts urgent
+# first.
 class NotePriority(StrEnum):
-    no_priority = "none"
-    urgent = "urgent"
-    high = "high"
-    medium = "medium"
-    low = "low"
+    no_priority = "99. none"
+    urgent = "1. urgent"
+    high = "2. high"
+    medium = "3. medium"
+    low = "4. low"
 
     @staticmethod
     def of(priority: Priority) -> NotePriority:
@@ -92,6 +94,13 @@ class NoteFrontmatter(Model):
     @classmethod
     def _no_assignee_when_empty(cls, value: JsonValue) -> JsonValue:
         return None if value == "" else value
+
+    # A priority written without its number, as notes from before the numbering hold it, still reads.
+    @field_validator("priority", mode="before")
+    @classmethod
+    def _priority_without_number(cls, value: JsonValue) -> JsonValue:
+        bare = {held.value.split(". ", 1)[1]: held.value for held in NotePriority}
+        return bare.get(value, value) if isinstance(value, str) else value
 
 
 class IssueNote(Model):
