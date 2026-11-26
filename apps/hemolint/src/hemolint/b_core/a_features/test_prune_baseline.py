@@ -95,3 +95,15 @@ def test_a_counted_file_is_never_raised() -> None:
     one = Count(1)
     assert drift.new_count() == one
     assert store.baseline == Baseline.of((counted,))
+
+
+def test_a_misformatted_file_is_rewritten_without_any_fix() -> None:
+    store = FakeBaselineStore(Baseline.of((known,)), misformatted=(known.file,))
+    _ = BaselinePruning.prune(
+        LinterOutput(f"{reported_line}\n"),
+        LinterFormat.fixit,
+        WorkingDirectory.fake(),
+        lines,
+        store,
+    ).unwrap()
+    assert store.misformatted(LinterName("fixit")).unwrap() == ()

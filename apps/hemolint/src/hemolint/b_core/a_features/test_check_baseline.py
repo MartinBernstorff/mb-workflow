@@ -79,3 +79,14 @@ def test_another_linters_baselined_violation_is_not_fixed() -> None:
         FakeBaselineStore(Baseline.of((other_linters_violation(),))),
     ).unwrap()
     assert not drift.exists()
+
+
+def test_a_misformatted_baseline_file_is_listed() -> None:
+    drift = BaselineCheck.check(
+        LinterOutput(f"{reported_line}\n"),
+        LinterFormat.fixit,
+        WorkingDirectory.fake(),
+        lines,
+        FakeBaselineStore(Baseline.of((known,)), misformatted=(known.file,)),
+    ).unwrap()
+    assert drift.misformatted == (known.file,)

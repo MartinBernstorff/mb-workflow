@@ -14,7 +14,7 @@ Fail when the baseline has drifted from the current violations:
 fixit lint | uv run hemolint check --format fixit
 ```
 
-It exits 1 on new violations, which it prints as the linter's own lines, and on fixed violations still in the baseline. It exits 0 when there is no drift.
+It exits 1 on new violations, which it prints as the linter's own lines, on fixed violations still in the baseline, and on baseline files that differ from what hemolint would write, e.g. hand-edited ones left unsorted. It exits 0 when there is no drift.
 
 Remove fixed violations from the baseline instead of failing on them:
 
@@ -22,7 +22,7 @@ Remove fixed violations from the baseline instead of failing on them:
 fixit lint | uv run hemolint check --format fixit --prune
 ```
 
-It still exits 1 on new violations, but never adds them to the baseline, so a pre-commit hook can run it to shrink the baseline as violations are fixed. The baseline files of deleted source files are removed with their violations.
+It still exits 1 on new violations, but never adds them to the baseline, so a pre-commit hook can run it to shrink the baseline as violations are fixed. It rewrites every baseline file as hemolint writes it. The baseline files of deleted source files are removed with their violations.
 
 By default each violation is recorded by its fingerprint, the text of its source line, so editing that line, e.g. renaming a symbol on it, makes the violation new. Record only how many violations of each rule a source file holds instead:
 

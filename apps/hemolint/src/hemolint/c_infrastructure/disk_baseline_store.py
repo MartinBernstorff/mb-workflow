@@ -19,7 +19,7 @@ from hemolint.b_core.d_domain_model.violation import (
     RuleName,
     SourcePath,
 )
-from hemolint.d_lib.models import Value
+from hemolint.d_lib.models import Model, Value
 
 _COUNTS = TypeAdapter(int | dict[str, int])
 
@@ -83,32 +83,48 @@ class BaselineFilePath(Value[Path]):
         )
 
 
+class ReadBaselineFile(Model):
+    file: BaselineFile
+    text: BaselineFileText
+    counts: Counter[Fingerprint | None]
+
+    @staticmethod
+    def fake() -> ReadBaselineFile:
+        counts = Counter[Fingerprint | None]({Fingerprint.fake(): 1})
+        return ReadBaselineFile(
+            file=BaselineFile.fake(), text=BaselineFileText.of(counts), counts=counts
+        )
+
+
 class DiskBaselineStore(BaselineStore):
     def __init__(self, directory: BaselineDirectory) -> None:
         self._directory = directory
 
     @override
     def read(self, linter: LinterName) -> Result[Baseline, BaselineStoreError]:
-        violations: list[Violation] = []
-        for path in self._baseline_file_paths():
-            file = path.decode(self._directory)
-            if file is None:
-                return Err(
-                    BaselineStoreError(f"{path.root} is not at <linter>-<rule>/<source>.json.")
-                )
-            if file.linter != linter:
-                continue
-            try:
-                counts = BaselineFileText(path.root.read_text()).decode()
-            except OSError as error:
-                return Err(BaselineStoreError(f"Cannot read {path.root}: {error}"))
-            if isinstance(counts, Err):
-                return Err(BaselineStoreError(f"{path.root} is no baseline file: {counts.error}"))
-            violations.extend(
-                Violation(file=file, fingerprint=fingerprint)
-                for fingerprint in counts.value.elements()
+        files = self._read_files(linter)
+        if isinstance(files, Err):
+            return files
+        return Ok(
+            Baseline.of(
+                Violation(file=file.file, fingerprint=fingerprint)
+                for file in files.value
+                for fingerprint in file.counts.elements()
             )
-        return Ok(Baseline.of(violations))
+        )
+
+    @override
+    def misformatted(
+        self, linter: LinterName
+    ) -> Result[tuple[BaselineFile, ...], BaselineStoreError]:
+        files = self._read_files(linter)
+        if isinstance(files, Err):
+            return files
+        return Ok(
+            tuple(
+                file.file for file in files.value if BaselineFileText.of(file.counts) != file.text
+            )
+        )
 
     @override
     def write(self, linter: LinterName, baseline: Baseline) -> Result[None, BaselineStoreError]:
@@ -130,6 +146,26 @@ class DiskBaselineStore(BaselineStore):
         except OSError as error:
             return Err(BaselineStoreError(f"Cannot write the baseline to {root}: {error}"))
         return Ok(None)
+
+    def _read_files(self, linter: LinterName) -> Result[list[ReadBaselineFile], BaselineStoreError]:
+        files: list[ReadBaselineFile] = []
+        for path in self._baseline_file_paths():
+            file = path.decode(self._directory)
+            if file is None:
+                return Err(
+                    BaselineStoreError(f"{path.root} is not at <linter>-<rule>/<source>.json.")
+                )
+            if file.linter != linter:
+                continue
+            try:
+                text = BaselineFileText(path.root.read_text())
+            except OSError as error:
+                return Err(BaselineStoreError(f"Cannot read {path.root}: {error}"))
+            counts = text.decode()
+            if isinstance(counts, Err):
+                return Err(BaselineStoreError(f"{path.root} is no baseline file: {counts.error}"))
+            files.append(ReadBaselineFile(file=file, text=text, counts=counts.value))
+        return Ok(files)
 
     def _baseline_file_paths(self) -> list[BaselineFilePath]:
         root = self._directory.root

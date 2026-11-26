@@ -33,20 +33,28 @@ class CountDrift(Model):
         return Count(max(self.baseline.root - len(self.found), 0))
 
 
-# How the baseline differs from the current violations.
+# How the baseline differs from the current violations, and which of its files differ from
+# what hemolint would write.
 class Drift(Model):
     new: tuple[FoundViolation, ...]
     fixed: Baseline
     counted: tuple[CountDrift, ...]
+    misformatted: tuple[BaselineFile, ...]
 
     @staticmethod
     def fake() -> Drift:
-        return Drift(new=(FoundViolation.fake(),), fixed=Baseline.of(()), counted=())
+        return Drift(
+            new=(FoundViolation.fake(),), fixed=Baseline.of(()), counted=(), misformatted=()
+        )
 
     # Copies of a violation match baselined copies in output order, so the later ones are new.
     # In a counted baseline file, only the number of violations matters.
     @staticmethod
-    def between(baseline: Baseline, found: Iterable[FoundViolation]) -> Drift:
+    def between(
+        baseline: Baseline,
+        found: Iterable[FoundViolation],
+        misformatted: Iterable[BaselineFile] = (),
+    ) -> Drift:
         counts = Counter(violation.file for violation in baseline.root if violation.is_counted())
         in_counted: dict[BaselineFile, list[FoundViolation]] = {file: [] for file in counts}
         unmatched = Counter(violation for violation in baseline.root if not violation.is_counted())
@@ -66,10 +74,11 @@ class Drift(Model):
             new=tuple(new),
             fixed=Baseline.of(unmatched.elements()),
             counted=tuple(drift for drift in counted if len(drift.found) != drift.baseline.root),
+            misformatted=tuple(misformatted),
         )
 
     def exists(self) -> bool:
-        return bool(self.new or self.fixed.root or self.counted)
+        return bool(self.new or self.fixed.root or self.counted or self.misformatted)
 
     def new_count(self) -> Count:
         return Count(len(self.new) + sum(drift.new_count().root for drift in self.counted))

@@ -80,3 +80,10 @@ def test_a_counted_file_with_fewer_violations_has_the_difference_all_fixed() -> 
     none = Count(0)
     assert drift.all_fixed() == Baseline.of((counted, counted))
     assert drift.new_count() == none
+
+
+def test_a_misformatted_baseline_file_is_drift() -> None:
+    drift = Drift.between(
+        Baseline.of((known,)), (Found.reported_as(known, LinterLine.fake()),), (known.file,)
+    )
+    assert drift.exists()

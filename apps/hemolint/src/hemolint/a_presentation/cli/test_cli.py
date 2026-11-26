@@ -155,6 +155,20 @@ def test_a_fixed_violation_exits_one_and_is_listed_with_a_prune_hint(workdir: Pa
     assert result.stdout.endswith(f"{summary}\n")
 
 
+def test_a_misformatted_baseline_file_fails_the_check_until_pruned(workdir: Path) -> None:
+    failure, success = 1, 0
+    _ = HemolintProcess.run_in(workdir, ["check", "--format", "fixit", "--baseline"], violation)
+    written = workdir / ".hemolint" / f"fixit-{rule}" / f"{source}.json"
+    _ = written.write_text(json.dumps({code: 1}))
+    checked = HemolintProcess.run_in(workdir, ["check", "--format", "fixit"], violation)
+    _ = HemolintProcess.run_in(workdir, ["check", "--format", "fixit", "--prune"], violation)
+    rechecked = HemolintProcess.run_in(workdir, ["check", "--format", "fixit"], violation)
+    assert checked.returncode == failure
+    assert f"{source}: fixit-{rule} is not as hemolint writes it" in checked.stdout
+    assert "hemolint check --prune" in checked.stdout
+    assert rechecked.returncode == success
+
+
 def test_a_new_violation_exits_one_and_is_printed_as_the_linter_line(workdir: Path) -> None:
     failure = 1
     _ = HemolintProcess.run_in(workdir, ["check", "--format", "fixit", "--baseline"], "")
