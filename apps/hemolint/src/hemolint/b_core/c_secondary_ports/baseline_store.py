@@ -5,6 +5,7 @@ from safe_result import Ok, Result
 from hemolint.b_core.d_domain_model.baseline import Baseline
 
 if TYPE_CHECKING:
+    from hemolint.b_core.d_domain_model.baseline import BaselineFile
     from hemolint.b_core.d_domain_model.violation import LinterName
 
 
@@ -19,10 +20,18 @@ class BaselineStore(Protocol):
     # Replaces the linter's whole baseline, so its violations missing from it are gone afterwards.
     def write(self, linter: LinterName, baseline: Baseline) -> Result[None, BaselineStoreError]: ...
 
+    # The linter's files whose text differs from what `write` would make of them.
+    def misformatted(
+        self, linter: LinterName
+    ) -> Result[tuple[BaselineFile, ...], BaselineStoreError]: ...
+
 
 class FakeBaselineStore(BaselineStore):
-    def __init__(self, baseline: Baseline | None = None) -> None:
+    def __init__(
+        self, baseline: Baseline | None = None, misformatted: tuple[BaselineFile, ...] = ()
+    ) -> None:
         self.baseline = baseline if baseline is not None else Baseline.of(())
+        self._misformatted = misformatted
 
     @override
     def read(self, linter: LinterName) -> Result[Baseline, BaselineStoreError]:
@@ -32,4 +41,11 @@ class FakeBaselineStore(BaselineStore):
     def write(self, linter: LinterName, baseline: Baseline) -> Result[None, BaselineStoreError]:
         others = (violation for violation in self.baseline.root if violation.file.linter != linter)
         self.baseline = Baseline.of((*others, *baseline.root))
+        self._misformatted = tuple(file for file in self._misformatted if file.linter != linter)
         return Ok(None)
+
+    @override
+    def misformatted(
+        self, linter: LinterName
+    ) -> Result[tuple[BaselineFile, ...], BaselineStoreError]:
+        return Ok(tuple(file for file in self._misformatted if file.linter == linter))

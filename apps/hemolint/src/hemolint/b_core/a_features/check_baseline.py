@@ -41,4 +41,7 @@ class BaselineCheck:
         baseline = store.read(linter_format.linter_name())
         if isinstance(baseline, Err):
             return baseline
-        return Ok(Drift.between(baseline.value, found.value))
+        misformatted = store.misformatted(linter_format.linter_name())
+        if isinstance(misformatted, Err):
+            return misformatted
+        return Ok(Drift.between(baseline.value, found.value, misformatted.value))

@@ -21,7 +21,8 @@ if TYPE_CHECKING:
 
 
 class BaselinePruning:
-    # Removes fixed violations but never adds new ones, so the baseline only shrinks.
+    # Removes fixed violations but never adds new ones, so the baseline only shrinks. Rewrites
+    # every file, so misformatted ones end up as hemolint writes them.
     @staticmethod
     def prune(
         output: LinterOutput,
@@ -43,9 +44,9 @@ class BaselinePruning:
         if isinstance(baseline, Err):
             return baseline
         drift = Drift.between(baseline.value, found.value)
-        fixed = drift.all_fixed()
-        if fixed.root:
-            written = store.write(linter_format.linter_name(), baseline.value.without(fixed))
-            if isinstance(written, Err):
-                return written
+        written = store.write(
+            linter_format.linter_name(), baseline.value.without(drift.all_fixed())
+        )
+        if isinstance(written, Err):
+            return written
         return Ok(drift)

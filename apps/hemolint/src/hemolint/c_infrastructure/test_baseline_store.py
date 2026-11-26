@@ -168,3 +168,19 @@ def test_a_baseline_file_holding_no_count_is_an_error(tmp_path: Path) -> None:
     (directory / f"{linter.root}-{rule.root}").mkdir(parents=True)
     _ = (directory / f"{linter.root}-{rule.root}" / "a.py.json").write_text("true")
     assert DiskBaselineStore(BaselineDirectory(directory)).read(linter).is_err()
+
+
+def test_a_written_baseline_is_as_the_store_writes_it(store: BaselineStore) -> None:
+    _ = store.write(linter, baseline).unwrap()
+    assert store.misformatted(linter).unwrap() == ()
+
+
+def test_a_hand_edited_unsorted_baseline_file_is_misformatted(tmp_path: Path) -> None:
+    directory = tmp_path / ".hemolint"
+    (directory / f"{linter.root}-{rule.root}").mkdir(parents=True)
+    _ = (directory / f"{linter.root}-{rule.root}" / "b.py.json").write_text(
+        json.dumps({"b": 1, "a": 1}, indent=2) + "\n"
+    )
+    assert DiskBaselineStore(BaselineDirectory(directory)).misformatted(linter).unwrap() == (
+        top_level,
+    )

@@ -49,7 +49,7 @@ class CountDriftReport(Value[tuple[str, ...]]):
 
 
 # New violations as the linter reported them, then counted baseline files that drifted, then
-# fixed ones per baseline file, then a summary.
+# fixed ones per baseline file, then misformatted baseline files, then a summary.
 class DriftReport(Value[str]):
     @staticmethod
     def fake() -> DriftReport:
@@ -65,10 +65,15 @@ class DriftReport(Value[str]):
             f"{file.source.root}: {file.linter.root}-{file.rule.root} ×{count.root} fixed"  # noqa: RUF001
             for file, count in fixed.items()
         )
+        lines.extend(
+            f"{file.source.root}: {file.linter.root}-{file.rule.root} is not as hemolint writes it"
+            for file in drift.misformatted
+        )
         all_fixed = drift.all_fixed()
-        if all_fixed.root:
+        if all_fixed.root or drift.misformatted:
             lines.append(
-                "Run `hemolint check --prune` to remove fixed violations from the baseline."
+                "Run `hemolint check --prune` to remove fixed violations from the baseline "
+                "and rewrite its files as hemolint writes them."
             )
         lines.append(f"{drift.new_count().root} new and {len(all_fixed.root)} fixed violations.")
         return DriftReport("".join(f"{line}\n" for line in lines))
